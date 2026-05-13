@@ -337,25 +337,25 @@ final class SidebarBranchOrderingTests: XCTestCase {
                 first: pullRequestState(
                     number: 337,
                     label: "PR",
-                    url: "https://github.com/manaflow-ai/cmux/pull/337",
+                    url: "https://github.com/mochiexists/cmux-mochi/pull/337",
                     status: .open
                 ),
                 second: pullRequestState(
                     number: 18,
                     label: "MR",
-                    url: "https://gitlab.com/manaflow/cmux/-/merge_requests/18",
+                    url: "https://gitlab.com/mochiexists/cmux-mochi/-/merge_requests/18",
                     status: .open
                 ),
                 third: pullRequestState(
                     number: 337,
                     label: "PR",
-                    url: "https://github.com/manaflow-ai/cmux/pull/337",
+                    url: "https://github.com/mochiexists/cmux-mochi/pull/337",
                     status: .merged
                 ),
                 fourth: pullRequestState(
                     number: 92,
                     label: "PR",
-                    url: "https://bitbucket.org/manaflow/cmux/pull-requests/92",
+                    url: "https://bitbucket.org/mochiexists/cmux-mochi/pull-requests/92",
                     status: .closed
                 )
             ],
@@ -387,14 +387,14 @@ final class SidebarBranchOrderingTests: XCTestCase {
                 first: pullRequestState(
                     number: 42,
                     label: "PR",
-                    url: "https://github.com/manaflow-ai/cmux/pull/42",
+                    url: "https://github.com/mochiexists/cmux-mochi/pull/42",
                     status: .open,
                     isStale: true
                 ),
                 second: pullRequestState(
                     number: 42,
                     label: "MR",
-                    url: "https://gitlab.com/manaflow/cmux/-/merge_requests/42",
+                    url: "https://gitlab.com/mochiexists/cmux-mochi/-/merge_requests/42",
                     status: .open
                 )
             ],
@@ -417,14 +417,14 @@ final class SidebarBranchOrderingTests: XCTestCase {
                 first: pullRequestState(
                     number: 42,
                     label: "PR",
-                    url: "https://github.com/manaflow-ai/cmux/pull/42",
+                    url: "https://github.com/mochiexists/cmux-mochi/pull/42",
                     status: .open,
                     isStale: true
                 ),
                 second: pullRequestState(
                     number: 42,
                     label: "PR",
-                    url: "https://github.com/manaflow-ai/other-repo/pull/42",
+                    url: "https://github.com/mochiexists/other-repo/pull/42",
                     status: .open
                 )
             ],
@@ -434,8 +434,8 @@ final class SidebarBranchOrderingTests: XCTestCase {
         XCTAssertEqual(
             pullRequests.map(\.url.absoluteString),
             [
-                "https://github.com/manaflow-ai/cmux/pull/42",
-                "https://github.com/manaflow-ai/other-repo/pull/42"
+                "https://github.com/mochiexists/cmux-mochi/pull/42",
+                "https://github.com/mochiexists/other-repo/pull/42"
             ]
         )
     }
@@ -450,14 +450,14 @@ final class SidebarBranchOrderingTests: XCTestCase {
                 first: pullRequestState(
                     number: 42,
                     label: "PR",
-                    url: "https://github.com/manaflow-ai/cmux/pull/42",
+                    url: "https://github.com/mochiexists/cmux-mochi/pull/42",
                     status: .open,
                     isStale: true
                 ),
                 second: pullRequestState(
                     number: 42,
                     label: "PR",
-                    url: "https://github.com/manaflow-ai/cmux/pull/42",
+                    url: "https://github.com/mochiexists/cmux-mochi/pull/42",
                     status: .open,
                     isStale: false
                 )
@@ -481,7 +481,7 @@ final class SidebarBranchOrderingTests: XCTestCase {
             panelId: panelId,
             number: 42,
             label: "PR",
-            url: URL(string: "https://github.com/manaflow-ai/cmux/pull/42")!,
+            url: URL(string: "https://github.com/mochiexists/cmux-mochi/pull/42")!,
             status: .open,
             isStale: true
         )
@@ -489,7 +489,7 @@ final class SidebarBranchOrderingTests: XCTestCase {
             panelId: panelId,
             number: 42,
             label: "PR",
-            url: URL(string: "https://github.com/manaflow-ai/cmux/pull/42")!,
+            url: URL(string: "https://github.com/mochiexists/cmux-mochi/pull/42")!,
             status: .open
         )
 
@@ -501,7 +501,7 @@ final class SidebarBranchOrderingTests: XCTestCase {
         let fallback = pullRequestState(
             number: 11,
             label: "PR",
-            url: "https://github.com/manaflow-ai/cmux/pull/11",
+            url: "https://github.com/mochiexists/cmux-mochi/pull/11",
             status: .open
         )
         let pullRequests = SidebarBranchOrdering.orderedUniquePullRequests(
@@ -526,7 +526,7 @@ final class SidebarBranchOrderingTests: XCTestCase {
             panelId: panelId,
             number: 1629,
             label: "PR",
-            url: URL(string: "https://github.com/manaflow-ai/cmux/pull/1629")!,
+            url: URL(string: "https://github.com/mochiexists/cmux-mochi/pull/1629")!,
             status: .open
         )
 
@@ -550,7 +550,7 @@ final class SidebarBranchOrderingTests: XCTestCase {
             panelId: panelId,
             number: 1629,
             label: "PR",
-            url: URL(string: "https://github.com/manaflow-ai/cmux/pull/1629")!,
+            url: URL(string: "https://github.com/mochiexists/cmux-mochi/pull/1629")!,
             status: .open,
             branch: "feature/sidebar-pr"
         )
@@ -924,7 +924,7 @@ final class TerminalControllerSidebarDedupeTests: XCTestCase {
     }
 
     func testShouldReplacePullRequestReturnsTrueWhenCurrentStateIsStale() throws {
-        let url = try XCTUnwrap(URL(string: "https://github.com/manaflow-ai/cmux/pull/42"))
+        let url = try XCTUnwrap(URL(string: "https://github.com/mochiexists/cmux-mochi/pull/42"))
         let current = SidebarPullRequestState(
             number: 42,
             label: "PR",

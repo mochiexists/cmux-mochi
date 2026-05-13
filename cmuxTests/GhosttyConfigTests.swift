@@ -885,15 +885,15 @@ final class WorkspaceRemoteDaemonManifestTests: XCTestCase {
           "schemaVersion": 1,
           "appVersion": "0.62.0",
           "releaseTag": "v0.62.0",
-          "releaseURL": "https://github.com/manaflow-ai/cmux/releases/tag/v0.62.0",
+          "releaseURL": "https://github.com/mochiexists/cmux-mochi/releases/tag/v0.62.0",
           "checksumsAssetName": "cmuxd-remote-checksums.txt",
-          "checksumsURL": "https://github.com/manaflow-ai/cmux/releases/download/v0.62.0/cmuxd-remote-checksums.txt",
+          "checksumsURL": "https://github.com/mochiexists/cmux-mochi/releases/download/v0.62.0/cmuxd-remote-checksums.txt",
           "entries": [
             {
               "goOS": "linux",
               "goArch": "amd64",
               "assetName": "cmuxd-remote-linux-amd64",
-              "downloadURL": "https://github.com/manaflow-ai/cmux/releases/download/v0.62.0/cmuxd-remote-linux-amd64",
+              "downloadURL": "https://github.com/mochiexists/cmux-mochi/releases/download/v0.62.0/cmuxd-remote-linux-amd64",
               "sha256": "abc123"
             }
           ]
