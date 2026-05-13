@@ -20,7 +20,7 @@ Run this workflow to prepare and publish a cmux release.
 - `git describe --tags --abbrev=0`
 - `git log --oneline <last-tag>..HEAD --no-merges`
 - Keep only end-user visible changes (features, bug fixes, UX/perf behavior).
-- **Collect contributors:** For each PR, get the author with `gh pr view <N> --repo manaflow-ai/cmux --json author --jq '.author.login'`. Also check linked issue reporters with `gh issue view <N> --json author --jq '.author.login'`.
+- **Collect contributors:** For each PR, get the author with `gh pr view <N> --repo mochiexists/cmux-mochi --json author --jq '.author.login'`. Also check linked issue reporters with `gh issue view <N> --json author --jq '.author.login'`.
 - Build a deduplicated list of all contributor `@handle`s.
 
 4. Update changelogs:
@@ -61,7 +61,7 @@ Run this workflow to prepare and publish a cmux release.
 - `git push origin vX.Y.Z`
 
 11. Verify release workflow and assets:
-- `gh run watch --repo manaflow-ai/cmux`
+- `gh run watch --repo mochiexists/cmux-mochi`
 - Confirm release exists in GitHub Releases and includes `cmux-macos.dmg`.
 
 ## Changelog Rules
@@ -74,6 +74,6 @@ Run this workflow to prepare and publish a cmux release.
 
 Credit the people who made each release happen:
 
-- **Per-entry:** Append `— thanks @user!` for community code contributions. Use `— thanks @user for the report!` for bug reporters (when different from PR author). No callout for core team (`lawrencecchen`, `austinywang`) — core work is the baseline.
+- **Per-entry:** Append `— thanks @user!` for community code contributions. Use `— thanks @user for the report!` for bug reporters (when different from PR author). No callout for core team (`trusted-user`, `backup-user`) — core work is the baseline.
 - **Summary:** Add a `### Thanks to N contributors!` section at the bottom of each release with an alphabetical list of all `[@handle](https://github.com/handle)` links (including core team).
 - **GitHub Release body:** Include the same "Thanks to N contributors!" section with linked handles.

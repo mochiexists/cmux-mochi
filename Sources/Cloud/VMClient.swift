@@ -77,7 +77,7 @@ enum VMAttachEndpoint {
     case websocket(VMWebSocketPtyEndpoint)
 }
 
-/// Talks to the manaflow cloud VM backend at `/api/vm/*`. Stack Auth tokens come from
+/// Talks to the cmux cloud VM backend at `/api/vm/*`. Stack Auth tokens come from
 /// `AuthManager.shared`; the HTTP base URL from `AuthEnvironment.vmAPIBaseURL`.
 ///
 /// All methods are `async throws` and run off the main actor.
