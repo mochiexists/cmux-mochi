@@ -28,7 +28,7 @@ final class WorkspacePullRequestSidebarTests: XCTestCase {
     func testSidebarPullRequestsIgnoreStaleWorkspaceLevelCacheWithoutPanelState() throws {
         let workspace = Workspace(title: "Test")
         let panelId = UUID()
-        let staleURL = try XCTUnwrap(URL(string: "https://github.com/manaflow-ai/cmux/pull/1640"))
+        let staleURL = try XCTUnwrap(URL(string: "https://github.com/mochiexists/cmux-mochi/pull/1640"))
 
         workspace.pullRequest = SidebarPullRequestState(
             number: 1640,
@@ -45,7 +45,7 @@ final class WorkspacePullRequestSidebarTests: XCTestCase {
     func testSidebarPullRequestsFilterBranchMismatchPerPanel() throws {
         let workspace = Workspace(title: "Test")
         let panelId = UUID()
-        let staleURL = try XCTUnwrap(URL(string: "https://github.com/manaflow-ai/cmux/pull/1640"))
+        let staleURL = try XCTUnwrap(URL(string: "https://github.com/mochiexists/cmux-mochi/pull/1640"))
 
         workspace.panelGitBranches[panelId] = SidebarGitBranchState(branch: "main", isDirty: false)
         workspace.panelPullRequests[panelId] = SidebarPullRequestState(
@@ -63,7 +63,7 @@ final class WorkspacePullRequestSidebarTests: XCTestCase {
         let workspace = Workspace(title: "Test")
         let firstPanelId = UUID()
         let secondPanelId = UUID()
-        let url = try XCTUnwrap(URL(string: "https://github.com/manaflow-ai/cmux/pull/1640"))
+        let url = try XCTUnwrap(URL(string: "https://github.com/mochiexists/cmux-mochi/pull/1640"))
 
         workspace.panelGitBranches[firstPanelId] = SidebarGitBranchState(branch: "feature/work", isDirty: false)
         workspace.panelGitBranches[secondPanelId] = SidebarGitBranchState(branch: "feature/work", isDirty: false)
