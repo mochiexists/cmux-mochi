@@ -135,7 +135,7 @@ jobs:
           cache-dependency-path: daemon/remote/go.sum
 
       - name: Derive Sparkle public key from private key
-        if: steps.guard_release_assets.outputs.skip_all != 'true'
+        if: steps.guard_release_assets.outputs.skip_all != 'true' && github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
         env:
           SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
         run: |
@@ -205,7 +205,7 @@ jobs:
           [ -x "$HELPER_BINARY" ] || { echo "Ghostty theme picker helper not found at $HELPER_BINARY" >&2; exit 1; }
 
       - name: Inject Sparkle keys into Info.plist
-        if: steps.guard_release_assets.outputs.skip_all != 'true'
+        if: steps.guard_release_assets.outputs.skip_all != 'true' && github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
         run: |
           APP_PLIST="build-universal/Build/Products/Release/cmux.app/Contents/Info.plist"
           /usr/libexec/PlistBuddy -c "Delete :SUPublicEDKey" "$APP_PLIST" >/dev/null 2>&1 || true
@@ -219,7 +219,7 @@ jobs:
           /usr/libexec/PlistBuddy -c "Print :SUFeedURL" "$APP_PLIST"
 
       - name: Import signing cert
-        if: steps.guard_release_assets.outputs.skip_all != 'true'
+        if: steps.guard_release_assets.outputs.skip_all != 'true' && github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
         env:
           APPLE_CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
@@ -243,7 +243,7 @@ jobs:
           security list-keychains -d user -s build.keychain
 
       - name: Embed release provisioning profile
-        if: steps.guard_release_assets.outputs.skip_all != 'true'
+        if: steps.guard_release_assets.outputs.skip_all != 'true' && github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
         env:
           APPLE_RELEASE_PROVISIONING_PROFILE_BASE64: ${{ secrets.APPLE_RELEASE_PROVISIONING_PROFILE_BASE64 }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
@@ -282,7 +282,7 @@ jobs:
           cp "$TMP_PROFILE" "$PROFILE_PATH"
 
       - name: Codesign app
-        if: steps.guard_release_assets.outputs.skip_all != 'true'
+        if: steps.guard_release_assets.outputs.skip_all != 'true' && github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
         env:
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
@@ -302,7 +302,7 @@ jobs:
             "$APPLE_SIGNING_IDENTITY"
 
       - name: Notarize app
-        if: steps.guard_release_assets.outputs.skip_all != 'true'
+        if: steps.guard_release_assets.outputs.skip_all != 'true' && github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
         env:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
@@ -361,7 +361,7 @@ jobs:
           sentry-cli debug-files upload --include-sources build-universal/Build/Products/Release/
 
       - name: Generate Sparkle appcast
-        if: steps.guard_release_assets.outputs.skip_all != 'true'
+        if: steps.guard_release_assets.outputs.skip_all != 'true' && github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
         env:
           SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
         run: |
@@ -389,8 +389,7 @@ jobs:
         with:
           name: cmux-release-dry-run
           path: |
-            cmux-macos.dmg
-            appcast.xml
+            build-universal/Build/Products/Release/cmux.app/**
             remote-daemon-assets/cmuxd-remote-*
           if-no-files-found: error
 
