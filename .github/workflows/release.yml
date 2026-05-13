@@ -285,9 +285,14 @@ jobs:
         if: steps.guard_release_assets.outputs.skip_all != 'true'
         env:
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
           if [ -z "$APPLE_SIGNING_IDENTITY" ]; then
             echo "Missing APPLE_SIGNING_IDENTITY secret" >&2
+            exit 1
+          fi
+          if [ -z "$APPLE_TEAM_ID" ]; then
+            echo "Missing APPLE_TEAM_ID secret" >&2
             exit 1
           fi
           APP_PATH="build-universal/Build/Products/Release/cmux.app"

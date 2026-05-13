@@ -3,9 +3,9 @@
 <plist version="1.0">
 <dict>
 	<key>com.apple.application-identifier</key>
-	<string>7WLXT3NR37.com.cmuxterm.app.nightly</string>
+	<string>__APPLE_TEAM_ID__.com.cmuxterm.app.nightly</string>
 	<key>com.apple.developer.team-identifier</key>
-	<string>7WLXT3NR37</string>
+	<string>__APPLE_TEAM_ID__</string>
 	<key>com.apple.developer.web-browser.public-key-credential</key>
 	<true/>
 	<key>com.apple.security.automation.apple-events</key>
