@@ -327,7 +327,7 @@ jobs:
           ./scripts/build_remote_daemon_release_assets.sh \
             --version "$NIGHTLY_REMOTE_DAEMON_VERSION" \
             --release-tag "nightly" \
-            --repo "manaflow-ai/cmux" \
+            --repo "mochiexists/cmux-mochi" \
             --output-dir "remote-daemon-assets" \
             --asset-suffix "$NIGHTLY_BUILD"
           MANIFEST_JSON="$(python3 -c 'import json,sys; print(json.dumps(json.load(open(sys.argv[1], encoding="utf-8")), separators=(",",":")))' "remote-daemon-assets/cmuxd-remote-manifest-${NIGHTLY_BUILD}.json")"
@@ -391,9 +391,14 @@ jobs:
         if: needs.decide.outputs.should_publish != 'true' || (steps.current_head_prebuild.outputs.still_current == 'true' && steps.current_head_postbuild.outputs.still_current == 'true')
         env:
           APPLE_NIGHTLY_PROVISIONING_PROFILE_BASE64: ${{ secrets.APPLE_NIGHTLY_PROVISIONING_PROFILE_BASE64 }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
           if [ -z "$APPLE_NIGHTLY_PROVISIONING_PROFILE_BASE64" ]; then
             echo "Missing APPLE_NIGHTLY_PROVISIONING_PROFILE_BASE64 secret" >&2
+            exit 1
+          fi
+          if [ -z "$APPLE_TEAM_ID" ]; then
+            echo "Missing APPLE_TEAM_ID secret" >&2
             exit 1
           fi
 
@@ -407,7 +412,8 @@ jobs:
           security cms -D -i "$TMP_PROFILE" > "$TMP_PLIST"
 
           APP_ID="$(/usr/libexec/PlistBuddy -c "Print :Entitlements:com.apple.application-identifier" "$TMP_PLIST")"
-          if [ "$APP_ID" != "7WLXT3NR37.com.cmuxterm.app.nightly" ]; then
+          EXPECTED_APP_ID="${APPLE_TEAM_ID}.com.cmuxterm.app.nightly"
+          if [ "$APP_ID" != "$EXPECTED_APP_ID" ]; then
             echo "Nightly provisioning profile targets unexpected app ID: $APP_ID" >&2
             exit 1
           fi
@@ -513,11 +519,11 @@ jobs:
         if: needs.decide.outputs.should_publish != 'true' || (steps.current_head_prebuild.outputs.still_current == 'true' && steps.current_head_postbuild.outputs.still_current == 'true')
         env:
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
-          SENTRY_ORG: manaflow
-          SENTRY_PROJECT: cmuxterm-macos
+          SENTRY_ORG: ${{ vars.SENTRY_ORG }}
+          SENTRY_PROJECT: ${{ vars.SENTRY_PROJECT }}
         run: |
-          if [ -z "$SENTRY_AUTH_TOKEN" ]; then
-            echo "SENTRY_AUTH_TOKEN not set, skipping dSYM upload"
+          if [ -z "$SENTRY_AUTH_TOKEN" ] || [ -z "$SENTRY_ORG" ] || [ -z "$SENTRY_PROJECT" ]; then
+            echo "Sentry credentials or project metadata not set, skipping dSYM upload"
             exit 0
           fi
           brew install getsentry/tools/sentry-cli || true
@@ -578,7 +584,7 @@ jobs:
         run: |
           set -euo pipefail
           python3 ./scripts/prune_nightly_release_assets.py \
-            --repo manaflow-ai/cmux \
+            --repo mochiexists/cmux-mochi \
             --release-tag nightly \
             --keep-builds 100 \
             --execute
@@ -599,7 +605,7 @@ jobs:
             - feed `appcast.xml`
             - compatibility feed `appcast-universal.xml` for older universal nightlies
 
-            [Download cmux-nightly-macos.dmg](https://github.com/manaflow-ai/cmux/releases/download/nightly/cmux-nightly-macos.dmg)
+            [Download cmux-nightly-macos.dmg](https://github.com/mochiexists/cmux-mochi/releases/download/nightly/cmux-nightly-macos.dmg)
           files: |
             cmux-nightly-macos-${{ github.run_id }}*.dmg
             cmux-nightly-macos.dmg

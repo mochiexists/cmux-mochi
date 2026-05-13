@@ -18,11 +18,11 @@ Prepare a new release for cmux. This command updates the changelog, bumps the ve
    - Categorize changes into: Added, Changed, Fixed, Removed
    - **Collect contributors:** For each PR referenced in the commits, get the author:
      ```bash
-     gh pr view <N> --repo manaflow-ai/cmux --json author --jq '.author.login'
+     gh pr view <N> --repo mochiexists/cmux-mochi --json author --jq '.author.login'
      ```
    - Also check for linked issue reporters (the person who filed the bug):
      ```bash
-     gh issue view <N> --repo manaflow-ai/cmux --json author --jq '.author.login'
+     gh issue view <N> --repo mochiexists/cmux-mochi --json author --jq '.author.login'
      ```
    - Build a deduplicated list of all contributor `@handle`s for the release
 
@@ -63,8 +63,8 @@ Prepare a new release for cmux. This command updates the changelog, bumps the ve
     - Push tag: `git push origin vX.Y.Z`
 
 11. **Monitor the release workflow**
-    - Watch: `gh run watch --repo manaflow-ai/cmux`
-    - Verify the release appears at: https://github.com/manaflow-ai/cmux/releases
+    - Watch: `gh run watch --repo mochiexists/cmux-mochi`
+    - Verify the release appears at: https://github.com/mochiexists/cmux-mochi/releases
     - Check that the DMG is attached to the release
 
 12. **Verify homebrew cask update**
@@ -108,7 +108,7 @@ Credit the people who made each release happen. This builds community and encour
 **Per-entry attribution** — append contributor credit after each changelog bullet:
 - For code contributions (PR author): `— thanks @user!`
 - For bug reports (issue reporter, if different from PR author): `— thanks @reporter for the report!`
-- Core team (`lawrencecchen`, `austinywang`) contributions get no per-entry callout — core work is the baseline
+- Maintainer contributions get no per-entry callout — core work is the baseline
 
 **Summary section** — add a "Thanks to N contributors!" section at the bottom of each release:
 ```markdown
@@ -129,14 +129,14 @@ Credit the people who made each release happen. This builds community and encour
 ## [0.13.0] - 2025-01-30
 
 ### Added
-- New keyboard shortcut for quick tab switching ([#42](https://github.com/manaflow-ai/cmux/pull/42)) — thanks @contributor!
+- New keyboard shortcut for quick tab switching ([#42](https://github.com/mochiexists/cmux-mochi/pull/42)) — thanks @contributor!
 
 ### Fixed
-- Memory leak when closing split panes ([#38](https://github.com/manaflow-ai/cmux/pull/38)) — thanks @fixer!
-- Notification badges not clearing properly ([#35](https://github.com/manaflow-ai/cmux/pull/35)) — thanks @reporter for the report!
+- Memory leak when closing split panes ([#38](https://github.com/mochiexists/cmux-mochi/pull/38)) — thanks @fixer!
+- Notification badges not clearing properly ([#35](https://github.com/mochiexists/cmux-mochi/pull/35)) — thanks @reporter for the report!
 
 ### Changed
-- Improved terminal rendering performance ([#40](https://github.com/manaflow-ai/cmux/pull/40))
+- Improved terminal rendering performance ([#40](https://github.com/mochiexists/cmux-mochi/pull/40))
 
 ### Thanks to 4 contributors!
 
