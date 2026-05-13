@@ -26,6 +26,7 @@ export const env = createEnv({
   server: {
     RESEND_API_KEY: z.string().min(1),
     CMUX_FEEDBACK_FROM_EMAIL: z.string().email(),
+    CMUX_FEEDBACK_TO_EMAIL: z.string().email(),
     CMUX_FEEDBACK_RATE_LIMIT_ID: z.string().min(1),
     STACK_SECRET_SERVER_KEY: z.string().min(1),
   },
@@ -36,6 +37,7 @@ export const env = createEnv({
   runtimeEnv: {
     RESEND_API_KEY: trimEnv(process.env.RESEND_API_KEY),
     CMUX_FEEDBACK_FROM_EMAIL: trimEnv(process.env.CMUX_FEEDBACK_FROM_EMAIL),
+    CMUX_FEEDBACK_TO_EMAIL: trimEnv(process.env.CMUX_FEEDBACK_TO_EMAIL),
     CMUX_FEEDBACK_RATE_LIMIT_ID: trimEnv(process.env.CMUX_FEEDBACK_RATE_LIMIT_ID),
     NEXT_PUBLIC_STACK_PROJECT_ID: stackEnv(
       process.env.NEXT_PUBLIC_STACK_PROJECT_ID,

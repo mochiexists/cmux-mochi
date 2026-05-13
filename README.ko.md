@@ -4,7 +4,7 @@
 <p align="center">세로 탭과 알림을 지원하는 AI 코딩 에이전트용 Ghostty 기반 macOS 터미널</p>
 
 <p align="center">
-  <a href="https://github.com/manaflow-ai/cmux/releases/latest/download/cmux-macos.dmg">
+  <a href="https://github.com/mochiexists/cmux-mochi/releases/latest/download/cmux-macos.dmg">
     <img src="./docs/assets/macos-badge.png" alt="macOS용 cmux 다운로드" width="180" />
   </a>
 </p>
@@ -14,9 +14,9 @@
 </p>
 
 <p align="center">
-  <a href="https://x.com/manaflowai"><img src="https://img.shields.io/badge/@manaflow-555?logo=x" alt="X / Twitter" /></a>
+  <a href="https://github.com/mochiexists/cmux-mochi"><img src="https://img.shields.io/badge/cmux--mochi-555?logo=github" alt="GitHub" /></a>
   <a href="https://discord.gg/xsgFEVrWCZ"><img src="https://img.shields.io/badge/Discord-555?logo=discord" alt="Discord" /></a>
-  <a href="https://github.com/manaflow-ai/cmux"><img src="https://img.shields.io/github/stars/manaflow-ai/cmux?style=flat&logo=github&label=stars&color=4c71f2" alt="GitHub stars" /></a>
+  <a href="https://github.com/mochiexists/cmux-mochi"><img src="https://img.shields.io/github/stars/mochiexists/cmux-mochi?style=flat&logo=github&label=stars&color=4c71f2" alt="GitHub stars" /></a>
 </p>
 
 <p align="center">
@@ -97,7 +97,7 @@
 
 ### DMG (권장)
 
-<a href="https://github.com/manaflow-ai/cmux/releases/latest/download/cmux-macos.dmg">
+<a href="https://github.com/mochiexists/cmux-mochi/releases/latest/download/cmux-macos.dmg">
   <img src="./docs/assets/macos-badge.png" alt="macOS용 cmux 다운로드" width="180" />
 </a>
 
@@ -106,7 +106,7 @@
 ### Homebrew
 
 ```bash
-brew tap manaflow-ai/cmux
+brew tap mochiexists/cmux-mochi
 brew install --cask cmux
 ```
 
@@ -232,7 +232,7 @@ cmux 설정 방법에 대한 자세한 내용은 [문서를 확인해주세요](
 
 ## 나이틀리 빌드
 
-[cmux NIGHTLY 다운로드](https://github.com/manaflow-ai/cmux/releases/download/nightly/cmux-nightly-macos.dmg)
+[cmux NIGHTLY 다운로드](https://github.com/mochiexists/cmux-mochi/releases/download/nightly/cmux-nightly-macos.dmg)
 
 cmux NIGHTLY는 자체 번들 ID를 가진 별도의 앱이라 안정 버전과 함께 실행할 수 있어요. 최신 `main` 커밋에서 자동으로 빌드되고, 자체 Sparkle 피드를 통해 자동 업데이트돼요.
 
@@ -248,11 +248,11 @@ cmux는 터미널 앱 내부의 라이브 프로세스 상태를 복원하지 **
 
 ## Star History
 
-<a href="https://star-history.com/#manaflow-ai/cmux&Date">
+<a href="https://star-history.com/#mochiexists/cmux-mochi&Date">
  <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=manaflow-ai/cmux&type=Date&theme=dark" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=manaflow-ai/cmux&type=Date" />
-   <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=manaflow-ai/cmux&type=Date" width="600" />
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=mochiexists/cmux-mochi&type=Date&theme=dark" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=mochiexists/cmux-mochi&type=Date" />
+   <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=mochiexists/cmux-mochi&type=Date" width="600" />
  </picture>
 </a>
 
@@ -260,18 +260,16 @@ cmux는 터미널 앱 내부의 라이브 프로세스 상태를 복원하지 **
 
 참여 방법:
 
-- X에서 팔로우해주세요: [@manaflowai](https://x.com/manaflowai), [@lawrencecchen](https://x.com/lawrencecchen), [@austinywang](https://x.com/austinywang)
+- Watch releases and issues on [GitHub](https://github.com/mochiexists/cmux-mochi)
 - [Discord](https://discord.gg/xsgFEVrWCZ)에서 대화에 참여해주세요
-- [GitHub Issues](https://github.com/manaflow-ai/cmux/issues)와 [토론](https://github.com/manaflow-ai/cmux/discussions)에 참여해주세요
+- [GitHub Issues](https://github.com/mochiexists/cmux-mochi/issues)와 [토론](https://github.com/mochiexists/cmux-mochi/discussions)에 참여해주세요
 - cmux로 무엇을 만들고 있는지 알려주세요
 
 ## 커뮤니티
 
 - [Discord](https://discord.gg/xsgFEVrWCZ)
-- [GitHub](https://github.com/manaflow-ai/cmux)
-- [X / Twitter](https://twitter.com/manaflowai)
+- [GitHub](https://github.com/mochiexists/cmux-mochi)
 - [YouTube](https://www.youtube.com/channel/UCAa89_j-TWkrXfk9A3CbASw)
-- [LinkedIn](https://www.linkedin.com/company/manaflow-ai/)
 - [Reddit](https://www.reddit.com/r/cmux/)
 
 ## Founder's Edition
@@ -291,4 +289,4 @@ cmux는 무료이고 오픈 소스이며, 앞으로도 그럴 거예요. 개발�
 
 cmux는 [GPL-3.0-or-later](LICENSE) 하에 오픈 소스예요.
 
-GPL을 준수할 수 없는 조직을 위해 상용 라이선스도 제공돼요. 자세한 내용은 [founders@manaflow.com](mailto:founders@manaflow.com)으로 문의해주세요.
+GPL을 준수할 수 없는 조직을 위해 상용 라이선스도 제공돼요. 자세한 내용은 [GitHub Issues](https://github.com/mochiexists/cmux-mochi/issues)으로 문의해주세요.
