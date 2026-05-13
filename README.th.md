@@ -4,7 +4,7 @@
 <p align="center">เทอร์มินัล macOS ที่ใช้ Ghostty พร้อมแท็บแนวตั้งและการแจ้งเตือนสำหรับเอเจนต์เขียนโค้ด AI</p>
 
 <p align="center">
-  <a href="https://github.com/manaflow-ai/cmux/releases/latest/download/cmux-macos.dmg">
+  <a href="https://github.com/mochiexists/cmux-mochi/releases/latest/download/cmux-macos.dmg">
     <img src="./docs/assets/macos-badge.png" alt="ดาวน์โหลด cmux สำหรับ macOS" width="180" />
   </a>
 </p>
@@ -14,9 +14,9 @@
 </p>
 
 <p align="center">
-  <a href="https://x.com/manaflowai"><img src="https://img.shields.io/badge/@manaflow-555?logo=x" alt="X / Twitter" /></a>
+  <a href="https://github.com/mochiexists/cmux-mochi"><img src="https://img.shields.io/badge/cmux--mochi-555?logo=github" alt="GitHub" /></a>
   <a href="https://discord.gg/xsgFEVrWCZ"><img src="https://img.shields.io/badge/Discord-555?logo=discord" alt="Discord" /></a>
-  <a href="https://github.com/manaflow-ai/cmux"><img src="https://img.shields.io/github/stars/manaflow-ai/cmux?style=flat&logo=github&label=stars&color=4c71f2" alt="GitHub stars" /></a>
+  <a href="https://github.com/mochiexists/cmux-mochi"><img src="https://img.shields.io/github/stars/mochiexists/cmux-mochi?style=flat&logo=github&label=stars&color=4c71f2" alt="GitHub stars" /></a>
 </p>
 
 <p align="center">
@@ -97,7 +97,7 @@
 
 ### DMG (แนะนำ)
 
-<a href="https://github.com/manaflow-ai/cmux/releases/latest/download/cmux-macos.dmg">
+<a href="https://github.com/mochiexists/cmux-mochi/releases/latest/download/cmux-macos.dmg">
   <img src="./docs/assets/macos-badge.png" alt="ดาวน์โหลด cmux สำหรับ macOS" width="180" />
 </a>
 
@@ -106,7 +106,7 @@
 ### Homebrew
 
 ```bash
-brew tap manaflow-ai/cmux
+brew tap mochiexists/cmux-mochi
 brew install --cask cmux
 ```
 
@@ -232,7 +232,7 @@ cmux เป็นส่วนประกอบพื้นฐาน ไม่�
 
 ## บิลด์ Nightly
 
-[ดาวน์โหลด cmux NIGHTLY](https://github.com/manaflow-ai/cmux/releases/download/nightly/cmux-nightly-macos.dmg)
+[ดาวน์โหลด cmux NIGHTLY](https://github.com/mochiexists/cmux-mochi/releases/download/nightly/cmux-nightly-macos.dmg)
 
 cmux NIGHTLY เป็นแอปแยกต่างหากที่มี bundle ID เป็นของตัวเอง จึงสามารถรันควบคู่กับเวอร์ชันเสถียรได้ สร้างอัตโนมัติจากคอมมิต `main` ล่าสุดและอัปเดตอัตโนมัติผ่านฟีด Sparkle ของตัวเอง
 
@@ -248,11 +248,11 @@ cmux **ไม่**กู้คืนสถานะกระบวนการ�
 
 ## ประวัติดาว
 
-<a href="https://star-history.com/#manaflow-ai/cmux&Date">
+<a href="https://star-history.com/#mochiexists/cmux-mochi&Date">
  <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=manaflow-ai/cmux&type=Date&theme=dark" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=manaflow-ai/cmux&type=Date" />
-   <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=manaflow-ai/cmux&type=Date" width="600" />
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=mochiexists/cmux-mochi&type=Date&theme=dark" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=mochiexists/cmux-mochi&type=Date" />
+   <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=mochiexists/cmux-mochi&type=Date" width="600" />
  </picture>
 </a>
 
@@ -260,18 +260,16 @@ cmux **ไม่**กู้คืนสถานะกระบวนการ�
 
 วิธีเข้าร่วม:
 
-- ติดตามเราบน X สำหรับข่าวสาร [@manaflowai](https://x.com/manaflowai), [@lawrencecchen](https://x.com/lawrencecchen) และ [@austinywang](https://x.com/austinywang)
+- Watch releases and issues on [GitHub](https://github.com/mochiexists/cmux-mochi)
 - เข้าร่วมสนทนาบน [Discord](https://discord.gg/xsgFEVrWCZ)
-- สร้างและมีส่วนร่วมใน [GitHub issues](https://github.com/manaflow-ai/cmux/issues) และ [discussions](https://github.com/manaflow-ai/cmux/discussions)
+- สร้างและมีส่วนร่วมใน [GitHub issues](https://github.com/mochiexists/cmux-mochi/issues) และ [discussions](https://github.com/mochiexists/cmux-mochi/discussions)
 - แจ้งให้เรารู้ว่าคุณกำลังสร้างอะไรด้วย cmux
 
 ## ชุมชน
 
 - [Discord](https://discord.gg/xsgFEVrWCZ)
-- [GitHub](https://github.com/manaflow-ai/cmux)
-- [X / Twitter](https://twitter.com/manaflowai)
+- [GitHub](https://github.com/mochiexists/cmux-mochi)
 - [YouTube](https://www.youtube.com/channel/UCAa89_j-TWkrXfk9A3CbASw)
-- [LinkedIn](https://www.linkedin.com/company/manaflow-ai/)
 - [Reddit](https://www.reddit.com/r/cmux/)
 
 ## Founder's Edition
@@ -291,4 +289,4 @@ cmux เป็นซอฟต์แวร์ฟรี โอเพนซอร�
 
 cmux เป็นโอเพนซอร์สภายใต้ [GPL-3.0-or-later](LICENSE)
 
-หากองค์กรของคุณไม่สามารถปฏิบัติตาม GPL ได้ มีสัญญาอนุญาตเชิงพาณิชย์ให้เลือกใช้ ติดต่อ [founders@manaflow.com](mailto:founders@manaflow.com) สำหรับรายละเอียด
+หากองค์กรของคุณไม่สามารถปฏิบัติตาม GPL ได้ มีสัญญาอนุญาตเชิงพาณิชย์ให้เลือกใช้ ติดต่อ [GitHub Issues](https://github.com/mochiexists/cmux-mochi/issues) สำหรับรายละเอียด

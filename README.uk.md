@@ -4,7 +4,7 @@
 <p align="center">Термінал macOS на базі Ghostty з вертикальними вкладками та сповіщеннями для AI-агентів програмування</p>
 
 <p align="center">
-  <a href="https://github.com/manaflow-ai/cmux/releases/latest/download/cmux-macos.dmg">
+  <a href="https://github.com/mochiexists/cmux-mochi/releases/latest/download/cmux-macos.dmg">
     <img src="./docs/assets/macos-badge.png" alt="Завантажити cmux для macOS" width="180" />
   </a>
 </p>
@@ -14,9 +14,9 @@
 </p>
 
 <p align="center">
-  <a href="https://x.com/manaflowai"><img src="https://img.shields.io/badge/@manaflow-555?logo=x" alt="X / Twitter" /></a>
+  <a href="https://github.com/mochiexists/cmux-mochi"><img src="https://img.shields.io/badge/cmux--mochi-555?logo=github" alt="GitHub" /></a>
   <a href="https://discord.gg/xsgFEVrWCZ"><img src="https://img.shields.io/badge/Discord-555?logo=discord" alt="Discord" /></a>
-  <a href="https://github.com/manaflow-ai/cmux"><img src="https://img.shields.io/github/stars/manaflow-ai/cmux?style=flat&logo=github&label=stars&color=4c71f2" alt="GitHub stars" /></a>
+  <a href="https://github.com/mochiexists/cmux-mochi"><img src="https://img.shields.io/github/stars/mochiexists/cmux-mochi?style=flat&logo=github&label=stars&color=4c71f2" alt="GitHub stars" /></a>
 </p>
 
 <p align="center">
@@ -97,7 +97,7 @@
 
 ### DMG (рекомендовано)
 
-<a href="https://github.com/manaflow-ai/cmux/releases/latest/download/cmux-macos.dmg">
+<a href="https://github.com/mochiexists/cmux-mochi/releases/latest/download/cmux-macos.dmg">
   <img src="./docs/assets/macos-badge.png" alt="Завантажити cmux для macOS" width="180" />
 </a>
 
@@ -106,7 +106,7 @@
 ### Homebrew
 
 ```bash
-brew tap manaflow-ai/cmux
+brew tap mochiexists/cmux-mochi
 brew install --cask cmux
 ```
 
@@ -232,11 +232,11 @@ cmux — це примітив, а не рішення. Він дає вам т�
 
 ## Нічні збірки
 
-[Завантажити cmux NIGHTLY](https://github.com/manaflow-ai/cmux/releases/download/nightly/cmux-nightly-macos.dmg)
+[Завантажити cmux NIGHTLY](https://github.com/mochiexists/cmux-mochi/releases/download/nightly/cmux-nightly-macos.dmg)
 
 cmux NIGHTLY — це окремий додаток з власним bundle ID, тому він працює поруч зі стабільною версією. Збирається автоматично з останнього коміту `main` та автоматично оновлюється через власний канал Sparkle.
 
-Повідомляйте про помилки нічних збірок на [GitHub Issues](https://github.com/manaflow-ai/cmux/issues) або в [#nightly-bugs у Discord](https://discord.gg/xsgFEVrWCZ).
+Повідомляйте про помилки нічних збірок на [GitHub Issues](https://github.com/mochiexists/cmux-mochi/issues) або в [#nightly-bugs у Discord](https://discord.gg/xsgFEVrWCZ).
 
 ## Відновлення сесії (поточна поведінка)
 
@@ -250,11 +250,11 @@ cmux **не** відновлює стан активних процесів ус
 
 ## Історія зірок
 
-<a href="https://star-history.com/#manaflow-ai/cmux&Date">
+<a href="https://star-history.com/#mochiexists/cmux-mochi&Date">
  <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=manaflow-ai/cmux&type=Date&theme=dark" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=manaflow-ai/cmux&type=Date" />
-   <img alt="Діаграма історії зірок" src="https://api.star-history.com/svg?repos=manaflow-ai/cmux&type=Date" width="600" />
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=mochiexists/cmux-mochi&type=Date&theme=dark" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=mochiexists/cmux-mochi&type=Date" />
+   <img alt="Діаграма історії зірок" src="https://api.star-history.com/svg?repos=mochiexists/cmux-mochi&type=Date" width="600" />
  </picture>
 </a>
 
@@ -262,18 +262,16 @@ cmux **не** відновлює стан активних процесів ус
 
 Способи долучитися:
 
-- Підписуйтесь на нас у X для оновлень [@manaflowai](https://x.com/manaflowai), [@lawrencecchen](https://x.com/lawrencecchen) та [@austinywang](https://x.com/austinywang)
+- Watch releases and issues on [GitHub](https://github.com/mochiexists/cmux-mochi)
 - Приєднуйтесь до обговорень у [Discord](https://discord.gg/xsgFEVrWCZ)
-- Створюйте та беріть участь у [GitHub issues](https://github.com/manaflow-ai/cmux/issues) та [обговореннях](https://github.com/manaflow-ai/cmux/discussions)
+- Створюйте та беріть участь у [GitHub issues](https://github.com/mochiexists/cmux-mochi/issues) та [обговореннях](https://github.com/mochiexists/cmux-mochi/discussions)
 - Розкажіть нам, що ви створюєте з cmux
 
 ## Спільнота
 
 - [Discord](https://discord.gg/xsgFEVrWCZ)
-- [GitHub](https://github.com/manaflow-ai/cmux)
-- [X / Twitter](https://twitter.com/manaflowai)
+- [GitHub](https://github.com/mochiexists/cmux-mochi)
 - [YouTube](https://www.youtube.com/channel/UCAa89_j-TWkrXfk9A3CbASw)
-- [LinkedIn](https://www.linkedin.com/company/manaflow-ai/)
 - [Reddit](https://www.reddit.com/r/cmux/)
 
 ## Founder's Edition
@@ -293,4 +291,4 @@ cmux є безкоштовним, з відкритим кодом і завжд
 
 cmux є відкритим програмним забезпеченням під ліцензією [GPL-3.0-or-later](LICENSE).
 
-Якщо ваша організація не може дотримуватися GPL, доступна комерційна ліцензія. Зв'яжіться з [founders@manaflow.com](mailto:founders@manaflow.com) для деталей.
+Якщо ваша організація не може дотримуватися GPL, доступна комерційна ліцензія. Зв'яжіться з [GitHub Issues](https://github.com/mochiexists/cmux-mochi/issues) для деталей.

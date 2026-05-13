@@ -4,7 +4,7 @@
 <p align="center">基於 Ghostty 的 macOS 終端機，具備垂直分頁和為 AI 程式設計代理設計的通知系統</p>
 
 <p align="center">
-  <a href="https://github.com/manaflow-ai/cmux/releases/latest/download/cmux-macos.dmg">
+  <a href="https://github.com/mochiexists/cmux-mochi/releases/latest/download/cmux-macos.dmg">
     <img src="./docs/assets/macos-badge.png" alt="下載 cmux macOS 版" width="180" />
   </a>
 </p>
@@ -14,9 +14,9 @@
 </p>
 
 <p align="center">
-  <a href="https://x.com/manaflowai"><img src="https://img.shields.io/badge/@manaflow-555?logo=x" alt="X / Twitter" /></a>
+  <a href="https://github.com/mochiexists/cmux-mochi"><img src="https://img.shields.io/badge/cmux--mochi-555?logo=github" alt="GitHub" /></a>
   <a href="https://discord.gg/xsgFEVrWCZ"><img src="https://img.shields.io/badge/Discord-555?logo=discord" alt="Discord" /></a>
-  <a href="https://github.com/manaflow-ai/cmux"><img src="https://img.shields.io/github/stars/manaflow-ai/cmux?style=flat&logo=github&label=stars&color=4c71f2" alt="GitHub stars" /></a>
+  <a href="https://github.com/mochiexists/cmux-mochi"><img src="https://img.shields.io/github/stars/mochiexists/cmux-mochi?style=flat&logo=github&label=stars&color=4c71f2" alt="GitHub stars" /></a>
 </p>
 
 <p align="center">
@@ -97,7 +97,7 @@
 
 ### DMG（建議）
 
-<a href="https://github.com/manaflow-ai/cmux/releases/latest/download/cmux-macos.dmg">
+<a href="https://github.com/mochiexists/cmux-mochi/releases/latest/download/cmux-macos.dmg">
   <img src="./docs/assets/macos-badge.png" alt="下載 cmux macOS 版" width="180" />
 </a>
 
@@ -106,7 +106,7 @@
 ### Homebrew
 
 ```bash
-brew tap manaflow-ai/cmux
+brew tap mochiexists/cmux-mochi
 brew install --cask cmux
 ```
 
@@ -232,7 +232,7 @@ cmux 是一個基礎元件，而非完整方案。它提供終端機、瀏覽器
 
 ## 每夜建構
 
-[下載 cmux NIGHTLY](https://github.com/manaflow-ai/cmux/releases/download/nightly/cmux-nightly-macos.dmg)
+[下載 cmux NIGHTLY](https://github.com/mochiexists/cmux-mochi/releases/download/nightly/cmux-nightly-macos.dmg)
 
 cmux NIGHTLY 是一個獨立的應用程式，擁有自己的 bundle ID，因此可以與穩定版並行執行。每次從最新的 `main` 提交自動建構，並透過自己的 Sparkle 來源自動更新。
 
@@ -248,11 +248,11 @@ cmux **不會**還原終端機應用程式內的即時程序狀態。例如，�
 
 ## Star 歷史
 
-<a href="https://star-history.com/#manaflow-ai/cmux&Date">
+<a href="https://star-history.com/#mochiexists/cmux-mochi&Date">
  <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=manaflow-ai/cmux&type=Date&theme=dark" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=manaflow-ai/cmux&type=Date" />
-   <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=manaflow-ai/cmux&type=Date" width="600" />
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=mochiexists/cmux-mochi&type=Date&theme=dark" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=mochiexists/cmux-mochi&type=Date" />
+   <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=mochiexists/cmux-mochi&type=Date" width="600" />
  </picture>
 </a>
 
@@ -260,18 +260,16 @@ cmux **不會**還原終端機應用程式內的即時程序狀態。例如，�
 
 參與方式：
 
-- 在 X 上追蹤我們獲取最新動態 [@manaflowai](https://x.com/manaflowai)、[@lawrencecchen](https://x.com/lawrencecchen) 和 [@austinywang](https://x.com/austinywang)
+- Watch releases and issues on [GitHub](https://github.com/mochiexists/cmux-mochi)
 - 加入 [Discord](https://discord.gg/xsgFEVrWCZ) 上的討論
-- 建立和參與 [GitHub issues](https://github.com/manaflow-ai/cmux/issues) 和 [discussions](https://github.com/manaflow-ai/cmux/discussions)
+- 建立和參與 [GitHub issues](https://github.com/mochiexists/cmux-mochi/issues) 和 [discussions](https://github.com/mochiexists/cmux-mochi/discussions)
 - 讓我們知道您正在用 cmux 打造什麼
 
 ## 社群
 
 - [Discord](https://discord.gg/xsgFEVrWCZ)
-- [GitHub](https://github.com/manaflow-ai/cmux)
-- [X / Twitter](https://twitter.com/manaflowai)
+- [GitHub](https://github.com/mochiexists/cmux-mochi)
 - [YouTube](https://www.youtube.com/channel/UCAa89_j-TWkrXfk9A3CbASw)
-- [LinkedIn](https://www.linkedin.com/company/manaflow-ai/)
 - [Reddit](https://www.reddit.com/r/cmux/)
 
 ## 創始版
@@ -291,4 +289,4 @@ cmux 免費、開源，且將永遠如此。如果您想支持開發並提前體
 
 cmux 以 [GPL-3.0-or-later](LICENSE) 開源。
 
-如果您的組織無法遵守 GPL，可提供商業授權。詳情請聯繫 [founders@manaflow.com](mailto:founders@manaflow.com)。
+如果您的組織無法遵守 GPL，可提供商業授權。詳情請聯繫 [GitHub Issues](https://github.com/mochiexists/cmux-mochi/issues)。

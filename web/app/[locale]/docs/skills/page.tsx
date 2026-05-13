@@ -76,7 +76,7 @@ export default function SkillsPage() {
           code: (chunks) => <code>{chunks}</code>,
         })}
       </p>
-      <CodeBlock title={t("installFromGitHub")} lang="bash">{`curl -fsSL https://raw.githubusercontent.com/manaflow-ai/cmux/main/skills.sh | bash`}</CodeBlock>
+      <CodeBlock title={t("installFromGitHub")} lang="bash">{`curl -fsSL https://raw.githubusercontent.com/mochiexists/cmux-mochi/main/skills.sh | bash`}</CodeBlock>
       <Callout type="info">
         {t.rich("installDestination", {
           code: (chunks) => <code>{chunks}</code>,
@@ -91,7 +91,7 @@ export default function SkillsPage() {
 ./skills.sh --dest ~/.codex/skills
 ./skills.sh --dry-run`}</CodeBlock>
       <p>{t("pinRefIntro")}</p>
-      <CodeBlock lang="bash">{`curl -fsSL https://raw.githubusercontent.com/manaflow-ai/cmux/main/skills.sh | bash -s -- --ref main`}</CodeBlock>
+      <CodeBlock lang="bash">{`curl -fsSL https://raw.githubusercontent.com/mochiexists/cmux-mochi/main/skills.sh | bash -s -- --ref main`}</CodeBlock>
 
       <h2>{t("includedTitle")}</h2>
       <p>{t("includedIntro")}</p>
