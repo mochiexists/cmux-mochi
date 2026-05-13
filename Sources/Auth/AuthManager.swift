@@ -90,7 +90,6 @@ extension StackAuthTokenStoreProtocol {
 
 protocol AuthClientProtocol: Sendable {
     func currentUser() async throws -> CMUXAuthUser?
-    func listTeams() async throws -> [AuthTeamSummary]
     func currentAccessToken() async throws -> String?
     func signOut() async throws
 }
@@ -130,21 +129,9 @@ final class AuthManager: ObservableObject {
 
     @Published private(set) var isAuthenticated = false
     @Published private(set) var currentUser: CMUXAuthUser?
-    @Published private(set) var availableTeams: [AuthTeamSummary] = []
     @Published private(set) var isLoading = false
     @Published private(set) var isRestoringSession = false
     @Published private(set) var didCompleteBrowserSignIn = false
-    @Published var selectedTeamID: String? {
-        didSet {
-            guard selectedTeamID != oldValue else { return }
-            settingsStore.selectedTeamID = selectedTeamID
-        }
-    }
-
-    var resolvedTeamID: String? {
-        Self.resolveTeamID(selectedTeamID: selectedTeamID, teams: availableTeams)
-    }
-
     let requiresAuthenticationGate = false
 
     private let client: any AuthClientProtocol
@@ -176,7 +163,6 @@ final class AuthManager: ObservableObject {
         }
         let cachedUser = settingsStore.cachedUser()
         self.currentUser = cachedUser
-        self.selectedTeamID = settingsStore.selectedTeamID
         self.isAuthenticated = cachedUser != nil
         self.bootstrapTask = Task { [weak self] in
             await self?.restoreStoredSessionIfNeeded()
@@ -503,8 +489,6 @@ final class AuthManager: ObservableObject {
         let email: String?
         let displayName: String?
         let userId: String
-        let selectedTeamId: String?
-        let teams: [AuthTeamSummary]
     }
 
     nonisolated static func signInWithCredentialDirectly(email: String, password: String) async throws -> SignInResult {
@@ -525,26 +509,11 @@ final class AuthManager: ObservableObject {
             clientKey: AuthEnvironment.stackPublishableClientKey,
             extraHeaders: ["x-stack-access-token": accessToken], method: "GET"
         )
-        let teamsJSON = try await stackAPIRequest(
-            url: "\(AuthEnvironment.stackBaseURL.absoluteString)/api/v1/teams?user_id=me",
-            body: Data(), projectID: AuthEnvironment.stackProjectID,
-            clientKey: AuthEnvironment.stackPublishableClientKey,
-            extraHeaders: ["x-stack-access-token": accessToken], method: "GET"
-        )
-        var teams: [AuthTeamSummary] = []
-        if let items = teamsJSON["items"] as? [[String: Any]] {
-            for item in items { if let id = item["id"] as? String {
-                teams.append(AuthTeamSummary(id: id, displayName: item["display_name"] as? String ?? ""))
-            }}
-        }
-        let selectedTeamFromAPI = userJSON["selected_team_id"] as? String
-        authLog("signInDirectly: success user=\(userJSON["primary_email"] as? String ?? "nil") teams=\(teams.count) selectedTeam=\(selectedTeamFromAPI ?? "nil")")
+        authLog("signInDirectly: success user=\(userJSON["primary_email"] as? String ?? "nil")")
         return SignInResult(accessToken: accessToken, refreshToken: refreshToken,
                            email: userJSON["primary_email"] as? String,
                            displayName: userJSON["display_name"] as? String,
-                           userId: userJSON["id"] as? String ?? "",
-                           selectedTeamId: selectedTeamFromAPI,
-                           teams: teams)
+                           userId: userJSON["id"] as? String ?? "")
     }
 
     func applySignInResult(_ result: SignInResult) {
@@ -559,11 +528,9 @@ final class AuthManager: ObservableObject {
         let user = CMUXAuthUser(id: result.userId, primaryEmail: result.email, displayName: result.displayName)
         currentUser = user
         settingsStore.saveCachedUser(user)
-        availableTeams = result.teams
         isAuthenticated = true
-        selectedTeamID = Self.resolveTeamID(selectedTeamID: selectedTeamID, teams: result.teams)
         didCompleteBrowserSignIn = true
-        authLog("applySignInResult: user=\(result.email ?? "nil") teams=\(result.teams.count) teamID=\(selectedTeamID ?? "nil")")
+        authLog("applySignInResult: user=\(result.email ?? "nil")")
     }
 
     func signInWithCredential(email: String, password: String) async throws {
@@ -600,33 +567,10 @@ final class AuthManager: ObservableObject {
             displayName: userJSON["display_name"] as? String
         )
 
-        // Fetch teams
-        let teamsJSON = try await Self.stackAPIRequest(
-            url: "\(AuthEnvironment.stackBaseURL.absoluteString)/api/v1/teams?user_id=me",
-            body: Data(),
-            projectID: AuthEnvironment.stackProjectID,
-            clientKey: AuthEnvironment.stackPublishableClientKey,
-            extraHeaders: ["x-stack-access-token": accessToken],
-            method: "GET"
-        )
-        var teams: [AuthTeamSummary] = []
-        if let items = teamsJSON["items"] as? [[String: Any]] {
-            for item in items {
-                if let id = item["id"] as? String {
-                    teams.append(AuthTeamSummary(
-                        id: id,
-                        displayName: item["display_name"] as? String ?? ""
-                    ))
-                }
-            }
-        }
-
         currentUser = user
         settingsStore.saveCachedUser(user)
-        availableTeams = teams
         isAuthenticated = true
-        selectedTeamID = Self.resolveTeamID(selectedTeamID: selectedTeamID, teams: teams)
-        authLog("signInWithCredential: success user=\(user.primaryEmail ?? "nil") teams=\(teams.count) teamID=\(selectedTeamID ?? "nil")")
+        authLog("signInWithCredential: success user=\(user.primaryEmail ?? "nil")")
         didCompleteBrowserSignIn = true
     }
 
@@ -737,30 +681,17 @@ final class AuthManager: ObservableObject {
             authLog("refreshSession: getUser failed: \(error)")
             throw error
         }
-        let teams: [AuthTeamSummary]
-        do {
-            teams = try await client.listTeams()
-        } catch {
-            authLog("refreshSession: listTeams failed: \(error)")
-            throw error
-        }
         let hasRefreshToken = await tokenStore.currentRefreshToken() != nil
-        authLog("refreshSession: user=\(user?.primaryEmail ?? "nil") teams=\(teams.count) hasRefresh=\(hasRefreshToken)")
+        authLog("refreshSession: user=\(user?.primaryEmail ?? "nil") hasRefresh=\(hasRefreshToken)")
         currentUser = user
         settingsStore.saveCachedUser(user)
-        availableTeams = teams
         isAuthenticated = user != nil || hasRefreshToken
-        selectedTeamID = Self.resolveTeamID(selectedTeamID: selectedTeamID, teams: teams)
     }
 
     private func clearSessionState(clearSelectedTeam: Bool) {
-        availableTeams = []
         currentUser = nil
         isAuthenticated = false
         didCompleteBrowserSignIn = false
-        if clearSelectedTeam {
-            selectedTeamID = nil
-        }
         settingsStore.saveCachedUser(nil)
     }
 
@@ -812,16 +743,6 @@ final class AuthManager: ObservableObject {
         }
     }
 
-    private static func resolveTeamID(
-        selectedTeamID: String?,
-        teams: [AuthTeamSummary]
-    ) -> String? {
-        if let selectedTeamID,
-           teams.contains(where: { $0.id == selectedTeamID }) {
-            return selectedTeamID
-        }
-        return teams.first?.id
-    }
 }
 
 
@@ -1158,25 +1079,6 @@ actor LiveAuthClient: AuthClientProtocol {
         )
     }
 
-    func listTeams() async throws -> [AuthTeamSummary] {
-        guard let user = try await stack.getUser() else {
-            return []
-        }
-
-        let teams = try await user.listTeams()
-        var summaries: [AuthTeamSummary] = []
-        summaries.reserveCapacity(teams.count)
-        for team in teams {
-            summaries.append(
-                AuthTeamSummary(
-                    id: team.id,
-                    displayName: await team.displayName
-                )
-            )
-        }
-        return summaries
-    }
-
     func signOut() async throws {
         try await stack.signOut()
     }
@@ -1185,7 +1087,6 @@ actor LiveAuthClient: AuthClientProtocol {
 private struct UITestAuthClient: AuthClientProtocol {
     let tokenStore: any StackAuthTokenStoreProtocol
     let user: CMUXAuthUser
-    let teams: [AuthTeamSummary]
 
     static func makeIfEnabled(
         tokenStore: any StackAuthTokenStoreProtocol
@@ -1200,25 +1101,13 @@ private struct UITestAuthClient: AuthClientProtocol {
             primaryEmail: environment["CMUX_UI_TEST_AUTH_EMAIL"] ?? "uitest@cmux.dev",
             displayName: environment["CMUX_UI_TEST_AUTH_NAME"] ?? "UI Test"
         )
-        let teams = [
-            AuthTeamSummary(
-                id: environment["CMUX_UI_TEST_AUTH_TEAM_ID"] ?? "team_alpha",
-                displayName: environment["CMUX_UI_TEST_AUTH_TEAM_NAME"] ?? "Alpha"
-            ),
-        ]
-        return Self(tokenStore: tokenStore, user: user, teams: teams)
+        return Self(tokenStore: tokenStore, user: user)
     }
 
     func currentUser() async throws -> CMUXAuthUser? {
         let hasAccessToken = await tokenStore.currentAccessToken() != nil
         let hasRefreshToken = await tokenStore.currentRefreshToken() != nil
         return (hasAccessToken || hasRefreshToken) ? user : nil
-    }
-
-    func listTeams() async throws -> [AuthTeamSummary] {
-        let hasAccessToken = await tokenStore.currentAccessToken() != nil
-        let hasRefreshToken = await tokenStore.currentRefreshToken() != nil
-        return (hasAccessToken || hasRefreshToken) ? teams : []
     }
 
     func currentAccessToken() async throws -> String? {

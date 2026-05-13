@@ -43,23 +43,21 @@ calls use `Authorization: Bearer` plus `X-Stack-Refresh-Token` and are not subje
 For cookie calls, `POST`/`DELETE` routes reject cross-site `Origin` or `Sec-Fetch-Site` requests
 before any VM workflow runs.
 
-Cloud VM billing is team-scoped. The native client sends the selected Stack team in
-`X-Cmux-Team-Id`; browser callers may send that header or `teamId`/`billingTeamId` in the request.
-The backend validates membership before create or team-filtered list. If Stack returns one team,
-the backend treats it as the personal team created on sign-up. If Stack returns no team, or multiple
-teams without a selected/requested team, create fails before providers or billing are called.
+Cloud VM billing is user-scoped. The native client sends only the Stack access and refresh tokens;
+legacy team headers are ignored, and `teamId`/`billingTeamId` body fields are rejected on create.
+The backend derives plan metadata from the authenticated Stack user before any provider call.
 
 The auth regression tests live in `web/tests/vm-route-auth.test.ts`. They verify unauthenticated create, list, destroy, attach, SSH endpoint, and exec requests return `401` before the VM workflow runs, and that cross-site cookie mutations are rejected.
 
 ## State model
 
-- `cloud_vms` owns VM lifecycle state, provider ids, image ids, billing team/plan ids, and per-user idempotency keys.
+- `cloud_vms` owns VM lifecycle state, provider ids, image ids, billing owner/plan ids, and per-user idempotency keys.
 - `cloud_vm_leases` stores hashed PTY/RPC/SSH lease tokens, provider identity handles, session ids, expiry, and revocation timestamps.
-- `cloud_vm_usage_events` records lifecycle, attach, SSH, and exec events with billing team/plan ids for billing and audit rollups.
+- `cloud_vm_usage_events` records lifecycle, attach, SSH, and exec events with billing owner/plan ids for billing and audit rollups.
 
 Create idempotency is enforced by the partial unique index on `(user_id, idempotency_key)`. A retry with the same key returns the existing VM after provisioning succeeds. A concurrent retry while the first create is still provisioning returns `409` instead of starting a second paid provider VM.
 
-Active VM limits are enforced inside the same Postgres transaction that inserts the create row. The transaction takes a billing-team advisory lock before counting active VMs, so two concurrent creates for the same team cannot both pass the free-plan limit.
+Active VM limits are enforced inside the same Postgres transaction that inserts the create row. The transaction takes a billing-owner advisory lock before counting active VMs, so two concurrent creates for the same user cannot both pass the free-plan limit.
 
 ## Image manifest and rollback
 
@@ -314,6 +312,6 @@ Operational note: Freestyle is the intended default when `CMUX_VM_DEFAULT_PROVID
 
 ## Usage, limits, and pricing
 
-The usage ledger is in Postgres. VM create pricing gates use Stack Auth payment items. The free plan uses the team-scoped item `cmux-vm-create-credit` by default. Configure the Stack Auth free product as team-owned, include-by-default, and grant 20 of that item with no repeat and no expiry for dashboard visibility. Because Stack Auth currently does not materialize include-by-default item grants for normal project teams, the create workflow also records a one-time local grant row and seeds 20 Stack Auth item credits the first time a free-plan team creates a VM. Set `CMUX_VM_PLAN_FREE_CREATE_CREDIT_ITEM_ID=none` in local or self-hosted deployments that intentionally do not use Stack Auth create credits. The create workflow inserts the idempotent VM row first, seeds the free-plan credits once per billing team, reserves one Stack Auth create credit only for a newly inserted row, calls the provider, and refunds the credit if provisioning fails before a usable VM exists.
+The usage ledger is in Postgres. VM create pricing gates use Stack Auth payment items. The free plan uses the user-scoped item `cmux-vm-create-credit` by default. Configure the Stack Auth free product as user-owned, include-by-default, and grant 20 of that item with no repeat and no expiry for dashboard visibility. Set `CMUX_VM_PLAN_FREE_CREATE_CREDIT_ITEM_ID=none` in local or self-hosted deployments that intentionally do not use Stack Auth create credits. The create workflow inserts the idempotent VM row first, seeds the free-plan credits once per billing owner, reserves one Stack Auth create credit only for a newly inserted row, calls the provider, and refunds the credit if provisioning fails before a usable VM exists.
 
-Plan limits are team-based. Stack Auth personal teams should stay enabled for both dev/staging and production projects (`createTeamOnSignUp` / `teams.createPersonalTeamOnSignUp`). New VM rows store `billing_team_id` and `billing_plan_id`; the free plan allows one active VM at a time and 20 total successful creates by default. Paid plan activation should write a readable plan id such as `pro` into Stack Auth team read-only metadata (`cmuxVmPlan`) or equivalent billing sync metadata, then configure the matching `CMUX_VM_PLAN_<PLAN>_MAX_ACTIVE_VMS` env var. Paid plans only consume Stack Auth create credits when `CMUX_VM_PLAN_<PLAN>_CREATE_CREDIT_ITEM_ID` or the global `CMUX_VM_CREATE_CREDIT_ITEM_ID` is configured.
+Plan limits are user-based. New VM rows store `billing_team_id` as the billing owner id for compatibility with the existing schema, along with `billing_plan_id`; the free plan allows one active VM at a time and 20 total successful creates by default. Paid plan activation should write a readable plan id such as `pro` into Stack Auth user read-only metadata (`cmuxVmPlan`) or equivalent billing sync metadata, then configure the matching `CMUX_VM_PLAN_<PLAN>_MAX_ACTIVE_VMS` env var. Paid plans only consume Stack Auth create credits when `CMUX_VM_PLAN_<PLAN>_CREATE_CREDIT_ITEM_ID` or the global `CMUX_VM_CREATE_CREDIT_ITEM_ID` is configured.

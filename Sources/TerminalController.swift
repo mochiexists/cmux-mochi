@@ -3833,19 +3833,6 @@ class TerminalController {
                     if let name = user.displayName { userDict["display_name"] = name }
                     status["user"] = userDict
                 }
-                if let teamID = manager.resolvedTeamID {
-                    status["selected_team_id"] = teamID
-                }
-                if !manager.availableTeams.isEmpty {
-                    status["teams"] = manager.availableTeams.map { team -> [String: Any] in
-                        var dict: [String: Any] = [
-                            "id": team.id,
-                            "display_name": team.displayName
-                        ]
-                        if let slug = team.slug { dict["slug"] = slug }
-                        return dict
-                    }
-                }
                 result = status
             }
         }

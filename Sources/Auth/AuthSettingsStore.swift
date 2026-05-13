@@ -1,18 +1,6 @@
 import CMUXAuthCore
 import Foundation
 
-struct AuthTeamSummary: Codable, Equatable, Identifiable, Sendable {
-    let id: String
-    let displayName: String
-    let slug: String?
-
-    init(id: String, displayName: String, slug: String? = nil) {
-        self.id = id
-        self.displayName = displayName
-        self.slug = slug
-    }
-}
-
 enum SettingsPIIDisplayMode: String, CaseIterable, Identifiable, Sendable {
     case visible
     case hidden
@@ -40,7 +28,6 @@ enum SettingsPIIDisplayMode: String, CaseIterable, Identifiable, Sendable {
 
 final class AuthSettingsStore {
     private enum Keys {
-        static let selectedTeamID = "cmux.auth.selectedTeamID"
         static let cachedUser = "cmux.auth.cachedUser"
     }
 
@@ -50,19 +37,6 @@ final class AuthSettingsStore {
 
     init(userDefaults: UserDefaults = .standard) {
         self.userDefaults = userDefaults
-    }
-
-    var selectedTeamID: String? {
-        get {
-            normalized(userDefaults.string(forKey: Keys.selectedTeamID))
-        }
-        set {
-            if let normalizedValue = normalized(newValue) {
-                userDefaults.set(normalizedValue, forKey: Keys.selectedTeamID)
-            } else {
-                userDefaults.removeObject(forKey: Keys.selectedTeamID)
-            }
-        }
     }
 
     func cachedUser() -> CMUXAuthUser? {
@@ -79,11 +53,4 @@ final class AuthSettingsStore {
         userDefaults.set(data, forKey: Keys.cachedUser)
     }
 
-    private func normalized(_ value: String?) -> String? {
-        guard let value = value?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !value.isEmpty else {
-            return nil
-        }
-        return value
-    }
 }

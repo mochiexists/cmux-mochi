@@ -22,7 +22,6 @@ import {
 import { resolveVmImage } from "../../../services/vms/images/resolver";
 import {
   jsonResponse,
-  requestedVmTeamIdFromRequest,
   withAuthedVmApiRoute,
 } from "../../../services/vms/routeHelpers";
 import {
@@ -41,21 +40,13 @@ export async function GET(request: Request): Promise<Response> {
     { "cmux.vm.operation": "list" },
     "/api/vm GET failed",
     async ({ user, span }) => {
-      let billingTeamId: string | null = null;
-      const requestedBillingTeamId = requestedVmTeamIdFromRequest(request);
+      const billingTeamId = user.id;
       try {
-        if (requestedBillingTeamId || user.billingCustomerType === "team") {
-          const entitlements = resolveVmEntitlements(user, process.env, {
-            requestedBillingTeamId,
-            requireTeam: false,
-          });
-          billingTeamId = entitlements.billingTeamId;
-          setSpanAttributes(span, {
-            "cmux.billing.team_id_set": !!billingTeamId,
-            "cmux.billing.customer_type": entitlements.billingCustomerType,
-            "cmux.billing.plan_id": entitlements.planId,
-          });
-        }
+        const entitlements = resolveVmEntitlements(user, process.env);
+        setSpanAttributes(span, {
+          "cmux.billing.customer_type": entitlements.billingCustomerType,
+          "cmux.billing.plan_id": entitlements.planId,
+        });
       } catch (err) {
         if (isVmBillingTeamResolutionError(err)) {
           return jsonResponse({ error: err.code, reason: err.message }, err.status);
@@ -89,7 +80,7 @@ export async function POST(request: Request): Promise<Response> {
       // Runtime-validate the payload before we call a paid provider. An invalid `provider`
       // (client sending `"aws"` or `"docker"`) previously slipped past the type cast and
       // surfaced as a 500 from the driver after provisioning had already half-succeeded.
-      let body: { image?: string; provider?: ProviderId; billingTeamId?: string };
+      let body: { image?: string; provider?: ProviderId };
       try {
         // Allow callers to send no body at all. The handler already falls through to
         // default provider/image, so a bare `curl -X POST /api/vm` should create a default
@@ -122,14 +113,12 @@ export async function POST(request: Request): Promise<Response> {
             );
           }
         }
-        const bodyBillingTeamId = candidate.billingTeamId ?? candidate.teamId;
-        if (bodyBillingTeamId !== undefined && typeof bodyBillingTeamId !== "string") {
-          return jsonResponse({ error: "`teamId` must be a string when provided" }, 400);
+        if (candidate.billingTeamId !== undefined || candidate.teamId !== undefined) {
+          return jsonResponse({ error: "`teamId` and `billingTeamId` are no longer supported" }, 400);
         }
         body = {
           image: typeof candidate.image === "string" ? candidate.image : undefined,
           provider: candidate.provider as ProviderId | undefined,
-          billingTeamId: typeof bodyBillingTeamId === "string" ? bodyBillingTeamId.trim() : undefined,
         };
       } catch {
         return jsonResponse({ error: "invalid JSON body" }, 400);
@@ -183,13 +172,9 @@ export async function POST(request: Request): Promise<Response> {
         "cmux.idempotency_key_set": !!idempotencyKey,
       });
 
-      const requestedBillingTeamId = body.billingTeamId || requestedVmTeamIdFromRequest(request);
       let entitlements;
       try {
-        entitlements = resolveVmEntitlements(user, process.env, {
-          requestedBillingTeamId,
-          requireTeam: true,
-        });
+        entitlements = resolveVmEntitlements(user, process.env);
       } catch (err) {
         if (isVmBillingTeamResolutionError(err)) {
           return jsonResponse({ error: err.code, reason: err.message }, err.status);
@@ -200,7 +185,6 @@ export async function POST(request: Request): Promise<Response> {
         "cmux.billing.team_id_set": !!entitlements.billingTeamId,
         "cmux.billing.customer_type": entitlements.billingCustomerType,
         "cmux.billing.plan_id": entitlements.planId,
-        "cmux.billing.requested_team_id_set": !!requestedBillingTeamId,
         "cmux.vm.max_active": entitlements.maxActiveVms,
       });
 

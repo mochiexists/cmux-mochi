@@ -56,33 +56,19 @@ export async function verifyRequest(request: Request): Promise<AuthedUser | null
 }
 
 async function authedUserFromStackUser(user: StackUserLike): Promise<AuthedUser> {
-  const selectedTeam = teamLike(user.selectedTeam);
-  const listedTeams = typeof user.listTeams === "function"
-    ? (await user.listTeams()).map(teamLike).filter((team): team is TeamLike => !!team)
-    : [];
-  const teamIds = uniqueStrings([
-    selectedTeam?.id,
-    ...listedTeams.map((team) => team.id),
-  ]);
-  const teams = uniqueTeams([selectedTeam, ...listedTeams]);
-  const billingTeam = selectedTeam ?? (teams.length === 1 ? teams[0] : null);
   const userBillingPlanId = planIdFromMetadata(user.clientReadOnlyMetadata) ?? null;
-  const billingPlanId = planIdFromMetadata(billingTeam?.clientReadOnlyMetadata) ?? userBillingPlanId;
 
   return {
     id: user.id,
     displayName: user.displayName,
     primaryEmail: user.primaryEmail,
-    billingCustomerType: billingTeam ? "team" : "user",
-    billingTeamId: billingTeam?.id ?? user.id,
-    selectedTeamId: selectedTeam?.id ?? null,
-    teams: teams.map((team) => ({
-      id: team.id,
-      billingPlanId: planIdFromMetadata(team.clientReadOnlyMetadata),
-    })),
-    teamIds,
+    billingCustomerType: "user",
+    billingTeamId: user.id,
+    selectedTeamId: null,
+    teams: [],
+    teamIds: [],
     userBillingPlanId,
-    billingPlanId,
+    billingPlanId: userBillingPlanId,
   };
 }
 
@@ -91,45 +77,13 @@ type StackUserLike = {
   readonly displayName: string | null;
   readonly primaryEmail: string | null;
   readonly clientReadOnlyMetadata?: unknown;
-  readonly selectedTeam?: unknown;
-  readonly listTeams?: () => Promise<readonly unknown[]>;
 };
-
-type TeamLike = {
-  readonly id: string;
-  readonly clientReadOnlyMetadata?: unknown;
-};
-
-function teamLike(value: unknown): TeamLike | null {
-  if (!value || typeof value !== "object") return null;
-  const id = (value as { id?: unknown }).id;
-  if (typeof id !== "string" || !id) return null;
-  return {
-    id,
-    clientReadOnlyMetadata: (value as { clientReadOnlyMetadata?: unknown }).clientReadOnlyMetadata,
-  };
-}
 
 function planIdFromMetadata(metadata: unknown): string | null {
   if (!metadata || typeof metadata !== "object") return null;
   const value = (metadata as { cmuxVmPlan?: unknown; cmuxPlan?: unknown }).cmuxVmPlan ??
     (metadata as { cmuxPlan?: unknown }).cmuxPlan;
   return typeof value === "string" && value.trim() ? value.trim() : null;
-}
-
-function uniqueStrings(values: readonly (string | undefined)[]): readonly string[] {
-  return [...new Set(values.filter((value): value is string => typeof value === "string" && value.length > 0))];
-}
-
-function uniqueTeams(values: readonly (TeamLike | null | undefined)[]): readonly TeamLike[] {
-  const teams: TeamLike[] = [];
-  const seen = new Set<string>();
-  for (const team of values) {
-    if (!team || seen.has(team.id)) continue;
-    seen.add(team.id);
-    teams.push(team);
-  }
-  return teams;
 }
 
 export function unauthorized(): Response {

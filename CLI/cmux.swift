@@ -2479,10 +2479,6 @@ struct CMUXCLI {
                 if let email { print("  email:    \(email)") }
                 if let display { print("  name:     \(display)") }
                 if let userID { print("  user_id:  \(userID)") }
-                if let teamID = response["selected_team_id"] as? String {
-                    print("  team_id:  \(teamID)")
-                }
-
             case "login":
                 let statusBefore = try client.sendV2(method: "auth.status")
                 if (statusBefore["signed_in"] as? Bool) == true {

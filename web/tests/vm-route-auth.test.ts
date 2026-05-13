@@ -116,14 +116,7 @@ describe("VM REST auth", () => {
       id: "user-1",
       displayName: null,
       primaryEmail: "user@example.com",
-      selectedTeam: {
-        id: "team-1",
-        clientReadOnlyMetadata: { cmuxVmPlan: "pro" },
-      },
-      listTeams: async () => [{
-        id: "team-1",
-        clientReadOnlyMetadata: { cmuxVmPlan: "pro" },
-      }],
+      clientReadOnlyMetadata: { cmuxVmPlan: "pro" },
     });
     runVmWorkflow.mockResolvedValue({
       providerVmId: "provider-vm-1",
@@ -149,8 +142,8 @@ describe("VM REST auth", () => {
     });
     expect(createVm).toHaveBeenCalledWith({
       userId: "user-1",
-      billingCustomerType: "team",
-      billingTeamId: "team-1",
+      billingCustomerType: "user",
+      billingTeamId: "user-1",
       billingPlanId: "pro",
       maxActiveVms: 10,
       provider: "freestyle",
@@ -182,34 +175,16 @@ describe("VM REST auth", () => {
 
     expect(response.status).toBe(200);
     expect(createVm).toHaveBeenCalledWith(expect.objectContaining({
-      billingTeamId: "team-1",
+      billingTeamId: "user-1",
       billingPlanId: "pro",
       maxActiveVms: 25,
     }));
   });
 
-  test("uses the native client's requested Stack team for billing", async () => {
-    getUser.mockResolvedValue({
-      id: "user-1",
-      displayName: null,
-      primaryEmail: "user@example.com",
-      selectedTeam: {
-        id: "team-1",
-        clientReadOnlyMetadata: { cmuxVmPlan: "pro" },
-      },
-      listTeams: async () => [
-        {
-          id: "team-1",
-          clientReadOnlyMetadata: { cmuxVmPlan: "pro" },
-        },
-        {
-          id: "team-2",
-          clientReadOnlyMetadata: { cmuxVmPlan: "free" },
-        },
-      ],
-    });
+  test("ignores legacy native team headers and bills the authenticated user", async () => {
+    getUser.mockResolvedValue(authedStackUser());
     runVmWorkflow.mockResolvedValue({
-      providerVmId: "provider-vm-team-2",
+      providerVmId: "provider-vm-user",
       provider: "freestyle",
       image: "snapshot-test",
       imageVersion: null,
@@ -230,131 +205,35 @@ describe("VM REST auth", () => {
 
     expect(response.status).toBe(200);
     expect(createVm).toHaveBeenCalledWith(expect.objectContaining({
-      billingCustomerType: "team",
-      billingTeamId: "team-2",
-      billingPlanId: "free",
-      maxActiveVms: 1,
+      billingCustomerType: "user",
+      billingTeamId: "user-1",
+      billingPlanId: "pro",
+      maxActiveVms: 10,
     }));
   });
 
-  test("rejects a requested Stack team the caller does not belong to", async () => {
+  test("rejects legacy team fields in VM create bodies", async () => {
     getUser.mockResolvedValue(authedStackUser());
 
     const response = await POST(
       new Request("https://cmux.test/api/vm", {
         method: "POST",
-        headers: {
-          authorization: "Bearer access-token",
-          "x-stack-refresh-token": "refresh-token",
-          "x-cmux-team-id": "team-other",
-        },
-        body: JSON.stringify({ provider: "freestyle", image: "snapshot-test" }),
+        headers: { origin: "https://cmux.test" },
+        body: JSON.stringify({ provider: "freestyle", image: "snapshot-test", teamId: "team-1" }),
       }),
     );
 
-    expect(response.status).toBe(403);
-    expect(await response.json()).toMatchObject({ error: "vm_billing_team_not_found" });
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({
+      error: "`teamId` and `billingTeamId` are no longer supported",
+    });
     expect(runVmWorkflow).not.toHaveBeenCalled();
   });
 
-  test("uses the single Stack team when personal team auto-create populated listTeams", async () => {
-    getUser.mockResolvedValue({
-      id: "user-1",
-      displayName: null,
-      primaryEmail: "user@example.com",
-      selectedTeam: null,
-      listTeams: async () => [{
-        id: "team-personal",
-        clientReadOnlyMetadata: { cmuxVmPlan: "free" },
-      }],
-    });
-    runVmWorkflow.mockResolvedValue({
-      providerVmId: "provider-vm-personal-team",
-      provider: "freestyle",
-      image: "snapshot-test",
-      imageVersion: null,
-      createdAt: 1_777_000_000_000,
-    });
-
-    const response = await POST(
-      new Request("https://cmux.test/api/vm", {
-        method: "POST",
-        headers: { origin: "https://cmux.test" },
-        body: JSON.stringify({ provider: "freestyle", image: "snapshot-test" }),
-      }),
-    );
-
-    expect(response.status).toBe(200);
-    expect(createVm).toHaveBeenCalledWith(expect.objectContaining({
-      billingCustomerType: "team",
-      billingTeamId: "team-personal",
-      billingPlanId: "free",
-    }));
-  });
-
-  test("rejects VM create when Stack Auth returns no teams", async () => {
-    getUser.mockResolvedValue({
-      id: "user-1",
-      displayName: null,
-      primaryEmail: "user@example.com",
-      selectedTeam: null,
-      listTeams: async () => [],
-    });
-
-    const response = await POST(
-      new Request("https://cmux.test/api/vm", {
-        method: "POST",
-        headers: { origin: "https://cmux.test" },
-        body: JSON.stringify({ provider: "freestyle", image: "snapshot-test" }),
-      }),
-    );
-
-    expect(response.status).toBe(409);
-    expect(await response.json()).toMatchObject({ error: "vm_billing_team_required" });
-    expect(runVmWorkflow).not.toHaveBeenCalled();
-  });
-
-  test("rejects VM create when Stack Auth returns multiple teams but no selected/requested team", async () => {
-    getUser.mockResolvedValue({
-      id: "user-1",
-      displayName: null,
-      primaryEmail: "user@example.com",
-      selectedTeam: null,
-      listTeams: async () => [
-        { id: "team-1", clientReadOnlyMetadata: { cmuxVmPlan: "free" } },
-        { id: "team-2", clientReadOnlyMetadata: { cmuxVmPlan: "pro" } },
-      ],
-    });
-
-    const response = await POST(
-      new Request("https://cmux.test/api/vm", {
-        method: "POST",
-        headers: { origin: "https://cmux.test" },
-        body: JSON.stringify({ provider: "freestyle", image: "snapshot-test" }),
-      }),
-    );
-
-    expect(response.status).toBe(409);
-    expect(await response.json()).toMatchObject({ error: "vm_billing_team_required" });
-    expect(runVmWorkflow).not.toHaveBeenCalled();
-  });
-
-  test("filters VM list to the requested Stack team", async () => {
-    getUser.mockResolvedValue({
-      id: "user-1",
-      displayName: null,
-      primaryEmail: "user@example.com",
-      selectedTeam: {
-        id: "team-1",
-        clientReadOnlyMetadata: { cmuxVmPlan: "free" },
-      },
-      listTeams: async () => [
-        { id: "team-1", clientReadOnlyMetadata: { cmuxVmPlan: "free" } },
-        { id: "team-2", clientReadOnlyMetadata: { cmuxVmPlan: "pro" } },
-      ],
-    });
+  test("lists VMs for the authenticated user even when legacy team headers are present", async () => {
+    getUser.mockResolvedValue(authedStackUser());
     runVmWorkflow.mockResolvedValue([{
-      providerVmId: "provider-vm-team-2",
+      providerVmId: "provider-vm-user",
       provider: "e2b",
       image: "cmuxd-ws:test",
       imageVersion: "test-version",
@@ -372,9 +251,9 @@ describe("VM REST auth", () => {
     );
 
     expect(response.status).toBe(200);
-    expect(listUserVms).toHaveBeenCalledWith("user-1", "team-2");
+    expect(listUserVms).toHaveBeenCalledWith("user-1", "user-1");
     expect(await response.json()).toMatchObject({
-      vms: [{ id: "provider-vm-team-2", provider: "e2b" }],
+      vms: [{ id: "provider-vm-user", provider: "e2b" }],
     });
   });
 
@@ -600,13 +479,6 @@ function authedStackUser() {
     id: "user-1",
     displayName: null,
     primaryEmail: "user@example.com",
-    selectedTeam: {
-      id: "team-1",
-      clientReadOnlyMetadata: { cmuxVmPlan: "pro" },
-    },
-    listTeams: async () => [{
-      id: "team-1",
-      clientReadOnlyMetadata: { cmuxVmPlan: "pro" },
-    }],
+    clientReadOnlyMetadata: { cmuxVmPlan: "pro" },
   };
 }
