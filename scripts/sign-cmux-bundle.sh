@@ -33,7 +33,7 @@ if [[ $# -lt 3 ]]; then
 fi
 
 APP_PATH="$1"
-APP_ENTITLEMENTS="$2"
+APP_ENTITLEMENTS_INPUT="$2"
 IDENTITY="$3"
 HELPER_ENTITLEMENTS="${CMUX_HELPER_ENTITLEMENTS:-cmux-helper.entitlements}"
 
@@ -41,8 +41,8 @@ if [[ ! -d "$APP_PATH" ]]; then
   echo "error: app bundle not found at $APP_PATH" >&2
   exit 1
 fi
-if [[ ! -f "$APP_ENTITLEMENTS" ]]; then
-  echo "error: app entitlements not found at $APP_ENTITLEMENTS" >&2
+if [[ ! -f "$APP_ENTITLEMENTS_INPUT" ]]; then
+  echo "error: app entitlements not found at $APP_ENTITLEMENTS_INPUT" >&2
   exit 1
 fi
 if [[ ! -f "$HELPER_ENTITLEMENTS" ]]; then
@@ -57,6 +57,30 @@ else
 fi
 
 COMMON=(--force --options runtime "${TS_FLAG[@]}" --sign "$IDENTITY")
+
+APP_ENTITLEMENTS="$APP_ENTITLEMENTS_INPUT"
+TMP_APP_ENTITLEMENTS=""
+cleanup() {
+  if [[ -n "$TMP_APP_ENTITLEMENTS" ]]; then
+    rm -f "$TMP_APP_ENTITLEMENTS"
+  fi
+}
+trap cleanup EXIT
+
+if grep -q "__APPLE_TEAM_ID__" "$APP_ENTITLEMENTS_INPUT"; then
+  APPLE_TEAM_ID_FOR_ENTITLEMENTS="${APPLE_TEAM_ID:-}"
+  if [[ -z "$APPLE_TEAM_ID_FOR_ENTITLEMENTS" && "$IDENTITY" =~ \(([A-Z0-9]{10})\)$ ]]; then
+    APPLE_TEAM_ID_FOR_ENTITLEMENTS="${BASH_REMATCH[1]}"
+  fi
+  if [[ -z "$APPLE_TEAM_ID_FOR_ENTITLEMENTS" ]]; then
+    echo "error: APPLE_TEAM_ID is required when app entitlements contain __APPLE_TEAM_ID__" >&2
+    exit 1
+  fi
+  TMP_APP_ENTITLEMENTS="$(mktemp "${TMPDIR:-/tmp}/cmux-app-entitlements.XXXXXX")"
+  sed "s/__APPLE_TEAM_ID__/${APPLE_TEAM_ID_FOR_ENTITLEMENTS}/g" \
+    "$APP_ENTITLEMENTS_INPUT" > "$TMP_APP_ENTITLEMENTS"
+  APP_ENTITLEMENTS="$TMP_APP_ENTITLEMENTS"
+fi
 
 # 1. CLI helpers
 for helper in "$APP_PATH/Contents/Resources/bin"/*; do
