@@ -11,7 +11,7 @@ from macOS defaults and print a combined payload. Use --copy to also copy the pa
 Examples:
   debug_windows_snapshot.sh
   debug_windows_snapshot.sh --copy
-  debug_windows_snapshot.sh --domain dev.manaflow.cmux --copy
+  debug_windows_snapshot.sh --domain dev.mochi.cmux --copy
 USAGE
 }
 

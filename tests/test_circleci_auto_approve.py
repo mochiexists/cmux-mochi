@@ -75,23 +75,23 @@ def env(**updates: str):
 
 def base_env(author: str) -> dict[str, str]:
   author_ids = {
-    "lawrencecchen": "54008264",
-    "austinywang": "38676809",
+    "trusted-user": "1001",
+    "backup-user": "1002",
     "alice": "1111",
     "mallory": "2222",
   }
   return {
     "GITHUB_API_URL": "https://api.github.test",
     "CIRCLECI_API_URL": "https://circleci.test/api/v2",
-    "GITHUB_REPOSITORY": "manaflow-ai/cmux",
+    "GITHUB_REPOSITORY": "mochiexists/cmux-mochi",
     "PR_HEAD_REPOSITORY": "contributor/cmux",
     "PR_HEAD_OWNER": author,
     "PR_HEAD_OWNER_ID": author_ids[author],
     "PR_HEAD_SHA": "abc123",
     "PR_AUTHOR": author,
     "PR_AUTHOR_ID": author_ids[author],
-    "TRUSTED_GITHUB_ORG": "manaflow-ai",
-    "TRUSTED_GITHUB_USERS": "lawrencecchen:54008264,austinywang:38676809",
+    "TRUSTED_GITHUB_ORG": "mochiexists",
+    "TRUSTED_GITHUB_USERS": "trusted-user:1001,backup-user:1002",
     "GITHUB_TOKEN": "github-token",
     "GITHUB_ORG_READ_TOKEN": "github-token",
     "CIRCLECI_TOKEN": "circle-token",
@@ -137,10 +137,10 @@ def fake_workflow_jobs(status: str = "blocked") -> dict[str, Any]:
 
 
 def trusted_user_response(url: str) -> FakeResponse | None:
-  if url.endswith("/users/lawrencecchen"):
-    return FakeResponse({"login": "lawrencecchen", "id": 54008264})
-  if url.endswith("/users/austinywang"):
-    return FakeResponse({"login": "austinywang", "id": 38676809})
+  if url.endswith("/users/trusted-user"):
+    return FakeResponse({"login": "trusted-user", "id": 1001})
+  if url.endswith("/users/backup-user"):
+    return FakeResponse({"login": "backup-user", "id": 1002})
   return None
 
 
@@ -163,14 +163,14 @@ def test_allowlisted_user_approves_without_membership_lookup() -> None:
       return FakeResponse({})
     raise AssertionError(f"unexpected request: {request.full_url}")
 
-  with env(**base_env("lawrencecchen")):
+  with env(**base_env("trusted-user")):
     module = load_module()
     with mock.patch.object(module.urllib.request, "urlopen", urlopen):
       assert module.run() == 0
 
   urls = [url for _, url in calls]
-  assert not any("/orgs/manaflow-ai/members/lawrencecchen" in url for url in urls)
-  assert any(url.endswith("/users/austinywang") for url in urls)
+  assert not any("/orgs/mochiexists/members/trusted-user" in url for url in urls)
+  assert any(url.endswith("/users/backup-user") for url in urls)
   assert any(method == "POST" and url == f"https://circleci.test/api/v2/workflow/{WORKFLOW_ID}/approve/{APPROVAL_ID}" for method, url in calls), calls
 
 
@@ -185,7 +185,7 @@ def test_visible_org_member_approves() -> None:
       assert_circleci_auth(request)
     if response := trusted_user_response(request.full_url):
       return response
-    if request.full_url.endswith("/orgs/manaflow-ai/members/alice"):
+    if request.full_url.endswith("/orgs/mochiexists/members/alice"):
       return FakeResponse()
     if request.full_url.endswith("/check-runs?per_page=100&page=1"):
       return FakeResponse(fake_check_runs())
@@ -212,7 +212,7 @@ def test_non_member_does_not_call_circleci() -> None:
       assert_github_auth(request)
     if response := trusted_user_response(request.full_url):
       return response
-    if request.full_url.endswith("/orgs/manaflow-ai/members/mallory"):
+    if request.full_url.endswith("/orgs/mochiexists/members/mallory"):
       raise http_error(request.full_url, 404)
     raise AssertionError(f"unexpected request: {request.full_url}")
 
@@ -242,13 +242,13 @@ def test_missing_org_token_does_not_call_circleci_for_non_allowlisted_member() -
     with mock.patch.object(module.urllib.request, "urlopen", urlopen):
       assert module.run() == 0
 
-  assert all("/orgs/manaflow-ai/members/alice" not in url for _, url in calls)
+  assert all("/orgs/mochiexists/members/alice" not in url for _, url in calls)
   assert all("circleci.test" not in url for _, url in calls)
 
 
 def test_trusted_author_cannot_approve_untrusted_fork_owner() -> None:
   calls: list[tuple[str, str]] = []
-  test_env = base_env("lawrencecchen")
+  test_env = base_env("trusted-user")
   test_env["PR_HEAD_REPOSITORY"] = "mallory/cmux"
   test_env["PR_HEAD_OWNER"] = "mallory"
   test_env["PR_HEAD_OWNER_ID"] = "2222"
@@ -259,7 +259,7 @@ def test_trusted_author_cannot_approve_untrusted_fork_owner() -> None:
       assert_github_auth(request)
     if response := trusted_user_response(request.full_url):
       return response
-    if request.full_url.endswith("/orgs/manaflow-ai/members/mallory"):
+    if request.full_url.endswith("/orgs/mochiexists/members/mallory"):
       raise http_error(request.full_url, 404)
     raise AssertionError(f"unexpected request: {request.full_url}")
 
@@ -269,14 +269,14 @@ def test_trusted_author_cannot_approve_untrusted_fork_owner() -> None:
       assert module.run() == 0
 
   urls = [url for _, url in calls]
-  assert any(url.endswith("/orgs/manaflow-ai/members/mallory") for url in urls)
+  assert any(url.endswith("/orgs/mochiexists/members/mallory") for url in urls)
   assert all("circleci.test" not in url for url in urls)
 
 
 def test_same_repository_pr_does_not_poll_circleci() -> None:
   calls: list[tuple[str, str]] = []
-  test_env = base_env("lawrencecchen")
-  test_env["PR_HEAD_REPOSITORY"] = "manaflow-ai/cmux"
+  test_env = base_env("trusted-user")
+  test_env["PR_HEAD_REPOSITORY"] = "mochiexists/cmux-mochi"
 
   def urlopen(request: Any, timeout: int = 20) -> FakeResponse:
     calls.append((request.get_method(), request.full_url))
@@ -306,7 +306,7 @@ def test_membership_api_error_does_not_call_circleci() -> None:
       assert_github_auth(request)
     if response := trusted_user_response(request.full_url):
       return response
-    if request.full_url.endswith("/orgs/manaflow-ai/members/alice"):
+    if request.full_url.endswith("/orgs/mochiexists/members/alice"):
       raise http_error(request.full_url, 403)
     raise AssertionError(f"unexpected request: {request.full_url}")
 
@@ -335,7 +335,7 @@ def test_already_approved_does_not_post() -> None:
       return FakeResponse(fake_workflow_jobs(status="success"))
     raise AssertionError(f"unexpected request: {request.full_url}")
 
-  with env(**base_env("lawrencecchen")):
+  with env(**base_env("trusted-user")):
     module = load_module()
     with mock.patch.object(module.urllib.request, "urlopen", urlopen):
       assert module.run() == 0
@@ -345,7 +345,7 @@ def test_already_approved_does_not_post() -> None:
 
 def test_dry_run_paginates_and_does_not_post() -> None:
   calls: list[tuple[str, str]] = []
-  test_env = base_env("lawrencecchen")
+  test_env = base_env("trusted-user")
   test_env["DRY_RUN"] = "1"
 
   def urlopen(request: Any, timeout: int = 20) -> FakeResponse:
@@ -376,7 +376,7 @@ def test_dry_run_paginates_and_does_not_post() -> None:
 def test_workflow_without_approval_job_keeps_polling() -> None:
   calls: list[tuple[str, str]] = []
   workflow_job_calls = 0
-  test_env = base_env("lawrencecchen")
+  test_env = base_env("trusted-user")
   test_env["CIRCLECI_APPROVAL_MAX_ATTEMPTS"] = "2"
 
   def urlopen(request: Any, timeout: int = 20) -> FakeResponse:
@@ -410,16 +410,16 @@ def test_workflow_without_approval_job_keeps_polling() -> None:
 
 def test_unresolvable_allowlisted_login_fails_closed() -> None:
   calls: list[tuple[str, str]] = []
-  test_env = base_env("lawrencecchen")
-  test_env["TRUSTED_GITHUB_USERS"] = "lawrencecchen:54008264,austyinywang:38676809"
+  test_env = base_env("trusted-user")
+  test_env["TRUSTED_GITHUB_USERS"] = "trusted-user:1001,backup-user:1002"
 
   def urlopen(request: Any, timeout: int = 20) -> FakeResponse:
     calls.append((request.get_method(), request.full_url))
     if request.full_url.startswith("https://api.github.test/"):
       assert_github_auth(request)
-    if request.full_url.endswith("/users/lawrencecchen"):
-      return FakeResponse({"login": "lawrencecchen", "id": 54008264})
-    if request.full_url.endswith("/users/austyinywang"):
+    if request.full_url.endswith("/users/trusted-user"):
+      return FakeResponse({"login": "trusted-user", "id": 1001})
+    if request.full_url.endswith("/users/backup-user"):
       raise http_error(request.full_url, 404)
     raise AssertionError(f"unexpected request: {request.full_url}")
 

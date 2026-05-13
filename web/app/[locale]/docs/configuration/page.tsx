@@ -30,9 +30,9 @@ const typedSettingsSchema = settingsSchema as SchemaDocument;
 const schemaProperties = typedSettingsSchema.properties ?? {};
 const schemaUrl =
   typedSettingsSchema.$id ??
-  "https://raw.githubusercontent.com/manaflow-ai/cmux/main/web/data/cmux.schema.json";
+  "https://raw.githubusercontent.com/mochiexists/cmux-mochi/main/web/data/cmux.schema.json";
 const schemaSourceUrl =
-  "https://github.com/manaflow-ai/cmux/blob/main/web/data/cmux.schema.json";
+  "https://github.com/mochiexists/cmux-mochi/blob/main/web/data/cmux.schema.json";
 const sectionOrder = [
   "app",
   "terminal",

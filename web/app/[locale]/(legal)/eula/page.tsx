@@ -32,7 +32,7 @@ export default function EulaPage() {
         <li>
           <strong>&ldquo;Company&rdquo;</strong> (referred to as &ldquo;the
           Company&rdquo;, &ldquo;We&rdquo;, &ldquo;Us&rdquo; or
-          &ldquo;Our&rdquo;) refers to Manaflow.
+          &ldquo;Our&rdquo;) refers to Mochi.
         </li>
         <li>
           <strong>&ldquo;Content&rdquo;</strong> refers to content such as text,
@@ -198,8 +198,10 @@ export default function EulaPage() {
       <p>If you have any questions about this Agreement:</p>
       <ul>
         <li>
-          Email us at{" "}
-          <a href="mailto:founders@manaflow.com">founders@manaflow.com</a>
+          Open an issue in the{" "}
+          <a href="https://github.com/mochiexists/cmux-mochi/issues">
+            public repository
+          </a>
         </li>
       </ul>
     </>

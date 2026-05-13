@@ -33,7 +33,7 @@ export function NavLinks() {
         {t("community")}
       </Link>
       <a
-        href="https://github.com/manaflow-ai/cmux"
+        href="https://github.com/mochiexists/cmux-mochi"
         target="_blank"
         rel="noopener noreferrer"
         onClick={() => posthog.capture("cmuxterm_github_clicked", { location: "navbar" })}

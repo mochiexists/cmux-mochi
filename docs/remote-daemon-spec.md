@@ -1,9 +1,9 @@
 # Remote SSH Living Spec
 
 Last updated: March 12, 2026
-Tracking issue: https://github.com/manaflow-ai/cmux/issues/151
-Primary PR: https://github.com/manaflow-ai/cmux/pull/1296
-CLI relay PR: https://github.com/manaflow-ai/cmux/pull/374
+Tracking issue: https://github.com/mochiexists/cmux-mochi/issues/151
+Primary PR: https://github.com/mochiexists/cmux-mochi/pull/1296
+CLI relay PR: https://github.com/mochiexists/cmux-mochi/pull/374
 
 This document is the working source of truth for:
 1. what is implemented now
