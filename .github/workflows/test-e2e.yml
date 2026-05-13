@@ -71,7 +71,7 @@ jobs:
           set -euo pipefail
           GHOSTTY_SHA=$(git -C ghostty rev-parse HEAD)
           TAG="xcframework-$GHOSTTY_SHA"
-          URL="https://github.com/manaflow-ai/ghostty/releases/download/$TAG/GhosttyKit.xcframework.tar.gz"
+          URL="https://github.com/mochiexists/ghostty/releases/download/$TAG/GhosttyKit.xcframework.tar.gz"
           echo "Downloading xcframework for ghostty $GHOSTTY_SHA"
           MAX_RETRIES=30
           RETRY_DELAY=20
@@ -391,7 +391,7 @@ jobs:
           fi
 
           ISSUE_URL=$(gh issue create \
-            --repo manaflow-ai/cmux-dev-artifacts \
+            --repo mochiexists/cmux-mochi-dev-artifacts \
             --title "[$STATUS_EMOJI] $TEST_FILTER @ ${COMMIT_SHA:0:7} ($REF_DISPLAY)" \
             --body "$BODY" \
             --label "$LABEL")
