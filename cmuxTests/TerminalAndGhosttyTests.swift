@@ -57,7 +57,7 @@ final class GhosttyPasteboardHelperTests: XCTestCase {
         )
     }
 
-    /// Regression test for https://github.com/manaflow-ai/cmux/issues/2818 —
+    /// Regression test for https://github.com/mochiexists/cmux-mochi/issues/2818 —
     /// Qt-based apps (Telegram Desktop, etc.) register the legacy
     /// `com.apple.traditional-mac-plain-text` type (Mac OS Roman encoding,
     /// no CJK/Cyrillic/Arabic support) *before* UTF-8. Iterating the
@@ -83,7 +83,7 @@ final class GhosttyPasteboardHelperTests: XCTestCase {
         )
     }
 
-    /// Regression test for https://github.com/manaflow-ai/cmux/issues/3910.
+    /// Regression test for https://github.com/mochiexists/cmux-mochi/issues/3910.
     /// Some editors expose a lossy plain-text flavor where CJK scalars are
     /// replaced with literal "?" characters, while the HTML flavor preserves the
     /// original text. The terminal paste path should recover the faithful text.
@@ -137,7 +137,7 @@ final class GhosttyPasteboardHelperTests: XCTestCase {
         )
     }
 
-    /// Regression test for https://github.com/manaflow-ai/cmux/issues/2940.
+    /// Regression test for https://github.com/mochiexists/cmux-mochi/issues/2940.
     /// Some apps place the same large clipboard payload onto `.string`, `.html`,
     /// and `.rtf`. cmux should hand the plain text to the terminal quickly
     /// instead of first rendering the rich-text variants on the paste path.

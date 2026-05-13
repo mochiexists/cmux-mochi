@@ -10,7 +10,7 @@
 
 1. Clone the repository with submodules:
    ```bash
-   git clone --recursive https://github.com/manaflow-ai/cmux.git
+   git clone --recursive https://github.com/mochiexists/cmux-mochi.git
    cd cmux
    ```
 
@@ -65,7 +65,7 @@ ssh cmux-vm 'cd /Users/cmux/GhosttyTabs && xcodebuild -project GhosttyTabs.xcode
 
 ## Ghostty Submodule
 
-The `ghostty` submodule points to [manaflow-ai/ghostty](https://github.com/manaflow-ai/ghostty), a fork of the upstream Ghostty project.
+The `ghostty` submodule points to [mochiexists/ghostty](https://github.com/mochiexists/ghostty), a fork of the upstream Ghostty project.
 
 ### Making changes to ghostty
 
@@ -75,7 +75,7 @@ git checkout -b my-feature
 # make changes
 git add .
 git commit -m "Description of changes"
-git push manaflow my-feature
+git push mochi my-feature
 ```
 
 ### Keeping the fork updated
@@ -85,7 +85,7 @@ cd ghostty
 git fetch origin
 git checkout main
 git merge origin/main
-git push manaflow main
+git push mochi main
 ```
 
 Then update the parent repo:
@@ -103,4 +103,4 @@ See `docs/ghostty-fork.md` for details on fork changes and conflict notes.
 By contributing to this repository, you agree that:
 
 1. Your contributions are licensed under the project's GNU General Public License v3.0 or later (`GPL-3.0-or-later`).
-2. You grant Manaflow, Inc. a perpetual, worldwide, non-exclusive, royalty-free, irrevocable license to use, reproduce, modify, sublicense, and distribute your contributions under any license, including a commercial license offered to third parties.
+2. You grant Mochi a perpetual, worldwide, non-exclusive, royalty-free, irrevocable license to use, reproduce, modify, sublicense, and distribute your contributions under any license, including a commercial license offered to third parties.
