@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-APP_NAME="cmux STAGING"
+APP_NAME="cmux Mochi STAGING"
 BUNDLE_ID="com.cmuxterm.app.staging"
-BASE_APP_NAME="cmux"
+BASE_APP_NAME="cmux Mochi"
 DERIVED_DATA=""
 NAME_SET=0
 BUNDLE_SET=0
@@ -23,7 +23,7 @@ usage() {
   cat <<'EOF'
 Usage: ./scripts/reloads.sh [options]
 
-Release build with isolated "cmux STAGING" identity. Runs side-by-side with
+Release build with isolated "cmux Mochi STAGING" identity. Runs side-by-side with
 the production cmux app.
 
 Options:
@@ -109,7 +109,7 @@ if [[ -n "$TAG" ]]; then
   TAG_ID="$(sanitize_bundle "$TAG")"
   TAG_SLUG="$(sanitize_path "$TAG")"
   if [[ "$NAME_SET" -eq 0 ]]; then
-    APP_NAME="cmux STAGING ${TAG}"
+    APP_NAME="cmux Mochi STAGING ${TAG}"
   fi
   if [[ "$BUNDLE_SET" -eq 0 ]]; then
     BUNDLE_ID="com.cmuxterm.app.staging.${TAG_ID}"
@@ -124,6 +124,7 @@ XCODEBUILD_ARGS=(
   -scheme cmux
   -configuration Release
   -destination 'platform=macOS'
+  CODE_SIGNING_ALLOWED=NO
 )
 if [[ -n "$DERIVED_DATA" ]]; then
   XCODEBUILD_ARGS+=(-derivedDataPath "$DERIVED_DATA")

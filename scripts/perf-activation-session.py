@@ -51,7 +51,7 @@ class CmuxPerfRunner:
         self.debug_log_path = pathlib.Path(f"/tmp/cmux-debug-{self.tag_slug}.log")
         self.stdout_path = pathlib.Path(f"/tmp/cmux-perf-{self.tag_slug}-stdout.log")
         self.app_path = pathlib.Path(args.app_path).expanduser() if args.app_path else self.default_app_path()
-        self.binary_path = self.app_path / "Contents/MacOS/cmux DEV"
+        self.binary_path = self.app_path / "Contents/MacOS/cmux Mochi DEV"
         self.cli_path = self.app_path / "Contents/Resources/bin/cmux"
         self.fixture_root = self.make_fixture_root(args.fixture_root)
         self.proc: subprocess.Popen | None = None
@@ -77,7 +77,7 @@ class CmuxPerfRunner:
     def default_app_path(self) -> pathlib.Path:
         return pathlib.Path.home() / (
             f"Library/Developer/Xcode/DerivedData/cmux-{self.tag_slug}/"
-            f"Build/Products/Debug/cmux DEV {self.tag_slug}.app"
+            f"Build/Products/Debug/cmux Mochi DEV {self.tag_slug}.app"
         )
 
     def check_paths(self) -> None:
@@ -187,7 +187,7 @@ class CmuxPerfRunner:
                 proc.kill()
                 proc.wait(timeout=5)
         subprocess.run(
-            ["pkill", "-f", re.escape(f"cmux DEV {self.tag_slug}.app/Contents/MacOS/cmux DEV")],
+            ["pkill", "-f", re.escape(f"cmux Mochi DEV {self.tag_slug}.app/Contents/MacOS/cmux Mochi DEV")],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             check=False,

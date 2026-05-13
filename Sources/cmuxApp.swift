@@ -66,7 +66,7 @@ struct cmuxApp: App {
     }
 
     private static func terminateForMissingLaunchTag() -> Never {
-        let message = "error: refusing to launch untagged cmux DEV; start with ./scripts/reload.sh --tag <name> (or set CMUX_TAG for test harnesses)"
+        let message = "error: refusing to launch untagged cmux Mochi DEV; start with ./scripts/reload.sh --tag <name> (or set CMUX_TAG for test harnesses)"
         fputs("\(message)\n", stderr)
         fflush(stderr)
         NSLog("%@", message)
@@ -228,7 +228,7 @@ struct cmuxApp: App {
             }
 
             CommandGroup(replacing: .appInfo) {
-                Button(String(localized: "menu.app.about", defaultValue: "About cmux")) {
+                Button(String(localized: "menu.app.about", defaultValue: "About cmux Mochi")) {
                     showAboutPanel()
                 }
                 Button(String(localized: "menu.app.checkForUpdates", defaultValue: "Check for Updates…")) {
@@ -238,7 +238,7 @@ struct cmuxApp: App {
             }
 
             CommandGroup(replacing: .appTermination) {
-                splitCommandButton(title: String(localized: "menu.quitCmux", defaultValue: "Quit cmux"), shortcut: menuShortcut(for: .quit)) {
+                splitCommandButton(title: String(localized: "menu.quitCmux", defaultValue: "Quit cmux Mochi"), shortcut: menuShortcut(for: .quit)) {
                     NSApp.terminate(nil)
                 }
             }
@@ -2565,7 +2565,7 @@ private struct AboutPanelView: View {
 
             VStack(alignment: .center, spacing: 32) {
                 VStack(alignment: .center, spacing: 8) {
-                    Text(String(localized: "about.appName", defaultValue: "cmux"))
+                    Text(String(localized: "about.appName", defaultValue: "cmux Mochi"))
                         .bold()
                         .font(.title)
                     Text(String(localized: "about.description", defaultValue: "A Ghostty-based terminal with vertical tabs\nand a notification panel for macOS."))
