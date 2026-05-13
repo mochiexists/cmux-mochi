@@ -11,10 +11,10 @@ on:
       runner:
         description: macOS runner
         required: false
-        default: warp-macos-15-arm64-6x
+        default: macos-15
         type: choice
         options:
-          - warp-macos-15-arm64-6x
+          - macos-15
           - depot-macos-latest
       workspace_count:
         description: Fixture workspace count
@@ -35,7 +35,7 @@ concurrency:
 
 jobs:
   activation-session:
-    runs-on: ${{ inputs.runner || 'warp-macos-15-arm64-6x' }}
+    runs-on: ${{ inputs.runner || 'macos-15' }}
     timeout-minutes: 45
     env:
       PERF_TAG: perfci

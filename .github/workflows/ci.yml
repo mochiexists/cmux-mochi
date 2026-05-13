@@ -7,8 +7,8 @@ on:
   pull_request:
   workflow_dispatch:
     inputs:
-      run_warpbuild_macos:
-        description: Run preserved WarpBuild macOS jobs
+      run_macos_jobs:
+        description: Run optional macOS jobs
         required: false
         default: false
         type: boolean
@@ -24,7 +24,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
-      - name: Validate WarpBuild runner guards
+      - name: Validate public macOS runner guards
         run: ./tests/test_ci_self_hosted_guard.sh
 
       - name: Validate create-dmg version pinning
@@ -158,8 +158,8 @@ jobs:
           bun test tests/vm-db-read-model.test.ts
 
   tests:
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_warpbuild_macos }}
-    runs-on: warp-macos-15-arm64-6x
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_macos_jobs }}
+    runs-on: macos-15
     timeout-minutes: 30
     steps:
       - name: Checkout
@@ -323,12 +323,12 @@ jobs:
           CMUX_CLI_BIN="$CLI_BIN" python3 tests/test_pi_extension_install.py
 
   tests-build-and-lag:
-    # Build the full cmux scheme and run the lag regression on WarpBuild.
+    # Build the full cmux scheme and run the lag regression on public macOS runners.
     # Keep lag validation separate from UI regressions so functional UI failures
     # and performance regressions stay isolated. Broader interactive UI suites
     # still run via test-e2e.yml on GitHub-hosted runners.
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_warpbuild_macos }}
-    runs-on: warp-macos-15-arm64-6x
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_macos_jobs }}
+    runs-on: macos-15
     timeout-minutes: 20
     steps:
       - name: Checkout
@@ -510,8 +510,8 @@ jobs:
     # Compile the same unsigned universal Release app that nightly builds before
     # signing, notarization, and publishing. This catches DEBUG/Release boundary
     # mistakes before they reach main.
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_warpbuild_macos }}
-    runs-on: warp-macos-26-arm64-6x
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_macos_jobs }}
+    runs-on: macos-26
     timeout-minutes: 20
     steps:
       - name: Checkout
@@ -590,8 +590,8 @@ jobs:
             CODE_SIGNING_ALLOWED=NO ASSETCATALOG_COMPILER_APPICON_NAME=AppIcon-Nightly build
 
   ui-regressions:
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_warpbuild_macos }}
-    runs-on: warp-macos-15-arm64-6x
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_macos_jobs }}
+    runs-on: macos-15
     timeout-minutes: 25
     steps:
       - name: Checkout
