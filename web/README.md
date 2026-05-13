@@ -1,6 +1,6 @@
 # cmux web
 
-Next.js app deployed as the existing Vercel `manaflow/cmux` project. The app serves the website,
+Next.js app deployed as the existing Vercel `mochiexists/cmux-mochi` project. The app serves the website,
 Stack Auth handlers, feedback endpoint, and Cloud VM backend routes.
 
 ## Development

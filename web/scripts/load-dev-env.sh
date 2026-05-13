@@ -102,6 +102,7 @@ fi
 # startup validation for routes the developer is not exercising.
 export RESEND_API_KEY="${RESEND_API_KEY:-cmux-local-dev}"
 export CMUX_FEEDBACK_FROM_EMAIL="${CMUX_FEEDBACK_FROM_EMAIL:-dev@example.invalid}"
+export CMUX_FEEDBACK_TO_EMAIL="${CMUX_FEEDBACK_TO_EMAIL:-dev@example.invalid}"
 export CMUX_FEEDBACK_RATE_LIMIT_ID="${CMUX_FEEDBACK_RATE_LIMIT_ID:-cmux-feedback-local}"
 
 export CMUX_WEB_SECRET_ENV_FILE="$cmux_secret_file"

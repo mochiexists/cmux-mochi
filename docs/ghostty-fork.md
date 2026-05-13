@@ -1,4 +1,4 @@
-# Ghostty Fork Changes (manaflow-ai/ghostty)
+# Ghostty Fork Changes (mochiexists/ghostty)
 
 This repo uses a fork of Ghostty for local patches that aren't upstream yet.
 When we change the fork, update this document and the parent submodule SHA.
@@ -6,7 +6,7 @@ When we change the fork, update this document and the parent submodule SHA.
 ## Fork update checklist
 
 1) Make changes in `ghostty/`.
-2) Commit and push to `manaflow-ai/ghostty`.
+2) Commit and push to `mochiexists/ghostty`.
 3) Update this file with the new change summary + conflict notes.
 4) In the parent repo: `git add ghostty` and commit the submodule SHA.
 
@@ -14,12 +14,12 @@ When we change the fork, update this document and the parent submodule SHA.
 
 The fork was refreshed from upstream `main` again on May 1, 2026.
 Current cmux pinned fork head: `fe972c095`, based on `41ab6c5ab`, with the
-manual embedded IO patch in https://github.com/manaflow-ai/ghostty/pull/53
+manual embedded IO patch in https://github.com/mochiexists/ghostty/pull/53
 plus the Metal renderer row rebuild guard for cmux issue #3369. This head keeps
 the cmux theme picker hooks, exposes the manual surface IO needed by libghostty
 iOS clients, and bounds shaped glyph iteration during IME/preedit row rebuilds.
 The corresponding prebuilt archive is published at
-https://github.com/manaflow-ai/ghostty/releases/tag/xcframework-fe972c09579a7943f6fe9607fdd24f0f7c999cb1
+https://github.com/mochiexists/ghostty/releases/tag/xcframework-fe972c09579a7943f6fe9607fdd24f0f7c999cb1
 and pinned in `scripts/ghosttykit-checksums.txt`.
 
 ### 1) macOS display link restart on display changes
@@ -149,7 +149,7 @@ tend to conflict together during rebases.
 ### 10) Manual embedded IO for libghostty iOS
 
 - Commit: `22fa801f8` (Expose manual embedded IO for iOS)
-- PR: https://github.com/manaflow-ai/ghostty/pull/53
+- PR: https://github.com/mochiexists/ghostty/pull/53
 - Files:
   - `include/ghostty.h`
   - `src/Surface.zig`
@@ -190,7 +190,7 @@ tend to conflict together during rebases.
     required failing-test-then-fix history for issue #3369.
 
 The current cmux pin is the head listed above. It is reachable from
-`manaflow-ai/ghostty` through the `xcframework-fe972c09579a7943f6fe9607fdd24f0f7c999cb1`
+`mochiexists/ghostty` through the `xcframework-fe972c09579a7943f6fe9607fdd24f0f7c999cb1`
 release tag and branch `issue-3369-metal-renderer-crash`.
 Published `xcframework-fe972c09579a7943f6fe9607fdd24f0f7c999cb1` and pinned its
 archive checksum in `scripts/ghosttykit-checksums.txt`. The release and checksum
@@ -225,7 +225,7 @@ These files change frequently upstream; be careful when rebasing the fork:
   - Verified cmux with `./scripts/reload.sh --tag gtyup`.
   - Published `xcframework-d3117e03ea19665bc83a28f7e0428c63937e6140` and pinned
     its archive checksum in `scripts/ghosttykit-checksums.txt`.
-  - Merged `d3117e03e` into fork `main` with https://github.com/manaflow-ai/ghostty/pull/48.
+  - Merged `d3117e03e` into fork `main` with https://github.com/mochiexists/ghostty/pull/48.
   - Package GhosttyKit archives with `COPYFILE_DISABLE=1`; the archive validator rejects
     macOS AppleDouble entries such as `._GhosttyKit.xcframework`.
 
@@ -258,7 +258,7 @@ These files change frequently upstream; be careful when rebasing the fork:
     `CMUX_GHOSTTYKIT_NO_PREBUILT=1 ./scripts/ensure-ghosttykit.sh`.
   - Published `xcframework-22fa801f88f96fa842e54ecce6c34a5d36003d19` and pinned
     its archive checksum in `scripts/ghosttykit-checksums.txt`.
-  - Merged https://github.com/manaflow-ai/ghostty/pull/53 so the submodule SHA is
+  - Merged https://github.com/mochiexists/ghostty/pull/53 so the submodule SHA is
     reachable from fork `main`.
 
 - `src/terminal/osc.zig`

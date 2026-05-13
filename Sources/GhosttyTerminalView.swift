@@ -2331,7 +2331,7 @@ class GhosttyApp {
     /// user-managed fallback chains or configured fonts that already cover
     /// the affected CJK ranges.
     ///
-    /// See: https://github.com/manaflow-ai/cmux/pull/1017
+    /// See: https://github.com/mochiexists/cmux-mochi/pull/1017
     private func loadCJKFontFallbackIfNeeded(_ config: ghostty_config_t) {
         guard let mappings = Self.autoInjectedCJKFontMappings() else { return }
 
