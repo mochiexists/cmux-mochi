@@ -436,9 +436,14 @@ jobs:
         if: needs.decide.outputs.should_publish != 'true' || (steps.current_head_prebuild.outputs.still_current == 'true' && steps.current_head_postbuild.outputs.still_current == 'true')
         env:
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
           if [ -z "$APPLE_SIGNING_IDENTITY" ]; then
             echo "Missing APPLE_SIGNING_IDENTITY secret" >&2
+            exit 1
+          fi
+          if [ -z "$APPLE_TEAM_ID" ]; then
+            echo "Missing APPLE_TEAM_ID secret" >&2
             exit 1
           fi
           for APP_PATH in \
