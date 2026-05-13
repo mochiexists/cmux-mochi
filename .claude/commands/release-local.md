@@ -18,11 +18,11 @@ Full end-to-end release built locally. Bumps version, updates changelog, tags, t
 - If there are no user-facing changes, ask the user if they still want to release
 - **Collect contributors:** For each PR referenced in the commits, get the author:
   ```bash
-  gh pr view <N> --repo manaflow-ai/cmux --json author --jq '.author.login'
+  gh pr view <N> --repo mochiexists/cmux-mochi --json author --jq '.author.login'
   ```
 - Also check for linked issue reporters (the person who filed the bug):
   ```bash
-  gh issue view <N> --repo manaflow-ai/cmux --json author --jq '.author.login'
+  gh issue view <N> --repo mochiexists/cmux-mochi --json author --jq '.author.login'
   ```
 - Build a deduplicated list of all contributor `@handle`s for the release
 
@@ -92,7 +92,7 @@ Credit the people who made each release happen. This builds community and encour
 **Per-entry attribution** — append contributor credit after each changelog bullet:
 - For code contributions (PR author): `— thanks @user!`
 - For bug reports (issue reporter, if different from PR author): `— thanks @reporter for the report!`
-- Core team (`lawrencecchen`, `austinywang`) contributions get no per-entry callout — core work is the baseline
+- Maintainer contributions get no per-entry callout — core work is the baseline
 
 **Summary section** — add a "Thanks to N contributors!" section at the bottom of each release:
 ```markdown
