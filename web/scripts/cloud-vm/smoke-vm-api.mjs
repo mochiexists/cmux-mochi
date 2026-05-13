@@ -54,7 +54,7 @@ try {
   const app = new StackServerApp({ projectId, publishableClientKey, secretServerKey });
   const suffix = `${Date.now()}-${randomBytes(3).toString("hex")}`;
   user = await app.createUser({
-    primaryEmail: `cmux-${project.stackLabel}-smoke+${suffix}@manaflow.dev`,
+    primaryEmail: `cmux-${project.stackLabel}-smoke+${suffix}@example.invalid`,
     primaryEmailVerified: true,
     primaryEmailAuthEnabled: true,
     password: randomBytes(24).toString("base64url"),

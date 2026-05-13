@@ -16,7 +16,7 @@ export default function TermsOfServicePage() {
         The website located at{" "}
         <a href="https://cmux.com">cmux.com</a> (the
         &ldquo;Site&rdquo;) and the cmux desktop application (the
-        &ldquo;Application&rdquo;) are copyrighted works belonging to Manaflow
+        &ldquo;Application&rdquo;) are copyrighted works belonging to Mochi
         (&ldquo;Company&rdquo;, &ldquo;us&rdquo;, &ldquo;our&rdquo;, and
         &ldquo;we&rdquo;). These Terms of Use (these &ldquo;Terms&rdquo;) set
         forth the legally binding terms and conditions that govern your use of
@@ -160,8 +160,7 @@ export default function TermsOfServicePage() {
       </p>
       <p>
         You have the right to opt out of this arbitration agreement by sending
-        written notice to{" "}
-        <a href="mailto:founders@manaflow.com">founders@manaflow.com</a> within 30
+        written notice by opening an issue in the public repository within 30
         days of first becoming subject to it.
       </p>
 
@@ -176,12 +175,14 @@ export default function TermsOfServicePage() {
 
       <h2>10. Contact</h2>
       <p>
-        Questions about these Terms should be sent to{" "}
-        <a href="mailto:founders@manaflow.com">founders@manaflow.com</a>.
+        Questions about these Terms should be opened as issues in the{" "}
+        <a href="https://github.com/mochiexists/cmux-mochi/issues">
+          public repository
+        </a>.
       </p>
 
       <p>
-        Copyright &copy; {new Date().getFullYear()} Manaflow. All rights reserved.
+        Copyright &copy; {new Date().getFullYear()} Mochi. All rights reserved.
       </p>
     </>
   );

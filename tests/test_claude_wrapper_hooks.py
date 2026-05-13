@@ -757,7 +757,7 @@ def test_live_socket_preserves_only_listed_claude_auth_keys(failures: list[str])
 
 
 def test_live_socket_auto_preserves_vertex_auth_when_truthy(failures: list[str]) -> None:
-    # Regression for https://github.com/manaflow-ai/cmux/issues/3641.
+    # Regression for https://github.com/mochiexists/cmux-mochi/issues/3641.
     inherited = {
         "CLAUDE_CODE_USE_VERTEX": "1",
         "ANTHROPIC_API_KEY": "anthropic-key-must-be-scrubbed-on-vertex",
@@ -815,7 +815,7 @@ def test_live_socket_auto_preserves_vertex_auth_when_truthy(failures: list[str])
 
 
 def test_live_socket_auto_preserves_bedrock_auth_when_truthy(failures: list[str]) -> None:
-    # Regression for https://github.com/manaflow-ai/cmux/issues/3638.
+    # Regression for https://github.com/mochiexists/cmux-mochi/issues/3638.
     inherited = {
         "CLAUDE_CODE_USE_BEDROCK": "1",
         "ANTHROPIC_API_KEY": "anthropic-key-must-be-scrubbed-on-bedrock",

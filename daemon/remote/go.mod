@@ -1,4 +1,4 @@
-module github.com/manaflow-ai/cmux/daemon/remote
+module github.com/mochiexists/cmux-mochi/daemon/remote
 
 go 1.22
 
