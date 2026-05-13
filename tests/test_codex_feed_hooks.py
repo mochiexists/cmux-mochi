@@ -18,6 +18,10 @@ from pathlib import Path
 from claude_teams_test_utils import resolve_cmux_cli
 
 
+FEED_TEST_WORKSPACE_ID = "11111111-1111-1111-1111-111111111111"
+FEED_TEST_SURFACE_ID = "22222222-2222-2222-2222-222222222222"
+
+
 class FakeCmuxSocket:
     def __init__(
         self,
@@ -28,7 +32,7 @@ class FakeCmuxSocket:
     ):
         self.path = path
         self.decision = decision
-        self.surfaces = surfaces if surfaces is not None else [{"id": "surface-codex-feed-test"}]
+        self.surfaces = surfaces if surfaces is not None else [{"id": FEED_TEST_SURFACE_ID}]
         self.drop_first_surface_list = drop_first_surface_list
         self._dropped_surface_list = False
         self.frames: list[dict] = []
@@ -162,8 +166,8 @@ def test_codex_stop_reaps_transcript_monitor(cli_path: str, root: Path) -> None:
     turn_id = f"codex-monitor-reap-turn-{os.getpid()}"
     env = os.environ.copy()
     env["CMUX_SOCKET_PATH"] = str(socket_path)
-    env["CMUX_SURFACE_ID"] = "surface-codex-feed-test"
-    env["CMUX_WORKSPACE_ID"] = "workspace-codex-feed-test"
+    env["CMUX_SURFACE_ID"] = FEED_TEST_SURFACE_ID
+    env["CMUX_WORKSPACE_ID"] = FEED_TEST_WORKSPACE_ID
     env["CMUX_AGENT_HOOK_STATE_DIR"] = str(state_dir)
 
     with FakeCmuxSocket(socket_path, None):
@@ -226,8 +230,8 @@ def test_codex_stop_without_turn_keeps_session_wide_monitor(cli_path: str, root:
     session_id = f"codex-monitor-session-wide-session-{os.getpid()}"
     env = os.environ.copy()
     env["CMUX_SOCKET_PATH"] = str(socket_path)
-    env["CMUX_SURFACE_ID"] = "surface-codex-feed-test"
-    env["CMUX_WORKSPACE_ID"] = "workspace-codex-feed-test"
+    env["CMUX_SURFACE_ID"] = FEED_TEST_SURFACE_ID
+    env["CMUX_WORKSPACE_ID"] = FEED_TEST_WORKSPACE_ID
     env["CMUX_AGENT_HOOK_STATE_DIR"] = str(state_dir)
 
     with FakeCmuxSocket(socket_path, None):
@@ -305,8 +309,8 @@ def test_codex_prompt_submit_starts_monitor_when_lease_write_fails(cli_path: str
     turn_id = f"codex-monitor-lease-failure-turn-{os.getpid()}"
     env = os.environ.copy()
     env["CMUX_SOCKET_PATH"] = str(socket_path)
-    env["CMUX_SURFACE_ID"] = "surface-codex-feed-test"
-    env["CMUX_WORKSPACE_ID"] = "workspace-codex-feed-test"
+    env["CMUX_SURFACE_ID"] = FEED_TEST_SURFACE_ID
+    env["CMUX_WORKSPACE_ID"] = FEED_TEST_WORKSPACE_ID
     env["CMUX_AGENT_HOOK_STATE_DIR"] = str(bad_state_dir)
 
     with FakeCmuxSocket(socket_path, None):
@@ -347,7 +351,7 @@ def test_codex_monitor_exits_when_workspace_has_no_surfaces(cli_path: str, root:
     session_id = f"codex-monitor-empty-surfaces-session-{os.getpid()}"
     env = os.environ.copy()
     env["CMUX_SOCKET_PATH"] = str(socket_path)
-    env["CMUX_WORKSPACE_ID"] = "workspace-codex-feed-test"
+    env["CMUX_WORKSPACE_ID"] = FEED_TEST_WORKSPACE_ID
     env["CMUX_AGENT_HOOK_STATE_DIR"] = str(state_dir)
 
     with FakeCmuxSocket(socket_path, None, surfaces=[]) as fake:
@@ -361,7 +365,7 @@ def test_codex_monitor_exits_when_workspace_has_no_surfaces(cli_path: str, root:
                     "codex",
                     "monitor",
                     "--workspace",
-                    "workspace-codex-feed-test",
+                    FEED_TEST_WORKSPACE_ID,
                     "--session",
                     session_id,
                     "--transcript",
@@ -401,7 +405,7 @@ def test_codex_monitor_survives_transient_owner_rpc_timeout(cli_path: str, root:
     session_id = f"codex-monitor-timeout-session-{os.getpid()}"
     env = os.environ.copy()
     env["CMUX_SOCKET_PATH"] = str(socket_path)
-    env["CMUX_WORKSPACE_ID"] = "workspace-codex-feed-test"
+    env["CMUX_WORKSPACE_ID"] = FEED_TEST_WORKSPACE_ID
 
     with FakeCmuxSocket(socket_path, None, drop_first_surface_list=True) as fake:
         result = subprocess.run(
@@ -413,7 +417,7 @@ def test_codex_monitor_survives_transient_owner_rpc_timeout(cli_path: str, root:
                 "codex",
                 "monitor",
                 "--workspace",
-                "workspace-codex-feed-test",
+                FEED_TEST_WORKSPACE_ID,
                 "--session",
                 session_id,
                 "--turn",
@@ -441,8 +445,8 @@ def test_codex_monitor_survives_transient_owner_rpc_timeout(cli_path: str, root:
 
 def run_feed_hook(cli_path: str, socket_path: Path, payload: dict, decision: dict | None) -> tuple[dict, dict]:
     env = os.environ.copy()
-    env["CMUX_SURFACE_ID"] = "surface-codex-feed-test"
-    env["CMUX_WORKSPACE_ID"] = "workspace-codex-feed-test"
+    env["CMUX_SURFACE_ID"] = FEED_TEST_SURFACE_ID
+    env["CMUX_WORKSPACE_ID"] = FEED_TEST_WORKSPACE_ID
     with FakeCmuxSocket(socket_path, decision) as fake:
         result = subprocess.run(
             [
@@ -492,9 +496,15 @@ def assert_codex_allow_has_no_persistent_fields(stdout: dict) -> None:
         raise AssertionError(f"Codex permission output included unsupported fields {present}: {stdout!r}")
 
 
-def test_install_adds_codex_permission_request_hook(cli_path: str, root: Path) -> None:
+def test_install_prints_codex_native_hooks_instructions(cli_path: str, root: Path) -> None:
     codex_home = root / "codex-home"
     codex_home.mkdir()
+    hooks_path = codex_home / "hooks.json"
+    config_path = codex_home / "config.toml"
+    hooks_before = '{"hooks":{"SessionStart":[{"hooks":[{"type":"command","command":"custom"}]}]}}\n'
+    config_before = "[features]\nhooks = false\n"
+    hooks_path.write_text(hooks_before, encoding="utf-8")
+    config_path.write_text(config_before, encoding="utf-8")
     env = os.environ.copy()
     env["CODEX_HOME"] = str(codex_home)
 
@@ -511,33 +521,29 @@ def test_install_adds_codex_permission_request_hook(cli_path: str, root: Path) -
             f"hooks codex install failed exit={result.returncode}\nstdout={result.stdout}\nstderr={result.stderr}"
         )
 
-    hooks = json.loads((codex_home / "hooks.json").read_text(encoding="utf-8"))
-    hook_groups = hooks.get("hooks", {})
-    for event_name in ["PreToolUse", "PermissionRequest"]:
-        groups = hook_groups.get(event_name)
-        if not groups:
-            raise AssertionError(f"missing {event_name} hook group: {hooks!r}")
-        command = groups[-1]["hooks"][0]["command"]
-        if f"cmux hooks feed --source codex --event {event_name}" not in command:
-            raise AssertionError(f"wrong {event_name} feed command: {command!r}")
-        if groups[-1]["hooks"][0].get("timeout") != 120_000:
-            raise AssertionError(f"wrong {event_name} timeout: {groups[-1]!r}")
+    required = [
+        "Codex hooks are managed by Codex",
+        "Run /hooks inside Codex",
+        "SessionStart: cmux hooks codex session-start",
+        "ThreadUnsubscribe: cmux hooks codex thread-unsubscribe",
+        "PermissionRequest: cmux hooks feed --source codex --event PermissionRequest",
+    ]
+    for text in required:
+        if text not in result.stdout:
+            raise AssertionError(f"missing Codex native hook instruction {text!r}: {result.stdout!r}")
 
-    config_toml = (codex_home / "config.toml").read_text(encoding="utf-8")
-    if "hooks = true" not in config_toml:
-        raise AssertionError(f"hooks feature was not enabled: {config_toml!r}")
-    if "codex_hooks" in config_toml:
-        raise AssertionError(f"deprecated codex_hooks feature was written: {config_toml!r}")
+    if hooks_path.read_text(encoding="utf-8") != hooks_before:
+        raise AssertionError("hooks codex install rewrote hooks.json")
+    if config_path.read_text(encoding="utf-8") != config_before:
+        raise AssertionError("hooks codex install rewrote config.toml")
 
 
-def test_install_migrates_legacy_codex_hooks_feature(cli_path: str, root: Path) -> None:
-    codex_home = root / "codex-home-legacy"
+def test_install_ignores_invalid_codex_config_encoding(cli_path: str, root: Path) -> None:
+    codex_home = root / "codex-home-invalid-install-config"
     codex_home.mkdir()
-    # Real configs can contain both names after users tried the old and new flags.
-    (codex_home / "config.toml").write_text(
-        "[features]\napps = true\ncodex_hooks = false\nhooks = false\n",
-        encoding="utf-8",
-    )
+    config_path = codex_home / "config.toml"
+    invalid_bytes = b"\xff"
+    config_path.write_bytes(invalid_bytes)
     env = os.environ.copy()
     env["CODEX_HOME"] = str(codex_home)
 
@@ -553,216 +559,49 @@ def test_install_migrates_legacy_codex_hooks_feature(cli_path: str, root: Path) 
         raise AssertionError(
             f"hooks codex install failed exit={result.returncode}\nstdout={result.stdout}\nstderr={result.stderr}"
         )
-
-    config_toml = (codex_home / "config.toml").read_text(encoding="utf-8")
-    if "codex_hooks" in config_toml:
-        raise AssertionError(f"deprecated codex_hooks feature was preserved: {config_toml!r}")
-    if "hooks = true" not in config_toml:
-        raise AssertionError(f"hooks feature was not enabled: {config_toml!r}")
-    if "apps = true" not in config_toml:
-        raise AssertionError(f"existing feature setting was not preserved: {config_toml!r}")
+    if config_path.read_bytes() != invalid_bytes:
+        raise AssertionError("hooks codex install overwrote unreadable config content")
 
 
-def test_install_migrates_dotted_codex_hooks_feature(cli_path: str, root: Path) -> None:
-    codex_home = root / "codex-home-dotted-legacy"
-    codex_home.mkdir()
-    (codex_home / "config.toml").write_text(
-        "features.apps = true\nfeatures.codex_hooks = false\nfeatures.hooks = false\n",
-        encoding="utf-8",
-    )
-    env = os.environ.copy()
-    env["CODEX_HOME"] = str(codex_home)
-
-    result = subprocess.run(
-        [cli_path, "hooks", "codex", "install", "--yes"],
-        capture_output=True,
-        text=True,
-        check=False,
-        env=env,
-        timeout=20,
-    )
-    if result.returncode != 0:
-        raise AssertionError(
-            f"hooks codex install failed exit={result.returncode}\nstdout={result.stdout}\nstderr={result.stderr}"
-        )
-
-    config_toml = (codex_home / "config.toml").read_text(encoding="utf-8")
-    if "features.codex_hooks" in config_toml or "[features]" in config_toml:
-        raise AssertionError(f"dotted legacy config was rewritten incorrectly: {config_toml!r}")
-    if "features.hooks = true" not in config_toml:
-        raise AssertionError(f"dotted hooks feature was not enabled: {config_toml!r}")
-    if "features.apps = true" not in config_toml:
-        raise AssertionError(f"existing dotted feature setting was not preserved: {config_toml!r}")
-
-
-def test_uninstall_preserves_existing_codex_hooks_feature(cli_path: str, root: Path) -> None:
-    codex_home = root / "codex-home-uninstall-existing"
-    codex_home.mkdir()
-    (codex_home / "config.toml").write_text(
-        "[features]\napps = true\nhooks = true\n",
-        encoding="utf-8",
-    )
-    env = os.environ.copy()
-    env["CODEX_HOME"] = str(codex_home)
-
-    for action in ["install", "uninstall"]:
-        result = subprocess.run(
-            [cli_path, "hooks", "codex", action, "--yes"],
-            capture_output=True,
-            text=True,
-            check=False,
-            env=env,
-            timeout=20,
-        )
-        if result.returncode != 0:
-            raise AssertionError(
-                f"hooks codex {action} failed exit={result.returncode}\nstdout={result.stdout}\nstderr={result.stderr}"
-            )
-
-    config_toml = (codex_home / "config.toml").read_text(encoding="utf-8")
-    if "hooks = true" not in config_toml:
-        raise AssertionError(f"pre-existing hooks feature was removed: {config_toml!r}")
-    if "apps = true" not in config_toml:
-        raise AssertionError(f"existing feature setting was not preserved: {config_toml!r}")
-
-
-def test_uninstall_restores_disabled_codex_hooks_feature(cli_path: str, root: Path) -> None:
-    codex_home = root / "codex-home-uninstall-disabled"
-    codex_home.mkdir()
-    (codex_home / "config.toml").write_text(
-        "[features]\napps = true\nhooks = false\n",
-        encoding="utf-8",
-    )
-    env = os.environ.copy()
-    env["CODEX_HOME"] = str(codex_home)
-
-    for action in ["install", "uninstall"]:
-        result = subprocess.run(
-            [cli_path, "hooks", "codex", action, "--yes"],
-            capture_output=True,
-            text=True,
-            check=False,
-            env=env,
-            timeout=20,
-        )
-        if result.returncode != 0:
-            raise AssertionError(
-                f"hooks codex {action} failed exit={result.returncode}\nstdout={result.stdout}\nstderr={result.stderr}"
-            )
-
-    config_toml = (codex_home / "config.toml").read_text(encoding="utf-8")
-    if "hooks = false" not in config_toml:
-        raise AssertionError(f"pre-existing disabled hooks feature was not restored: {config_toml!r}")
-    if "hooks = true" in config_toml:
-        raise AssertionError(f"cmux-owned hooks feature was not removed: {config_toml!r}")
-    if "apps = true" not in config_toml:
-        raise AssertionError(f"existing feature setting was not preserved: {config_toml!r}")
-
-
-def test_uninstall_restores_disabled_dotted_codex_hooks_feature(cli_path: str, root: Path) -> None:
-    codex_home = root / "codex-home-uninstall-dotted-disabled"
-    codex_home.mkdir()
-    (codex_home / "config.toml").write_text(
-        "features.apps = true\nfeatures.hooks = false\n",
-        encoding="utf-8",
-    )
-    env = os.environ.copy()
-    env["CODEX_HOME"] = str(codex_home)
-
-    for action in ["install", "uninstall"]:
-        result = subprocess.run(
-            [cli_path, "hooks", "codex", action, "--yes"],
-            capture_output=True,
-            text=True,
-            check=False,
-            env=env,
-            timeout=20,
-        )
-        if result.returncode != 0:
-            raise AssertionError(
-                f"hooks codex {action} failed exit={result.returncode}\nstdout={result.stdout}\nstderr={result.stderr}"
-            )
-
-    config_toml = (codex_home / "config.toml").read_text(encoding="utf-8")
-    if "features.hooks = false" not in config_toml:
-        raise AssertionError(f"pre-existing disabled dotted hooks feature was not restored: {config_toml!r}")
-    if "features.hooks = true" in config_toml:
-        raise AssertionError(f"cmux-owned dotted hooks feature was not removed: {config_toml!r}")
-    if "features.apps = true" not in config_toml:
-        raise AssertionError(f"existing dotted feature setting was not preserved: {config_toml!r}")
-
-
-def test_install_scans_features_past_bracketed_array(cli_path: str, root: Path) -> None:
-    codex_home = root / "codex-home-bracketed-array"
-    codex_home.mkdir()
-    (codex_home / "config.toml").write_text(
-        "[features]\napps = [\n  [1, 2],\n]\nhooks = false\n",
-        encoding="utf-8",
-    )
-    env = os.environ.copy()
-    env["CODEX_HOME"] = str(codex_home)
-
-    for action in ["install", "uninstall"]:
-        result = subprocess.run(
-            [cli_path, "hooks", "codex", action, "--yes"],
-            capture_output=True,
-            text=True,
-            check=False,
-            env=env,
-            timeout=20,
-        )
-        if result.returncode != 0:
-            raise AssertionError(
-                f"hooks codex {action} failed exit={result.returncode}\nstdout={result.stdout}\nstderr={result.stderr}"
-            )
-        config_toml = (codex_home / "config.toml").read_text(encoding="utf-8")
-        if action == "install" and config_toml.count("hooks = true") != 1:
-            raise AssertionError(f"install wrote duplicate hooks settings: {config_toml!r}")
-
-    config_toml = (codex_home / "config.toml").read_text(encoding="utf-8")
-    if "hooks = false" not in config_toml or "hooks = true" in config_toml:
-        raise AssertionError(f"uninstall did not restore hooks after bracketed array: {config_toml!r}")
-    if "[1, 2]" not in config_toml:
-        raise AssertionError(f"bracketed array content was not preserved: {config_toml!r}")
-
-
-def test_uninstall_removes_cmux_owned_codex_hooks_feature(cli_path: str, root: Path) -> None:
+def test_uninstall_removes_cmux_owned_codex_hooks(cli_path: str, root: Path) -> None:
     codex_home = root / "codex-home-uninstall-owned"
     codex_home.mkdir()
-    env = os.environ.copy()
-    env["CODEX_HOME"] = str(codex_home)
-
-    for action in ["install", "uninstall"]:
-        result = subprocess.run(
-            [cli_path, "hooks", "codex", action, "--yes"],
-            capture_output=True,
-            text=True,
-            check=False,
-            env=env,
-            timeout=20,
+    config_path = codex_home / "config.toml"
+    config_before = "[features]\nhooks = false\n"
+    config_path.write_text(config_before, encoding="utf-8")
+    (codex_home / "hooks.json").write_text(
+        json.dumps(
+            {
+                "hooks": {
+                    "SessionStart": [
+                        {
+                            "hooks": [
+                                {"type": "command", "command": "cmux hooks codex session-start"},
+                                {"type": "command", "command": "custom session hook"},
+                            ]
+                        }
+                    ],
+                    "PreToolUse": [
+                        {
+                            "hooks": [
+                                {
+                                    "type": "command",
+                                    "command": "cmux hooks feed --source codex --event PreToolUse",
+                                }
+                            ]
+                        }
+                    ],
+                    "PermissionRequest": [
+                        {
+                            "hooks": [
+                                {"type": "command", "command": "custom permission hook"}
+                            ]
+                        }
+                    ],
+                }
+            }
         )
-        if result.returncode != 0:
-            raise AssertionError(
-                f"hooks codex {action} failed exit={result.returncode}\nstdout={result.stdout}\nstderr={result.stderr}"
-            )
-
-    config_toml = (codex_home / "config.toml").read_text(encoding="utf-8")
-    if "hooks = true" in config_toml or "codex_hooks" in config_toml:
-        raise AssertionError(f"cmux-owned hooks feature was not removed: {config_toml!r}")
-    if "[features]" in config_toml:
-        raise AssertionError(f"empty features table was preserved: {config_toml!r}")
-
-
-def test_uninstall_recovers_orphaned_codex_hooks_marker(cli_path: str, root: Path) -> None:
-    codex_home = root / "codex-home-orphaned-marker"
-    codex_home.mkdir()
-    (codex_home / "hooks.json").write_text('{"hooks": {}}\n', encoding="utf-8")
-    (codex_home / "config.toml").write_text(
-        "[features]\n"
-        "apps = true\n"
-        "# cmux-codex-hooks-feature-78f1e4ba-66df-4d35-93c1-67fdf1cbb7df begin\n"
-        "# cmux-codex-hooks-feature-78f1e4ba-66df-4d35-93c1-67fdf1cbb7df previous line: hooks = false\n"
-        "hooks = true\n",
+        + "\n",
         encoding="utf-8",
     )
     env = os.environ.copy()
@@ -781,61 +620,29 @@ def test_uninstall_recovers_orphaned_codex_hooks_marker(cli_path: str, root: Pat
             f"hooks codex uninstall failed exit={result.returncode}\nstdout={result.stdout}\nstderr={result.stderr}"
         )
 
-    config_toml = (codex_home / "config.toml").read_text(encoding="utf-8")
-    if "hooks = false" not in config_toml:
-        raise AssertionError(f"previous hooks setting was not restored: {config_toml!r}")
-    if "hooks = true" in config_toml:
-        raise AssertionError(f"orphaned cmux marker was not removed: {config_toml!r}")
-    if "apps = true" not in config_toml:
-        raise AssertionError(f"existing feature setting was not preserved: {config_toml!r}")
+    hooks = json.loads((codex_home / "hooks.json").read_text(encoding="utf-8"))
+    hook_groups = hooks["hooks"]
+    if "PreToolUse" in hook_groups:
+        raise AssertionError(f"cmux-owned feed hook was not removed: {hooks!r}")
+    session_hooks = hook_groups["SessionStart"][0]["hooks"]
+    if session_hooks != [{"command": "custom session hook", "type": "command"}]:
+        raise AssertionError(f"user session hook was not preserved exactly: {hooks!r}")
+    permission_hooks = hook_groups["PermissionRequest"][0]["hooks"]
+    if permission_hooks != [{"command": "custom permission hook", "type": "command"}]:
+        raise AssertionError(f"user permission hook was not preserved exactly: {hooks!r}")
+    if config_path.read_text(encoding="utf-8") != config_before:
+        raise AssertionError("hooks codex uninstall rewrote config.toml")
 
 
-def test_install_surfaces_invalid_codex_config_encoding(cli_path: str, root: Path) -> None:
-    codex_home = root / "codex-home-invalid-install-config"
-    codex_home.mkdir()
-    config_path = codex_home / "config.toml"
-    invalid_bytes = b"\xff"
-    config_path.write_bytes(invalid_bytes)
-    env = os.environ.copy()
-    env["CODEX_HOME"] = str(codex_home)
-
-    result = subprocess.run(
-        [cli_path, "hooks", "codex", "install", "--yes"],
-        capture_output=True,
-        text=True,
-        check=False,
-        env=env,
-        timeout=20,
-    )
-    if result.returncode == 0:
-        raise AssertionError("hooks codex install unexpectedly succeeded with invalid config encoding")
-    if config_path.read_bytes() != invalid_bytes:
-        raise AssertionError("hooks codex install overwrote unreadable config content")
-
-
-def test_uninstall_surfaces_invalid_codex_config_encoding(cli_path: str, root: Path) -> None:
+def test_uninstall_ignores_invalid_codex_config_encoding(cli_path: str, root: Path) -> None:
     codex_home = root / "codex-home-invalid-uninstall-config"
     codex_home.mkdir()
-    env = os.environ.copy()
-    env["CODEX_HOME"] = str(codex_home)
-
-    install_result = subprocess.run(
-        [cli_path, "hooks", "codex", "install", "--yes"],
-        capture_output=True,
-        text=True,
-        check=False,
-        env=env,
-        timeout=20,
-    )
-    if install_result.returncode != 0:
-        raise AssertionError(
-            "initial hooks codex install failed "
-            f"exit={install_result.returncode}\nstdout={install_result.stdout}\nstderr={install_result.stderr}"
-        )
-
+    (codex_home / "hooks.json").write_text('{"hooks": {}}\n', encoding="utf-8")
     config_path = codex_home / "config.toml"
     invalid_bytes = b"\xff"
     config_path.write_bytes(invalid_bytes)
+    env = os.environ.copy()
+    env["CODEX_HOME"] = str(codex_home)
 
     result = subprocess.run(
         [cli_path, "hooks", "codex", "uninstall", "--yes"],
@@ -845,10 +652,55 @@ def test_uninstall_surfaces_invalid_codex_config_encoding(cli_path: str, root: P
         env=env,
         timeout=20,
     )
-    if result.returncode == 0:
-        raise AssertionError("hooks codex uninstall unexpectedly succeeded with invalid config encoding")
+    if result.returncode != 0:
+        raise AssertionError(
+            f"hooks codex uninstall failed exit={result.returncode}\nstdout={result.stdout}\nstderr={result.stderr}"
+        )
     if config_path.read_bytes() != invalid_bytes:
         raise AssertionError("hooks codex uninstall overwrote unreadable config content")
+
+
+def test_thread_unsubscribe_hook_sends_feed_telemetry(cli_path: str, root: Path) -> None:
+    socket_path = root / "cmux-thread-unsubscribe.sock"
+    state_dir = root / "hook-state-thread-unsubscribe"
+    state_dir.mkdir()
+    env = os.environ.copy()
+    env["CMUX_SOCKET_PATH"] = str(socket_path)
+    env["CMUX_SURFACE_ID"] = FEED_TEST_SURFACE_ID
+    env["CMUX_WORKSPACE_ID"] = FEED_TEST_WORKSPACE_ID
+    env["CMUX_AGENT_HOOK_STATE_DIR"] = str(state_dir)
+
+    payload = {
+        "session_id": "codex-thread",
+        "cwd": str(root),
+        "reason": "user_closed_thread",
+    }
+    with FakeCmuxSocket(socket_path, None) as fake:
+        result = subprocess.run(
+            [cli_path, "--socket", str(socket_path), "hooks", "codex", "thread-unsubscribe"],
+            input=json.dumps(payload),
+            capture_output=True,
+            text=True,
+            check=False,
+            env=env,
+            timeout=10,
+        )
+        if result.returncode != 0:
+            raise AssertionError(
+                f"hooks codex thread-unsubscribe failed exit={result.returncode}\n"
+                f"stdout={result.stdout}\nstderr={result.stderr}"
+            )
+        stdout = json.loads(result.stdout.strip() or "{}")
+        if stdout != {}:
+            raise AssertionError(f"thread-unsubscribe should emit empty hook output: {stdout!r}")
+        feed_frames = [frame for frame in fake.frames if frame.get("method") == "feed.push"]
+        if len(feed_frames) != 1:
+            raise AssertionError(f"thread-unsubscribe should send one feed.push: {fake.frames!r}")
+        event = feed_frames[0]["params"]["event"]
+        if event.get("hook_event_name") != "ThreadUnsubscribe":
+            raise AssertionError(f"wrong hook event: {event!r}")
+        if event.get("_source") != "codex" or event.get("cwd") != str(root):
+            raise AssertionError(f"wrong feed event metadata: {event!r}")
 
 
 def test_permission_reply_uses_codex_permission_request_schema(cli_path: str, root: Path) -> None:
@@ -939,7 +791,7 @@ def main() -> int:
         print(f"FAIL: {exc}")
         return 1
 
-    with tempfile.TemporaryDirectory(prefix="cmux-codex-feed-hooks-") as td:
+    with tempfile.TemporaryDirectory(prefix="cfh-", dir="/tmp") as td:
         root = Path(td)
         try:
             test_codex_stop_reaps_transcript_monitor(cli_path, root)
@@ -947,17 +799,11 @@ def main() -> int:
             test_codex_prompt_submit_starts_monitor_when_lease_write_fails(cli_path, root)
             test_codex_monitor_exits_when_workspace_has_no_surfaces(cli_path, root)
             test_codex_monitor_survives_transient_owner_rpc_timeout(cli_path, root)
-            test_install_adds_codex_permission_request_hook(cli_path, root)
-            test_install_migrates_legacy_codex_hooks_feature(cli_path, root)
-            test_install_migrates_dotted_codex_hooks_feature(cli_path, root)
-            test_uninstall_preserves_existing_codex_hooks_feature(cli_path, root)
-            test_uninstall_restores_disabled_codex_hooks_feature(cli_path, root)
-            test_uninstall_restores_disabled_dotted_codex_hooks_feature(cli_path, root)
-            test_install_scans_features_past_bracketed_array(cli_path, root)
-            test_uninstall_removes_cmux_owned_codex_hooks_feature(cli_path, root)
-            test_uninstall_recovers_orphaned_codex_hooks_marker(cli_path, root)
-            test_install_surfaces_invalid_codex_config_encoding(cli_path, root)
-            test_uninstall_surfaces_invalid_codex_config_encoding(cli_path, root)
+            test_install_prints_codex_native_hooks_instructions(cli_path, root)
+            test_install_ignores_invalid_codex_config_encoding(cli_path, root)
+            test_uninstall_removes_cmux_owned_codex_hooks(cli_path, root)
+            test_uninstall_ignores_invalid_codex_config_encoding(cli_path, root)
+            test_thread_unsubscribe_hook_sends_feed_telemetry(cli_path, root)
             test_permission_reply_uses_codex_permission_request_schema(cli_path, root)
             test_codex_persistent_permission_modes_degrade_to_once(cli_path, root)
             test_codex_pre_tool_use_is_telemetry_not_actionable(cli_path, root)

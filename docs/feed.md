@@ -75,7 +75,7 @@ Installs supported agent hooks whose binaries are on `PATH`. See [Agent hook int
 | Agent        | Config                                    | Feed trigger             |
 |--------------|-------------------------------------------|--------------------------|
 | Claude Code  | wrapper-injected                          | PermissionRequest        |
-| Codex        | `~/.codex/hooks.json`                     | PermissionRequest        |
+| Codex        | native `/hooks` approval                  | PermissionRequest        |
 | OpenCode     | `~/.config/opencode/plugins/cmux-feed.js` | plugin event bus         |
 | Cursor CLI   | `~/.cursor/hooks.json`                    | beforeShellExecution     |
 | Gemini       | `~/.gemini/settings.json`                 | PreToolUse               |
@@ -89,13 +89,13 @@ Installs supported agent hooks whose binaries are on `PATH`. See [Agent hook int
 Individual agents:
 
 ```bash
-cmux hooks codex install
+cmux hooks codex install                  # prints native /hooks targets
 cmux hooks opencode install               # global
 cmux hooks opencode install --project     # .opencode/plugins/cmux-feed.js in cwd
 cmux hooks <agent> uninstall
 ```
 
-Agents without a binary on `PATH` are skipped at install time, and `cmux hooks setup` prints a summary line naming the ones it skipped. Use `cmux hooks setup --agent <name>` or `cmux hooks setup <name>` to install one integration, and `cmux hooks uninstall --agent <name>` or `cmux hooks uninstall <name>` to remove one. Rovo Dev accepts either `rovodev` or `rovo`.
+Agents without a binary on `PATH` are skipped at install time, and `cmux hooks setup` prints a summary line naming the ones it skipped. Use `cmux hooks setup --agent <name>` or `cmux hooks setup <name>` to install one integration, and `cmux hooks uninstall --agent <name>` or `cmux hooks uninstall <name>` to remove one. Codex hooks are registered from Codex's native `/hooks` flow; `cmux hooks codex install` prints the command targets to approve there. Rovo Dev accepts either `rovodev` or `rovo`.
 
 ## Decision semantics
 

@@ -24,7 +24,6 @@ extension CMUXCLI {
         /// agent's default hook timeout when the user takes time to
         /// approve/deny a permission / plan / question.
         let feedHookEvents: [String]
-        let postInstallAction: PostInstallAction?
 
         enum HookFormat {
             case flat       // Cursor: {"hooks": {"event": [{"command": "..."}]}, "version": 1}
@@ -36,10 +35,6 @@ extension CMUXCLI {
         struct HookEvent {
             let agentEvent: String
             let cmuxSubcommand: String
-        }
-
-        enum PostInstallAction {
-            case codexConfigToml // write hooks = true to config.toml on install, remove on uninstall
         }
 
         /// Resolves the config directory, respecting env override if set.
@@ -64,8 +59,7 @@ extension CMUXCLI {
              sessionStoreSuffix: String, disableEnvVar: String, hookMarker: String,
              format: HookFormat, events: [HookEvent],
              aliases: Set<String> = [],
-             feedHookEvents: [String] = [],
-             postInstallAction: PostInstallAction? = nil) {
+             feedHookEvents: [String] = []) {
             self.name = name; self.displayName = displayName; self.statusKey = statusKey
             self.configDir = configDir; self.configFile = configFile
             self.configDirEnvOverride = configDirEnvOverride
@@ -77,7 +71,6 @@ extension CMUXCLI {
                 return normalized.isEmpty ? nil : normalized
             })
             self.feedHookEvents = feedHookEvents
-            self.postInstallAction = postInstallAction
         }
     }
 
@@ -93,6 +86,7 @@ extension CMUXCLI {
         "shell-exec": .promptSubmit,
         "shell-done": .noop,
         "session-end": .sessionEnd,
+        "thread-unsubscribe": .sessionEnd,
     ]
 
     // MARK: Agent definitions
@@ -107,9 +101,9 @@ extension CMUXCLI {
                 .init(agentEvent: "SessionStart", cmuxSubcommand: "session-start"),
                 .init(agentEvent: "UserPromptSubmit", cmuxSubcommand: "prompt-submit"),
                 .init(agentEvent: "Stop", cmuxSubcommand: "stop"),
+                .init(agentEvent: "ThreadUnsubscribe", cmuxSubcommand: "thread-unsubscribe"),
             ],
-            feedHookEvents: ["PreToolUse", "PermissionRequest"],
-            postInstallAction: .codexConfigToml
+            feedHookEvents: ["PreToolUse", "PermissionRequest"]
         ),
         AgentHookDef(
             name: "opencode", displayName: "OpenCode", statusKey: "opencode",
@@ -246,20 +240,12 @@ extension CMUXCLI {
     }
 
     static func hookMarkers(for def: AgentHookDef) -> [String] {
-        var markers = [def.hookMarker]
-        if def.name == "codex" {
-            markers.append("cmux codex-hook")
-        }
-        return markers
+        [def.hookMarker]
     }
 
     /// Marker substrings used when removing / upgrading our own Feed bridge
     /// entries on reinstall or uninstall.
     static func feedHookMarkers(for def: AgentHookDef) -> [String] {
-        var markers = ["cmux hooks feed --source"]
-        if def.name == "codex" {
-            markers.append("cmux feed-hook --source")
-        }
-        return markers
+        ["cmux hooks feed --source"]
     }
 }

@@ -253,6 +253,74 @@
         }
       }
     },
+    "cli.hooks.codexNativeHooks.approveInCodex": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Run /hooks inside Codex and approve cmux command hooks there."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Codex 内で /hooks を実行し、cmux コマンドフックを承認してください。"
+          }
+        }
+      }
+    },
+    "cli.hooks.codexNativeHooks.managedByCodex": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Codex hooks are managed by Codex. cmux no longer writes ~/.codex/hooks.json or config.toml."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Codex フックは Codex が管理します。cmux は ~/.codex/hooks.json や config.toml を書き込みません。"
+          }
+        }
+      }
+    },
+    "cli.hooks.codexNativeHooks.suggestedTargets": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Suggested cmux hook command targets:"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "推奨される cmux フックコマンドの対象:"
+          }
+        }
+      }
+    },
+    "cli.hooks.codexNativeHooks.unavailable": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Codex hook integration is unavailable."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Codex フック連携は利用できません。"
+          }
+        }
+      }
+    },
     "cli.claude-teams.usage": {
       "extractionState": "manual",
       "localizations": {

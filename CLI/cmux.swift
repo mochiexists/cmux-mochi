@@ -2325,21 +2325,7 @@ struct CMUXCLI {
             return
         }
 
-        if command == "codex" {
-            // Backwards compatibility for old hook setup docs/scripts. Hidden from help.
-            let sub = commandArgs.first?.lowercased() ?? "help"
-            guard let codexDef = Self.agentDef(named: "codex") else { throw CLIError(message: "Codex hook integration is unavailable.") }
-            if sub == "install-hooks" {
-                try installHooksForAgent(codexDef, arguments: Array(commandArgs.dropFirst()))
-                return
-            } else if sub == "uninstall-hooks" {
-                try uninstallHooksForAgent(codexDef, arguments: Array(commandArgs.dropFirst()))
-                return
-            }
-        }
         if command == "setup-hooks" || command == "uninstall-hooks" { try runSetupHooks(uninstall: command == "uninstall-hooks"); return } // Backwards compatibility for old hook setup docs/scripts.
-        if (command == "codex-hook" || command == "feed-hook"), processEnv["CMUX_SURFACE_ID"]?.isEmpty != false, processEnv["CMUX_WORKSPACE_ID"]?.isEmpty != false,
-           !commandArgs.contains(where: { $0 == "--workspace" || $0 == "--surface" || $0.hasPrefix("--workspace=") || $0.hasPrefix("--surface=") }) { print("{}"); return } // Backwards compatibility for old installed hooks outside cmux terminals.
         if command == "hooks" {
             if try runHooksNoSocketCommand(commandArgs: commandArgs) {
                 return
@@ -2444,7 +2430,7 @@ struct CMUXCLI {
             }
         }
 
-        let capturesSocketErrorsInsideCommand = ["claude-hook", "codex-hook", "feed-hook", "hooks"].contains(command) // Backwards compatibility aliases stay hidden from help.
+        let capturesSocketErrorsInsideCommand = ["claude-hook", "hooks"].contains(command)
         do {
         switch command {
         case "ping":
@@ -3551,11 +3537,6 @@ struct CMUXCLI {
                 captureSocketTransportError(telemetry: cliTelemetry, stage: "claude_hook_dispatch", error: error, client: client)
                 throw error
             }
-        case "codex-hook": // Backwards compatibility for older installed Codex hooks. Hidden from help.
-            guard let codexDef = Self.agentDef(named: "codex") else { print("{}"); return }
-            try runGenericAgentHook(def: codexDef, commandArgs: commandArgs, client: client, telemetry: cliTelemetry)
-        case "feed-hook": // Backwards compatibility for older installed Feed hooks. Hidden from help.
-            try runFeedHook(commandArgs: commandArgs, client: client, telemetry: cliTelemetry)
         case "hooks":
             try runHooksSocketCommand(commandArgs: commandArgs, client: client, telemetry: cliTelemetry)
 
@@ -9079,13 +9060,14 @@ struct CMUXCLI {
             return """
             Usage: cmux hooks setup [agent] [--agent <name>] [--yes|-y]
                    cmux hooks uninstall [agent] [--agent <name>] [--yes|-y]
-                   cmux hooks <agent> install [--yes|-y] (opencode supports --project)
+                   cmux hooks <agent> install [--yes|-y] (opencode supports --project; codex prints /hooks setup guidance)
                    cmux hooks <agent> uninstall [--yes|-y] (opencode supports --project)
                    cmux hooks <agent> <event> [flags]
                    cmux hooks feed --source <agent> [--event <event>]
 
             Manage and run cmux agent hooks without adding one top-level command per
             agent. Claude Code hooks are injected automatically by the cmux Claude wrapper.
+            Codex hooks are registered and trusted from Codex's native /hooks flow.
 
             Agents:
               codex, opencode, pi, amp, cursor, gemini, rovodev (alias: rovo), hermes-agent, copilot, codebuddy, factory, qoder
@@ -9093,7 +9075,7 @@ struct CMUXCLI {
             Hook targets:
               setup              Install hooks for all supported agents on PATH
               uninstall          Remove hooks for all supported agents
-              <agent> install    Install one agent integration
+              <agent> install    Install one agent integration, or print Codex /hooks setup guidance
               <agent> uninstall  Remove one agent integration
               <agent> <event>    Internal hook entrypoint used by generated configs
               feed               Internal Feed decision bridge
@@ -9107,10 +9089,9 @@ struct CMUXCLI {
 
             Examples:
               cmux hooks setup
-              cmux hooks setup --agent codex
+              cmux hooks codex install
               cmux hooks setup rovo
               cmux hooks uninstall rovo
-              cmux hooks codex install
               cmux hooks opencode install --project
               cmux hooks uninstall
             """
@@ -17622,37 +17603,6 @@ export default function cmuxPiSessionExtension(pi: ExtensionAPI) {
             print("\(def.displayName) hooks installed at \(filePath)")
         }
 
-        // Post-install actions
-        if let action = def.postInstallAction {
-            switch action {
-            case .codexConfigToml:
-                let configPath = "\(configDir)/config.toml"
-                let existingContent: String
-                if fm.fileExists(atPath: configPath) {
-                    existingContent = try String(contentsOfFile: configPath, encoding: .utf8)
-                } else {
-                    existingContent = ""
-                }
-                let newContent = Self.codexConfigTomlInstallingHooksFeature(in: existingContent)
-                if newContent != existingContent {
-                    if !skipConfirm {
-                        Self.printInstallPreview(
-                            path: configPath,
-                            oldContent: existingContent,
-                            newContent: newContent,
-                            fallbackContent: newContent
-                        )
-                        print("\nProceed? [y/N] ", terminator: "")
-                        guard readLine()?.lowercased().hasPrefix("y") == true else {
-                            print("Aborted (\(configPath) unchanged).")
-                            return
-                        }
-                    }
-                    try newContent.write(toFile: configPath, atomically: true, encoding: .utf8)
-                    print("Enabled hooks in \(configPath)")
-                }
-            }
-        }
     }
 
     private func uninstallAgentHooks(_ def: AgentHookDef) throws {
@@ -17728,20 +17678,6 @@ export default function cmuxPiSessionExtension(pi: ExtensionAPI) {
         try newData.write(to: URL(fileURLWithPath: filePath), options: .atomic)
         print("Removed \(removed) cmux hook(s) from \(filePath)")
 
-        // Post-uninstall actions
-        if let action = def.postInstallAction {
-            switch action {
-            case .codexConfigToml:
-                let configPath = "\(configDir)/config.toml"
-                guard fm.fileExists(atPath: configPath) else { return }
-                let content = try String(contentsOfFile: configPath, encoding: .utf8)
-                let newContent = Self.codexConfigTomlUninstallingHooksFeature(from: content)
-                if newContent != content {
-                    try newContent.write(toFile: configPath, atomically: true, encoding: .utf8)
-                    print("Updated hooks in \(configPath)")
-                }
-            }
-        }
     }
 
     // MARK: Generic hook handler
@@ -18496,6 +18432,7 @@ export default function cmuxPiSessionExtension(pi: ExtensionAPI) {
         case "post-tool-use": return "PostToolUse"
         case "stop", "idle": return "Stop"
         case "session-end": return "SessionEnd"
+        case "thread-unsubscribe": return "ThreadUnsubscribe"
         case "notification": return "Notification"
         default: return ""
         }
@@ -20123,6 +20060,8 @@ export default function cmuxPiSessionExtension(pi: ExtensionAPI) {
             return ("SessionStart", false)
         case "SessionEnd":
             return ("SessionEnd", false)
+        case "ThreadUnsubscribe":
+            return ("ThreadUnsubscribe", false)
         case "Stop", "SubagentStop":
             return ("Stop", false)
         case "Notification":
@@ -20544,7 +20483,40 @@ export default function cmuxPiSessionExtension(pi: ExtensionAPI) {
         return action != "install" && action != "uninstall"
     }
 
+    private func printCodexNativeHooksInstructions() {
+        guard let def = Self.agentDef(named: "codex") else {
+            print(String(
+                localized: "cli.hooks.codexNativeHooks.unavailable",
+                defaultValue: "Codex hook integration is unavailable."
+            ))
+            return
+        }
+        print(String(
+            localized: "cli.hooks.codexNativeHooks.managedByCodex",
+            defaultValue: "Codex hooks are managed by Codex. cmux no longer writes ~/.codex/hooks.json or config.toml."
+        ))
+        print(String(
+            localized: "cli.hooks.codexNativeHooks.approveInCodex",
+            defaultValue: "Run /hooks inside Codex and approve cmux command hooks there."
+        ))
+        print("")
+        print(String(
+            localized: "cli.hooks.codexNativeHooks.suggestedTargets",
+            defaultValue: "Suggested cmux hook command targets:"
+        ))
+        for event in def.events {
+            print("  \(event.agentEvent): cmux hooks codex \(event.cmuxSubcommand)")
+        }
+        for agentEvent in def.feedHookEvents {
+            print("  \(agentEvent): cmux hooks feed --source codex --event \(agentEvent)")
+        }
+    }
+
     private func installHooksForAgent(_ def: AgentHookDef, arguments: [String]) throws {
+        if def.name == "codex" {
+            printCodexNativeHooksInstructions()
+            return
+        }
         if def.name == "opencode" {
             let projectLocal = arguments.contains("--project")
             if projectLocal {
@@ -20690,6 +20662,13 @@ export default function cmuxPiSessionExtension(pi: ExtensionAPI) {
 
         for def in Self.agentDefs {
             if let agentFilterDef, agentFilterDef.name != def.name { continue }
+            if def.name == "codex", !isUninstall {
+                print("  \(def.name):")
+                printCodexNativeHooksInstructions()
+                skipped += 1
+                print("")
+                continue
+            }
             let configDir = def.resolvedConfigDir()
             let canUseMissingConfigDir = def.name == "opencode" || def.name == "pi" || def.name == "amp" || (!isUninstall && def.name == "rovodev")
             if !canUseMissingConfigDir, !fm.fileExists(atPath: configDir) {
