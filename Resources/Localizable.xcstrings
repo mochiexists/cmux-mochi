@@ -60,115 +60,115 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "cmux"
+            "value": "cmux Mochi"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "cmux"
+            "value": "cmux Mochi"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "cmux"
+            "value": "cmux Mochi"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "cmux"
+            "value": "cmux Mochi"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "cmux"
+            "value": "cmux Mochi"
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "cmux"
+            "value": "cmux Mochi"
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "cmux"
+            "value": "cmux Mochi"
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "cmux"
+            "value": "cmux Mochi"
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "cmux"
+            "value": "cmux Mochi"
           }
         },
         "da": {
           "stringUnit": {
             "state": "translated",
-            "value": "cmux"
+            "value": "cmux Mochi"
           }
         },
         "pl": {
           "stringUnit": {
             "state": "translated",
-            "value": "cmux"
+            "value": "cmux Mochi"
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "cmux"
+            "value": "cmux Mochi"
           }
         },
         "bs": {
           "stringUnit": {
             "state": "translated",
-            "value": "cmux"
+            "value": "cmux Mochi"
           }
         },
         "ar": {
           "stringUnit": {
             "state": "translated",
-            "value": "cmux"
+            "value": "cmux Mochi"
           }
         },
         "nb": {
           "stringUnit": {
             "state": "translated",
-            "value": "cmux"
+            "value": "cmux Mochi"
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "cmux"
+            "value": "cmux Mochi"
           }
         },
         "th": {
           "stringUnit": {
             "state": "translated",
-            "value": "cmux"
+            "value": "cmux Mochi"
           }
         },
         "tr": {
           "stringUnit": {
             "state": "translated",
-            "value": "cmux"
+            "value": "cmux Mochi"
           }
         },
         "uk": {
           "stringUnit": {
             "state": "translated",
-            "value": "cmux"
+            "value": "cmux Mochi"
           }
         }
       }
@@ -39692,115 +39692,115 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Quit cmux?"
+            "value": "Quit cmux Mochi?"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "cmux を終了しますか？"
+            "value": "cmux Mochi を終了しますか？"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "退出 cmux？"
+            "value": "退出 cmux Mochi？"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "要結束 cmux 嗎？"
+            "value": "要結束 cmux Mochi 嗎？"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "cmux를 종료하시겠습니까?"
+            "value": "cmux Mochi를 종료하시겠습니까?"
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "cmux beenden?"
+            "value": "cmux Mochi beenden?"
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "¿Salir de cmux?"
+            "value": "¿Salir de cmux Mochi?"
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Quitter cmux ?"
+            "value": "Quitter cmux Mochi ?"
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Uscire da cmux?"
+            "value": "Uscire da cmux Mochi?"
           }
         },
         "da": {
           "stringUnit": {
             "state": "translated",
-            "value": "Afslut cmux?"
+            "value": "Afslut cmux Mochi?"
           }
         },
         "pl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Zakończyć cmux?"
+            "value": "Zakończyć cmux Mochi?"
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Завершить cmux?"
+            "value": "Завершить cmux Mochi?"
           }
         },
         "bs": {
           "stringUnit": {
             "state": "translated",
-            "value": "Zatvoriti cmux?"
+            "value": "Zatvoriti cmux Mochi?"
           }
         },
         "ar": {
           "stringUnit": {
             "state": "translated",
-            "value": "إنهاء cmux؟"
+            "value": "إنهاء cmux Mochi؟"
           }
         },
         "nb": {
           "stringUnit": {
             "state": "translated",
-            "value": "Avslutte cmux?"
+            "value": "Avslutte cmux Mochi?"
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "Encerrar o cmux?"
+            "value": "Encerrar o cmux Mochi?"
           }
         },
         "th": {
           "stringUnit": {
             "state": "translated",
-            "value": "ออกจาก cmux หรือไม่?"
+            "value": "ออกจาก cmux Mochi หรือไม่?"
           }
         },
         "tr": {
           "stringUnit": {
             "state": "translated",
-            "value": "cmux'tan çıkılsın mı?"
+            "value": "cmux Mochi'tan çıkılsın mı?"
           }
         },
         "uk": {
           "stringUnit": {
             "state": "translated",
-            "value": "Завершити cmux?"
+            "value": "Завершити cmux Mochi?"
           }
         }
       }
@@ -41052,115 +41052,115 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "About cmux"
+            "value": "About cmux Mochi"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "cmuxについて"
+            "value": "cmux Mochiについて"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "关于 cmux"
+            "value": "关于 cmux Mochi"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "關於 cmux"
+            "value": "關於 cmux Mochi"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "cmux에 관하여"
+            "value": "cmux Mochi에 관하여"
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Über cmux"
+            "value": "Über cmux Mochi"
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Acerca de cmux"
+            "value": "Acerca de cmux Mochi"
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "À propos de cmux"
+            "value": "À propos de cmux Mochi"
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Informazioni su cmux"
+            "value": "Informazioni su cmux Mochi"
           }
         },
         "da": {
           "stringUnit": {
             "state": "translated",
-            "value": "Om cmux"
+            "value": "Om cmux Mochi"
           }
         },
         "pl": {
           "stringUnit": {
             "state": "translated",
-            "value": "O cmux"
+            "value": "O cmux Mochi"
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "О программе cmux"
+            "value": "О программе cmux Mochi"
           }
         },
         "bs": {
           "stringUnit": {
             "state": "translated",
-            "value": "O programu cmux"
+            "value": "O programu cmux Mochi"
           }
         },
         "ar": {
           "stringUnit": {
             "state": "translated",
-            "value": "حول cmux"
+            "value": "حول cmux Mochi"
           }
         },
         "nb": {
           "stringUnit": {
             "state": "translated",
-            "value": "Om cmux"
+            "value": "Om cmux Mochi"
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "Sobre o cmux"
+            "value": "Sobre o cmux Mochi"
           }
         },
         "th": {
           "stringUnit": {
             "state": "translated",
-            "value": "เกี่ยวกับ cmux"
+            "value": "เกี่ยวกับ cmux Mochi"
           }
         },
         "tr": {
           "stringUnit": {
             "state": "translated",
-            "value": "cmux Hakkında"
+            "value": "cmux Mochi Hakkında"
           }
         },
         "uk": {
           "stringUnit": {
             "state": "translated",
-            "value": "Про cmux"
+            "value": "Про cmux Mochi"
           }
         }
       }
@@ -46324,115 +46324,115 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Quit cmux"
+            "value": "Quit cmux Mochi"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "cmux を終了"
+            "value": "cmux Mochi を終了"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "退出 cmux"
+            "value": "退出 cmux Mochi"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "結束 cmux"
+            "value": "結束 cmux Mochi"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "cmux 종료"
+            "value": "cmux Mochi 종료"
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "cmux beenden"
+            "value": "cmux Mochi beenden"
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Salir de cmux"
+            "value": "Salir de cmux Mochi"
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Quitter cmux"
+            "value": "Quitter cmux Mochi"
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Esci da cmux"
+            "value": "Esci da cmux Mochi"
           }
         },
         "da": {
           "stringUnit": {
             "state": "translated",
-            "value": "Afslut cmux"
+            "value": "Afslut cmux Mochi"
           }
         },
         "pl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Zakończ cmux"
+            "value": "Zakończ cmux Mochi"
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Завершить cmux"
+            "value": "Завершить cmux Mochi"
           }
         },
         "bs": {
           "stringUnit": {
             "state": "translated",
-            "value": "Zatvori cmux"
+            "value": "Zatvori cmux Mochi"
           }
         },
         "ar": {
           "stringUnit": {
             "state": "translated",
-            "value": "إنهاء cmux"
+            "value": "إنهاء cmux Mochi"
           }
         },
         "nb": {
           "stringUnit": {
             "state": "translated",
-            "value": "Avslutt cmux"
+            "value": "Avslutt cmux Mochi"
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "Encerrar o cmux"
+            "value": "Encerrar o cmux Mochi"
           }
         },
         "th": {
           "stringUnit": {
             "state": "translated",
-            "value": "ออกจาก cmux"
+            "value": "ออกจาก cmux Mochi"
           }
         },
         "tr": {
           "stringUnit": {
             "state": "translated",
-            "value": "cmux'tan Çık"
+            "value": "cmux Mochi'tan Çık"
           }
         },
         "uk": {
           "stringUnit": {
             "state": "translated",
-            "value": "Завершити cmux"
+            "value": "Завершити cmux Mochi"
           }
         }
       }
@@ -90982,115 +90982,115 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Show cmux"
+            "value": "Show cmux Mochi"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "cmuxを表示"
+            "value": "cmux Mochiを表示"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "显示 cmux"
+            "value": "显示 cmux Mochi"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "顯示 cmux"
+            "value": "顯示 cmux Mochi"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "cmux 표시"
+            "value": "cmux Mochi 표시"
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "cmux anzeigen"
+            "value": "cmux Mochi anzeigen"
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Mostrar cmux"
+            "value": "Mostrar cmux Mochi"
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Afficher cmux"
+            "value": "Afficher cmux Mochi"
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Mostra cmux"
+            "value": "Mostra cmux Mochi"
           }
         },
         "da": {
           "stringUnit": {
             "state": "translated",
-            "value": "Vis cmux"
+            "value": "Vis cmux Mochi"
           }
         },
         "pl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Pokaż cmux"
+            "value": "Pokaż cmux Mochi"
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Показать cmux"
+            "value": "Показать cmux Mochi"
           }
         },
         "bs": {
           "stringUnit": {
             "state": "translated",
-            "value": "Prikaži cmux"
+            "value": "Prikaži cmux Mochi"
           }
         },
         "ar": {
           "stringUnit": {
             "state": "translated",
-            "value": "عرض cmux"
+            "value": "عرض cmux Mochi"
           }
         },
         "nb": {
           "stringUnit": {
             "state": "translated",
-            "value": "Vis cmux"
+            "value": "Vis cmux Mochi"
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "Mostrar cmux"
+            "value": "Mostrar cmux Mochi"
           }
         },
         "th": {
           "stringUnit": {
             "state": "translated",
-            "value": "แสดง cmux"
+            "value": "แสดง cmux Mochi"
           }
         },
         "tr": {
           "stringUnit": {
             "state": "translated",
-            "value": "cmux'u Göster"
+            "value": "cmux Mochi'u Göster"
           }
         },
         "uk": {
           "stringUnit": {
             "state": "translated",
-            "value": "Показати cmux"
+            "value": "Показати cmux Mochi"
           }
         }
       }

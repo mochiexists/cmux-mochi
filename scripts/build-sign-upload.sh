@@ -48,7 +48,7 @@ fi
 TAG="$1"
 SIGN_HASH="A050CC7E193C8221BDBA204E731B046CDCCC1B30"
 ENTITLEMENTS="cmux.entitlements"
-APP_PATH="build/Build/Products/Release/cmux.app"
+APP_PATH="build/Build/Products/Release/cmux Mochi.app"
 
 # --- Pre-flight ---
 source ~/.secrets/cmuxterm.env
@@ -174,7 +174,7 @@ cask "cmux" do
   sha256 "${DMG_SHA256}"
 
   url "https://github.com/mochiexists/cmux-mochi/releases/download/v#{version}/cmux-macos.dmg"
-  name "cmux"
+  name "cmux Mochi"
   desc "Lightweight native macOS terminal with vertical tabs for AI coding agents"
   homepage "https://github.com/mochiexists/cmux-mochi"
 
@@ -185,8 +185,8 @@ cask "cmux" do
 
   depends_on macos: ">= :ventura"
 
-  app "cmux.app"
-  binary "#{appdir}/cmux.app/Contents/Resources/bin/cmux"
+  app "cmux Mochi.app"
+  binary "#{appdir}/cmux Mochi.app/Contents/Resources/bin/cmux"
 
   zap trash: [
     "~/Library/Application Support/cmux",

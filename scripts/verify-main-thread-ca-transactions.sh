@@ -9,8 +9,8 @@ HOLD_SECONDS="${CMUX_CA_ASSERT_HOLD_SECONDS:-8}"
 APP_PID_FILE="${CMUX_CA_ASSERT_PID_FILE:-/tmp/cmux-ca-main-thread-${TAG}.pid}"
 
 if [ -z "$APP_PATH" ]; then
-  echo "usage: CMUX_APP_PATH=/path/to/cmux.app $0" >&2
-  echo "   or: $0 /path/to/cmux.app" >&2
+  echo "usage: CMUX_APP_PATH=/path/to/cmux Mochi.app $0" >&2
+  echo "   or: $0 /path/to/cmux Mochi.app" >&2
   exit 2
 fi
 
@@ -20,12 +20,15 @@ if [ ! -d "$APP_PATH" ]; then
 fi
 
 APP_BASENAME="$(basename "$APP_PATH")"
-if [ "$APP_BASENAME" = "cmux DEV.app" ] && [ "${CMUX_ALLOW_UNTAGGED_CA_REGRESSION:-0}" != "1" ]; then
-  echo "ERROR: refusing to launch untagged cmux DEV.app without CMUX_ALLOW_UNTAGGED_CA_REGRESSION=1" >&2
+if [ "$APP_BASENAME" = "cmux Mochi DEV.app" ] && [ "${CMUX_ALLOW_UNTAGGED_CA_REGRESSION:-0}" != "1" ]; then
+  echo "ERROR: refusing to launch untagged cmux Mochi DEV.app without CMUX_ALLOW_UNTAGGED_CA_REGRESSION=1" >&2
   exit 2
 fi
 
-BINARY="$APP_PATH/Contents/MacOS/cmux DEV"
+BINARY="$APP_PATH/Contents/MacOS/cmux Mochi DEV"
+if [ ! -x "$BINARY" ]; then
+  BINARY="$APP_PATH/Contents/MacOS/cmux Mochi"
+fi
 if [ ! -x "$BINARY" ]; then
   BINARY="$APP_PATH/Contents/MacOS/cmux"
 fi
