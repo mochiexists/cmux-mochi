@@ -626,7 +626,7 @@ enum CLIIDFormat: String {
 }
 
 enum SocketPasswordResolver {
-    private static let service = "com.cmuxterm.app.socket-control"
+    private static let service = "com.cmux-mochi.socket-control"
     private static let account = "local-socket-password"
     private static let directoryName = "cmux"
     private static let fileName = "socket-control-password"
@@ -1906,7 +1906,7 @@ struct CMUXCLI {
     }
 
     private static let browserDisabledDefaultsKey = "browserDisabledOverride"
-    private static let defaultBrowserSettingsDomain = "com.cmuxterm.app"
+    private static let defaultBrowserSettingsDomain = "com.cmux-mochi"
 
     private static func currentExecutableURL() -> URL? {
         var size: UInt32 = 0

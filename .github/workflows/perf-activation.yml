@@ -95,7 +95,7 @@ jobs:
           APP_PATH="$HOME/Library/Developer/Xcode/DerivedData/cmux-$PERF_TAG/Build/Products/Debug/cmux Mochi DEV $PERF_TAG.app"
           swift scripts/bench-window-visibility.swift \
             "$APP_PATH" \
-            "com.cmuxterm.app.debug.$PERF_TAG" \
+            "com.cmux-mochi.debug.$PERF_TAG" \
             30 \
             --cmd-tab-activation \
             --cg-visibility \

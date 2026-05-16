@@ -115,7 +115,7 @@ jobs:
             zap trash: [
               "~/Library/Application Support/cmux",
               "~/Library/Caches/cmux",
-              "~/Library/Preferences/com.cmuxterm.app.plist",
+              "~/Library/Preferences/com.cmux-mochi.plist",
             ]
           end
           CASKEOF

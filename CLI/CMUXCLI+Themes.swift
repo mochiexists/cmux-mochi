@@ -2,7 +2,7 @@ import Foundation
 import Darwin
 
 extension CMUXCLI {
-    static let cmuxThemeOverrideBundleIdentifier = "com.cmuxterm.app"
+    static let cmuxThemeOverrideBundleIdentifier = "com.cmux-mochi"
     static let cmuxThemesBlockStart = "# cmux themes start"
     static let cmuxThemesBlockEnd = "# cmux themes end"
     static let cmuxThemesReloadNotificationName = "com.cmuxterm.themes.reload-config"

@@ -9,7 +9,7 @@ import Security
 #endif
 
 nonisolated private let authLogger = Logger(
-    subsystem: Bundle.main.bundleIdentifier ?? "com.cmuxterm.app",
+    subsystem: Bundle.main.bundleIdentifier ?? "com.cmux-mochi",
     category: "AuthManager"
 )
 
@@ -101,7 +101,7 @@ extension AuthClientProtocol {
 }
 
 enum AuthKeychainServiceName {
-    static let stableFallback = "com.cmuxterm.app.auth"
+    static let stableFallback = "com.cmux-mochi.auth"
 
     static func make(bundleIdentifier: String? = Bundle.main.bundleIdentifier) -> String {
         guard let bundleIdentifier, !bundleIdentifier.isEmpty else {
@@ -801,7 +801,9 @@ final class AuthManager: ObservableObject {
             guard let id = Bundle(url: appURL)?.bundleIdentifier else { return true }
             if ownBundleIDs.contains(id) { return false }
             let lower = id.lowercased()
-            return !lower.hasPrefix("dev.cmux.") && !lower.hasPrefix("com.cmuxterm.")
+            return !lower.hasPrefix("dev.cmux.")
+                && !lower.hasPrefix("com.cmuxterm.")
+                && !lower.hasPrefix("com.cmux-mochi")
         }
         let config = NSWorkspace.OpenConfiguration()
         config.createsNewApplicationInstance = false

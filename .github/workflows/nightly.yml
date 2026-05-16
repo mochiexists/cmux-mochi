@@ -306,11 +306,11 @@ jobs:
 
           prepare_variant \
             "$APP_DIR" \
-            "com.cmuxterm.app.nightly" \
+            "com.cmux-mochi.nightly" \
             "https://files.cmux.com/nightly/appcast.xml"
 
           echo "Nightly app name: cmux NIGHTLY"
-          echo "Nightly bundle ID: com.cmuxterm.app.nightly"
+          echo "Nightly bundle ID: com.cmux-mochi.nightly"
           echo "Nightly marketing version: ${NIGHTLY_MARKETING_VERSION}"
           echo "Nightly build number: ${NIGHTLY_BUILD}"
           echo "Nightly immutable DMG: ${NIGHTLY_DMG_IMMUTABLE}"
@@ -386,51 +386,6 @@ jobs:
           security import /tmp/cert.p12 -k build.keychain -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign -T /usr/bin/security
           security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" build.keychain
           security list-keychains -d user -s build.keychain
-
-      - name: Embed nightly provisioning profile
-        if: needs.decide.outputs.should_publish != 'true' || (steps.current_head_prebuild.outputs.still_current == 'true' && steps.current_head_postbuild.outputs.still_current == 'true')
-        env:
-          APPLE_NIGHTLY_PROVISIONING_PROFILE_BASE64: ${{ secrets.APPLE_NIGHTLY_PROVISIONING_PROFILE_BASE64 }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        run: |
-          if [ -z "$APPLE_NIGHTLY_PROVISIONING_PROFILE_BASE64" ]; then
-            echo "Missing APPLE_NIGHTLY_PROVISIONING_PROFILE_BASE64 secret" >&2
-            exit 1
-          fi
-          if [ -z "$APPLE_TEAM_ID" ]; then
-            echo "Missing APPLE_TEAM_ID secret" >&2
-            exit 1
-          fi
-
-          APP_PATH="build-universal/Build/Products/Release/cmux NIGHTLY.app"
-          PROFILE_PATH="$APP_PATH/Contents/embedded.provisionprofile"
-          TMP_PROFILE="$(mktemp /tmp/cmux-nightly-profile.XXXXXX)"
-          TMP_PLIST="$(mktemp /tmp/cmux-nightly-profile.XXXXXX.plist)"
-          trap 'rm -f "$TMP_PROFILE" "$TMP_PLIST"' EXIT
-
-          echo "$APPLE_NIGHTLY_PROVISIONING_PROFILE_BASE64" | base64 --decode > "$TMP_PROFILE"
-          security cms -D -i "$TMP_PROFILE" > "$TMP_PLIST"
-
-          APP_ID="$(/usr/libexec/PlistBuddy -c "Print :Entitlements:com.apple.application-identifier" "$TMP_PLIST")"
-          EXPECTED_APP_ID="${APPLE_TEAM_ID}.com.cmuxterm.app.nightly"
-          if [ "$APP_ID" != "$EXPECTED_APP_ID" ]; then
-            echo "Nightly provisioning profile targets unexpected app ID: $APP_ID" >&2
-            exit 1
-          fi
-
-          WEBAUTHN_ENTITLEMENT="$(/usr/libexec/PlistBuddy -c "Print :Entitlements:com.apple.developer.web-browser.public-key-credential" "$TMP_PLIST")"
-          if [ "$WEBAUTHN_ENTITLEMENT" != "true" ]; then
-            echo "Nightly provisioning profile is missing WebAuthn browser entitlement" >&2
-            exit 1
-          fi
-
-          PROVISIONS_ALL_DEVICES="$(/usr/libexec/PlistBuddy -c "Print :ProvisionsAllDevices" "$TMP_PLIST")"
-          if [ "$PROVISIONS_ALL_DEVICES" != "true" ]; then
-            echo "Nightly provisioning profile is not a Developer ID all-devices profile" >&2
-            exit 1
-          fi
-
-          cp "$TMP_PROFILE" "$PROFILE_PATH"
 
       - name: Codesign apps
         if: needs.decide.outputs.should_publish != 'true' || (steps.current_head_prebuild.outputs.still_current == 'true' && steps.current_head_postbuild.outputs.still_current == 'true')
@@ -606,7 +561,7 @@ jobs:
             Automated nightly build for `${{ needs.decide.outputs.short_sha }}`.
 
             **cmux NIGHTLY** is published as a universal app:
-            - bundle ID `com.cmuxterm.app.nightly`
+            - bundle ID `com.cmux-mochi.nightly`
             - feed `appcast.xml`
             - compatibility feed `appcast-universal.xml` for older universal nightlies
 

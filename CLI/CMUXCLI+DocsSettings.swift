@@ -5,7 +5,7 @@ extension CMUXCLI {
     static let settingsSchemaURL = "https://raw.githubusercontent.com/mochiexists/cmux-mochi/main/web/data/cmux.schema.json"
     static let primarySettingsDisplayPath = "~/.config/cmux/cmux.json"
     static let legacySettingsDisplayPath = "~/.config/cmux/settings.json"
-    static let fallbackSettingsDisplayPath = "~/Library/Application Support/com.cmuxterm.app/settings.json"
+    static let fallbackSettingsDisplayPath = "~/Library/Application Support/com.cmux-mochi/settings.json"
 
     private struct DocsResource {
         let label: String

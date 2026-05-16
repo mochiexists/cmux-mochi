@@ -16,14 +16,14 @@ final class GhosttyConfigPathResolverTests: XCTestCase {
         try withTemporaryAppSupportDirectory { appSupportDirectory in
             let releaseConfigURL = try writeAppSupportConfig(
                 appSupportDirectory: appSupportDirectory,
-                bundleIdentifier: "com.cmuxterm.app",
+                bundleIdentifier: "com.cmux-mochi",
                 filename: "config",
                 contents: "font-size = 13\n"
             )
 
             XCTAssertEqual(
                 GhosttyApp.cmuxAppSupportConfigURLs(
-                    currentBundleIdentifier: "com.cmuxterm.app.debug",
+                    currentBundleIdentifier: "com.cmux-mochi.debug",
                     appSupportDirectory: appSupportDirectory
                 ),
                 [releaseConfigURL]
@@ -35,20 +35,20 @@ final class GhosttyConfigPathResolverTests: XCTestCase {
         try withTemporaryAppSupportDirectory { appSupportDirectory in
             _ = try writeAppSupportConfig(
                 appSupportDirectory: appSupportDirectory,
-                bundleIdentifier: "com.cmuxterm.app",
+                bundleIdentifier: "com.cmux-mochi",
                 filename: "config",
                 contents: "background = #000000\n"
             )
             let preferredConfigURL = try writeAppSupportConfig(
                 appSupportDirectory: appSupportDirectory,
-                bundleIdentifier: "com.cmuxterm.app",
+                bundleIdentifier: "com.cmux-mochi",
                 filename: "config.ghostty",
                 contents: "theme = light:3024 Day,dark:3024 Night\n"
             )
 
             XCTAssertEqual(
                 GhosttyApp.cmuxAppSupportConfigURLs(
-                    currentBundleIdentifier: "com.cmuxterm.app.debug.issue-3478",
+                    currentBundleIdentifier: "com.cmux-mochi.debug.issue-3478",
                     appSupportDirectory: appSupportDirectory
                 ),
                 [preferredConfigURL]
@@ -60,20 +60,20 @@ final class GhosttyConfigPathResolverTests: XCTestCase {
         try withTemporaryAppSupportDirectory { appSupportDirectory in
             _ = try writeAppSupportConfig(
                 appSupportDirectory: appSupportDirectory,
-                bundleIdentifier: "com.cmuxterm.app",
+                bundleIdentifier: "com.cmux-mochi",
                 filename: "config",
                 contents: "font-size = 13\n"
             )
             let currentConfigURL = try writeAppSupportConfig(
                 appSupportDirectory: appSupportDirectory,
-                bundleIdentifier: "com.cmuxterm.app.debug.issue-829",
+                bundleIdentifier: "com.cmux-mochi.debug.issue-829",
                 filename: "config.ghostty",
                 contents: "font-size = 14\n"
             )
 
             XCTAssertEqual(
                 GhosttyApp.cmuxAppSupportConfigURLs(
-                    currentBundleIdentifier: "com.cmuxterm.app.debug.issue-829",
+                    currentBundleIdentifier: "com.cmux-mochi.debug.issue-829",
                     appSupportDirectory: appSupportDirectory
                 ),
                 [currentConfigURL]
@@ -85,7 +85,7 @@ final class GhosttyConfigPathResolverTests: XCTestCase {
         try withTemporaryAppSupportDirectory { appSupportDirectory in
             let fileManager = FileManager.default
             let bundleDirectory = appSupportDirectory
-                .appendingPathComponent("com.cmuxterm.app.debug.issue-3518", isDirectory: true)
+                .appendingPathComponent("com.cmux-mochi.debug.issue-3518", isDirectory: true)
             try fileManager.createDirectory(at: bundleDirectory, withIntermediateDirectories: true)
 
             let dotfilesDirectory = appSupportDirectory
@@ -103,7 +103,7 @@ final class GhosttyConfigPathResolverTests: XCTestCase {
 
             XCTAssertEqual(
                 GhosttyApp.cmuxAppSupportConfigURLs(
-                    currentBundleIdentifier: "com.cmuxterm.app.debug.issue-3518",
+                    currentBundleIdentifier: "com.cmux-mochi.debug.issue-3518",
                     appSupportDirectory: appSupportDirectory
                 ),
                 [symlinkedConfigURL]
@@ -118,7 +118,7 @@ final class GhosttyConfigPathResolverTests: XCTestCase {
                 .appendingPathComponent("Library", isDirectory: true)
                 .appendingPathComponent("Application Support", isDirectory: true)
             let bundleDirectory = appSupportDirectory
-                .appendingPathComponent("com.cmuxterm.app.debug.issue-3518", isDirectory: true)
+                .appendingPathComponent("com.cmux-mochi.debug.issue-3518", isDirectory: true)
             try fileManager.createDirectory(at: bundleDirectory, withIntermediateDirectories: true)
 
             let dotfilesDirectory = homeDirectory
@@ -136,7 +136,7 @@ final class GhosttyConfigPathResolverTests: XCTestCase {
 
             let environment = ConfigSourceEnvironment(
                 homeDirectoryURL: homeDirectory,
-                currentBundleIdentifier: "com.cmuxterm.app.debug.issue-3518"
+                currentBundleIdentifier: "com.cmux-mochi.debug.issue-3518"
             )
             try environment.writeCmuxConfigContents("theme = light:Andromeda,dark:3024 Day\n")
 
@@ -159,7 +159,7 @@ final class GhosttyConfigPathResolverTests: XCTestCase {
                 .appendingPathComponent("Library", isDirectory: true)
                 .appendingPathComponent("Application Support", isDirectory: true)
             let bundleDirectory = appSupportDirectory
-                .appendingPathComponent("com.cmuxterm.app.debug.issue-3518", isDirectory: true)
+                .appendingPathComponent("com.cmux-mochi.debug.issue-3518", isDirectory: true)
             let configGhosttyURL = bundleDirectory.appendingPathComponent("config.ghostty", isDirectory: false)
             let legacyConfigURL = bundleDirectory.appendingPathComponent("config", isDirectory: false)
 
@@ -171,7 +171,7 @@ final class GhosttyConfigPathResolverTests: XCTestCase {
 
             let environment = ConfigSourceEnvironment(
                 homeDirectoryURL: homeDirectory,
-                currentBundleIdentifier: "com.cmuxterm.app.debug.issue-3518",
+                currentBundleIdentifier: "com.cmux-mochi.debug.issue-3518",
                 fileManager: fileManager
             )
 
@@ -209,7 +209,7 @@ final class GhosttyConfigPathResolverTests: XCTestCase {
             let snapshot = ConfigSource.synced.snapshot(
                 environment: ConfigSourceEnvironment(
                     homeDirectoryURL: homeDirectory,
-                    currentBundleIdentifier: "com.cmuxterm.app"
+                    currentBundleIdentifier: "com.cmux-mochi"
                 )
             )
 
@@ -219,7 +219,7 @@ final class GhosttyConfigPathResolverTests: XCTestCase {
                 homeDirectory
                     .appendingPathComponent("Library", isDirectory: true)
                     .appendingPathComponent("Application Support", isDirectory: true)
-                    .appendingPathComponent("com.cmuxterm.app", isDirectory: true)
+                    .appendingPathComponent("com.cmux-mochi", isDirectory: true)
                     .appendingPathComponent("config.synced-preview", isDirectory: false)
                     .path,
             ])
@@ -230,20 +230,20 @@ final class GhosttyConfigPathResolverTests: XCTestCase {
         try withTemporaryAppSupportDirectory { appSupportDirectory in
             _ = try writeAppSupportConfig(
                 appSupportDirectory: appSupportDirectory,
-                bundleIdentifier: "com.cmuxterm.app",
+                bundleIdentifier: "com.cmux-mochi",
                 filename: "config.ghostty",
                 contents: "font-size = 13\n"
             )
             let nightlyConfigURL = try writeAppSupportConfig(
                 appSupportDirectory: appSupportDirectory,
-                bundleIdentifier: "com.cmuxterm.app.nightly",
+                bundleIdentifier: "com.cmux-mochi.nightly",
                 filename: "config.ghostty",
                 contents: "font-size = 15\n"
             )
 
             XCTAssertEqual(
                 GhosttyApp.cmuxAppSupportConfigURLs(
-                    currentBundleIdentifier: "com.cmuxterm.app.nightly",
+                    currentBundleIdentifier: "com.cmux-mochi.nightly",
                     appSupportDirectory: appSupportDirectory
                 ),
                 [nightlyConfigURL]
@@ -255,14 +255,14 @@ final class GhosttyConfigPathResolverTests: XCTestCase {
         try withTemporaryAppSupportDirectory { appSupportDirectory in
             let releaseConfigURL = try writeAppSupportConfig(
                 appSupportDirectory: appSupportDirectory,
-                bundleIdentifier: "com.cmuxterm.app",
+                bundleIdentifier: "com.cmux-mochi",
                 filename: "config.ghostty",
                 contents: "font-size = 13\n"
             )
 
             XCTAssertEqual(
                 GhosttyApp.cmuxAppSupportConfigURLs(
-                    currentBundleIdentifier: "com.cmuxterm.app.nightly",
+                    currentBundleIdentifier: "com.cmux-mochi.nightly",
                     appSupportDirectory: appSupportDirectory
                 ),
                 [releaseConfigURL]
@@ -274,20 +274,20 @@ final class GhosttyConfigPathResolverTests: XCTestCase {
         try withTemporaryAppSupportDirectory { appSupportDirectory in
             _ = try writeAppSupportConfig(
                 appSupportDirectory: appSupportDirectory,
-                bundleIdentifier: "com.cmuxterm.app",
+                bundleIdentifier: "com.cmux-mochi",
                 filename: "config.ghostty",
                 contents: "font-size = 13\n"
             )
             let stagingConfigURL = try writeAppSupportConfig(
                 appSupportDirectory: appSupportDirectory,
-                bundleIdentifier: "com.cmuxterm.app.staging",
+                bundleIdentifier: "com.cmux-mochi.staging",
                 filename: "config.ghostty",
                 contents: "font-size = 15\n"
             )
 
             XCTAssertEqual(
                 GhosttyApp.cmuxAppSupportConfigURLs(
-                    currentBundleIdentifier: "com.cmuxterm.app.staging",
+                    currentBundleIdentifier: "com.cmux-mochi.staging",
                     appSupportDirectory: appSupportDirectory
                 ),
                 [stagingConfigURL]
@@ -299,14 +299,14 @@ final class GhosttyConfigPathResolverTests: XCTestCase {
         try withTemporaryAppSupportDirectory { appSupportDirectory in
             let releaseConfigURL = try writeAppSupportConfig(
                 appSupportDirectory: appSupportDirectory,
-                bundleIdentifier: "com.cmuxterm.app",
+                bundleIdentifier: "com.cmux-mochi",
                 filename: "config.ghostty",
                 contents: "font-size = 13\n"
             )
 
             XCTAssertEqual(
                 GhosttyApp.cmuxAppSupportConfigURLs(
-                    currentBundleIdentifier: "com.cmuxterm.app.staging",
+                    currentBundleIdentifier: "com.cmux-mochi.staging",
                     appSupportDirectory: appSupportDirectory
                 ),
                 [releaseConfigURL]
@@ -318,19 +318,19 @@ final class GhosttyConfigPathResolverTests: XCTestCase {
         try withTemporaryAppSupportDirectory { appSupportDirectory in
             let legacyConfigURL = try writeAppSupportConfig(
                 appSupportDirectory: appSupportDirectory,
-                bundleIdentifier: "com.cmuxterm.app",
+                bundleIdentifier: "com.cmux-mochi",
                 filename: "config",
                 contents: "background = #000000\n"
             )
             let preferredConfigURL = try writeAppSupportConfig(
                 appSupportDirectory: appSupportDirectory,
-                bundleIdentifier: "com.cmuxterm.app",
+                bundleIdentifier: "com.cmux-mochi",
                 filename: "config.ghostty",
                 contents: "theme = light:3024 Day,dark:3024 Night\n"
             )
 
             let paths = GhosttyApp.loadedGhosttyConfigScanPaths(
-                currentBundleIdentifier: "com.cmuxterm.app.debug.issue-3478",
+                currentBundleIdentifier: "com.cmux-mochi.debug.issue-3478",
                 appSupportDirectory: appSupportDirectory
             )
 
@@ -343,7 +343,7 @@ final class GhosttyConfigPathResolverTests: XCTestCase {
         try withTemporaryAppSupportDirectory { appSupportDirectory in
             _ = try writeAppSupportConfig(
                 appSupportDirectory: appSupportDirectory,
-                bundleIdentifier: "com.cmuxterm.app",
+                bundleIdentifier: "com.cmux-mochi",
                 filename: "config",
                 contents: "font-size = 13\n"
             )
@@ -361,20 +361,20 @@ final class GhosttyConfigPathResolverTests: XCTestCase {
         try withTemporaryAppSupportDirectory { appSupportDirectory in
             let legacyConfigURL = try writeAppSupportConfig(
                 appSupportDirectory: appSupportDirectory,
-                bundleIdentifier: "com.cmuxterm.app",
+                bundleIdentifier: "com.cmux-mochi",
                 filename: "config",
                 contents: "background = #000000\n"
             )
             _ = try writeAppSupportConfig(
                 appSupportDirectory: appSupportDirectory,
-                bundleIdentifier: "com.cmuxterm.app",
+                bundleIdentifier: "com.cmux-mochi",
                 filename: "config.ghostty",
                 contents: ""
             )
 
             XCTAssertEqual(
                 CmuxGhosttyConfigPathResolver.activeOrEditableConfigURL(
-                    currentBundleIdentifier: "com.cmuxterm.app",
+                    currentBundleIdentifier: "com.cmux-mochi",
                     appSupportDirectory: appSupportDirectory
                 ),
                 legacyConfigURL
@@ -385,12 +385,12 @@ final class GhosttyConfigPathResolverTests: XCTestCase {
     func testCmuxConfigPathResolverTargetsCurrentConfigGhosttyWhenNoActiveConfigExists() throws {
         try withTemporaryAppSupportDirectory { appSupportDirectory in
             let expectedURL = appSupportDirectory
-                .appendingPathComponent("com.cmuxterm.app.debug.issue-3518", isDirectory: true)
+                .appendingPathComponent("com.cmux-mochi.debug.issue-3518", isDirectory: true)
                 .appendingPathComponent("config.ghostty", isDirectory: false)
 
             XCTAssertEqual(
                 CmuxGhosttyConfigPathResolver.activeOrEditableConfigURL(
-                    currentBundleIdentifier: "com.cmuxterm.app.debug.issue-3518",
+                    currentBundleIdentifier: "com.cmux-mochi.debug.issue-3518",
                     appSupportDirectory: appSupportDirectory
                 ),
                 expectedURL
@@ -402,14 +402,14 @@ final class GhosttyConfigPathResolverTests: XCTestCase {
         try withTemporaryAppSupportDirectory { appSupportDirectory in
             _ = try writeAppSupportConfig(
                 appSupportDirectory: appSupportDirectory,
-                bundleIdentifier: "com.cmuxterm.app",
+                bundleIdentifier: "com.cmux-mochi",
                 filename: "config.ghostty",
                 contents: ""
             )
 
             XCTAssertTrue(
                 GhosttyApp.cmuxAppSupportConfigURLs(
-                    currentBundleIdentifier: "com.cmuxterm.app.debug",
+                    currentBundleIdentifier: "com.cmux-mochi.debug",
                     appSupportDirectory: appSupportDirectory
                 ).isEmpty
             )

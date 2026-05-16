@@ -16,7 +16,7 @@ env:
   RELEASE_REPO: mochiexists/cmux-mochi
   RELEASE_APP_PATH: build-universal/Build/Products/Release/cmux Mochi.app
   RELEASE_APP_BINARY_NAME: cmux Mochi
-  RELEASE_BUNDLE_IDENTIFIER: com.cmuxterm.app
+  RELEASE_BUNDLE_IDENTIFIER: com.cmux-mochi
   RELEASE_FEED_URL: https://github.com/mochiexists/cmux-mochi/releases/latest/download/appcast.xml
 
 jobs:
@@ -246,45 +246,6 @@ jobs:
           security import /tmp/cert.p12 -k build.keychain -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign -T /usr/bin/security
           security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" build.keychain
           security list-keychains -d user -s build.keychain
-
-      - name: Embed release provisioning profile
-        if: steps.guard_release_assets.outputs.skip_all != 'true' && github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
-        env:
-          APPLE_RELEASE_PROVISIONING_PROFILE_BASE64: ${{ secrets.APPLE_RELEASE_PROVISIONING_PROFILE_BASE64 }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        run: |
-          if [ -z "$APPLE_RELEASE_PROVISIONING_PROFILE_BASE64" ]; then
-            echo "Missing APPLE_RELEASE_PROVISIONING_PROFILE_BASE64 secret" >&2
-            exit 1
-          fi
-          if [ -z "$APPLE_TEAM_ID" ]; then
-            echo "Missing APPLE_TEAM_ID secret" >&2
-            exit 1
-          fi
-          APP_PATH="$RELEASE_APP_PATH"
-          PROFILE_PATH="$APP_PATH/Contents/embedded.provisionprofile"
-          TMP_PROFILE="$(mktemp /tmp/cmux-release-profile.XXXXXX)"
-          TMP_PLIST="$(mktemp /tmp/cmux-release-profile.XXXXXX.plist)"
-          trap 'rm -f "$TMP_PROFILE" "$TMP_PLIST"' EXIT
-          echo "$APPLE_RELEASE_PROVISIONING_PROFILE_BASE64" | base64 --decode > "$TMP_PROFILE"
-          security cms -D -i "$TMP_PROFILE" > "$TMP_PLIST"
-          APP_ID="$(/usr/libexec/PlistBuddy -c "Print :Entitlements:com.apple.application-identifier" "$TMP_PLIST")"
-          EXPECTED_APP_ID="${APPLE_TEAM_ID}.${RELEASE_BUNDLE_IDENTIFIER}"
-          if [ "$APP_ID" != "$EXPECTED_APP_ID" ]; then
-            echo "Release provisioning profile targets unexpected app ID: $APP_ID" >&2
-            exit 1
-          fi
-          WEBAUTHN_ENTITLEMENT="$(/usr/libexec/PlistBuddy -c "Print :Entitlements:com.apple.developer.web-browser.public-key-credential" "$TMP_PLIST")"
-          if [ "$WEBAUTHN_ENTITLEMENT" != "true" ]; then
-            echo "Release provisioning profile missing WebAuthn browser entitlement" >&2
-            exit 1
-          fi
-          PROVISIONS_ALL_DEVICES="$(/usr/libexec/PlistBuddy -c "Print :ProvisionsAllDevices" "$TMP_PLIST")"
-          if [ "$PROVISIONS_ALL_DEVICES" != "true" ]; then
-            echo "Release provisioning profile is not a Developer ID all-devices profile" >&2
-            exit 1
-          fi
-          cp "$TMP_PROFILE" "$PROFILE_PATH"
 
       - name: Codesign app
         if: steps.guard_release_assets.outputs.skip_all != 'true' && github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
