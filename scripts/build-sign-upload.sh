@@ -48,7 +48,9 @@ fi
 TAG="$1"
 SIGN_HASH="A050CC7E193C8221BDBA204E731B046CDCCC1B30"
 ENTITLEMENTS="cmux.entitlements"
-APP_PATH="build/Build/Products/Release/cmux Mochi.app"
+RELEASE_REPO="${RELEASE_REPO:-mochiexists/cmux-mochi}"
+RELEASE_FEED_URL="${RELEASE_FEED_URL:-https://github.com/${RELEASE_REPO}/releases/latest/download/appcast.xml}"
+APP_PATH="${RELEASE_APP_PATH:-build/Build/Products/Release/cmux Mochi.app}"
 
 # --- Pre-flight ---
 source ~/.secrets/cmuxterm.env
@@ -87,7 +89,7 @@ APP_PLIST="$APP_PATH/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c "Delete :SUPublicEDKey" "$APP_PLIST" 2>/dev/null || true
 /usr/libexec/PlistBuddy -c "Delete :SUFeedURL" "$APP_PLIST" 2>/dev/null || true
 /usr/libexec/PlistBuddy -c "Add :SUPublicEDKey string $SPARKLE_PUBLIC_KEY_DERIVED" "$APP_PLIST"
-/usr/libexec/PlistBuddy -c "Add :SUFeedURL string https://github.com/mochiexists/cmux-mochi/releases/latest/download/appcast.xml" "$APP_PLIST"
+/usr/libexec/PlistBuddy -c "Add :SUFeedURL string $RELEASE_FEED_URL" "$APP_PLIST"
 echo "Sparkle keys injected"
 
 # --- Codesign ---
@@ -129,9 +131,9 @@ echo "Generating appcast..."
 ./scripts/sparkle_generate_appcast.sh cmux-macos.dmg "$TAG" appcast.xml
 
 # --- Create GitHub release (if needed) and upload ---
-if gh release view "$TAG" >/dev/null 2>&1; then
+if gh release view "$TAG" --repo "$RELEASE_REPO" >/dev/null 2>&1; then
   echo "Release $TAG already exists"
-  EXISTING_ASSETS="$(gh release view "$TAG" --json assets --jq '.assets[].name' || true)"
+  EXISTING_ASSETS="$(gh release view "$TAG" --repo "$RELEASE_REPO" --json assets --jq '.assets[].name' || true)"
   HAS_CONFLICTING_ASSET="false"
   for asset in cmux-macos.dmg appcast.xml; do
     if printf '%s\n' "$EXISTING_ASSETS" | grep -Fxq "$asset"; then
@@ -148,18 +150,18 @@ if gh release view "$TAG" >/dev/null 2>&1; then
 
   if [[ "$ALLOW_OVERWRITE" == "true" ]]; then
     echo "Uploading with overwrite enabled for existing release $TAG..."
-    gh release upload "$TAG" cmux-macos.dmg appcast.xml --clobber
+    gh release upload "$TAG" cmux-macos.dmg appcast.xml --repo "$RELEASE_REPO" --clobber
   else
     echo "Uploading to existing release $TAG..."
-    gh release upload "$TAG" cmux-macos.dmg appcast.xml
+    gh release upload "$TAG" cmux-macos.dmg appcast.xml --repo "$RELEASE_REPO"
   fi
 else
   echo "Creating release $TAG and uploading..."
-  gh release create "$TAG" cmux-macos.dmg appcast.xml --title "$TAG" --notes "See CHANGELOG.md for details"
+  gh release create "$TAG" cmux-macos.dmg appcast.xml --repo "$RELEASE_REPO" --title "$TAG" --notes "See CHANGELOG.md for details"
 fi
 
 # --- Verify ---
-gh release view "$TAG"
+gh release view "$TAG" --repo "$RELEASE_REPO"
 
 # --- Update Homebrew cask (skip for nightlies) ---
 if [[ "$TAG" != *"-nightly"* ]]; then
@@ -173,10 +175,10 @@ cask "cmux" do
   version "${VERSION}"
   sha256 "${DMG_SHA256}"
 
-  url "https://github.com/mochiexists/cmux-mochi/releases/download/v#{version}/cmux-macos.dmg"
+  url "https://github.com/${RELEASE_REPO}/releases/download/v#{version}/cmux-macos.dmg"
   name "cmux Mochi"
   desc "Lightweight native macOS terminal with vertical tabs for AI coding agents"
-  homepage "https://github.com/mochiexists/cmux-mochi"
+  homepage "https://github.com/${RELEASE_REPO}"
 
   livecheck do
     url :url

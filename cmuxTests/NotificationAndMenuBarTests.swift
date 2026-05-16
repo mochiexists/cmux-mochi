@@ -7,7 +7,11 @@ import ObjectiveC.runtime
 import Bonsplit
 import UserNotifications
 
-#if canImport(cmux_DEV)
+#if canImport(cmux_Mochi_DEV)
+@testable import cmux_Mochi_DEV
+#elseif canImport(cmux_Mochi)
+@testable import cmux_Mochi
+#elseif canImport(cmux_DEV)
 @testable import cmux_DEV
 #elseif canImport(cmux)
 @testable import cmux
@@ -1169,19 +1173,19 @@ final class NotificationMenuSnapshotBuilderTests: XCTestCase {
 
 final class MenuBarBuildHintFormatterTests: XCTestCase {
     func testReleaseBuildShowsNoHint() {
-        XCTAssertNil(MenuBarBuildHintFormatter.menuTitle(appName: "cmux DEV menubar-extra", isDebugBuild: false))
+        XCTAssertNil(MenuBarBuildHintFormatter.menuTitle(appName: "cmux Mochi DEV menubar-extra", isDebugBuild: false))
     }
 
     func testDebugBuildWithTagShowsTag() {
         XCTAssertEqual(
-            MenuBarBuildHintFormatter.menuTitle(appName: "cmux DEV menubar-extra", isDebugBuild: true),
+            MenuBarBuildHintFormatter.menuTitle(appName: "cmux Mochi DEV menubar-extra", isDebugBuild: true),
             "Build Tag: menubar-extra"
         )
     }
 
     func testDebugBuildWithoutTagShowsUntagged() {
         XCTAssertEqual(
-            MenuBarBuildHintFormatter.menuTitle(appName: "cmux DEV", isDebugBuild: true),
+            MenuBarBuildHintFormatter.menuTitle(appName: "cmux Mochi DEV", isDebugBuild: true),
             "Build: DEV (untagged)"
         )
     }

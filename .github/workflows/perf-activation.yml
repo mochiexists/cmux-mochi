@@ -92,7 +92,7 @@ jobs:
       - name: Run Cmd-Tab activation benchmark
         run: |
           set -euo pipefail
-          APP_PATH="$HOME/Library/Developer/Xcode/DerivedData/cmux-$PERF_TAG/Build/Products/Debug/cmux DEV $PERF_TAG.app"
+          APP_PATH="$HOME/Library/Developer/Xcode/DerivedData/cmux-$PERF_TAG/Build/Products/Debug/cmux Mochi DEV $PERF_TAG.app"
           swift scripts/bench-window-visibility.swift \
             "$APP_PATH" \
             "com.cmuxterm.app.debug.$PERF_TAG" \
@@ -163,5 +163,5 @@ jobs:
       - name: Cleanup tagged app
         if: always()
         run: |
-          pkill -f "cmux DEV ${PERF_TAG}.app/Contents/MacOS/cmux DEV" || true
+          pkill -f "cmux Mochi DEV ${PERF_TAG}.app/Contents/MacOS/cmux Mochi DEV" || true
           rm -f "/tmp/cmux-debug-${PERF_TAG}.sock"

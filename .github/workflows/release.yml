@@ -13,6 +13,11 @@ permissions:
 
 env:
   CREATE_DMG_VERSION: 8.0.0
+  RELEASE_REPO: mochiexists/cmux-mochi
+  RELEASE_APP_PATH: build-universal/Build/Products/Release/cmux Mochi.app
+  RELEASE_APP_BINARY_NAME: cmux Mochi
+  RELEASE_BUNDLE_IDENTIFIER: com.cmuxterm.app
+  RELEASE_FEED_URL: https://github.com/mochiexists/cmux-mochi/releases/latest/download/appcast.xml
 
 jobs:
   build-sign-notarize:
@@ -161,9 +166,9 @@ jobs:
         if: steps.guard_release_assets.outputs.skip_all != 'true'
         run: |
           set -euo pipefail
-          APP_BINARY="build-universal/Build/Products/Release/cmux Mochi.app/Contents/MacOS/cmux Mochi"
-          CLI_BINARY="build-universal/Build/Products/Release/cmux Mochi.app/Contents/Resources/bin/cmux"
-          HELPER_BINARY="build-universal/Build/Products/Release/cmux Mochi.app/Contents/Resources/bin/ghostty"
+          APP_BINARY="$RELEASE_APP_PATH/Contents/MacOS/$RELEASE_APP_BINARY_NAME"
+          CLI_BINARY="$RELEASE_APP_PATH/Contents/Resources/bin/cmux"
+          HELPER_BINARY="$RELEASE_APP_PATH/Contents/Resources/bin/ghostty"
           APP_ARCHS="$(lipo -archs "$APP_BINARY")"
           CLI_ARCHS="$(lipo -archs "$CLI_BINARY")"
           HELPER_ARCHS="$(lipo -archs "$HELPER_BINARY")"
@@ -178,12 +183,12 @@ jobs:
         if: steps.guard_release_assets.outputs.skip_all != 'true'
         run: |
           set -euo pipefail
-          APP_PLIST="build-universal/Build/Products/Release/cmux Mochi.app/Contents/Info.plist"
+          APP_PLIST="$RELEASE_APP_PATH/Contents/Info.plist"
           APP_VERSION=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$APP_PLIST")
           ./scripts/build_remote_daemon_release_assets.sh \
             --version "$APP_VERSION" \
             --release-tag "$GITHUB_REF_NAME" \
-            --repo "mochiexists/cmux-mochi" \
+            --repo "$RELEASE_REPO" \
             --output-dir "remote-daemon-assets"
           MANIFEST_JSON="$(python3 -c 'import json,sys; print(json.dumps(json.load(open(sys.argv[1], encoding="utf-8")), separators=(",",":")))' remote-daemon-assets/cmuxd-remote-manifest.json)"
           plutil -remove CMUXRemoteDaemonManifestJSON "$APP_PLIST" >/dev/null 2>&1 || true
@@ -193,7 +198,7 @@ jobs:
         if: steps.guard_release_assets.outputs.skip_all != 'true'
         run: |
           set -euo pipefail
-          CLI_BINARY="build-universal/Build/Products/Release/cmux Mochi.app/Contents/Resources/bin/cmux"
+          CLI_BINARY="$RELEASE_APP_PATH/Contents/Resources/bin/cmux"
           [ -x "$CLI_BINARY" ] || { echo "cmux CLI binary not found at $CLI_BINARY" >&2; exit 1; }
           CMUX_CLI_BIN="$CLI_BINARY" python3 tests/test_cli_version_memory_guard.py
 
@@ -201,19 +206,19 @@ jobs:
         if: steps.guard_release_assets.outputs.skip_all != 'true'
         run: |
           set -euo pipefail
-          HELPER_BINARY="build-universal/Build/Products/Release/cmux Mochi.app/Contents/Resources/bin/ghostty"
+          HELPER_BINARY="$RELEASE_APP_PATH/Contents/Resources/bin/ghostty"
           [ -x "$HELPER_BINARY" ] || { echo "Ghostty theme picker helper not found at $HELPER_BINARY" >&2; exit 1; }
 
       - name: Inject Sparkle keys into Info.plist
         if: steps.guard_release_assets.outputs.skip_all != 'true' && github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
         run: |
-          APP_PLIST="build-universal/Build/Products/Release/cmux Mochi.app/Contents/Info.plist"
+          APP_PLIST="$RELEASE_APP_PATH/Contents/Info.plist"
           /usr/libexec/PlistBuddy -c "Delete :SUPublicEDKey" "$APP_PLIST" >/dev/null 2>&1 || true
           /usr/libexec/PlistBuddy -c "Delete :SUFeedURL" "$APP_PLIST" >/dev/null 2>&1 || true
           echo "Adding SUPublicEDKey to Info.plist..."
           /usr/libexec/PlistBuddy -c "Add :SUPublicEDKey string ${SPARKLE_PUBLIC_KEY}" "$APP_PLIST"
           echo "Adding SUFeedURL to Info.plist..."
-          /usr/libexec/PlistBuddy -c "Add :SUFeedURL string https://github.com/mochiexists/cmux-mochi/releases/latest/download/appcast.xml" "$APP_PLIST"
+          /usr/libexec/PlistBuddy -c "Add :SUFeedURL string ${RELEASE_FEED_URL}" "$APP_PLIST"
           echo "Verifying:"
           /usr/libexec/PlistBuddy -c "Print :SUPublicEDKey" "$APP_PLIST"
           /usr/libexec/PlistBuddy -c "Print :SUFeedURL" "$APP_PLIST"
@@ -256,7 +261,7 @@ jobs:
             echo "Missing APPLE_TEAM_ID secret" >&2
             exit 1
           fi
-          APP_PATH="build-universal/Build/Products/Release/cmux Mochi.app"
+          APP_PATH="$RELEASE_APP_PATH"
           PROFILE_PATH="$APP_PATH/Contents/embedded.provisionprofile"
           TMP_PROFILE="$(mktemp /tmp/cmux-release-profile.XXXXXX)"
           TMP_PLIST="$(mktemp /tmp/cmux-release-profile.XXXXXX.plist)"
@@ -264,7 +269,7 @@ jobs:
           echo "$APPLE_RELEASE_PROVISIONING_PROFILE_BASE64" | base64 --decode > "$TMP_PROFILE"
           security cms -D -i "$TMP_PROFILE" > "$TMP_PLIST"
           APP_ID="$(/usr/libexec/PlistBuddy -c "Print :Entitlements:com.apple.application-identifier" "$TMP_PLIST")"
-          EXPECTED_APP_ID="${APPLE_TEAM_ID}.com.cmuxterm.app"
+          EXPECTED_APP_ID="${APPLE_TEAM_ID}.${RELEASE_BUNDLE_IDENTIFIER}"
           if [ "$APP_ID" != "$EXPECTED_APP_ID" ]; then
             echo "Release provisioning profile targets unexpected app ID: $APP_ID" >&2
             exit 1
@@ -295,7 +300,7 @@ jobs:
             echo "Missing APPLE_TEAM_ID secret" >&2
             exit 1
           fi
-          APP_PATH="build-universal/Build/Products/Release/cmux Mochi.app"
+          APP_PATH="$RELEASE_APP_PATH"
           ./scripts/sign-cmux-bundle.sh \
             "$APP_PATH" \
             cmux.release.entitlements \
@@ -313,7 +318,7 @@ jobs:
             echo "Missing notarization secrets (APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD, APPLE_TEAM_ID)" >&2
             exit 1
           fi
-          APP_PATH="build-universal/Build/Products/Release/cmux Mochi.app"
+          APP_PATH="$RELEASE_APP_PATH"
           ZIP_SUBMIT="cmux-notary.zip"
           DMG_RELEASE="cmux-macos.dmg"
           ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" "$ZIP_SUBMIT"
@@ -424,7 +429,7 @@ jobs:
           # Guard: only upload if this tag is the highest semver release.
           # Prevents a backport tag (e.g. v0.62.1 after v0.63.1) from
           # overwriting the stable appcast with an older version.
-          LATEST=$(gh release list --exclude-drafts --exclude-pre-releases \
+          LATEST=$(gh release list --repo "$RELEASE_REPO" --exclude-drafts --exclude-pre-releases \
             --json tagName -q '.[].tagName' | sort -V | tail -1)
           if [ -n "$LATEST" ] && [ "$LATEST" != "$GITHUB_REF_NAME" ]; then
             echo "Skipping R2 stable upload: $GITHUB_REF_NAME is not the latest release ($LATEST)"

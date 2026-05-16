@@ -84,7 +84,7 @@ def get_cmux_pid() -> Optional[int]:
     if result.returncode != 0:
         # Try DEV build
         result = subprocess.run(
-            ["pgrep", "-f", r"cmux Mochi DEV\.app/Contents/MacOS/cmux"],
+            ["pgrep", "-f", r"cmux Mochi DEV.*\.app/Contents/MacOS/cmux Mochi DEV"],
             capture_output=True,
             text=True,
         )

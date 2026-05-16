@@ -16,8 +16,9 @@ if [[ -z "${SPARKLE_PRIVATE_KEY:-}" ]]; then
 fi
 
 SPARKLE_VERSION="${SPARKLE_VERSION:-2.8.1}"
-DOWNLOAD_URL_PREFIX="${DOWNLOAD_URL_PREFIX:-https://github.com/mochiexists/cmux-mochi/releases/download/$TAG/}"
-RELEASE_NOTES_URL="${RELEASE_NOTES_URL:-https://github.com/mochiexists/cmux-mochi/releases/tag/$TAG}"
+RELEASE_REPO="${RELEASE_REPO:-mochiexists/cmux-mochi}"
+DOWNLOAD_URL_PREFIX="${DOWNLOAD_URL_PREFIX:-https://github.com/${RELEASE_REPO}/releases/download/$TAG/}"
+RELEASE_NOTES_URL="${RELEASE_NOTES_URL:-https://github.com/${RELEASE_REPO}/releases/tag/$TAG}"
 
 work_dir="$(mktemp -d)"
 cleanup() {
