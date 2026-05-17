@@ -40083,7 +40083,7 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Quit cmux?"
+            "value": "Quit cmux Mochi?"
           }
         },
         "ja": {
@@ -41443,7 +41443,7 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "About cmux"
+            "value": "About cmux Mochi"
           }
         },
         "ja": {
@@ -46715,7 +46715,7 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Quit cmux"
+            "value": "Quit cmux Mochi"
           }
         },
         "ja": {
@@ -52714,7 +52714,7 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Restart cmux to apply"
+            "value": "Restart cmux Mochi to apply"
           }
         },
         "ja": {
@@ -106300,7 +106300,7 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "When cmux reopens after quit, restored agent terminals stay idle until you resume them manually."
+            "value": "When cmux Mochi reopens after quit, restored agent terminals restore scrollback and leave the resume command ready."
           }
         },
         "ja": {
@@ -106317,7 +106317,7 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "When cmux reopens after quit, restored agent terminals automatically run their resume command."
+            "value": "When cmux Mochi reopens after quit, restored agent terminals automatically run their resume command."
           }
         },
         "ja": {

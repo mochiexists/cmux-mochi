@@ -48,11 +48,14 @@ class cmuxError(Exception):
 _APP_SUPPORT_DIR = os.path.expanduser("~/Library/Application Support/cmux")
 _STABLE_SOCKET_PATH = os.path.join(_APP_SUPPORT_DIR, "cmux.sock")
 _LEGACY_STABLE_SOCKET_PATH = "/tmp/cmux.sock"
+_STABLE_BUNDLE_ID = "com.cmux-mochi"
+_NIGHTLY_BUNDLE_ID = "com.cmux-mochi.nightly"
+_STAGING_BUNDLE_ID = "com.cmux-mochi.staging"
 _LAST_SOCKET_PATH_FILES = [
     os.path.join(_APP_SUPPORT_DIR, "last-socket-path"),
     "/tmp/cmux-last-socket-path",
 ]
-_DEFAULT_DEBUG_BUNDLE_ID = "com.cmuxterm.app.debug"
+_DEFAULT_DEBUG_BUNDLE_ID = "com.cmux-mochi.debug"
 
 
 def _sanitize_tag_slug(raw: str) -> str:
