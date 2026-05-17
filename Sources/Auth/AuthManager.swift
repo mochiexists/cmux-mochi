@@ -126,7 +126,7 @@ extension AuthClientProtocol {
 }
 
 enum AuthKeychainServiceName {
-    static let stableFallback = "com.cmuxterm.app.auth"
+    static let stableFallback = "com.cmux-mochi.auth"
 
     static func make(bundleIdentifier: String? = Bundle.main.bundleIdentifier) -> String {
         guard let bundleIdentifier, !bundleIdentifier.isEmpty else {
@@ -762,7 +762,7 @@ final class AuthManager: ObservableObject {
         #endif
     }
 
-    private nonisolated static let authLogger = Logger(subsystem: "com.cmuxterm.app", category: "auth")
+    private nonisolated static let authLogger = Logger(subsystem: "com.cmux-mochi", category: "auth")
     private nonisolated static let authDebugLogPath = "/tmp/cmux-auth-debug.log"
 
     private nonisolated static func authLogType(for message: String) -> OSLogType {
@@ -965,7 +965,7 @@ final class AuthManager: ObservableObject {
             guard let id = Bundle(url: appURL)?.bundleIdentifier else { return true }
             if ownBundleIDs.contains(id) { return false }
             let lower = id.lowercased()
-            return !lower.hasPrefix("dev.cmux.") && !lower.hasPrefix("com.cmuxterm.")
+            return !lower.hasPrefix("dev.cmux.") && !lower.hasPrefix("com.cmuxterm.") && !lower.hasPrefix("com.cmux-mochi.")
         }
         let config = NSWorkspace.OpenConfiguration()
         config.createsNewApplicationInstance = false

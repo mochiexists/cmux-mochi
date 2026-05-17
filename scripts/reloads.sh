@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-APP_NAME="cmux STAGING"
-BUNDLE_ID="com.cmuxterm.app.staging"
-BASE_APP_NAME="cmux"
+APP_NAME="cmux Mochi STAGING"
+BUNDLE_ID="com.cmux-mochi.staging"
+BASE_APP_NAME="cmux Mochi"
 DERIVED_DATA=""
 NAME_SET=0
 BUNDLE_SET=0
@@ -124,10 +124,10 @@ if [[ -n "$TAG" ]]; then
     exit 1
   fi
   if [[ "$NAME_SET" -eq 0 ]]; then
-    APP_NAME="cmux STAGING ${TAG}"
+    APP_NAME="cmux Mochi STAGING ${TAG}"
   fi
   if [[ "$BUNDLE_SET" -eq 0 ]]; then
-    BUNDLE_ID="com.cmuxterm.app.staging.${TAG_ID}"
+    BUNDLE_ID="com.cmux-mochi.staging.${TAG_ID}"
   fi
   if [[ "$DERIVED_SET" -eq 0 ]]; then
     DERIVED_DATA="/tmp/cmux-staging-${TAG_SLUG}"

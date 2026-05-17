@@ -39,12 +39,12 @@ if ! awk '
   exit 1
 fi
 
-if ! grep -Fq 'com.cmuxterm.app.nightly.universal' "$WORKFLOW_FILE"; then
+if ! grep -Fq 'com.cmux-mochi.nightly.universal' "$WORKFLOW_FILE"; then
   echo "FAIL: nightly workflow must set a distinct .universal bundle ID"
   exit 1
 fi
 
-if ! grep -Fq 'https://github.com/manaflow-ai/cmux/releases/download/nightly/appcast-universal.xml' "$WORKFLOW_FILE"; then
+if ! grep -Fq 'https://github.com/mochiexists/cmux-mochi/releases/download/nightly/appcast-universal.xml' "$WORKFLOW_FILE"; then
   echo "FAIL: nightly workflow must publish a separate universal appcast feed"
   exit 1
 fi

@@ -631,7 +631,7 @@
 		A11EAE000000000000000001 /* WorkspaceAppearanceConfigResolutionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkspaceAppearanceConfigResolutionTests.swift; sourceTree = "<group>"; };
 		A11EAF000000000000000001 /* GhosttyNotificationDispatcherTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GhosttyNotificationDispatcherTests.swift; sourceTree = "<group>"; };
 		A11EB0000000000000000001 /* GhosttyConfigPathResolverTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GhosttyConfigPathResolverTests.swift; sourceTree = "<group>"; };
-		A5001000 /* cmux.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = cmux.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		A5001000 /* cmux Mochi.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "cmux Mochi.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		A5001011 /* cmuxApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = cmuxApp.swift; sourceTree = "<group>"; };
 		E3309A08 /* cmuxApp+EqualizeSplitsMenu.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "cmuxApp+EqualizeSplitsMenu.swift"; sourceTree = "<group>"; };
 		C0DE34020000000000000003 /* CmuxHelpCommands.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = App/CmuxHelpCommands.swift; sourceTree = "<group>"; };
@@ -1434,7 +1434,7 @@
 		A5001042 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				A5001000 /* cmux.app */,
+				A5001000 /* cmux Mochi.app */,
 				B9000004A1B2C3D4E5F60719 /* cmux */,
 				D1320AA0D1320AA0D1320AA5 /* CmuxDockTilePlugin.plugin */,
 				7E7E6EF344A568AC7FEE3715 /* cmuxUITests.xctest */,
@@ -1641,7 +1641,7 @@
 				A8BD195031FC4B82B4354297 /* StackAuth */,
 			);
 			productName = cmux;
-			productReference = A5001000 /* cmux.app */;
+			productReference = A5001000 /* cmux Mochi.app */;
 			productType = "com.apple.product-type.application";
 		};
 		B9000005A1B2C3D4E5F60719 /* cmux-cli */ = {
@@ -2401,7 +2401,7 @@
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				MARKETING_VERSION = 0.64.6;
 				ONLY_ACTIVE_ARCH = NO;
-				PRODUCT_BUNDLE_IDENTIFIER = com.cmuxterm.appuitests;
+				PRODUCT_BUNDLE_IDENTIFIER = com.cmux-mochi.uitests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_VERSION = 5.0;
 				TEST_TARGET_NAME = cmux;
@@ -2501,8 +2501,9 @@
 					"-framework",
 					Carbon,
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.cmuxterm.app.debug;
-				PRODUCT_NAME = "cmux DEV";
+				PRODUCT_BUNDLE_IDENTIFIER = com.cmux-mochi.debug;
+				PRODUCT_MODULE_NAME = cmux_DEV;
+				PRODUCT_NAME = "cmux Mochi DEV";
 				SPARKLE_PUBLIC_KEY = "avjcgKibf1FTvhIjLBxhd+0HSpsXU4D0IGlVk8cgqRc=";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_OBJC_BRIDGING_HEADER = "cmux-Bridging-Header.h";
@@ -2542,8 +2543,9 @@
 					"-framework",
 					Carbon,
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.cmuxterm.app;
-				PRODUCT_NAME = cmux;
+				PRODUCT_BUNDLE_IDENTIFIER = com.cmux-mochi;
+				PRODUCT_MODULE_NAME = cmux;
+				PRODUCT_NAME = "cmux Mochi";
 				SPARKLE_PUBLIC_KEY = "avjcgKibf1FTvhIjLBxhd+0HSpsXU4D0IGlVk8cgqRc=";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_OBJC_BRIDGING_HEADER = "cmux-Bridging-Header.h";
@@ -2599,7 +2601,7 @@
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				MARKETING_VERSION = 0.64.6;
 				ONLY_ACTIVE_ARCH = YES;
-				PRODUCT_BUNDLE_IDENTIFIER = com.cmuxterm.appuitests;
+				PRODUCT_BUNDLE_IDENTIFIER = com.cmux-mochi.uitests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
 				SWIFT_VERSION = 5.0;
@@ -2622,7 +2624,7 @@
 				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Bundles";
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				MARKETING_VERSION = 0.64.6;
-				PRODUCT_BUNDLE_IDENTIFIER = com.cmuxterm.app.docktileplugin.debug;
+				PRODUCT_BUNDLE_IDENTIFIER = com.cmux-mochi.docktileplugin.debug;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				SKIP_INSTALL = YES;
@@ -2647,7 +2649,7 @@
 				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Bundles";
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				MARKETING_VERSION = 0.64.6;
-				PRODUCT_BUNDLE_IDENTIFIER = com.cmuxterm.app.docktileplugin;
+				PRODUCT_BUNDLE_IDENTIFIER = com.cmux-mochi.docktileplugin;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				SKIP_INSTALL = YES;
@@ -2666,11 +2668,11 @@
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				MARKETING_VERSION = 0.64.6;
 				ONLY_ACTIVE_ARCH = YES;
-				PRODUCT_BUNDLE_IDENTIFIER = com.cmuxterm.apptests;
+				PRODUCT_BUNDLE_IDENTIFIER = com.cmux-mochi.tests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
 				SWIFT_VERSION = 5.0;
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/cmux DEV.app/Contents/MacOS/cmux DEV";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/cmux Mochi DEV.app/Contents/MacOS/cmux Mochi DEV";
 				TEST_TARGET_NAME = cmux;
 			};
 			name = Debug;
@@ -2685,10 +2687,10 @@
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				MARKETING_VERSION = 0.64.6;
 				ONLY_ACTIVE_ARCH = NO;
-				PRODUCT_BUNDLE_IDENTIFIER = com.cmuxterm.apptests;
+				PRODUCT_BUNDLE_IDENTIFIER = com.cmux-mochi.tests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_VERSION = 5.0;
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/cmux.app/Contents/MacOS/cmux";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/cmux Mochi.app/Contents/MacOS/cmux Mochi";
 				TEST_TARGET_NAME = cmux;
 			};
 			name = Release;
