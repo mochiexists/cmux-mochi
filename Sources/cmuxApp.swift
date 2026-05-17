@@ -6140,7 +6140,7 @@ struct SettingsView: View {
                             String(localized: "settings.terminal.agentAutoResume", defaultValue: "Resume Agent Sessions on Reopen"),
                             subtitle: autoResumeAgentSessions
                                 ? String(localized: "settings.terminal.agentAutoResume.subtitleOn", defaultValue: "When cmux reopens after quit, restored agent terminals automatically run their resume command.")
-                                : String(localized: "settings.terminal.agentAutoResume.subtitleOff", defaultValue: "When cmux reopens after quit, restored agent terminals stay idle until you resume them manually.")
+                                : String(localized: "settings.terminal.agentAutoResume.subtitleOff", defaultValue: "When cmux reopens after quit, restored agent terminals keep scrollback and prefill the resume command without running it.")
                         ) {
                             Toggle("", isOn: autoResumeAgentSessionsBinding)
                                 .labelsHidden()

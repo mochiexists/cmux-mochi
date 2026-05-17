@@ -1002,7 +1002,9 @@ final class SessionPersistenceTests: XCTestCase {
         )
 
         XCTAssertFalse(Workspace.shouldReplaySessionScrollback(restorableAgent: agent))
+        XCTAssertTrue(Workspace.shouldReplaySessionScrollback(restorableAgent: agent, autoResumeAgentSessions: false))
         XCTAssertTrue(Workspace.shouldReplaySessionScrollback(restorableAgent: nil))
+        XCTAssertTrue(Workspace.shouldPersistSessionScrollbackForRestore(restorableAgent: agent))
     }
 
     @MainActor
@@ -1702,6 +1704,31 @@ final class SocketListenerAcceptPolicyTests: XCTestCase {
         )
 
         XCTAssertEqual(snapshot.resumeStartupInput(), snapshot.resumeCommand.map { $0 + "\n" })
+    }
+
+    func testRestorableAgentPreparedStartupInputUsesInlineCommandWithoutSubmitting() {
+        let snapshot = SessionRestorableAgentSnapshot(
+            kind: .codex,
+            sessionId: "codex-session-123",
+            workingDirectory: "/tmp/cmux project",
+            launchCommand: AgentLaunchCommandSnapshot(
+                launcher: "codex",
+                executablePath: "/usr/local/bin/codex",
+                arguments: [
+                    "/usr/local/bin/codex",
+                    "--model",
+                    "gpt-5.4"
+                ],
+                workingDirectory: "/tmp/cmux project",
+                environment: nil,
+                capturedAt: 123,
+                source: "environment"
+            )
+        )
+
+        let preparedInput = snapshot.resumePreparedStartupInput()
+        XCTAssertEqual(preparedInput, snapshot.resumeCommand)
+        XCTAssertFalse(try XCTUnwrap(preparedInput).hasSuffix("\n"))
     }
 
     func testRestorableAgentStartupInputUsesLauncherScriptWhenCommandExceedsTerminalInputBudget() throws {

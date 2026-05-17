@@ -433,7 +433,7 @@ extension Workspace {
             let shouldPersistScrollback = Self.shouldPersistSessionScrollback(
                 shellActivityState: panelShellActivityStates[panelId],
                 fallbackNeedsConfirmClose: terminalPanel.needsConfirmClose()
-            ) && Self.shouldReplaySessionScrollback(
+            ) && Self.shouldPersistSessionScrollbackForRestore(
                 restorableAgent: effectiveRestorableAgent,
                 tmuxStartCommand: restorableTmuxStartCommand
             )
@@ -525,12 +525,23 @@ extension Workspace {
 
     nonisolated static func shouldReplaySessionScrollback(
         restorableAgent: SessionRestorableAgentSnapshot?,
+        tmuxStartCommand: String? = nil,
+        autoResumeAgentSessions: Bool = true
+    ) -> Bool {
+        // Auto-resumed agents relaunch from the provider's session ID. Replaying the
+        // old TUI scrollback can print stale launch commands and race the resume input.
+        // When auto-resume is off, keep the last scrollback visible and prefill the
+        // resume command so the user can choose which restored sessions to start.
+        // OMX HUD panes restore from their tmux start command for the same reason.
+        restorableTmuxStartCommand(tmuxStartCommand) == nil
+            && (restorableAgent == nil || !autoResumeAgentSessions)
+    }
+
+    nonisolated static func shouldPersistSessionScrollbackForRestore(
+        restorableAgent: SessionRestorableAgentSnapshot?,
         tmuxStartCommand: String? = nil
     ) -> Bool {
-        // Agent restores relaunch from the provider's session ID. Replaying the
-        // old TUI scrollback can print stale launch commands and race the resume input.
-        // OMX HUD panes restore from their tmux start command for the same reason.
-        restorableAgent == nil && restorableTmuxStartCommand(tmuxStartCommand) == nil
+        restorableTmuxStartCommand(tmuxStartCommand) == nil || restorableAgent != nil
     }
 
     nonisolated static func restorableTmuxStartCommand(_ rawCommand: String?) -> String? {
@@ -746,14 +757,15 @@ extension Workspace {
                 )
             }
             let restoredTmuxStartCommand = restoredTmuxStartupScript == nil ? nil : restorableTmuxStartCommand
+            let autoResumeAgentSessions = AgentSessionAutoResumeSettings.isEnabled()
             let shouldReplayScrollback = Self.shouldReplaySessionScrollback(
                 restorableAgent: restorableAgent,
-                tmuxStartCommand: restoredTmuxStartCommand
+                tmuxStartCommand: restoredTmuxStartCommand,
+                autoResumeAgentSessions: autoResumeAgentSessions
             )
-            let autoResumeAgentSessions = AgentSessionAutoResumeSettings.isEnabled()
             let restoredAgentResumeInput = autoResumeAgentSessions
                 ? restorableAgent?.resumeStartupInput()
-                : nil
+                : restorableAgent?.resumePreparedStartupInput()
 #if DEBUG
             if let restorableAgent {
                 let sessionPreview = String(restorableAgent.sessionId.prefix(8))
@@ -792,7 +804,7 @@ extension Workspace {
             }
             if let restorableAgent {
                 restoredAgentSnapshotsByPanelId[terminalPanel.id] = restorableAgent
-                if restoredAgentResumeInput != nil {
+                if autoResumeAgentSessions, restoredAgentResumeInput != nil {
                     restoredAgentAutoResumePendingPanelIds.insert(terminalPanel.id)
                 } else {
                     restoredAgentAutoResumePendingPanelIds.remove(terminalPanel.id)

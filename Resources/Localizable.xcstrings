@@ -105518,7 +105518,7 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "When cmux reopens after quit, restored agent terminals stay idle until you resume them manually."
+            "value": "When cmux reopens after quit, restored agent terminals keep scrollback and prefill the resume command without running it."
           }
         },
         "ja": {
