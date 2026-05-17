@@ -514,6 +514,14 @@ struct SessionRestorableAgentSnapshot: Codable, Sendable {
         )
     }
 
+    func resumePreparedStartupInput() -> String? {
+        guard let command = resumeCommand,
+              command.utf8.count <= Self.maxInlineStartupInputBytes else {
+            return nil
+        }
+        return command
+    }
+
     func resumeStartupInput(
         fileManager: FileManager = .default,
         temporaryDirectory: URL = FileManager.default.temporaryDirectory
