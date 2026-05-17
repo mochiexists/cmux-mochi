@@ -159,7 +159,7 @@ jobs:
 
   tests:
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_warpbuild_macos }}
-    runs-on: warp-macos-15-arm64-6x
+    runs-on: macos-15
     timeout-minutes: 30
     steps:
       - name: Checkout
@@ -333,7 +333,7 @@ jobs:
     # and performance regressions stay isolated. Broader interactive UI suites
     # still run via test-e2e.yml on GitHub-hosted runners.
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_warpbuild_macos }}
-    runs-on: warp-macos-15-arm64-6x
+    runs-on: macos-15
     timeout-minutes: 20
     steps:
       - name: Checkout
@@ -478,7 +478,7 @@ jobs:
           SOCK="/tmp/cmux-debug-${TAG}.sock"
           BUNDLE_ID="$(
             /usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP/Contents/Info.plist" 2>/dev/null \
-              || echo 'com.cmuxterm.app.debug'
+              || echo 'com.cmux-mochi.debug'
           )"
 
           pkill -x "cmux DEV" || true
@@ -520,7 +520,7 @@ jobs:
     # signing, notarization, and publishing. This catches DEBUG/Release boundary
     # mistakes before they reach main.
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_warpbuild_macos }}
-    runs-on: warp-macos-26-arm64-6x
+    runs-on: macos-26
     timeout-minutes: 20
     steps:
       - name: Checkout
@@ -604,7 +604,7 @@ jobs:
 
   ui-regressions:
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_warpbuild_macos }}
-    runs-on: warp-macos-15-arm64-6x
+    runs-on: macos-15
     timeout-minutes: 25
     steps:
       - name: Checkout
