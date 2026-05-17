@@ -54,7 +54,7 @@ final class AgentSessionAutoResumeSettingsTests: XCTestCase {
     }
 
     @MainActor
-    func testDisabledAutoResumeDoesNotInjectStartupInputOnRestore() throws {
+    func testDisabledAutoResumePrefillsResumeCommandWithoutSubmittingOnRestore() throws {
         let defaults = UserDefaults.standard
         let key = AgentSessionAutoResumeSettings.autoResumeAgentSessionsKey
         let previous = defaults.object(forKey: key)
@@ -74,6 +74,9 @@ final class AgentSessionAutoResumeSettingsTests: XCTestCase {
             sessionId: "codex-auto-resume-disabled-session"
         )
         let snapshot = source.sessionSnapshot(includeScrollback: false, restorableAgentIndex: sourceIndex)
+        let preparedResumeInput = try XCTUnwrap(
+            snapshot.panels.first?.terminal?.agent?.resumePreparedStartupInput()
+        )
 
         defaults.removeObject(forKey: key)
         let restoredWithAutoResume = Workspace()
@@ -90,8 +93,8 @@ final class AgentSessionAutoResumeSettingsTests: XCTestCase {
         let disabledPanelId = try XCTUnwrap(restoredWithoutAutoResume.focusedPanelId)
         let disabledPanel = try XCTUnwrap(restoredWithoutAutoResume.terminalPanel(for: disabledPanelId))
         let disabledInput = disabledPanel.surface.debugInitialInputMetadata()
-        XCTAssertFalse(disabledInput.hasInitialInput)
-        XCTAssertEqual(disabledInput.byteCount, 0)
+        XCTAssertTrue(disabledInput.hasInitialInput)
+        XCTAssertEqual(disabledInput.byteCount, preparedResumeInput.utf8.count)
         XCTAssertEqual(
             restoredWithoutAutoResume.sessionSnapshot(includeScrollback: false)
                 .panels.first?.terminal?.agent?.sessionId,
