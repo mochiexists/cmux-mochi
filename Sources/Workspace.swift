@@ -7886,6 +7886,9 @@ final class Workspace: Identifiable, ObservableObject {
         bonsplitController.tabContextMoveDestinationsProvider = { [weak self] tabId, _ in
             self?.bonsplitTabMoveDestinations(for: tabId) ?? []
         }
+        bonsplitController.tabContextMenuItemsProvider = { [weak self] tabId, _ in
+            self?.bonsplitTabContextMenuItems(for: tabId) ?? []
+        }
         bonsplitController.onTabCloseRequest = { [weak self] tabId, _ in
             self?.markExplicitClose(surfaceId: tabId)
         }
@@ -12058,6 +12061,20 @@ final class Workspace: Identifiable, ObservableObject {
         return shortcuts
     }
 
+    private func bonsplitTabContextMenuItems(for tabId: TabID) -> [TabContextMenuItem] {
+        guard directoryForTabContextAction(tabId: tabId) != nil else { return [] }
+        return [
+            TabContextMenuItem(
+                id: Self.revealInFinderTabContextMenuItemId,
+                title: String(localized: "contextMenu.revealInFinder", defaultValue: "Reveal in Finder")
+            ),
+            TabContextMenuItem(
+                id: Self.copyPathTabContextMenuItemId,
+                title: String(localized: "contextMenu.copyPath", defaultValue: "Copy Path")
+            ),
+        ]
+    }
+
     private func copyIdentifiersToPasteboard(surfaceId: UUID) {
         let paneId = paneId(forPanelId: surfaceId)?.id
         WorkspaceSurfaceIdentifierClipboardText.copy(
@@ -13023,17 +13040,20 @@ final class Workspace: Identifiable, ObservableObject {
         _ = reorderSurface(panelId: newPanel.id, toIndex: targetIndex)
     }
 
-    private func duplicateBrowserToRight(anchorTabId: TabID, inPane paneId: PaneID) {
-        guard let panelId = panelIdFromSurfaceId(anchorTabId),
-              let browser = browserPanel(for: panelId) else { return }
+    @discardableResult
+    func duplicateBrowserToRight(panelId: UUID, focus: Bool = true) -> BrowserPanel? {
+        guard let anchorTabId = surfaceIdFromPanelId(panelId),
+              let paneId = paneId(forPanelId: panelId),
+              let browser = browserPanel(for: panelId) else { return nil }
         let targetIndex = insertionIndexToRight(of: anchorTabId, inPane: paneId)
         guard let newPanel = newBrowserSurface(
             inPane: paneId,
-            url: browser.currentURL,
-            focus: true,
+            url: browser.currentURLForTabDuplication,
+            focus: focus,
             preferredProfileID: browser.profileID
-        ) else { return }
-        _ = reorderSurface(panelId: newPanel.id, toIndex: targetIndex)
+        ) else { return nil }
+        _ = reorderSurface(panelId: newPanel.id, toIndex: targetIndex, focus: focus)
+        return newPanel
     }
 
     private func promptRenamePanel(tabId: TabID) {
@@ -13068,11 +13088,7 @@ final class Workspace: Identifiable, ObservableObject {
         guard let panelId = panelIdFromSurfaceId(tabId),
               let app = AppDelegate.shared else { return [] }
 
-        let currentWindowId = app.tabManagerFor(tabId: id).flatMap { app.windowId(for: $0) }
-        let workspaceTargets = app.workspaceMoveTargets(
-            excludingWorkspaceId: id,
-            referenceWindowId: currentWindowId
-        )
+        let workspaceTargets = app.workspaceMoveTargets(forBonsplitTab: tabId.uuid)
         var destinations: [TabContextMoveDestination] = []
         if app.canMoveSurfaceToNewWorkspace(panelId: panelId) {
             destinations.append(TabContextMoveDestination(
@@ -13162,14 +13178,14 @@ final class Workspace: Identifiable, ObservableObject {
     ) -> Bool {
         switch destination {
         case .insert(let paneId, let index):
-            return openDroppedFileSurfaces(
+            return !openFileSurfaces(
                 inPane: paneId,
                 filePaths: [entry.filePath],
                 focus: true,
                 targetIndex: index
-            )
+            ).isEmpty
         case .split(let paneId, let orientation, let insertFirst):
-            return splitPaneWithDroppedFile(
+            return splitPaneWithFileSurface(
                 targetPane: paneId,
                 orientation: orientation,
                 insertFirst: insertFirst,
@@ -13191,16 +13207,16 @@ final class Workspace: Identifiable, ObservableObject {
 
         switch request.destination {
         case .insert(let paneId, let index):
-            return openDroppedFileSurfaces(
+            return !openFileSurfaces(
                 inPane: paneId,
                 filePaths: entries.map(\.filePath),
                 focus: true,
                 targetIndex: index
-            )
+            ).isEmpty
 
         case .split(let sourcePaneId, let orientation, let insertFirst):
             guard let first = entries.first,
-                  let firstPanel = splitPaneWithDroppedFile(
+                  let firstPanel = splitPaneWithFileSurface(
                     targetPane: sourcePaneId,
                     orientation: orientation,
                     insertFirst: insertFirst,
@@ -13210,59 +13226,17 @@ final class Workspace: Identifiable, ObservableObject {
             }
 
             let targetPane = paneId(forPanelId: firstPanel.id) ?? sourcePaneId
-            var openedAny = true
-            let openedRest = openDroppedFileSurfaces(
+            _ = openFileSurfaces(
                 inPane: targetPane,
                 filePaths: entries.dropFirst().map(\.filePath),
                 focus: true
             )
-            openedAny = openedAny || openedRest
-            return openedAny
+            return true
         }
     }
 
     @discardableResult
-    private func openDroppedFileSurfaces(
-        inPane paneId: PaneID,
-        filePaths: [String],
-        focus: Bool? = nil,
-        targetIndex: Int? = nil
-    ) -> Bool {
-        let shouldFocusNewTabs = focus ?? (bonsplitController.focusedPaneId == paneId)
-        var nextIndex = targetIndex
-        var openedAny = false
-
-        for filePath in filePaths {
-            let opened: Bool
-            if MarkdownPanelFileLinkResolver.isMarkdownPathLike(filePath) {
-                opened = newMarkdownSurface(
-                    inPane: paneId,
-                    filePath: filePath,
-                    focus: shouldFocusNewTabs,
-                    targetIndex: nextIndex
-                ) != nil
-            } else {
-                opened = newFilePreviewSurface(
-                    inPane: paneId,
-                    filePath: filePath,
-                    focus: shouldFocusNewTabs,
-                    targetIndex: nextIndex
-                ) != nil
-            }
-
-            if opened {
-                openedAny = true
-                if let index = nextIndex {
-                    nextIndex = index + 1
-                }
-            }
-        }
-
-        return openedAny
-    }
-
-    @discardableResult
-    private func splitPaneWithDroppedFile(
+    private func splitPaneWithFileSurface(
         targetPane paneId: PaneID,
         orientation: SplitOrientation,
         insertFirst: Bool,
@@ -13545,6 +13519,18 @@ extension Workspace: BonsplitDelegate {
             return false
         }
         return true
+    }
+
+    private static let revealInFinderTabContextMenuItemId = "revealInFinder"
+    private static let copyPathTabContextMenuItemId = "copyPath"
+
+    private func directoryForTabContextAction(tabId: TabID) -> String? {
+        guard let panelId = panelIdFromSurfaceId(tabId),
+              let rawDirectory = panelDirectories[panelId] else {
+            return nil
+        }
+        let directory = rawDirectory.trimmingCharacters(in: .whitespacesAndNewlines)
+        return directory.isEmpty ? nil : directory
     }
 
     @MainActor
@@ -14703,7 +14689,8 @@ extension Workspace: BonsplitDelegate {
                   let browser = browserPanel(for: panelId) else { return }
             browser.reload()
         case .duplicate:
-            duplicateBrowserToRight(anchorTabId: tab.id, inPane: pane)
+            guard let panelId = panelIdFromSurfaceId(tab.id) else { return }
+            _ = duplicateBrowserToRight(panelId: panelId)
         case .togglePin:
             guard let panelId = panelIdFromSurfaceId(tab.id) else { return }
             let shouldPin = !pinnedPanelIds.contains(panelId)
@@ -14718,6 +14705,21 @@ extension Workspace: BonsplitDelegate {
             guard let panelId = panelIdFromSurfaceId(tab.id) else { return }
             toggleSplitZoom(panelId: panelId)
         @unknown default:
+            break
+        }
+    }
+
+    func splitTabBar(_ controller: BonsplitController, didRequestTabContextMenuItem identifier: String, for tab: Bonsplit.Tab, inPane pane: PaneID) {
+        switch identifier {
+        case Self.revealInFinderTabContextMenuItemId:
+            guard let directory = directoryForTabContextAction(tabId: tab.id) else { return }
+            NSWorkspace.shared.selectFile(nil, inFileViewerRootedAtPath: directory)
+        case Self.copyPathTabContextMenuItemId:
+            guard let directory = directoryForTabContextAction(tabId: tab.id) else { return }
+            let pasteboard = NSPasteboard.general
+            pasteboard.clearContents()
+            pasteboard.setString(directory, forType: .string)
+        default:
             break
         }
     }

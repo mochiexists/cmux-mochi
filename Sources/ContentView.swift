@@ -2455,7 +2455,12 @@ struct ContentView: View {
         }
 
         sidebarSelectionState.selection = .tabs
-        _ = workspace.openOrFocusFilePreviewSurface(inPane: paneId, filePath: filePath)
+        _ = workspace.openFileSurfaces(
+            inPane: paneId,
+            filePaths: [filePath],
+            focus: true,
+            reuseExisting: true
+        )
     }
 
     private func syncFileExplorerDirectory() {
@@ -9763,9 +9768,8 @@ struct VerticalTabsSidebar: View {
                     sidebarIndexForTabId: { workspaceId in
                         tabManager.tabs.firstIndex { $0.id == workspaceId }
                     },
-                    moveToExistingWorkspace: { workspaceId in
-                        guard let transfer = BonsplitTabDragPayload.currentTransfer(),
-                              let app = AppDelegate.shared else {
+                    moveToExistingWorkspace: { workspaceId, transfer in
+                        guard let app = AppDelegate.shared else {
                             return false
                         }
                         if let source = app.locateBonsplitSurface(tabId: transfer.tab.id),
@@ -9779,9 +9783,8 @@ struct VerticalTabsSidebar: View {
                             focusWindow: true
                         )
                     },
-                    moveToNewWorkspace: { insertionIndex in
-                        guard let transfer = BonsplitTabDragPayload.currentTransfer(),
-                              let app = AppDelegate.shared,
+                    moveToNewWorkspace: { insertionIndex, transfer in
+                        guard let app = AppDelegate.shared,
                               let result = app.moveBonsplitTabToNewWorkspace(
                                 tabId: transfer.tab.id,
                                 destinationManager: tabManager,
@@ -13331,8 +13334,17 @@ private struct TabItemView: View, Equatable {
         .disabled(targetIds.isEmpty)
 
         if !isMulti {
-            Button(String(localized: "contextMenu.showWorkspaceInFinder", defaultValue: "Show in Finder")) {
+            Button(String(localized: "contextMenu.revealInFinder", defaultValue: "Reveal in Finder")) {
                 workspaceFinderDirectoryOpenRequest = WorkspaceFinderDirectoryOpenRequest(directoryURL: finderDirectoryURL)
+            }
+            .disabled(finderDirectoryURL == nil)
+
+            Button(String(localized: "contextMenu.copyPath", defaultValue: "Copy Path")) {
+                if let finderDirectoryURL {
+                    let pasteboard = NSPasteboard.general
+                    pasteboard.clearContents()
+                    pasteboard.setString(finderDirectoryURL.path, forType: .string)
+                }
             }
             .disabled(finderDirectoryURL == nil)
         }
@@ -14562,6 +14574,11 @@ enum BonsplitTabDragPayload {
 
     static func currentTransfer() -> Transfer? {
         transfer(from: NSPasteboard(name: .drag))
+    }
+
+    static func canRouteWorkspaceDrop(pasteboardTypes: [NSPasteboard.PasteboardType]?) -> Bool {
+        DragOverlayRoutingPolicy.hasBonsplitTabTransfer(pasteboardTypes)
+            && !DragOverlayRoutingPolicy.hasFilePreviewTransfer(pasteboardTypes)
     }
 
     static func transfer(from pasteboard: NSPasteboard) -> Transfer? {
