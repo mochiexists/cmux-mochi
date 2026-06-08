@@ -11168,6 +11168,9 @@ final class Workspace: Identifiable, ObservableObject {
         bonsplitController.tabContextMoveDestinationsProvider = { [weak self] tabId, _ in
             self?.bonsplitTabMoveDestinations(for: tabId) ?? []
         }
+        bonsplitController.tabContextMenuItemsProvider = { [weak self] tabId, _ in
+            self?.bonsplitTabContextMenuItems(for: tabId) ?? []
+        }
         bonsplitController.tabContextForkConversationAvailabilityProvider = { [weak self] tabId, _ in
             guard let self,
                   let panelId = self.panelIdFromSurfaceId(tabId) else { return false }
@@ -16745,6 +16748,20 @@ final class Workspace: Identifiable, ObservableObject {
         return shortcuts
     }
 
+    private func bonsplitTabContextMenuItems(for tabId: TabID) -> [TabContextMenuItem] {
+        guard directoryForTabContextAction(tabId: tabId) != nil else { return [] }
+        return [
+            TabContextMenuItem(
+                id: Self.revealInFinderTabContextMenuItemId,
+                title: String(localized: "contextMenu.revealInFinder", defaultValue: "Reveal in Finder")
+            ),
+            TabContextMenuItem(
+                id: Self.copyPathTabContextMenuItemId,
+                title: String(localized: "contextMenu.copyPath", defaultValue: "Copy Path")
+            ),
+        ]
+    }
+
     private func copyIdentifiersToPasteboard(surfaceId: UUID) {
         let paneId = paneId(forPanelId: surfaceId)?.id
         WorkspaceSurfaceIdentifierClipboardText.copy(
@@ -18306,6 +18323,18 @@ extension Workspace: BonsplitDelegate {
         return true
     }
 
+    private static let revealInFinderTabContextMenuItemId = "revealInFinder"
+    private static let copyPathTabContextMenuItemId = "copyPath"
+
+    private func directoryForTabContextAction(tabId: TabID) -> String? {
+        guard let panelId = panelIdFromSurfaceId(tabId),
+              let rawDirectory = panelDirectories[panelId] else {
+            return nil
+        }
+        let directory = rawDirectory.trimmingCharacters(in: .whitespacesAndNewlines)
+        return directory.isEmpty ? nil : directory
+    }
+
     @MainActor
     private func confirmClosePanel(for tabId: TabID) async -> Bool {
         let title = String(localized: "dialog.closeTab.title", defaultValue: "Close tab?")
@@ -19689,6 +19718,21 @@ extension Workspace: BonsplitDelegate {
             forkWorkspace.updatePanelDirectory(panelId: forkPanelId, directory: workingDirectory)
         }
         return true
+    }
+
+    func splitTabBar(_ controller: BonsplitController, didRequestTabContextMenuItem identifier: String, for tab: Bonsplit.Tab, inPane pane: PaneID) {
+        switch identifier {
+        case Self.revealInFinderTabContextMenuItemId:
+            guard let directory = directoryForTabContextAction(tabId: tab.id) else { return }
+            NSWorkspace.shared.selectFile(nil, inFileViewerRootedAtPath: directory)
+        case Self.copyPathTabContextMenuItemId:
+            guard let directory = directoryForTabContextAction(tabId: tab.id) else { return }
+            let pasteboard = NSPasteboard.general
+            pasteboard.clearContents()
+            pasteboard.setString(directory, forType: .string)
+        default:
+            break
+        }
     }
 
     func splitTabBar(_ controller: BonsplitController, didRequestTabMoveToDestination destinationId: String, for tab: Bonsplit.Tab, inPane pane: PaneID) {
