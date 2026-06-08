@@ -12,7 +12,7 @@ public import Foundation
 public struct CmuxGhosttyConfigPathResolver {
     /// The bundle identifier of the released cmux app, used as the canonical
     /// config location and the fallback for dev/nightly/staging channels.
-    public static let releaseBundleIdentifier = "com.cmuxterm.app"
+    public static let releaseBundleIdentifier = "com.cmux-mochi"
     private static let releaseFallbackChannelSuffixes = ["debug", "nightly", "staging"]
 
     public init() {}

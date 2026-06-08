@@ -7,7 +7,7 @@ import Bonsplit
 import CmuxSettings
 
 nonisolated private let terminalNotificationLogger = Logger(
-    subsystem: "com.cmuxterm.app",
+    subsystem: "com.cmux-mochi",
     category: "notification"
 )
 
@@ -238,8 +238,8 @@ final class TerminalNotificationStore: ObservableObject {
 
     static let shared = TerminalNotificationStore()
 
-    static let categoryIdentifier = "com.cmuxterm.app.userNotification"
-    static let actionShowIdentifier = "com.cmuxterm.app.userNotification.show"
+    static let categoryIdentifier = "com.cmux-mochi.userNotification"
+    static let actionShowIdentifier = "com.cmux-mochi.userNotification.show"
 
     /// Mobile-host event topic the Mac emits when one or more delivered
     /// notifications are dismissed/cleared on this Mac, so an attached phone can

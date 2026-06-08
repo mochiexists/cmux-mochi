@@ -30,7 +30,7 @@ public struct CommandRunner: CommandRunning, Sendable {
 
     // Hosts the one-shot deadline/SIGKILL timers. A queue is used only for timer
     // event delivery, never to serialize mutable state.
-    private static let timerQueue = DispatchQueue(label: "com.cmuxterm.CmuxProcess.timer")
+    private static let timerQueue = DispatchQueue(label: "com.cmux-mochi.CmuxProcess.timer")
 
     // Environment is Apple-documented value-like once copied; stored as an immutable
     // dictionary so the struct stays Sendable.
