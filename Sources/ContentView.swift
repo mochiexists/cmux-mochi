@@ -2173,6 +2173,11 @@ struct ContentView: View {
                 .opacity(sidebarSelectionState.selection == .notifications ? 1 : 0)
                 .allowsHitTesting(sidebarSelectionState.selection == .notifications)
                 .accessibilityHidden(sidebarSelectionState.selection != .notifications)
+
+            TaskManagerPage(selection: $sidebarSelectionState.selection)
+                .opacity(sidebarSelectionState.selection == .taskManager ? 1 : 0)
+                .allowsHitTesting(sidebarSelectionState.selection == .taskManager)
+                .accessibilityHidden(sidebarSelectionState.selection != .taskManager)
         }
         .padding(.top, effectiveTitlebarPadding)
     }
@@ -13827,13 +13832,17 @@ private struct SidebarFooterButtons: View {
 /// footer is on screen — independent of the Task Manager window's own model
 /// so closing that window doesn't stop the footer readout.
 private struct SidebarResourceSummaryView: View {
+    @EnvironmentObject private var sidebarSelectionState: SidebarSelectionState
     @State private var model = CmuxTaskManagerModel.sidebarSummary
 
     private var hasData: Bool { model.snapshot.hasLoadedResourceUsage }
+    private var isActive: Bool { sidebarSelectionState.selection == .taskManager }
 
     var body: some View {
         Button {
-            AppDelegate.shared?.openTaskManagerTab()
+            // Toggle the full-area Task Manager "workspace": clicking again
+            // returns to the normal tabs view.
+            sidebarSelectionState.selection = isActive ? .tabs : .taskManager
         } label: {
             HStack(spacing: 5) {
                 Image(systemName: "gauge.with.dots.needle.33percent")
@@ -13846,11 +13855,15 @@ private struct SidebarResourceSummaryView: View {
                 }
             }
             .font(.system(size: 10, weight: .medium, design: .monospaced))
-            .foregroundStyle(Color(nsColor: .secondaryLabelColor))
+            .foregroundStyle(isActive ? Color.accentColor : Color(nsColor: .secondaryLabelColor))
             .lineLimit(1)
             .fixedSize()
             .padding(.horizontal, 6)
             .frame(height: 22, alignment: .center)
+            .background(
+                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                    .fill(isActive ? Color.accentColor.opacity(0.15) : Color.clear)
+            )
         }
         .buttonStyle(SidebarFooterIconButtonStyle())
         .safeHelp(String(localized: "sidebar.taskManager.summary", defaultValue: "Open Task Manager"))
@@ -18769,6 +18782,7 @@ private final class MiddleClickCaptureView: NSView {
 enum SidebarSelection {
     case tabs
     case notifications
+    case taskManager
 }
 
 struct ClearScrollBackground: ViewModifier {
