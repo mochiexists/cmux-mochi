@@ -44,6 +44,9 @@ struct SidebarBonsplitTabWorkspaceDropOverlay: NSViewRepresentable {
     let sidebarIndexForTabId: (UUID) -> Int?
     let moveToExistingWorkspace: (UUID, BonsplitTabDragPayload.Transfer) -> Bool
     let moveToNewWorkspace: (Int, BonsplitTabDragPayload.Transfer) -> UUID?
+    /// Spring-load: switch the main UI to a workspace while a session is dragged
+    /// over its row, so it can be dropped into that workspace's pane layout.
+    let springLoadWorkspace: (UUID) -> Void
     @Binding var selectedTabIds: Set<UUID>
     @Binding var lastSidebarSelectionIndex: Int?
     @Binding var dropIndicator: SidebarDropIndicator?
@@ -75,6 +78,7 @@ struct SidebarBonsplitTabWorkspaceDropOverlay: NSViewRepresentable {
             }
         }
         nsView.updateAutoscroll = updateAutoscroll
+        nsView.springLoadWorkspace = springLoadWorkspace
         nsView.setWorkspaceDropTargetCollectionActive = setWorkspaceDropTargetCollectionActive
         nsView.setDropIndicator = { indicator in
             dropIndicator = indicator
@@ -123,6 +127,8 @@ final class SidebarBonsplitTabWorkspaceDropView: NSView {
     var targetBridge: SidebarBonsplitTabWorkspaceDropOverlay.TargetBridge?
     var canPerformAction: (SidebarDropPlanner.WorkspaceDropAction, BonsplitTabDragPayload.Transfer) -> Bool = { _, _ in false }
     var updateAutoscroll: () -> Void = {}
+    var springLoadWorkspace: (UUID) -> Void = { _ in }
+    private var lastSprungWorkspaceId: UUID?
     var setWorkspaceDropTargetCollectionActive: (Bool) -> Void = { _ in }
     var setDropIndicator: (SidebarDropIndicator?) -> Void = { _ in }
     var performExistingWorkspaceMove: (UUID, BonsplitTabDragPayload.Transfer) -> Bool = { _, _ in false }
@@ -316,8 +322,16 @@ final class SidebarBonsplitTabWorkspaceDropView: NSView {
         switch action {
         case .newWorkspace(_, let indicator):
             setDropIndicator(indicator)
-        case .existingWorkspace:
+            lastSprungWorkspaceId = nil
+        case .existingWorkspace(let workspaceId):
             setDropIndicator(nil)
+            // Spring-load: bring the hovered workspace to the foreground so the
+            // session can be dropped into a specific pane of its layout. Only
+            // fire when the hovered workspace changes to avoid churn.
+            if lastSprungWorkspaceId != workspaceId {
+                lastSprungWorkspaceId = workspaceId
+                springLoadWorkspace(workspaceId)
+            }
         }
 
 #if DEBUG
@@ -369,6 +383,7 @@ final class SidebarBonsplitTabWorkspaceDropView: NSView {
         )
         if !shouldRequestTargets {
             pendingDrop = nil
+            lastSprungWorkspaceId = nil
         }
         if shouldRequestTargets, !isRequestingWorkspaceDropTargets {
             workspaceDropTargetRequestId &+= 1
