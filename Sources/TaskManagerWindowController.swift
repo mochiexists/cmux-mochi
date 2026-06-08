@@ -80,6 +80,12 @@ final class CmuxTaskManagerModel {
         updateSortedRows()
     }
 
+    /// Dedicated lightweight model backing the sidebar footer readout. Keeps
+    /// `includesProcesses == false` so each sample only fetches aggregate
+    /// totals, and is independent of the Task Manager window's own model so
+    /// the footer keeps updating after the window closes.
+    static let sidebarSummary = CmuxTaskManagerModel()
+
     var isInitialLoading: Bool {
         !snapshot.hasLoadedResourceUsage && errorMessage == nil
     }
