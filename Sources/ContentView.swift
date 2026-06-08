@@ -12066,6 +12066,13 @@ struct VerticalTabsSidebar: View {
                 }
                 return result.destinationWorkspaceId
             },
+            springLoadWorkspace: { workspaceId in
+                guard tabManager.selectedTabId != workspaceId,
+                      let workspace = tabManager.tabs.first(where: { $0.id == workspaceId }) else { return }
+                tabManager.selectWorkspace(workspace)
+                selectedTabIds = [workspaceId]
+                lastSidebarSelectionIndex = tabManager.tabs.firstIndex(where: { $0.id == workspaceId })
+            },
             selectedTabIds: $selectedTabIds,
             lastSidebarSelectionIndex: $lastSidebarSelectionIndex,
             dropIndicator: dropIndicatorBinding,
@@ -15510,18 +15517,6 @@ private struct SidebarBonsplitTabDropDelegate: DropDelegate {
     func dropUpdated(info: DropInfo) -> DropProposal? {
         guard validateDrop(info: info) else { return nil }
         return DropProposal(operation: .move)
-    }
-
-    func dropEntered(info: DropInfo) {
-        guard validateDrop(info: info) else { return }
-        guard tabManager.selectedTabId != targetWorkspaceId,
-              let workspace = tabManager.tabs.first(where: { $0.id == targetWorkspaceId }) else { return }
-        // Spring-load: as soon as the dragged session hovers a workspace row,
-        // switch the main UI to that workspace so it can be dropped into a
-        // specific pane in that workspace's layout (not just appended).
-        tabManager.selectWorkspace(workspace)
-        selectedTabIds = [targetWorkspaceId]
-        lastSidebarSelectionIndex = tabManager.tabs.firstIndex(where: { $0.id == targetWorkspaceId })
     }
 
     func performDrop(info: DropInfo) -> Bool {
