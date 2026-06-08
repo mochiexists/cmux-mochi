@@ -14,10 +14,13 @@ public struct TerminalCatalogSection: SettingCatalogSection {
         userDefaultsKey: "terminal.copyOnSelect"
     )
 
-    public let autoResumeAgentSessions = DefaultsKey<Bool>(
-        id: "terminal.autoResumeAgentSessions",
-        defaultValue: true,
-        userDefaultsKey: "terminal.autoResumeAgentSessions"
+    /// Tri-state agent resume behavior on reopen: "off" / "medium" / "full".
+    /// Replaces the legacy boolean `terminal.autoResumeAgentSessions`
+    /// (true -> full, false -> medium); the app migrates the legacy key.
+    public let agentResumeMode = DefaultsKey<String>(
+        id: "terminal.agentResumeMode",
+        defaultValue: "medium",
+        userDefaultsKey: "terminal.agentResumeMode"
     )
 
     public let agentHibernationEnabled = DefaultsKey<Bool>(

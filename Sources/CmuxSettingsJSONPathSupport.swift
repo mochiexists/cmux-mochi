@@ -90,7 +90,7 @@ extension CmuxSettingsFileStore {
         "workspaceGroups.newWorkspacePlacement",
         "terminal.showScrollBar",
         "terminal.copyOnSelect",
-        "terminal.autoResumeAgentSessions",
+        "terminal.agentResumeMode",
         "terminal.showTextBoxOnNewTerminals",
         "terminal.focusTextBoxOnNewTerminals",
         "terminal.agentHibernation.enabled",

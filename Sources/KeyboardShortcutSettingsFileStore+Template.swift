@@ -90,7 +90,7 @@ extension CmuxSettingsFileStore {
                 "terminal": [
                     "showScrollBar": TerminalScrollBarSettings.defaultShowScrollBar,
                     "copyOnSelect": TerminalCopyOnSelectSettings.defaultCopyOnSelect,
-                    "autoResumeAgentSessions": AgentSessionAutoResumeSettings.defaultAutoResumeAgentSessions,
+                    "agentResumeMode": AgentSessionAutoResumeSettings.defaultMode.rawValue,
                     "showTextBoxOnNewTerminals": TerminalTextBoxInputSettings.defaultShowOnNewTerminals,
                     "focusTextBoxOnNewTerminals": TerminalTextBoxInputSettings.defaultFocusOnNewTerminals,
                     "agentHibernation": [

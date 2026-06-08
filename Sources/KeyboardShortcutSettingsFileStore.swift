@@ -555,8 +555,18 @@ final class CmuxSettingsFileStore {
             logInvalid("terminal.copyOnSelect", sourcePath: sourcePath)
         }
 
-        if let value = jsonBool(section["autoResumeAgentSessions"]) {
-            snapshot.managedUserDefaults[AgentSessionAutoResumeSettings.autoResumeAgentSessionsKey] = .bool(value)
+        if let raw = jsonString(section["agentResumeMode"]) {
+            guard let mode = AgentSessionResumeMode(rawValue: raw) else {
+                logInvalid("terminal.agentResumeMode", sourcePath: sourcePath)
+                return
+            }
+            snapshot.managedUserDefaults[AgentSessionAutoResumeSettings.modeKey] = .string(mode.rawValue)
+        } else if section.keys.contains("agentResumeMode") {
+            logInvalid("terminal.agentResumeMode", sourcePath: sourcePath)
+        } else if let value = jsonBool(section["autoResumeAgentSessions"]) {
+            // Legacy boolean: auto-resume on -> full, off -> medium.
+            let mode: AgentSessionResumeMode = value ? .full : .medium
+            snapshot.managedUserDefaults[AgentSessionAutoResumeSettings.modeKey] = .string(mode.rawValue)
         } else if section.keys.contains("autoResumeAgentSessions") {
             logInvalid("terminal.autoResumeAgentSessions", sourcePath: sourcePath)
         }
@@ -1699,7 +1709,7 @@ final class CmuxSettingsFileStore {
                     TerminalCopyOnSelectSettings.notifyDidChange(notificationCenter: notificationCenter)
                 }
 
-                if change.defaultsKey == AgentSessionAutoResumeSettings.autoResumeAgentSessionsKey {
+                if change.defaultsKey == AgentSessionAutoResumeSettings.modeKey {
                     agentSessionAutoResumeDidChange = true
                 }
                 if change.defaultsKey == AgentHibernationSettings.enabledKey ||

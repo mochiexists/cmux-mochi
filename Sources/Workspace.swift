@@ -569,7 +569,7 @@ extension Workspace {
             }()
             let resumeStartupInput = Self.surfaceResumeStartupInput(
                 resumeBinding,
-                autoResumeAgentSessions: AgentSessionAutoResumeSettings.isEnabled() && (agentWasRunning ?? true),
+                autoResumeAgentSessions: AgentSessionAutoResumeSettings.mode() != .off && (agentWasRunning ?? true),
                 promptForApproval: false
             )
             // Passive autosaves stay conservative (only persist when the terminal
@@ -929,12 +929,20 @@ extension Workspace {
     nonisolated static func shouldReplaySessionScrollback(
         restorableAgent: SessionRestorableAgentSnapshot?,
         tmuxStartCommand: String? = nil,
-        hasResumeStartupWork: Bool = false
+        hasResumeStartupWork: Bool = false,
+        resumeMode: AgentSessionResumeMode = .full
     ) -> Bool {
-        // Agent restores relaunch from the provider's session ID. Replaying the
-        // old TUI scrollback can print stale launch commands and race resume startup work.
-        // OMX HUD panes restore from their tmux start command for the same reason.
-        restorableAgent == nil && restorableTmuxStartCommand(tmuxStartCommand) == nil && !hasResumeStartupWork
+        // Full-mode agents relaunch from the provider's session ID. Replaying the
+        // old TUI scrollback can print stale launch commands and race the resume
+        // input or other resume startup work, so it is skipped. Off-mode agents
+        // start fresh with no scrollback. Medium keeps the last scrollback visible
+        // and prefills the resume command so the user can choose which restored
+        // sessions to start. Non-agent terminals always restore their scrollback
+        // (when not an OMX HUD pane, which restores from its tmux start command
+        // instead, and when no other resume startup work is pending).
+        restorableTmuxStartCommand(tmuxStartCommand) == nil
+            && (restorableAgent == nil || resumeMode.replaysScrollback)
+            && !hasResumeStartupWork
     }
 
     nonisolated static func shouldAutoConnectRestoredRemote(
@@ -1657,7 +1665,8 @@ extension Workspace {
             let resumeBinding = snapshot.terminal?.resumeBinding
             let restorableAgent = snapshot.terminal?.agent
             let restoredHibernation = snapshot.terminal?.hibernation
-            let autoResumeAgentSessions = AgentSessionAutoResumeSettings.isEnabled()
+            let resumeMode = AgentSessionAutoResumeSettings.mode()
+            let autoResumeAgentSessions = resumeMode != .off
             // Only auto-resume if the agent was actively running when the snapshot was saved.
             // wasAgentRunning == nil means a legacy snapshot; treat as true for backwards compatibility.
             let agentWasRunningAtQuit = snapshot.terminal?.wasAgentRunning ?? true
@@ -1711,6 +1720,12 @@ extension Workspace {
                             allowOversizedInlineInput: true
                         )
                             .map(SurfaceResumeStartupLaunch.input)
+                    } else if resumeMode == .medium {
+                        // Medium: pre-type the resume command into the terminal
+                        // input instead of executing a launcher script, so the
+                        // user chooses which restored sessions to start.
+                        restorableAgent?.resumeStartupInput(allowLauncherScript: false)
+                            .map(SurfaceResumeStartupLaunch.input)
                     } else {
                         restorableAgent?.resumeStartupCommand()
                             .map(SurfaceResumeStartupLaunch.command)
@@ -1722,12 +1737,15 @@ extension Workspace {
             // launch commands / race resume startup). But when a hard quit
             // captured the live agent scrollback (unsafe capture), it is the
             // agent's actual last state — replay it so the session visually
-            // continues across reopen.
+            // continues across reopen. Medium-mode resume input is pre-typed,
+            // not executed, so it does not count as racing startup work.
             let hasCapturedAgentScrollback = (snapshot.terminal?.scrollback?.isEmpty == false)
+            let resumeLaunchExecutesAtStartup = restoredAgentResumeLaunch != nil && resumeMode == .full
             let shouldReplayScrollback = Self.shouldReplaySessionScrollback(
                 restorableAgent: restorableAgent,
                 tmuxStartCommand: restoredTmuxStartCommand,
-                hasResumeStartupWork: restoredBindingLaunch != nil || restoredAgentResumeLaunch != nil
+                hasResumeStartupWork: restoredBindingLaunch != nil || resumeLaunchExecutesAtStartup,
+                resumeMode: resumeMode
             ) || (restorableAgent != nil && hasCapturedAgentScrollback)
             let restoredRemotePTYSessionID: String? = {
                 guard remoteConfiguration?.preserveAfterTerminalExit == true,
@@ -1753,18 +1771,18 @@ extension Workspace {
             let rawRestoredStartupInput = restoredRemotePTYAttachCommand == nil
                 ? (restoredBindingLaunch?.initialInput ?? restoredAgentResumeLaunch?.initialInput)
                 : nil
-            // Resume command prefill: for an agent resume, drop the resume
-            // command into the terminal input ready to run rather than
-            // auto-executing it on launch, unless the user opted into
-            // auto-submit. Implemented by stripping the trailing newline so the
-            // command sits in the input instead of being submitted.
+            // Resume command prefill: in medium mode the resume command is
+            // dropped into the terminal input ready to run rather than
+            // auto-executed on launch; full mode submits it. Implemented by
+            // stripping the trailing newline so the command sits in the input
+            // instead of being submitted.
             let restoredStartupInput: String? = {
                 guard let input = rawRestoredStartupInput, input.hasSuffix("\n") else {
                     return rawRestoredStartupInput
                 }
                 let isAgentResume = restoredAgentResumeLaunch != nil
                     || resumeBinding?.isAgentHookBinding == true
-                guard isAgentResume, !AgentResumeSubmitSettings.autoSubmits() else {
+                guard isAgentResume, resumeMode != .full else {
                     return input
                 }
                 return String(input.dropLast())
@@ -1805,7 +1823,7 @@ extension Workspace {
                     "kind=\(restorableAgent.kind.rawValue) session=\(sessionPreview) " +
                     "hasLaunch=\(restorableAgent.launchCommand == nil ? 0 : 1) " +
                     "launchArgc=\(launchArgc) hasResume=\(restoredAgentResumeLaunch == nil ? 0 : 1) " +
-                    "autoResume=\(autoResumeAgentSessions ? 1 : 0) " +
+                    "resumeMode=\(resumeMode.rawValue) " +
                     "replayScrollback=\(shouldReplayScrollback ? 1 : 0)"
                 )
             }
@@ -10615,7 +10633,6 @@ final class Workspace: Identifiable, ObservableObject {
     static let terminalScrollBarHiddenDidChangeNotification = Notification.Name(
         "cmux.workspaceTerminalScrollBarHiddenDidChange"
     )
-
     let id: UUID
     /// When this workspace instance came into existence in this app session
     /// (creation, or restore at launch). The mobile list's last-activity
@@ -10674,6 +10691,7 @@ final class Workspace: Identifiable, ObservableObject {
     private var surfaceTabBarCommandButtons: [String: SurfaceTabBarExecutableButton] = [:]
     private var surfaceTabBarButtonSourcePath: String?
     private var surfaceTabBarButtonGlobalConfigPath: String?
+    private var browserAvailabilityObserver: NSObjectProtocol?
 
     /// Mapping from bonsplit TabID to our Panel instances
     @Published var panels: [UUID: any Panel] = [:]
@@ -11474,6 +11492,13 @@ final class Workspace: Identifiable, ObservableObject {
 
         // Set ourselves as delegate
         bonsplitController.delegate = self
+        browserAvailabilityObserver = NotificationCenter.default.addObserver(
+            forName: BrowserAvailabilitySettings.didChangeNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.refreshBrowserSplitButtonPresentation()
+        }
 
         // Right-clicking the New Browser button shows a checkable
         // "Open in External Browser" item; ticking it tints (glows) the button.
@@ -11533,6 +11558,9 @@ final class Workspace: Identifiable, ObservableObject {
     private var sharedLiveAgentIndexCancellable: AnyCancellable?
 
     deinit {
+        if let browserAvailabilityObserver {
+            NotificationCenter.default.removeObserver(browserAvailabilityObserver)
+        }
         for registrations in pendingTerminalInputObserversByPanelId.values {
             for registration in registrations {
                 if let observer = registration.observer {

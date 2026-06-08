@@ -72,16 +72,7 @@ function buildSettingsFileExample(t: ConfigurationTranslation) {
 
   // "terminal": {
   //   "showScrollBar": false,
-  //   "copyOnSelect": true,
-  //   "autoResumeAgentSessions": true,
-  //   "showTextBoxOnNewTerminals": false,
-  //   "focusTextBoxOnNewTerminals": false,
-  //   "agentHibernation": {
-  //     "enabled": false,
-  //     "idleSeconds": 5,
-  //     "maxLiveTerminals": 12
-  //   },
-  //   "textBoxMaxLines": 10
+  //   "agentResumeMode": "medium"
   // },
 
   // "browser": {

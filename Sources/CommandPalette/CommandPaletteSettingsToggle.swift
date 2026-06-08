@@ -415,19 +415,21 @@ enum CommandPaletteSettingsToggleCommands {
             ),
             CommandPaletteSettingToggleDescriptor(
                 commandId: commandIdPrefix + "autoResumeAgentSessions",
-                settingsKey: "terminal.autoResumeAgentSessions",
+                settingsKey: "terminal.agentResumeMode",
                 title: {
                     String(
                         localized: "settings.terminal.agentAutoResume",
-                        defaultValue: "Resume Agent Sessions on Reopen"
+                        defaultValue: "Auto-Resume Agent Sessions on Reopen"
                     )
                 },
                 sectionTitle: terminal,
-                keywords: ["terminal.autoResumeAgentSessions", "terminal", "agent", "resume", "sessions", "reopen", "restore"],
-                isOn: { defaults in AgentSessionAutoResumeSettings.isEnabled(defaults: defaults) },
+                keywords: ["terminal.agentResumeMode", "terminal.autoResumeAgentSessions", "terminal", "agent", "resume", "sessions", "reopen", "restore"],
+                // The palette toggle covers the two common modes; the third "Off"
+                // mode (no scrollback) is only reachable from the Settings picker.
+                isOn: { defaults in AgentSessionAutoResumeSettings.mode(defaults: defaults).submitsResumeCommand },
                 setOn: { newValue, defaults, notificationCenter in
-                    AgentSessionAutoResumeSettings.setEnabled(
-                        newValue,
+                    AgentSessionAutoResumeSettings.setMode(
+                        newValue ? .full : .medium,
                         defaults: defaults,
                         notificationCenter: notificationCenter
                     )

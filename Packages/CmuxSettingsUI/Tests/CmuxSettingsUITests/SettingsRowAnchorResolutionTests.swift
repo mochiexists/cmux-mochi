@@ -107,7 +107,7 @@ struct SettingsRowAnchorResolutionTests {
         "terminal.rendererRealization.enabled",
         "terminal.rendererRealization.idleSeconds",
         "terminal.rendererRealization.maxWarmRenderers",
-        "terminal.autoResumeAgentSessions",
+        "terminal.agentResumeMode",
         "terminal.copyOnSelect",
         "terminal.resumeCommands",
         "terminal.focusTextBoxOnNewTerminals",
