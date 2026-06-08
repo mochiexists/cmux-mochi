@@ -3002,6 +3002,12 @@ struct ContentView: View {
             scheduleTitlebarTextRefresh()
         })
 
+        // Any newly focused surface (new terminal/browser/extension tab, etc.)
+        // yields a full-area page back to the workspace it opened in.
+        view = AnyView(view.onReceive(NotificationCenter.default.publisher(for: .cmuxFocusedSurfaceDidActivate)) { _ in
+            sidebarSelectionState.selection = .tabs
+        })
+
         // A grouped anchor's title-bar name is derived from its group's name, so
         // a group rename must refresh the cached titlebar text (#5404). Scope to
         // this view's `tabManager` (the notification's `object`) so a rename in

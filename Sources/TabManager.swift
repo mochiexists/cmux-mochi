@@ -9995,6 +9995,10 @@ extension Notification.Name {
     static let feedbackComposerRequested = Notification.Name("cmux.feedbackComposerRequested")
     static let ghosttyDidSetTitle = Notification.Name("ghosttyDidSetTitle")
     static let ghosttyDidFocusTab = Notification.Name("ghosttyDidFocusTab")
+    /// Posted when a newly created surface takes focus, so a full-area sidebar
+    /// page (notifications / Task Manager) yields back to the workspace instead
+    /// of letting the new tab open behind it.
+    static let cmuxFocusedSurfaceDidActivate = Notification.Name("cmux.focusedSurfaceDidActivate")
     static let ghosttyDidFocusSurface = Notification.Name("ghosttyDidFocusSurface")
     static let ghosttyDidBecomeFirstResponderSurface = Notification.Name("ghosttyDidBecomeFirstResponderSurface")
     static let browserDidBecomeFirstResponderWebView = Notification.Name("browserDidBecomeFirstResponderWebView")
