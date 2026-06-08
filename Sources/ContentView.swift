@@ -12451,8 +12451,49 @@ private struct SidebarFooterButtons: View {
             if let updateActionsHost = AppDelegate.shared {
                 UpdatePill(model: updateViewModel, accent: cmuxAccentColor(), actions: updateActionsHost)
             }
+            Spacer(minLength: 0)
+            SidebarResourceSummaryView()
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+/// Compact, always-on CPU/memory readout in the sidebar footer. Tapping it
+/// opens the full Task Manager window. Drives a dedicated lightweight
+/// `CmuxTaskManagerModel` that samples aggregate totals while the footer is on
+/// screen.
+private struct SidebarResourceSummaryView: View {
+    @State private var model = CmuxTaskManagerModel.sidebarSummary
+
+    private var hasData: Bool { model.snapshot.hasLoadedResourceUsage }
+
+    var body: some View {
+        Button {
+            TaskManagerWindowController.shared.show()
+        } label: {
+            HStack(spacing: 5) {
+                Image(systemName: "gauge.with.dots.needle.33percent")
+                    .cmuxFont(size: 10, weight: .medium)
+                if hasData {
+                    Text(CmuxTaskManagerFormat.cpu(model.snapshot.total.cpuPercent))
+                    Text(CmuxTaskManagerFormat.bytes(model.snapshot.total.memoryBytes))
+                } else {
+                    Text("-")
+                }
+            }
+            .font(.system(size: 10, weight: .medium, design: .monospaced))
+            .foregroundStyle(Color(nsColor: .secondaryLabelColor))
+            .lineLimit(1)
+            .fixedSize()
+            .padding(.horizontal, 6)
+            .frame(height: 22, alignment: .center)
+        }
+        .buttonStyle(SidebarFooterIconButtonStyle())
+        .safeHelp(String(localized: "sidebar.taskManager.summary", defaultValue: "Open Task Manager"))
+        .accessibilityLabel(String(localized: "sidebar.taskManager.summary", defaultValue: "Open Task Manager"))
+        .accessibilityIdentifier("SidebarResourceSummaryButton")
+        .onAppear { model.start() }
+        .onDisappear { model.stop() }
     }
 }
 
