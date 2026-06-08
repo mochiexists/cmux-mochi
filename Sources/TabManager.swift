@@ -2528,11 +2528,20 @@ class TabManager: ObservableObject {
         }
         let willCloseWindow = tabs.count <= 1
         let needsCloseConfirmation = workspaceNeedsConfirmClose(workspace)
+        // Closing the last tab of the last workspace tears down the window — and
+        // quits the app if it is the last window. Reaching that from a single
+        // tab-close gesture is surprising, so always confirm it (with a window-
+        // close message) even when no panel would otherwise need confirmation.
+        let closingLastTabClosesWindow = willCloseWindow && (source == .tabClose || source == .tabCloseButton)
         if requiresConfirmation,
-           shouldConfirmClose(requiresConfirmation: needsCloseConfirmation, source: source),
+           shouldConfirmClose(requiresConfirmation: needsCloseConfirmation, source: source) || closingLastTabClosesWindow,
            !confirmClose(
-               title: String(localized: "dialog.closeWorkspace.title", defaultValue: "Close workspace?"),
-               message: String(localized: "dialog.closeWorkspace.message", defaultValue: "This will close the workspace and all of its panels."),
+               title: closingLastTabClosesWindow
+                   ? String(localized: "dialog.closeWindow.title", defaultValue: "Close window?")
+                   : String(localized: "dialog.closeWorkspace.title", defaultValue: "Close workspace?"),
+               message: closingLastTabClosesWindow
+                   ? String(localized: "dialog.closeWindow.message", defaultValue: "This will close the current window and all of its workspaces.")
+                   : String(localized: "dialog.closeWorkspace.message", defaultValue: "This will close the workspace and all of its panels."),
                acceptCmdD: willCloseWindow
            ) {
             return false
