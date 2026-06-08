@@ -8,16 +8,13 @@ import XCTest
 #endif
 
 final class AgentSessionAutoResumeSettingsTests: XCTestCase {
-    func testDefaultsKeyAndNotificationOnFlip() throws {
-        let suiteName = "cmux-agent-session-auto-resume-\(UUID().uuidString)"
+    func testModeKeyDefaultAndNotificationOnChange() throws {
+        let suiteName = "cmux-agent-session-resume-mode-\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
-        XCTAssertEqual(
-            AgentSessionAutoResumeSettings.autoResumeAgentSessionsKey,
-            "terminal.autoResumeAgentSessions"
-        )
-        XCTAssertTrue(AgentSessionAutoResumeSettings.isEnabled(defaults: defaults))
+        XCTAssertEqual(AgentSessionAutoResumeSettings.modeKey, "terminal.agentResumeMode")
+        XCTAssertEqual(AgentSessionAutoResumeSettings.mode(defaults: defaults), .full)
 
         let notificationCenter = NotificationCenter()
         var notificationCount = 0
@@ -30,39 +27,71 @@ final class AgentSessionAutoResumeSettingsTests: XCTestCase {
         }
         defer { notificationCenter.removeObserver(observer) }
 
-        AgentSessionAutoResumeSettings.setEnabled(
-            false,
-            defaults: defaults,
-            notificationCenter: notificationCenter
-        )
-        XCTAssertFalse(AgentSessionAutoResumeSettings.isEnabled(defaults: defaults))
+        AgentSessionAutoResumeSettings.setMode(.medium, defaults: defaults, notificationCenter: notificationCenter)
+        XCTAssertEqual(AgentSessionAutoResumeSettings.mode(defaults: defaults), .medium)
         XCTAssertEqual(notificationCount, 1)
 
-        AgentSessionAutoResumeSettings.setEnabled(
-            false,
-            defaults: defaults,
-            notificationCenter: notificationCenter
-        )
+        // Setting the same mode does not notify.
+        AgentSessionAutoResumeSettings.setMode(.medium, defaults: defaults, notificationCenter: notificationCenter)
         XCTAssertEqual(notificationCount, 1)
 
-        AgentSessionAutoResumeSettings.reset(
-            defaults: defaults,
-            notificationCenter: notificationCenter
-        )
-        XCTAssertTrue(AgentSessionAutoResumeSettings.isEnabled(defaults: defaults))
+        AgentSessionAutoResumeSettings.setMode(.off, defaults: defaults, notificationCenter: notificationCenter)
+        XCTAssertEqual(AgentSessionAutoResumeSettings.mode(defaults: defaults), .off)
         XCTAssertEqual(notificationCount, 2)
+
+        AgentSessionAutoResumeSettings.reset(defaults: defaults, notificationCenter: notificationCenter)
+        XCTAssertEqual(AgentSessionAutoResumeSettings.mode(defaults: defaults), .full)
+        XCTAssertEqual(notificationCount, 3)
+    }
+
+    func testLegacyBooleanMigratesToMode() throws {
+        let suiteName = "cmux-agent-session-resume-legacy-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        // Legacy auto-resume ON migrates to .full, OFF migrates to .medium.
+        defaults.set(true, forKey: AgentSessionAutoResumeSettings.legacyAutoResumeAgentSessionsKey)
+        XCTAssertEqual(AgentSessionAutoResumeSettings.mode(defaults: defaults), .full)
+
+        defaults.set(false, forKey: AgentSessionAutoResumeSettings.legacyAutoResumeAgentSessionsKey)
+        XCTAssertEqual(AgentSessionAutoResumeSettings.mode(defaults: defaults), .medium)
+
+        // An explicit mode value takes precedence over the legacy boolean.
+        defaults.set(AgentSessionResumeMode.off.rawValue, forKey: AgentSessionAutoResumeSettings.modeKey)
+        XCTAssertEqual(AgentSessionAutoResumeSettings.mode(defaults: defaults), .off)
+    }
+
+    func testModeFlagsMatchMatrix() {
+        XCTAssertEqual(AgentSessionResumeMode.off.replaysScrollback, false)
+        XCTAssertEqual(AgentSessionResumeMode.off.prefillsResumeCommand, false)
+        XCTAssertEqual(AgentSessionResumeMode.off.submitsResumeCommand, false)
+
+        XCTAssertEqual(AgentSessionResumeMode.medium.replaysScrollback, true)
+        XCTAssertEqual(AgentSessionResumeMode.medium.prefillsResumeCommand, true)
+        XCTAssertEqual(AgentSessionResumeMode.medium.submitsResumeCommand, false)
+
+        XCTAssertEqual(AgentSessionResumeMode.full.replaysScrollback, false)
+        XCTAssertEqual(AgentSessionResumeMode.full.prefillsResumeCommand, true)
+        XCTAssertEqual(AgentSessionResumeMode.full.submitsResumeCommand, true)
     }
 
     @MainActor
-    func testDisabledAutoResumePrefillsResumeCommandWithoutSubmittingOnRestore() throws {
+    func testResumeModeControlsResumeCommandPrefillAndSubmitOnRestore() throws {
         let defaults = UserDefaults.standard
-        let key = AgentSessionAutoResumeSettings.autoResumeAgentSessionsKey
+        let key = AgentSessionAutoResumeSettings.modeKey
+        let legacyKey = AgentSessionAutoResumeSettings.legacyAutoResumeAgentSessionsKey
         let previous = defaults.object(forKey: key)
+        let previousLegacy = defaults.object(forKey: legacyKey)
         defer {
             if let previous {
                 defaults.set(previous, forKey: key)
             } else {
                 defaults.removeObject(forKey: key)
+            }
+            if let previousLegacy {
+                defaults.set(previousLegacy, forKey: legacyKey)
+            } else {
+                defaults.removeObject(forKey: legacyKey)
             }
         }
 
@@ -78,38 +107,48 @@ final class AgentSessionAutoResumeSettingsTests: XCTestCase {
             snapshot.panels.first?.terminal?.agent?.resumePreparedStartupInput()
         )
 
-        defaults.removeObject(forKey: key)
-        let restoredWithAutoResume = Workspace()
-        restoredWithAutoResume.restoreSessionSnapshot(snapshot)
-        let autoResumePanelId = try XCTUnwrap(restoredWithAutoResume.focusedPanelId)
-        let autoResumePanel = try XCTUnwrap(restoredWithAutoResume.terminalPanel(for: autoResumePanelId))
-        let autoResumeInput = autoResumePanel.surface.debugInitialInputMetadata()
-        XCTAssertTrue(autoResumeInput.hasInitialInput)
-        XCTAssertGreaterThan(autoResumeInput.byteCount, 0)
+        // FULL: resume command is prefilled AND submitted (trailing newline).
+        defaults.set(AgentSessionResumeMode.full.rawValue, forKey: key)
+        let restoredFull = Workspace()
+        restoredFull.restoreSessionSnapshot(snapshot)
+        let fullPanelId = try XCTUnwrap(restoredFull.focusedPanelId)
+        let fullPanel = try XCTUnwrap(restoredFull.terminalPanel(for: fullPanelId))
+        let fullInput = fullPanel.surface.debugInitialInputMetadata()
+        XCTAssertTrue(fullInput.hasInitialInput)
+        XCTAssertEqual(fullInput.byteCount, preparedResumeInput.utf8.count + 1)
 
-        defaults.set(false, forKey: key)
-        let restoredWithoutAutoResume = Workspace()
-        restoredWithoutAutoResume.restoreSessionSnapshot(snapshot)
-        let disabledPanelId = try XCTUnwrap(restoredWithoutAutoResume.focusedPanelId)
-        let disabledPanel = try XCTUnwrap(restoredWithoutAutoResume.terminalPanel(for: disabledPanelId))
-        let disabledInput = disabledPanel.surface.debugInitialInputMetadata()
-        XCTAssertTrue(disabledInput.hasInitialInput)
-        XCTAssertEqual(disabledInput.byteCount, preparedResumeInput.utf8.count)
+        // MEDIUM: resume command is prefilled WITHOUT submitting (no newline).
+        defaults.set(AgentSessionResumeMode.medium.rawValue, forKey: key)
+        let restoredMedium = Workspace()
+        restoredMedium.restoreSessionSnapshot(snapshot)
+        let mediumPanelId = try XCTUnwrap(restoredMedium.focusedPanelId)
+        let mediumPanel = try XCTUnwrap(restoredMedium.terminalPanel(for: mediumPanelId))
+        let mediumInput = mediumPanel.surface.debugInitialInputMetadata()
+        XCTAssertTrue(mediumInput.hasInitialInput)
+        XCTAssertEqual(mediumInput.byteCount, preparedResumeInput.utf8.count)
         XCTAssertEqual(
-            restoredWithoutAutoResume.sessionSnapshot(includeScrollback: false)
+            restoredMedium.sessionSnapshot(includeScrollback: false)
                 .panels.first?.terminal?.agent?.sessionId,
             "codex-auto-resume-disabled-session"
         )
 
-        restoredWithoutAutoResume.updatePanelShellActivityState(panelId: disabledPanelId, state: .promptIdle)
+        // OFF: no resume command prefilled at all.
+        defaults.set(AgentSessionResumeMode.off.rawValue, forKey: key)
+        let restoredOff = Workspace()
+        restoredOff.restoreSessionSnapshot(snapshot)
+        let offPanelId = try XCTUnwrap(restoredOff.focusedPanelId)
+        let offPanel = try XCTUnwrap(restoredOff.terminalPanel(for: offPanelId))
+        XCTAssertFalse(offPanel.surface.debugInitialInputMetadata().hasInitialInput)
+
+        restoredMedium.updatePanelShellActivityState(panelId: mediumPanelId, state: .promptIdle)
         XCTAssertEqual(
-            restoredWithoutAutoResume.sessionSnapshot(includeScrollback: false)
+            restoredMedium.sessionSnapshot(includeScrollback: false)
                 .panels.first?.terminal?.agent?.sessionId,
             "codex-auto-resume-disabled-session"
         )
 
-        restoredWithoutAutoResume.updatePanelShellActivityState(panelId: disabledPanelId, state: .commandRunning)
-        XCTAssertNil(restoredWithoutAutoResume.sessionSnapshot(includeScrollback: false).panels.first?.terminal?.agent)
+        restoredMedium.updatePanelShellActivityState(panelId: mediumPanelId, state: .commandRunning)
+        XCTAssertNil(restoredMedium.sessionSnapshot(includeScrollback: false).panels.first?.terminal?.agent)
     }
 
     private func makeRestorableAgentIndex(
