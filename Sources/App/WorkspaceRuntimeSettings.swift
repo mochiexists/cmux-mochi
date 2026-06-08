@@ -252,6 +252,25 @@ enum AgentSessionAutoResumeSettings {
     }
 }
 
+/// Controls whether a restored agent's resume command is auto-run or just
+/// prefilled into the terminal input (dropped into the chat, ready to run).
+/// Defaults to prefill: continuity without auto-executing on launch.
+enum AgentResumeSubmitSettings {
+    static let autoSubmitKey = "terminal.autoSubmitAgentResumeCommand"
+    static let defaultAutoSubmit = false
+
+    static func autoSubmits(defaults: UserDefaults = .standard) -> Bool {
+        guard defaults.object(forKey: autoSubmitKey) != nil else {
+            return defaultAutoSubmit
+        }
+        return defaults.bool(forKey: autoSubmitKey)
+    }
+
+    static func setAutoSubmits(_ enabled: Bool, defaults: UserDefaults = .standard) {
+        defaults.set(enabled, forKey: autoSubmitKey)
+    }
+}
+
 enum AgentHibernationSettings {
     struct Values: Equatable, Sendable {
         var enabled: Bool
