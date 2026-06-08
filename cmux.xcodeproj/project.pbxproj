@@ -4916,6 +4916,11 @@
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.cmux-mochi.debug;
 				PRODUCT_NAME = "cmux Mochi DEV";
+				// The Mochi rebrand changed PRODUCT_NAME, which would otherwise
+				// derive a "cmux_Mochi_DEV" Swift module and break every
+				// `@testable import cmux_DEV` in cmuxTests. Pin the module name so
+				// the test target keeps resolving the app module.
+				PRODUCT_MODULE_NAME = cmux_DEV;
 				OTHER_SWIFT_FLAGS = (
 					"-Xllvm",
 					"-global-isel=0",
