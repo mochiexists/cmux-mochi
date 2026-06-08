@@ -708,6 +708,11 @@ extension Workspace {
         guard let snapshot = sessionPanelSnapshot(
             panelId: panelId,
             includeScrollback: true,
+            // Reopen Closed Tab should always bring the terminal's scrollback
+            // back (and, for agents, the resume command ready to run), even when
+            // a command was mid-run at close — the user explicitly closed it and
+            // expects its history on reopen.
+            includeUnsafeTerminalScrollback: true,
             restorableAgent: restorableAgent,
             resumeBinding: effectiveSurfaceResumeBinding(
                 panelId: panelId,
