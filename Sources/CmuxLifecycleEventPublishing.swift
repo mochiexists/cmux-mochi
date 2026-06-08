@@ -140,6 +140,12 @@ extension Workspace {
             origin: origin,
             focused: focused
         )
+        if focused {
+            // A newly focused surface means attention moved to the workspace;
+            // dismiss any full-area sidebar page so the new tab isn't hidden
+            // behind it.
+            NotificationCenter.default.post(name: .cmuxFocusedSurfaceDidActivate, object: nil)
+        }
     }
 
     func publishCmuxSurfaceClosed(_ surfaceId: UUID, paneId: PaneID?, panel: (any Panel)?, origin: String) {
