@@ -2110,11 +2110,17 @@ struct ContentView: View {
                     // Allowing both selected+retiring workspaces to be input-active lets the
                     // old workspace steal first responder (notably with WKWebView), which can
                     // delay handoff completion and make browser returns feel laggy.
-                    let isInputActive = isSelectedWorkspace
+                    // When a full-area page (notifications / Task Manager) is
+                    // shown, hide the workspace's terminal/browser portals (which
+                    // are AppKit views layered above SwiftUI and ignore the
+                    // workspace's opacity) so the live terminal doesn't bleed
+                    // through the page, and don't let it hold input focus.
+                    let isTabsSelected = sidebarSelectionState.selection == .tabs
+                    let isInputActive = isSelectedWorkspace && isTabsSelected
                     let portalPriority = isSelectedWorkspace ? 2 : (isRetiringWorkspace ? 1 : 0)
                     WorkspaceContentView(
                         workspace: tab,
-                        isWorkspaceVisible: presentation.isPanelVisible,
+                        isWorkspaceVisible: presentation.isPanelVisible && isTabsSelected,
                         isWorkspaceInputActive: isInputActive,
                         isFullScreen: isFullScreen,
                         workspacePortalPriority: portalPriority,
