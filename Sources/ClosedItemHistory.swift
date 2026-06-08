@@ -726,6 +726,10 @@ final class ClosedItemHistoryStore: ObservableObject {
             return String(localized: "menu.history.recentlyClosed.panel.project", defaultValue: "Project")
         case .extensionBrowser:
             return String(localized: "sidebar.extensions.browser.title", defaultValue: "Sidebar Extensions")
+        case .taskManager:
+            // Task Manager surfaces are ephemeral and never enter closed history,
+            // but the switch must stay exhaustive.
+            return String(localized: "taskManager.title", defaultValue: "Task Manager")
         }
     }
 
