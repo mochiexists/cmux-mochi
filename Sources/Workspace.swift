@@ -788,6 +788,11 @@ extension Workspace {
         guard let snapshot = sessionPanelSnapshot(
             panelId: panelId,
             includeScrollback: true,
+            // Reopen Closed Tab should always bring the terminal's scrollback
+            // back (and, for agents, the resume command ready to run), even when
+            // a command was mid-run at close — the user explicitly closed it and
+            // expects its history on reopen.
+            includeUnsafeTerminalScrollback: true,
             restorableAgent: restorableAgent,
             resumeBinding: effectiveSurfaceResumeBinding(
                 panelId: panelId,
@@ -11773,6 +11778,14 @@ final class Workspace: Identifiable, ObservableObject {
     func markTabCloseButtonClose(surfaceId: TabID) {
         explicitUserCloseTabIds.insert(surfaceId)
         tabCloseButtonCloseTabIds.insert(surfaceId)
+        // Closing a tab with its close button is an explicit user close, so make
+        // it reopenable via Reopen Closed Tab (⇧⌘T) — matching the close-tab
+        // shortcut and middle-click paths. Without this, terminal tabs closed
+        // with the X button were silently dropped from the close history.
+        closeHistoryEligibleTabIds.insert(surfaceId)
+        if let panelId = panelIdFromSurfaceId(surfaceId) {
+            closeHistoryEligiblePanelIds.insert(panelId)
+        }
     }
 
     func surfaceIdFromPanelId(_ panelId: UUID) -> TabID? {
