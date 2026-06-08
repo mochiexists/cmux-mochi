@@ -158,8 +158,8 @@ describe("apns response", () => {
 
 describe("apns route policy", () => {
   test("allows only cmux iOS bundle IDs and derives the APNs environment", () => {
-    expect(normalizeApnsBundle("com.cmuxterm.app")).toEqual({
-      bundleId: "com.cmuxterm.app",
+    expect(normalizeApnsBundle("com.cmux-mochi")).toEqual({
+      bundleId: "com.cmux-mochi",
       environment: "production",
     });
     expect(normalizeApnsBundle("dev.cmux.app.beta")).toEqual({
@@ -433,7 +433,7 @@ describe("apns sender transport", () => {
       { keyP8: p8, keyId: "KID-CONCURRENT", teamId: "TEAM456" },
       [
         { deviceToken: "a".repeat(64), bundleId: "dev.cmux.ios.push1", environment: "sandbox" },
-        { deviceToken: "b".repeat(64), bundleId: "com.cmuxterm.app", environment: "production" },
+        { deviceToken: "b".repeat(64), bundleId: "com.cmux-mochi", environment: "production" },
       ],
       { title: "agent", body: "done" },
       1000,
@@ -511,7 +511,7 @@ describe("apns sender transport", () => {
       { keyP8: p8, keyId: "KID-PARTIAL", teamId: "TEAM456" },
       [
         { deviceToken: "a".repeat(64), bundleId: "dev.cmux.ios.push1", environment: "sandbox" },
-        { deviceToken: "b".repeat(64), bundleId: "com.cmuxterm.app", environment: "production" },
+        { deviceToken: "b".repeat(64), bundleId: "com.cmux-mochi", environment: "production" },
       ],
       { title: "agent", body: "done" },
       1000,
@@ -574,7 +574,7 @@ describe("apns sender transport", () => {
     const results = await sendApnsNotification(
       { keyP8: p8, keyId: "KID-SAME-HOST-PARTIAL", teamId: "TEAM456" },
       [
-        { deviceToken: "a".repeat(64), bundleId: "com.cmuxterm.app", environment: "production" },
+        { deviceToken: "a".repeat(64), bundleId: "com.cmux-mochi", environment: "production" },
         { deviceToken: "b".repeat(64), bundleId: "dev.cmux.app.beta", environment: "production" },
       ],
       { title: "agent", body: "done" },
