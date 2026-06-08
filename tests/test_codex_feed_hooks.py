@@ -770,12 +770,16 @@ def test_install_registers_codex_thread_unsubscribe_session_end_hook(
     groups = hooks.get("hooks", {}).get("ThreadUnsubscribe")
     if not groups:
         raise AssertionError(f"missing ThreadUnsubscribe hook group: {hooks!r}")
+    # Matcher-less, like Stop: the group must not carry a matcher.
     if "matcher" in groups[-1]:
         raise AssertionError(f"ThreadUnsubscribe must be matcher-less: {groups[-1]!r}")
     command = groups[-1]["hooks"][0]["command"]
     if "cmux hooks codex session-end" not in command:
         raise AssertionError(f"wrong ThreadUnsubscribe command: {command!r}")
 
+    # The lifecycle hook must be pre-trusted in config.toml so Codex runs it
+    # automatically (the trust label must match Codex's hook_event_key_label,
+    # i.e. "thread_unsubscribe").
     config_toml = (codex_home / "config.toml").read_text(encoding="utf-8")
     state = codex_hook_trust_state(config_toml)
     expected_trust = expected_cmux_codex_hook_trust(hooks, codex_home / "hooks.json")

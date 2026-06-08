@@ -29076,6 +29076,11 @@ export default function cmuxPiSessionExtension(pi: ExtensionAPI) {
                 )
             }
             if !sessionId.isEmpty, !suppressVisibleMutations {
+                // Codex: mark this session the workspace's active session so a
+                // later session supersedes it. This is what lets the
+                // session-end (ThreadUnsubscribe) path tell whether a detach is
+                // still current before it clears shared workspace UI.
+                let markActiveForCodex = def.name == "codex"
                 try? store.upsert(
                     sessionId: sessionId,
                     workspaceId: workspaceId,
@@ -29086,7 +29091,10 @@ export default function cmuxPiSessionExtension(pi: ExtensionAPI) {
                     launchCommand: launchCommand,
                     agentLifecycle: .running,
                     runtimeStatus: .running,
-                    updateRuntimeStatus: true
+                    updateRuntimeStatus: true,
+                    markActive: markActiveForCodex,
+                    turnId: input.turnId,
+                    allowsNewSessionReplacement: markActiveForCodex
                 )
                 try? store.clearNotificationEmission(sessionId: sessionId)
                 publishAgentSurfaceResumeBinding(
@@ -29765,7 +29773,18 @@ export default function cmuxPiSessionExtension(pi: ExtensionAPI) {
             sendAgentFeedTelemetryUnlessSuppressed(workspaceId: workspaceId)
 
         case .sessionEnd:
+            // Mochi Codex surfaces a thread detach through the ThreadUnsubscribe
+            // hook, which maps to "session-end" (reason: UserRequested /
+            // ThreadSwitch / Programmatic — every reason finalizes the thread's
+            // attachment). The teardown below consumes the session record, which
+            // is exactly the signal RestorableAgentSessionIndex reads to NOT
+            // resurrect this thread on reopen — a crash leaves the record in
+            // place, so a reopen restores it, while a clean detach does not.
+            // performAgentSessionTeardown gates against stale/superseded
+            // sessions internally.
             if def.name == "codex", !sessionId.isEmpty {
+                // Retire every monitor lease for this session so the transcript
+                // monitor subprocess exits instead of lingering past detach.
                 retireCodexMonitorLeases(sessionId: sessionId, turnId: nil, env: env)
             }
             if def.sessionEndIsTurnBoundary {
