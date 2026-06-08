@@ -1738,7 +1738,7 @@ class GhosttyApp {
     }
 
     static let shared = GhosttyApp()
-    private static let releaseBundleIdentifier = "com.cmuxterm.app"
+    private static let releaseBundleIdentifier = "com.cmux-mochi"
     private static let fallbackAppearanceConfig = GhosttyConfig()
     private static let initializationLogger = Logger(
         subsystem: releaseBundleIdentifier,
@@ -6677,7 +6677,7 @@ final class TerminalSurface: Identifiable, ObservableObject {
                     // error) in unified logging rather than silently leaving bash
                     // without cmux integration. The path is logged privately so
                     // user-specific install paths are not exposed in the log.
-                    Logger(subsystem: "com.cmuxterm.app", category: "ghostty.initialization")
+                    Logger(subsystem: "com.cmux-mochi", category: "ghostty.initialization")
                         .error("cmux bash bootstrap unreadable at \(bashBootstrapPath, privacy: .private): \(error.localizedDescription, privacy: .public); bash shell integration will not load")
                 }
             }

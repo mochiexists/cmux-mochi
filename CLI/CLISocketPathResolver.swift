@@ -482,9 +482,9 @@ enum CLISocketPathResolver {
         }
 
 #if DEBUG
-        return "com.cmuxterm.app.debug"
+        return "com.cmux-mochi.debug"
 #else
-        return "com.cmuxterm.app"
+        return "com.cmux-mochi"
 #endif
     }
 

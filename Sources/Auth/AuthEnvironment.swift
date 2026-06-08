@@ -18,7 +18,7 @@ enum AuthEnvironment {
         // with the installed stable app.
         return "cmux-dev"
         #else
-        if Bundle.main.bundleIdentifier == "com.cmuxterm.app.nightly" {
+        if Bundle.main.bundleIdentifier == "com.cmux-mochi.nightly" {
             return "cmux-nightly"
         }
         return "cmux"

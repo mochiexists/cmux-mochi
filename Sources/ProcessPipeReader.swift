@@ -3,7 +3,7 @@ import Foundation
 import OSLog
 
 nonisolated private let processPipeReaderLogger = Logger(
-    subsystem: "com.cmuxterm.app",
+    subsystem: "com.cmux-mochi",
     category: "ProcessPipeReader"
 )
 

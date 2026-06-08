@@ -384,11 +384,11 @@ jobs:
 
           prepare_variant \
             "$APP_DIR" \
-            "com.cmuxterm.app.nightly" \
+            "com.cmux-mochi.nightly" \
             "https://files.cmux.com/nightly/appcast.xml"
 
           echo "Nightly app name: cmux NIGHTLY"
-          echo "Nightly bundle ID: com.cmuxterm.app.nightly"
+          echo "Nightly bundle ID: com.cmux-mochi.nightly"
           echo "Nightly marketing version: ${NIGHTLY_MARKETING_VERSION}"
           echo "Nightly build number: ${NIGHTLY_BUILD}"
           echo "Nightly immutable DMG: ${NIGHTLY_DMG_IMMUTABLE}"
@@ -405,7 +405,7 @@ jobs:
           ./scripts/build_remote_daemon_release_assets.sh \
             --version "$NIGHTLY_REMOTE_DAEMON_VERSION" \
             --release-tag "nightly" \
-            --repo "manaflow-ai/cmux" \
+            --repo "mochiexists/cmux-mochi" \
             --output-dir "remote-daemon-assets" \
             --asset-suffix "$NIGHTLY_BUILD"
           MANIFEST_JSON="$(python3 -c 'import json,sys; print(json.dumps(json.load(open(sys.argv[1], encoding="utf-8")), separators=(",",":")))' "remote-daemon-assets/cmuxd-remote-manifest-${NIGHTLY_BUILD}.json")"
@@ -485,7 +485,7 @@ jobs:
           security cms -D -i "$TMP_PROFILE" > "$TMP_PLIST"
 
           APP_ID="$(/usr/libexec/PlistBuddy -c "Print :Entitlements:com.apple.application-identifier" "$TMP_PLIST")"
-          if [ "$APP_ID" != "7WLXT3NR37.com.cmuxterm.app.nightly" ]; then
+          if [ "$APP_ID" != "7WLXT3NR37.com.cmux-mochi.nightly" ]; then
             echo "Nightly provisioning profile targets unexpected app ID: $APP_ID" >&2
             exit 1
           fi
@@ -666,7 +666,7 @@ jobs:
         run: |
           set -euo pipefail
           python3 ./scripts/prune_nightly_release_assets.py \
-            --repo manaflow-ai/cmux \
+            --repo mochiexists/cmux-mochi \
             --release-tag nightly \
             --keep-builds 100 \
             --execute
@@ -683,11 +683,11 @@ jobs:
             Automated nightly build for `${{ needs.decide.outputs.short_sha }}`.
 
             **cmux NIGHTLY** is published as a universal app:
-            - bundle ID `com.cmuxterm.app.nightly`
+            - bundle ID `com.cmux-mochi.nightly`
             - feed `appcast.xml`
             - compatibility feed `appcast-universal.xml` for older universal nightlies
 
-            [Download cmux-nightly-macos.dmg](https://github.com/manaflow-ai/cmux/releases/download/nightly/cmux-nightly-macos.dmg)
+            [Download cmux-nightly-macos.dmg](https://github.com/mochiexists/cmux-mochi/releases/download/nightly/cmux-nightly-macos.dmg)
           files: |
             cmux-nightly-macos-${{ github.run_id }}*.dmg
             cmux-nightly-macos.dmg

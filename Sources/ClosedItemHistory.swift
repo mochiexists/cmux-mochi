@@ -4,7 +4,7 @@ import Bonsplit
 import OSLog
 
 private let closedItemHistoryLogger = Logger(
-    subsystem: "com.cmuxterm.app",
+    subsystem: "com.cmux-mochi",
     category: "ClosedItemHistory"
 )
 
@@ -650,7 +650,7 @@ final class ClosedItemHistoryStore: ObservableObject {
         }
         let bundleId = (bundleIdentifier?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false)
             ? bundleIdentifier!
-            : "com.cmuxterm.app"
+            : "com.cmux-mochi"
         let safeBundleId = bundleId.replacingOccurrences(
             of: "[^A-Za-z0-9._-]",
             with: "_",

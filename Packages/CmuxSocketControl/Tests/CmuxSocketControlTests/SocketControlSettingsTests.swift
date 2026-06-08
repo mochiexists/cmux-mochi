@@ -55,9 +55,9 @@ import CmuxSettings
     }
 
     @Test func taggedDevBuildDetection() {
-        #expect(SocketControlSettings.isTaggedDevBuild(bundleIdentifier: "com.cmuxterm.app.debug.my-tag"))
-        #expect(!SocketControlSettings.isTaggedDevBuild(bundleIdentifier: "com.cmuxterm.app.debug"))
-        #expect(!SocketControlSettings.isTaggedDevBuild(bundleIdentifier: "com.cmuxterm.app"))
+        #expect(SocketControlSettings.isTaggedDevBuild(bundleIdentifier: "com.cmux-mochi.debug.my-tag"))
+        #expect(!SocketControlSettings.isTaggedDevBuild(bundleIdentifier: "com.cmux-mochi.debug"))
+        #expect(!SocketControlSettings.isTaggedDevBuild(bundleIdentifier: "com.cmux-mochi"))
     }
 
     @Test func untaggedDebugLaunchIsBlockedOnlyForBareDebugBundle() {
@@ -65,7 +65,7 @@ import CmuxSettings
         #expect(
             SocketControlSettings.shouldBlockUntaggedDebugLaunch(
                 environment: [:],
-                bundleIdentifier: "com.cmuxterm.app.debug",
+                bundleIdentifier: "com.cmux-mochi.debug",
                 isDebugBuild: true
             )
         )
@@ -74,7 +74,7 @@ import CmuxSettings
         #expect(
             !SocketControlSettings.shouldBlockUntaggedDebugLaunch(
                 environment: ["CMUX_UI_TEST_RUN": "1"],
-                bundleIdentifier: "com.cmuxterm.app.debug",
+                bundleIdentifier: "com.cmux-mochi.debug",
                 isDebugBuild: true
             )
         )
@@ -82,7 +82,7 @@ import CmuxSettings
         #expect(
             !SocketControlSettings.shouldBlockUntaggedDebugLaunch(
                 environment: [:],
-                bundleIdentifier: "com.cmuxterm.app.debug.tag",
+                bundleIdentifier: "com.cmux-mochi.debug.tag",
                 isDebugBuild: true
             )
         )
@@ -90,7 +90,7 @@ import CmuxSettings
         #expect(
             !SocketControlSettings.shouldBlockUntaggedDebugLaunch(
                 environment: [:],
-                bundleIdentifier: "com.cmuxterm.app",
+                bundleIdentifier: "com.cmux-mochi",
                 isDebugBuild: false
             )
         )
@@ -102,7 +102,7 @@ import CmuxSettings
                 "CMUX_SOCKET_PATH": "/tmp/cmux-custom.sock",
                 "CMUX_ALLOW_SOCKET_OVERRIDE": "1",
             ],
-            bundleIdentifier: "com.cmuxterm.app.debug.tag",
+            bundleIdentifier: "com.cmux-mochi.debug.tag",
             isDebugBuild: true,
             currentUserID: 501,
             probeStableDefaultPathEntry: { _ in .missing }
