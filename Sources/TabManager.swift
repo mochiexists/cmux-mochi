@@ -5846,6 +5846,7 @@ extension TabManager {
 
     func sessionSnapshot(
         includeScrollback: Bool,
+        includeUnsafeTerminalScrollback: Bool = false,
         restorableAgentIndex: RestorableAgentSessionIndex = .empty,
         surfaceResumeBindingIndex: SurfaceResumeBindingIndex? = nil
     ) -> SessionTabManagerSnapshot {
@@ -5857,6 +5858,7 @@ extension TabManager {
             .map {
                 $0.sessionSnapshot(
                     includeScrollback: includeScrollback,
+                    includeUnsafeTerminalScrollback: includeUnsafeTerminalScrollback,
                     restorableAgentIndex: restorableAgentIndex,
                     surfaceResumeBindingIndex: surfaceResumeBindingIndex
                 )
