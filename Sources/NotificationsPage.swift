@@ -226,6 +226,30 @@ struct NotificationsPage: View {
     }
 }
 
+/// Full-area Task Manager view that behaves like a special "workspace": it
+/// takes over the main content area when `selection == .taskManager`, mirroring
+/// `NotificationsPage`. The heavy table is only built while selected, so the
+/// sampling model (started/stopped by `CmuxTaskManagerView` on appear/disappear)
+/// does not run in the background.
+struct TaskManagerPage: View {
+    @Binding var selection: SidebarSelection
+    @State private var model = CmuxTaskManagerModel()
+
+    var body: some View {
+        Group {
+            if selection == .taskManager {
+                CmuxTaskManagerView(model: model, minimumSize: nil)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color(nsColor: .windowBackgroundColor))
+        .onAppear {
+            // A full Task Manager shows the process table, like the window.
+            model.includesProcesses = true
+        }
+    }
+}
+
 struct ShortcutAnnotation: View {
     let text: String
     var accessibilityIdentifier: String? = nil
