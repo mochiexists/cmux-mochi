@@ -15492,6 +15492,38 @@ enum BonsplitTabDragPayload {
     }
 }
 
+/// Spring-loads a workspace switch while a session/tab is dragged over its
+/// sidebar row: after a short dwell the main UI switches to the hovered
+/// workspace, so the drop can be placed into a specific pane there (rather than
+/// blindly moving to the workspace's default position). The dwell avoids
+/// churning through every row when dragging toward a distant target.
+@MainActor
+final class SidebarTabDragSpringLoad {
+    static let shared = SidebarTabDragSpringLoad()
+    private var timer: Timer?
+    private var pendingWorkspaceId: UUID?
+
+    func schedule(workspaceId: UUID, delay: TimeInterval = 0.3, perform: @escaping () -> Void) {
+        if pendingWorkspaceId == workspaceId { return }
+        cancel()
+        pendingWorkspaceId = workspaceId
+        timer = Timer.scheduledTimer(withTimeInterval: delay, repeats: false) { [weak self] _ in
+            Task { @MainActor in
+                guard let self, self.pendingWorkspaceId == workspaceId else { return }
+                self.pendingWorkspaceId = nil
+                self.timer = nil
+                perform()
+            }
+        }
+    }
+
+    func cancel() {
+        timer?.invalidate()
+        timer = nil
+        pendingWorkspaceId = nil
+    }
+}
+
 private struct SidebarBonsplitTabDropDelegate: DropDelegate {
     let targetWorkspaceId: UUID
     let tabManager: TabManager
@@ -15508,7 +15540,30 @@ private struct SidebarBonsplitTabDropDelegate: DropDelegate {
         return DropProposal(operation: .move)
     }
 
+    func dropEntered(info: DropInfo) {
+        guard validateDrop(info: info) else { return }
+        guard tabManager.selectedTabId != targetWorkspaceId else {
+            SidebarTabDragSpringLoad.shared.cancel()
+            return
+        }
+        let target = targetWorkspaceId
+        let manager = tabManager
+        let selectedBinding = $selectedTabIds
+        let lastIndexBinding = $lastSidebarSelectionIndex
+        SidebarTabDragSpringLoad.shared.schedule(workspaceId: target) {
+            guard let workspace = manager.tabs.first(where: { $0.id == target }) else { return }
+            manager.selectWorkspace(workspace)
+            selectedBinding.wrappedValue = [target]
+            lastIndexBinding.wrappedValue = manager.tabs.firstIndex(where: { $0.id == target })
+        }
+    }
+
+    func dropExited(info: DropInfo) {
+        SidebarTabDragSpringLoad.shared.cancel()
+    }
+
     func performDrop(info: DropInfo) -> Bool {
+        SidebarTabDragSpringLoad.shared.cancel()
         guard validateDrop(info: info),
               let transfer = BonsplitTabDragPayload.currentTransfer(),
               let app = AppDelegate.shared else {
