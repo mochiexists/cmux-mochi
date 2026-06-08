@@ -3192,6 +3192,18 @@ final class Workspace: Identifiable, ObservableObject {
         // Set ourselves as delegate
         bonsplitController.delegate = self
 
+        // Seed the browser button glow from the persisted launch-target setting,
+        // and keep it in sync when the setting is toggled (here or in any other
+        // workspace/window).
+        syncBrowserButtonHighlight()
+        NotificationCenter.default.addObserver(
+            forName: BrowserLaunchTargetSettings.didChangeNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.syncBrowserButtonHighlight() }
+        }
+
         // Ensure bonsplit has a focused pane and our didSelectTab handler runs for the
         // initial terminal. bonsplit's createTab selects internally but does not emit
         // didSelectTab, and focusedPaneId can otherwise be nil until user interaction.
@@ -12675,10 +12687,49 @@ extension Workspace: BonsplitDelegate {
         case "terminal":
             _ = newTerminalSurface(inPane: pane, inheritWorkingDirectoryFallback: true)
         case "browser":
-            _ = newBrowserSurface(inPane: pane)
+            if BrowserLaunchTargetSettings.opensExternally() {
+                Workspace.openExternalDefaultBrowser()
+            } else {
+                _ = newBrowserSurface(inPane: pane)
+            }
         default:
             _ = newTerminalSurface(inPane: pane, inheritWorkingDirectoryFallback: true)
         }
+    }
+
+    func splitTabBar(
+        _ controller: BonsplitController,
+        didRequestSplitButtonSecondaryAction action: BonsplitConfiguration.SplitActionButton.Action,
+        inPane pane: PaneID
+    ) {
+        // Only the browser button has a secondary action: toggle whether links
+        // open in a cmux browser panel or the external default browser.
+        guard action == .newBrowser else { return }
+        BrowserLaunchTargetSettings.toggle()
+        // The didChange notification fans the new state out to every workspace's
+        // button glow (including this one) via syncBrowserButtonHighlight().
+    }
+
+    /// Reflect the persisted browser launch target on the tab bar button glow.
+    func syncBrowserButtonHighlight() {
+        let raw = BonsplitConfiguration.SplitActionButton.Action.newBrowser.rawValue
+        if BrowserLaunchTargetSettings.opensExternally() {
+            bonsplitController.highlightedSplitButtonActions.insert(raw)
+        } else {
+            bonsplitController.highlightedSplitButtonActions.remove(raw)
+        }
+    }
+
+    /// Launch the system default browser (used when the New Browser button is in
+    /// "external" mode). Resolves the default handler for https and activates it.
+    static func openExternalDefaultBrowser() {
+        guard let probe = URL(string: "https://www.google.com"),
+              let appURL = NSWorkspace.shared.urlForApplication(toOpen: probe) else {
+            return
+        }
+        let configuration = NSWorkspace.OpenConfiguration()
+        configuration.activates = true
+        NSWorkspace.shared.openApplication(at: appURL, configuration: configuration)
     }
 
     func splitTabBar(_ controller: BonsplitController, didRequestCustomAction identifier: String, inPane pane: PaneID) {
