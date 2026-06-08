@@ -51,6 +51,7 @@ private struct SessionPaneRestoreEntry {
 extension Workspace {
     func sessionSnapshot(
         includeScrollback: Bool,
+        includeUnsafeTerminalScrollback: Bool = false,
         restorableAgentIndex: RestorableAgentSessionIndex? = nil,
         surfaceResumeBindingIndex: SurfaceResumeBindingIndex? = nil
     ) -> SessionWorkspaceSnapshot {
@@ -74,6 +75,7 @@ extension Workspace {
                 sessionPanelSnapshot(
                     panelId: panelId,
                     includeScrollback: includeScrollback,
+                    includeUnsafeTerminalScrollback: includeUnsafeTerminalScrollback,
                     restorableAgent: restorableAgentIndex?.snapshot(workspaceId: id, panelId: panelId),
                     resumeBinding: effectiveSurfaceResumeBinding(
                         panelId: panelId,
@@ -359,6 +361,7 @@ extension Workspace {
     private func sessionPanelSnapshot(
         panelId: UUID,
         includeScrollback: Bool,
+        includeUnsafeTerminalScrollback: Bool = false,
         restorableAgent: SessionRestorableAgentSnapshot?,
         resumeBinding: SurfaceResumeBindingSnapshot?
     ) -> SessionPanelSnapshot? {
@@ -485,12 +488,18 @@ extension Workspace {
                 shellActivityState: panelShellActivityStates[panelId],
                 fallbackNeedsConfirmClose: terminalPanel.needsConfirmClose()
             )
-            let shouldPersistScrollback = sessionRestorePolicy.shouldPersistSessionScrollback(
-                closeConfirmationRequired: closeConfirmationRequired
-            ) && sessionRestorePolicy.shouldReplaySessionScrollback(
-                hasRestorableAgent: effectiveRestorableAgent != nil,
-                tmuxStartCommand: restorableTmuxStartCommand,
-                hasResumeStartupWork: resumeStartupInput != nil
+            // Passive autosaves stay conservative (only persist when the terminal
+            // is safely at a prompt and not an agent pane). App termination and
+            // crash recovery opt into capturing the live ("unsafe") agent TUI
+            // scrollback so the agent's last visible state survives a hard quit.
+            let shouldPersistScrollback = includeUnsafeTerminalScrollback || (
+                sessionRestorePolicy.shouldPersistSessionScrollback(
+                    closeConfirmationRequired: closeConfirmationRequired
+                ) && sessionRestorePolicy.shouldReplaySessionScrollback(
+                    hasRestorableAgent: effectiveRestorableAgent != nil,
+                    tmuxStartCommand: restorableTmuxStartCommand,
+                    hasResumeStartupWork: resumeStartupInput != nil
+                )
             )
 #if DEBUG
             let allowDebugFallbackScrollback = debugSessionSnapshotScrollbackFallbackPanelIds.contains(panelId)
@@ -1258,11 +1267,17 @@ extension Workspace {
                 } else {
                     nil
                 }
+            // Agents normally don't replay old scrollback (it can print stale
+            // launch commands / race resume startup). But when a hard quit
+            // captured the live agent scrollback (unsafe capture), it is the
+            // agent's actual last state — replay it so the session visually
+            // continues across reopen.
+            let hasCapturedAgentScrollback = (snapshot.terminal?.scrollback?.isEmpty == false)
             let shouldReplayScrollback = sessionRestorePolicy.shouldReplaySessionScrollback(
                 hasRestorableAgent: restorableAgent != nil,
                 tmuxStartCommand: restoredTmuxStartCommand,
                 hasResumeStartupWork: restoredBindingLaunch != nil || restoredAgentResumeLaunch != nil
-            )
+            ) || (restorableAgent != nil && hasCapturedAgentScrollback)
             let restoredRemotePTYSessionID: String? = {
                 guard remoteConfiguration?.preserveAfterTerminalExit == true,
                       remoteConfiguration?.persistentDaemonSlot != nil else {

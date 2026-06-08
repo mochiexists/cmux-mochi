@@ -1869,7 +1869,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
 
     private func prepareForConfirmedAppTermination() {
         isTerminatingApp = true
-        _ = saveSessionSnapshotIncludingProcessDetectedIndexes(includeScrollback: true, removeWhenEmpty: false)
+        _ = saveSessionSnapshotIncludingProcessDetectedIndexes(
+            includeScrollback: true,
+            includeUnsafeTerminalScrollback: true,
+            removeWhenEmpty: false
+        )
         ClosedItemHistoryStore.shared.flushPendingSaves()
     }
 
@@ -1938,7 +1942,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
                 "quitWarningEnabled": quitConfirmationStore.isEnabled ? "1" : "0"
             ]
         )
-
         // If the user already confirmed via the Cmd+Q shortcut warning dialog,
         // or policy skips the warning, avoid a second alert.
         if !quitConfirmationStore.shouldShowConfirmation(
@@ -1992,7 +1995,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         // service's missed-heartbeat timeout.
         PresenceHeartbeatClient.shared.appWillTerminate()
         closeAllWebInspectorsBeforeAppTeardown()
-        _ = saveSessionSnapshotIncludingProcessDetectedIndexes(includeScrollback: true, removeWhenEmpty: false)
+        // App is exiting: capture the live ("unsafe") agent TUI scrollback so the
+        // agent's last visible state survives a hard quit and replays on reopen.
+        _ = saveSessionSnapshotIncludingProcessDetectedIndexes(
+            includeScrollback: true,
+            includeUnsafeTerminalScrollback: true,
+            removeWhenEmpty: false
+        )
         ClosedItemHistoryStore.shared.flushPendingSaves()
         stopSessionAutosaveTimer()
         CloudVMActionLauncher.shared.terminateAll()
@@ -2021,7 +2030,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
 
     func persistSessionForUpdateRelaunch() {
         isTerminatingApp = true
-        _ = saveSessionSnapshotIncludingProcessDetectedIndexes(includeScrollback: true, removeWhenEmpty: false)
+        _ = saveSessionSnapshotIncludingProcessDetectedIndexes(
+            includeScrollback: true,
+            includeUnsafeTerminalScrollback: true,
+            removeWhenEmpty: false
+        )
         ClosedItemHistoryStore.shared.flushPendingSaves()
     }
 
@@ -4015,6 +4028,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
     @discardableResult
     private func saveSessionSnapshot(
         includeScrollback: Bool,
+        includeUnsafeTerminalScrollback: Bool = false,
         removeWhenEmpty: Bool = false,
         preserveManualRestoreBackupOnMissingPrimary: Bool = false,
         restorableAgentIndex: RestorableAgentSessionIndex? = nil,
@@ -4049,6 +4063,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
 
         let snapshotBuildResult = buildSessionSnapshotResult(
             includeScrollback: includeScrollback,
+            includeUnsafeTerminalScrollback: includeUnsafeTerminalScrollback,
             restorableAgentIndex: restorableAgentIndex,
             surfaceResumeBindingIndex: surfaceResumeBindingIndex
         )
@@ -4294,11 +4309,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
     @discardableResult
     private func saveSessionSnapshotIncludingProcessDetectedIndexes(
         includeScrollback: Bool,
+        includeUnsafeTerminalScrollback: Bool = false,
         removeWhenEmpty: Bool = false
     ) -> Bool {
         let resumeIndexes = ProcessDetectedResumeIndexes.loadSynchronously()
         return saveSessionSnapshot(
             includeScrollback: includeScrollback,
+            includeUnsafeTerminalScrollback: includeUnsafeTerminalScrollback,
             removeWhenEmpty: removeWhenEmpty,
             restorableAgentIndex: resumeIndexes.restorableAgentIndex,
             surfaceResumeBindingIndex: resumeIndexes.surfaceResumeBindingIndex
@@ -4440,11 +4457,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
 
     private func buildSessionSnapshot(
         includeScrollback: Bool,
+        includeUnsafeTerminalScrollback: Bool = false,
         restorableAgentIndex suppliedRestorableAgentIndex: RestorableAgentSessionIndex? = nil,
         surfaceResumeBindingIndex suppliedSurfaceResumeBindingIndex: SurfaceResumeBindingIndex? = nil
     ) -> AppSessionSnapshot? {
         buildSessionSnapshotResult(
             includeScrollback: includeScrollback,
+            includeUnsafeTerminalScrollback: includeUnsafeTerminalScrollback,
             restorableAgentIndex: suppliedRestorableAgentIndex,
             surfaceResumeBindingIndex: suppliedSurfaceResumeBindingIndex
         ).snapshot
@@ -4452,6 +4471,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
 
     private func buildSessionSnapshotResult(
         includeScrollback: Bool,
+        includeUnsafeTerminalScrollback: Bool = false,
         restorableAgentIndex suppliedRestorableAgentIndex: RestorableAgentSessionIndex? = nil,
         surfaceResumeBindingIndex suppliedSurfaceResumeBindingIndex: SurfaceResumeBindingIndex? = nil
     ) -> (snapshot: AppSessionSnapshot?, removedCrashDiagnosticState: Bool) {
@@ -4467,6 +4487,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
             let windowSnapshot = sessionWindowSnapshot(
                 for: context,
                 includeScrollback: includeScrollback,
+                includeUnsafeTerminalScrollback: includeUnsafeTerminalScrollback,
                 restorableAgentIndex: restorableAgentIndex,
                 surfaceResumeBindingIndex: suppliedSurfaceResumeBindingIndex
             )
@@ -4507,11 +4528,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
     private func sessionWindowSnapshot(
         for context: MainWindowContext,
         includeScrollback: Bool,
+        includeUnsafeTerminalScrollback: Bool = false,
         restorableAgentIndex: RestorableAgentSessionIndex,
         surfaceResumeBindingIndex: SurfaceResumeBindingIndex? = nil
     ) -> SessionWindowSnapshot {
         let tabManagerSnapshot = context.tabManager.sessionSnapshot(
             includeScrollback: includeScrollback,
+            includeUnsafeTerminalScrollback: includeUnsafeTerminalScrollback,
             restorableAgentIndex: restorableAgentIndex,
             surfaceResumeBindingIndex: surfaceResumeBindingIndex
         )
