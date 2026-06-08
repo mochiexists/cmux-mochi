@@ -16413,8 +16413,17 @@ struct TabItemView: View, Equatable {
         .disabled(targetIds.isEmpty)
 
         if !isMulti {
-            Button(String(localized: "contextMenu.showWorkspaceInFinder", defaultValue: "Show in Finder")) {
+            Button(String(localized: "contextMenu.revealInFinder", defaultValue: "Reveal in Finder")) {
                 workspaceFinderDirectoryOpenRequest = WorkspaceFinderDirectoryOpenRequest(directoryURL: finderDirectoryURL)
+            }
+            .disabled(finderDirectoryURL == nil)
+
+            Button(String(localized: "contextMenu.copyPath", defaultValue: "Copy Path")) {
+                if let finderDirectoryURL {
+                    let pasteboard = NSPasteboard.general
+                    pasteboard.clearContents()
+                    pasteboard.setString(finderDirectoryURL.path, forType: .string)
+                }
             }
             .disabled(finderDirectoryURL == nil)
         }
