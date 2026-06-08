@@ -28,6 +28,7 @@ CODEX_HOOK_EVENT_LABELS = {
     "SessionStart": "session_start",
     "UserPromptSubmit": "user_prompt_submit",
     "Stop": "stop",
+    "ThreadUnsubscribe": "thread_unsubscribe",
 }
 
 CODEX_HOOK_EVENTS_WITH_MATCHERS = {
@@ -43,6 +44,7 @@ CMUX_CODEX_HOOK_SUBCOMMANDS = (
     "session-start",
     "prompt-submit",
     "stop",
+    "session-end",
 )
 
 CMUX_CODEX_FEED_EVENTS = (
@@ -722,6 +724,61 @@ def test_install_adds_codex_permission_request_hook(cli_path: str, root: Path) -
         if state.get(key, {}).get("trusted_hash") != trusted_hash:
             raise AssertionError(
                 f"missing trusted hash for {key}: expected {trusted_hash!r}, got state {state!r}"
+            )
+
+
+def test_install_registers_codex_thread_unsubscribe_session_end_hook(
+    cli_path: str, root: Path
+) -> None:
+    """Mochi Codex's ThreadUnsubscribe hook must install as a matcher-less
+    session-end lifecycle hook AND be pre-trusted, so Codex runs it without a
+    trust prompt. Without the pre-trust hash the hook is dormant."""
+    codex_home = root / "codex-home-thread-unsubscribe"
+    codex_home.mkdir()
+    env = os.environ.copy()
+    env["CODEX_HOME"] = str(codex_home)
+
+    result = subprocess.run(
+        [cli_path, "hooks", "codex", "install", "--yes"],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=env,
+        timeout=20,
+    )
+    if result.returncode != 0:
+        raise AssertionError(
+            f"hooks codex install failed exit={result.returncode}\nstdout={result.stdout}\nstderr={result.stderr}"
+        )
+
+    hooks = json.loads((codex_home / "hooks.json").read_text(encoding="utf-8"))
+    groups = hooks.get("hooks", {}).get("ThreadUnsubscribe")
+    if not groups:
+        raise AssertionError(f"missing ThreadUnsubscribe hook group: {hooks!r}")
+    # Matcher-less, like Stop: the group must not carry a matcher.
+    if "matcher" in groups[-1]:
+        raise AssertionError(f"ThreadUnsubscribe must be matcher-less: {groups[-1]!r}")
+    command = groups[-1]["hooks"][0]["command"]
+    if "cmux hooks codex session-end" not in command:
+        raise AssertionError(f"wrong ThreadUnsubscribe command: {command!r}")
+
+    # The lifecycle hook must be pre-trusted in config.toml so Codex runs it
+    # automatically (the trust label must match Codex's hook_event_key_label,
+    # i.e. "thread_unsubscribe").
+    config_toml = (codex_home / "config.toml").read_text(encoding="utf-8")
+    state = codex_hook_trust_state(config_toml)
+    expected_trust = expected_cmux_codex_hook_trust(hooks, codex_home / "hooks.json")
+    thread_unsubscribe_keys = [
+        key for key in expected_trust if key.endswith(":thread_unsubscribe:0:0")
+    ]
+    if not thread_unsubscribe_keys:
+        raise AssertionError(
+            f"expected a thread_unsubscribe trust entry, got {expected_trust!r}"
+        )
+    for key in thread_unsubscribe_keys:
+        if state.get(key, {}).get("trusted_hash") != expected_trust[key]:
+            raise AssertionError(
+                f"ThreadUnsubscribe hook not pre-trusted: expected {expected_trust[key]!r} for {key}, got {state!r}"
             )
 
 
@@ -1613,6 +1670,7 @@ def main() -> int:
             test_codex_monitor_exits_when_workspace_has_no_surfaces(cli_path, root)
             test_codex_monitor_survives_transient_owner_rpc_timeout(cli_path, root)
             test_install_adds_codex_permission_request_hook(cli_path, root)
+            test_install_registers_codex_thread_unsubscribe_session_end_hook(cli_path, root)
             test_install_escapes_codex_hook_trust_state_keys(cli_path, root)
             test_install_preserves_codex_hook_position_with_third_party_hooks(cli_path, root)
             test_install_preserves_each_codex_hook_position_with_interleaved_third_party_hooks(cli_path, root)

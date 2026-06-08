@@ -107,6 +107,11 @@ extension CMUXCLI {
                 .init(agentEvent: "SessionStart", cmuxSubcommand: "session-start"),
                 .init(agentEvent: "UserPromptSubmit", cmuxSubcommand: "prompt-submit"),
                 .init(agentEvent: "Stop", cmuxSubcommand: "stop"),
+                // Mochi Codex ThreadUnsubscribe: client detached from a thread
+                // (UserRequested / ThreadSwitch / Programmatic). Treated as the
+                // Codex session-end signal for final cleanup + reconciliation.
+                // Matcher-less, like Stop (see codexHookEventUsesMatcher).
+                .init(agentEvent: "ThreadUnsubscribe", cmuxSubcommand: "session-end"),
             ],
             feedHookEvents: ["PreToolUse", "PermissionRequest"],
             postInstallAction: .codexConfigToml

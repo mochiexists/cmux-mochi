@@ -20397,6 +20397,7 @@ export default function cmuxPiSessionExtension(pi: ExtensionAPI) {
         "SessionStart",
         "UserPromptSubmit",
         "Stop",
+        "ThreadUnsubscribe",
     ]
 
     private static func codexHookEventLabel(_ eventName: String) -> String? {
@@ -20409,6 +20410,9 @@ export default function cmuxPiSessionExtension(pi: ExtensionAPI) {
         case "SessionStart": return "session_start"
         case "UserPromptSubmit": return "user_prompt_submit"
         case "Stop": return "stop"
+        // Matches Codex's hook_event_key_label(ThreadUnsubscribe) so the
+        // pre-trusted hash cmux writes to config.toml is accepted by Codex.
+        case "ThreadUnsubscribe": return "thread_unsubscribe"
         default: return nil
         }
     }
@@ -20829,13 +20833,21 @@ export default function cmuxPiSessionExtension(pi: ExtensionAPI) {
                 cwd: hookCwd ?? mapped?.cwd
             )
             if !sessionId.isEmpty {
+                // Codex: mark this session the workspace's active session so a
+                // later session supersedes it. This is what lets the
+                // session-end (ThreadUnsubscribe) path tell whether a detach is
+                // still current before it clears shared workspace UI.
+                let markActiveForCodex = def.name == "codex"
                 try? store.upsert(
                     sessionId: sessionId,
                     workspaceId: workspaceId,
                     surfaceId: surfaceId,
                     cwd: hookCwd ?? mapped?.cwd,
                     pid: pid,
-                    launchCommand: launchCommand
+                    launchCommand: launchCommand,
+                    markActive: markActiveForCodex,
+                    turnId: input.turnId,
+                    allowsNewSessionReplacement: markActiveForCodex
                 )
             }
             if let pid {
@@ -20968,14 +20980,59 @@ export default function cmuxPiSessionExtension(pi: ExtensionAPI) {
             }
 
         case .sessionEnd:
+            // Mochi Codex surfaces a thread detach through the ThreadUnsubscribe
+            // hook, which maps to "session-end". The reason is UserRequested /
+            // ThreadSwitch / Programmatic; every reason finalizes the thread's
+            // attachment. Removing the session record below is precisely the
+            // signal the app's RestorableAgentSessionIndex reads to NOT resurrect
+            // this thread on reopen — a crash leaves the record in place, so a
+            // reopen restores it, while a clean detach does not.
+            let detachReason = (input.object?["reason"] as? String)?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            // Capture whether this session is still the workspace's active one
+            // BEFORE consume() clears the active mapping. A stale detach (e.g. a
+            // ThreadUnsubscribe arriving after a newer session took the surface)
+            // must remove its own record but must NOT clear the newer session's
+            // shared workspace status/notifications.
+            let detachMapped = sessionId.isEmpty ? nil : (try? store.lookup(sessionId: sessionId))
+            let detachIsActiveSession = detachMapped.map { mapped in
+                (try? store.isCurrent(sessionId: sessionId, workspaceId: mapped.workspaceId, turnId: nil)) ?? true
+            } ?? true
             if def.name == "codex", !sessionId.isEmpty {
+                // Retire every monitor lease for this session so the transcript
+                // monitor subprocess exits instead of lingering past detach.
                 retireCodexMonitorLeases(sessionId: sessionId, turnId: nil, env: env)
             }
             if let mapped = try? store.consume(sessionId: sessionId, workspaceId: nil, surfaceId: nil) {
                 sendAgentFeedTelemetry(workspaceId: mapped.workspaceId)
-                _ = try? sendV1Command(
-                    "clear_agent_pid \(pidKey) --tab=\(mapped.workspaceId)\(socketPanelOption(mapped.surfaceId)) --clear-status",
-                    client: client
+                if detachIsActiveSession {
+                    // Final reconciliation: clear the agent PID/status and any
+                    // pending monitor notification (e.g. a stale "Codex needs
+                    // input" toast) so a detached thread leaves no ghost state.
+                    _ = try? sendV1Command(
+                        "clear_agent_pid \(pidKey) --tab=\(mapped.workspaceId)\(socketPanelOption(mapped.surfaceId)) --clear-status",
+                        client: client
+                    )
+                    _ = try? sendV1Command(
+                        "clear_notifications --tab=\(mapped.workspaceId)",
+                        client: client
+                    )
+                    telemetry.breadcrumb(
+                        "\(def.name)-hook.session-end",
+                        data: ["reason": detachReason ?? "", "workspace": mapped.workspaceId]
+                    )
+                } else {
+                    // Superseded by a newer session: drop our record quietly
+                    // without touching the active session's visible state.
+                    telemetry.breadcrumb(
+                        "\(def.name)-hook.session-end.superseded",
+                        data: ["reason": detachReason ?? "", "workspace": mapped.workspaceId]
+                    )
+                }
+            } else {
+                telemetry.breadcrumb(
+                    "\(def.name)-hook.session-end.stale",
+                    data: ["reason": detachReason ?? ""]
                 )
             }
 
