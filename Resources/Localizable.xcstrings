@@ -53,6 +53,23 @@
         }
       }
     },
+    "browser.openInExternalBrowser.menu": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open in External Browser"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "外部ブラウザで開く"
+          }
+        }
+      }
+    },
     "commandPalette.kind.taskManager": {
       "extractionState": "manual",
       "localizations": {
