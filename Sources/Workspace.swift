@@ -11470,6 +11470,20 @@ final class Workspace: Identifiable, ObservableObject {
         // Set ourselves as delegate
         bonsplitController.delegate = self
 
+        // Right-clicking the New Browser button shows a checkable
+        // "Open in External Browser" item; ticking it tints (glows) the button.
+        bonsplitController.splitButtonContextToggleProvider = { action in
+            guard action == .newBrowser else { return nil }
+            return SplitButtonContextToggle(
+                title: String(
+                    localized: "browser.openInExternalBrowser.menu",
+                    defaultValue: "Open in External Browser"
+                ),
+                isOn: BrowserLaunchTargetSettings.opensExternally(),
+                onToggle: { BrowserLaunchTargetSettings.setOpensExternally($0) }
+            )
+        }
+
         // Seed the browser button glow from the persisted launch-target setting,
         // and keep it in sync when the setting is toggled (here or in any other
         // workspace/window).
@@ -19938,18 +19952,6 @@ extension Workspace: BonsplitDelegate {
         }
     }
 
-    func splitTabBar(
-        _ controller: BonsplitController,
-        didRequestSplitButtonSecondaryAction action: BonsplitConfiguration.SplitActionButton.Action,
-        inPane pane: PaneID
-    ) {
-        // Only the browser button has a secondary action: toggle whether links
-        // open in a cmux browser panel or the external default browser.
-        guard action == .newBrowser else { return }
-        BrowserLaunchTargetSettings.toggle()
-        // The didChange notification fans the new state out to every workspace's
-        // button glow (including this one) via syncBrowserButtonHighlight().
-    }
 
     /// Reflect the persisted browser launch target on the tab bar button glow.
     func syncBrowserButtonHighlight() {
