@@ -10651,6 +10651,9 @@ final class Workspace: Identifiable, ObservableObject {
     @Published private(set) var surfaceTabBarDirectory: String?
     private(set) var preferredBrowserProfileID: UUID?
 
+    /// Token for the BrowserLaunchTargetSettings change observer; removed in deinit.
+    private var browserLaunchTargetObserver: NSObjectProtocol?
+
     /// Ordinal for CMUX_PORT range assignment (monotonically increasing per app session)
     var portOrdinal: Int = 0
 
@@ -11471,7 +11474,7 @@ final class Workspace: Identifiable, ObservableObject {
         // and keep it in sync when the setting is toggled (here or in any other
         // workspace/window).
         syncBrowserButtonHighlight()
-        NotificationCenter.default.addObserver(
+        browserLaunchTargetObserver = NotificationCenter.default.addObserver(
             forName: BrowserLaunchTargetSettings.didChangeNotification,
             object: nil,
             queue: .main
@@ -11517,6 +11520,9 @@ final class Workspace: Identifiable, ObservableObject {
                     NotificationCenter.default.removeObserver(observer)
                 }
             }
+        }
+        if let browserLaunchTargetObserver {
+            NotificationCenter.default.removeObserver(browserLaunchTargetObserver)
         }
         activeRemoteSessionControllerID = nil
         remoteSessionController?.stop()
