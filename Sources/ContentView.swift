@@ -15507,18 +15507,26 @@ final class SidebarTabDragSpringLoad {
     private var timer: Timer?
     private var pendingWorkspaceId: UUID?
 
-    func schedule(workspaceId: UUID, delay: TimeInterval = 0.3, perform: @escaping () -> Void) {
+    func schedule(workspaceId: UUID, delay: TimeInterval = 0.3, perform: @escaping @MainActor () -> Void) {
         if pendingWorkspaceId == workspaceId { return }
         cancel()
         pendingWorkspaceId = workspaceId
-        timer = Timer.scheduledTimer(withTimeInterval: delay, repeats: false) { [weak self] _ in
+        let timer = Timer.scheduledTimer(withTimeInterval: delay, repeats: false) { [weak self] _ in
             Task { @MainActor in
                 guard let self, self.pendingWorkspaceId == workspaceId else { return }
                 self.pendingWorkspaceId = nil
                 self.timer = nil
+                // Only switch while a drag is still in progress; guards against a
+                // stale fire after the drop or cancel.
+                guard NSEvent.pressedMouseButtons != 0 else { return }
                 perform()
             }
         }
+        self.timer = timer
+        // The default run-loop mode is suspended during AppKit drag tracking, so
+        // also register the timer for event tracking — otherwise it wouldn't fire
+        // until the drag loop exits. Mirrors the sidebar autoscroll timer.
+        RunLoop.main.add(timer, forMode: .eventTracking)
     }
 
     func cancel() {
