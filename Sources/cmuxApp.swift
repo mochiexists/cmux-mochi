@@ -5042,8 +5042,8 @@ struct SettingsView: View {
     private var showTerminalScrollBar = TerminalScrollBarSettings.defaultShowScrollBar
     @AppStorage(FileDropBehaviorSettings.defaultBehaviorKey)
     private var fileDropDefaultBehavior = FileDropBehaviorSettings.defaultBehavior.rawValue
-    @AppStorage(AgentSessionAutoResumeSettings.autoResumeAgentSessionsKey)
-    private var autoResumeAgentSessions = AgentSessionAutoResumeSettings.defaultAutoResumeAgentSessions
+    @AppStorage(AgentSessionAutoResumeSettings.modeKey)
+    private var agentResumeModeRawValue = AgentSessionAutoResumeSettings.defaultModeRawValueForStorage
     @AppStorage(WorkspaceAutoReorderSettings.key) private var workspaceAutoReorder = WorkspaceAutoReorderSettings.defaultValue
     @AppStorage(IMessageModeSettings.key) private var iMessageMode = IMessageModeSettings.defaultValue
     @AppStorage(SidebarWorkspaceDetailSettings.hideAllDetailsKey)
@@ -5194,12 +5194,17 @@ struct SettingsView: View {
         )
     }
 
-    private var autoResumeAgentSessionsBinding: Binding<Bool> {
+    private var selectedAgentResumeMode: AgentSessionResumeMode {
+        AgentSessionResumeMode(rawValue: agentResumeModeRawValue) ?? AgentSessionAutoResumeSettings.defaultMode
+    }
+
+    private var agentResumeModeSelection: Binding<String> {
         Binding(
-            get: { autoResumeAgentSessions },
+            get: { selectedAgentResumeMode.rawValue },
             set: { newValue in
-                guard autoResumeAgentSessions != newValue else { return }
-                autoResumeAgentSessions = newValue
+                let mode = AgentSessionResumeMode(rawValue: newValue) ?? AgentSessionAutoResumeSettings.defaultMode
+                guard selectedAgentResumeMode != mode else { return }
+                agentResumeModeRawValue = mode.rawValue
                 AgentSessionAutoResumeSettings.notifyDidChange()
             }
         )
@@ -6226,21 +6231,18 @@ struct SettingsView: View {
 
                         SettingsCardDivider()
 
-                        SettingsCardRow(
-                            configurationReview: .json("terminal.autoResumeAgentSessions"),
-                            String(localized: "settings.terminal.agentAutoResume", defaultValue: "Resume Agent Sessions on Reopen"),
-                            subtitle: autoResumeAgentSessions
-                                ? String(localized: "settings.terminal.agentAutoResume.subtitleOn", defaultValue: "When cmux Mochi reopens after quit, restored agent terminals automatically run their resume command.")
-                                : String(localized: "settings.terminal.agentAutoResume.subtitleOff", defaultValue: "When cmux Mochi reopens after quit, restored agent terminals restore scrollback and leave the resume command ready.")
+                        SettingsPickerRow(
+                            configurationReview: .json("terminal.agentResumeMode"),
+                            String(localized: "settings.terminal.agentResumeMode", defaultValue: "Agent Resume on Reopen"),
+                            subtitle: selectedAgentResumeMode.settingsSubtitle,
+                            controlWidth: pickerColumnWidth,
+                            selection: agentResumeModeSelection
                         ) {
-                            Toggle("", isOn: autoResumeAgentSessionsBinding)
-                                .labelsHidden()
-                                .controlSize(.small)
-                                .accessibilityIdentifier("SettingsTerminalAgentAutoResumeToggle")
-                                .accessibilityLabel(
-                                    String(localized: "settings.terminal.agentAutoResume", defaultValue: "Resume Agent Sessions on Reopen")
-                                )
+                            ForEach(AgentSessionResumeMode.allCases) { mode in
+                                Text(mode.displayName).tag(mode.rawValue)
+                            }
                         }
+                        .settingsSearchAnchor(SettingsSearchIndex.settingID(for: .terminal, idSuffix: "agent-auto-resume"))
                     }
 
                     SettingsSectionHeader(title: String(localized: "settings.section.sidebarAppearance", defaultValue: "Sidebar"))
@@ -7352,9 +7354,9 @@ struct SettingsView: View {
             TerminalScrollBarSettings.notifyDidChange()
         }
         fileDropDefaultBehavior = FileDropBehaviorSettings.defaultBehavior.rawValue
-        let previousAutoResumeAgentSessions = autoResumeAgentSessions
-        autoResumeAgentSessions = AgentSessionAutoResumeSettings.defaultAutoResumeAgentSessions
-        if previousAutoResumeAgentSessions != autoResumeAgentSessions {
+        let previousAgentResumeMode = agentResumeModeRawValue
+        agentResumeModeRawValue = AgentSessionAutoResumeSettings.defaultMode.rawValue
+        if previousAgentResumeMode != agentResumeModeRawValue {
             AgentSessionAutoResumeSettings.notifyDidChange()
         }
         workspaceAutoReorder = WorkspaceAutoReorderSettings.defaultValue

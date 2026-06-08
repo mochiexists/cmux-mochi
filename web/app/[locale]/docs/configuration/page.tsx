@@ -64,7 +64,7 @@ const settingsFileExample = `{
 
   // "terminal": {
   //   "showScrollBar": false,
-  //   "autoResumeAgentSessions": true
+  //   "agentResumeMode": "medium"
   // },
 
   // "browser": {

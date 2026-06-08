@@ -106362,6 +106362,55 @@
         }
       }
     },
+    "settings.terminal.agentResumeMode": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Agent Resume on Reopen" } },
+        "ja": { "stringUnit": { "state": "translated", "value": "再起動時のエージェント再開" } }
+      }
+    },
+    "settings.terminal.agentResumeMode.off": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Off" } },
+        "ja": { "stringUnit": { "state": "translated", "value": "オフ" } }
+      }
+    },
+    "settings.terminal.agentResumeMode.medium": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Medium" } },
+        "ja": { "stringUnit": { "state": "translated", "value": "中" } }
+      }
+    },
+    "settings.terminal.agentResumeMode.full": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Full" } },
+        "ja": { "stringUnit": { "state": "translated", "value": "フル" } }
+      }
+    },
+    "settings.terminal.agentResumeMode.off.subtitle": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Restored agent terminals start fresh — no scrollback and no resume command." } },
+        "ja": { "stringUnit": { "state": "translated", "value": "復元されたエージェント端末は新規状態で起動します（スクロールバックも再開コマンドもありません）。" } }
+      }
+    },
+    "settings.terminal.agentResumeMode.medium.subtitle": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Restored agent terminals show their previous scrollback and leave the resume command ready to run." } },
+        "ja": { "stringUnit": { "state": "translated", "value": "復元されたエージェント端末は以前のスクロールバックを表示し、再開コマンドを実行可能な状態で待機します。" } }
+      }
+    },
+    "settings.terminal.agentResumeMode.full.subtitle": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Restored agent terminals immediately run their resume command." } },
+        "ja": { "stringUnit": { "state": "translated", "value": "復元されたエージェント端末は再開コマンドを直ちに実行します。" } }
+      }
+    },
     "settings.app.preferredEditor.subtitle": {
       "extractionState": "manual",
       "localizations": {
@@ -112384,6 +112433,7 @@
     "rightSidebar.remote.error.modeUnavailable": { "extractionState": "manual", "localizations": { "en": { "stringUnit": { "state": "translated", "value": "ERROR: Right sidebar mode '%@' is not available" } }, "ja": { "stringUnit": { "state": "translated", "value": "ERROR: 右サイドバーのモード '%@' は利用できません" } } } },
     "rightSidebar.remote.error.appDelegateUnavailable": { "extractionState": "manual", "localizations": { "en": { "stringUnit": { "state": "translated", "value": "ERROR: App delegate not available" } }, "ja": { "stringUnit": { "state": "translated", "value": "ERROR: アプリデリゲートを利用できません" } } } },
     "notificationHook.failure.title": { "extractionState": "manual", "localizations": { "en": { "stringUnit": { "state": "translated", "value": "Notification Hook Failed" } }, "ja": { "stringUnit": { "state": "translated", "value": "通知フックに失敗しました" } } } },
-    "notificationHook.failure.body": { "extractionState": "manual", "localizations": { "en": { "stringUnit": { "state": "translated", "value": "cmux used default notification behavior because '%@' failed." } }, "ja": { "stringUnit": { "state": "translated", "value": "'%@' が失敗したため、cmux は既定の通知動作を使用しました。" } } } }
+    "notificationHook.failure.body": { "extractionState": "manual", "localizations": { "en": { "stringUnit": { "state": "translated", "value": "cmux used default notification behavior because '%@' failed." } }, "ja": { "stringUnit": { "state": "translated", "value": "'%@' が失敗したため、cmux は既定の通知動作を使用しました。" } } } },
+    "surfaceTabBar.browser.useNativeBrowser": { "extractionState": "manual", "localizations": { "en": { "stringUnit": { "state": "translated", "value": "Use Native Browser" } }, "ja": { "stringUnit": { "state": "translated", "value": "ネイティブブラウザを使用" } } } }
   }
 }

@@ -80,7 +80,7 @@ extension CmuxSettingsFileStore {
             [
                 "terminal": [
                     "showScrollBar": TerminalScrollBarSettings.defaultShowScrollBar,
-                    "autoResumeAgentSessions": AgentSessionAutoResumeSettings.defaultAutoResumeAgentSessions,
+                    "agentResumeMode": AgentSessionAutoResumeSettings.defaultMode.rawValue,
                 ],
             ],
             [

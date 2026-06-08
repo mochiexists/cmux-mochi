@@ -544,15 +544,17 @@ extension Workspace {
     nonisolated static func shouldReplaySessionScrollback(
         restorableAgent: SessionRestorableAgentSnapshot?,
         tmuxStartCommand: String? = nil,
-        autoResumeAgentSessions: Bool = true
+        resumeMode: AgentSessionResumeMode = .full
     ) -> Bool {
-        // Auto-resumed agents relaunch from the provider's session ID. Replaying the
-        // old TUI scrollback can print stale launch commands and race the resume input.
-        // When auto-resume is off, keep the last scrollback visible and prefill the
-        // resume command so the user can choose which restored sessions to start.
-        // OMX HUD panes restore from their tmux start command for the same reason.
+        // Full-mode agents relaunch from the provider's session ID. Replaying the
+        // old TUI scrollback can print stale launch commands and race the resume
+        // input, so it is skipped. Off-mode agents start fresh with no scrollback.
+        // Medium keeps the last scrollback visible and prefills the resume command
+        // so the user can choose which restored sessions to start. Non-agent
+        // terminals always restore their scrollback (when not an OMX HUD pane,
+        // which restores from its tmux start command instead).
         restorableTmuxStartCommand(tmuxStartCommand) == nil
-            && (restorableAgent == nil || !autoResumeAgentSessions)
+            && (restorableAgent == nil || resumeMode.replaysScrollback)
     }
 
     nonisolated static func shouldPersistSessionScrollbackForRestore(
@@ -775,15 +777,22 @@ extension Workspace {
                 )
             }
             let restoredTmuxStartCommand = restoredTmuxStartupScript == nil ? nil : restorableTmuxStartCommand
-            let autoResumeAgentSessions = AgentSessionAutoResumeSettings.isEnabled()
+            let resumeMode = AgentSessionAutoResumeSettings.mode()
             let shouldReplayScrollback = Self.shouldReplaySessionScrollback(
                 restorableAgent: restorableAgent,
                 tmuxStartCommand: restoredTmuxStartCommand,
-                autoResumeAgentSessions: autoResumeAgentSessions
+                resumeMode: resumeMode
             )
-            let restoredAgentResumeInput = autoResumeAgentSessions
-                ? restorableAgent?.resumeStartupInput()
-                : restorableAgent?.resumePreparedStartupInput()
+            let restoredAgentResumeInput: String? = {
+                switch resumeMode {
+                case .off:
+                    return nil
+                case .medium:
+                    return restorableAgent?.resumePreparedStartupInput()
+                case .full:
+                    return restorableAgent?.resumeStartupInput()
+                }
+            }()
 #if DEBUG
             if let restorableAgent {
                 let sessionPreview = String(restorableAgent.sessionId.prefix(8))
@@ -793,7 +802,7 @@ extension Workspace {
                     "kind=\(restorableAgent.kind.rawValue) session=\(sessionPreview) " +
                     "hasLaunch=\(restorableAgent.launchCommand == nil ? 0 : 1) " +
                     "launchArgc=\(launchArgc) hasResume=\(restoredAgentResumeInput == nil ? 0 : 1) " +
-                    "autoResume=\(autoResumeAgentSessions ? 1 : 0) " +
+                    "resumeMode=\(resumeMode.rawValue) " +
                     "replayScrollback=\(shouldReplayScrollback ? 1 : 0)"
                 )
             }
@@ -822,7 +831,7 @@ extension Workspace {
             }
             if let restorableAgent {
                 restoredAgentSnapshotsByPanelId[terminalPanel.id] = restorableAgent
-                if autoResumeAgentSessions, restoredAgentResumeInput != nil {
+                if resumeMode.submitsResumeCommand, restoredAgentResumeInput != nil {
                     restoredAgentResumeStatesByPanelId[terminalPanel.id] = .awaitingAutoResumeCommand
                 } else {
                     restoredAgentResumeStatesByPanelId[terminalPanel.id] = .manualResumeAvailable
@@ -7141,6 +7150,7 @@ final class Workspace: Identifiable, ObservableObject {
     static let terminalScrollBarHiddenDidChangeNotification = Notification.Name(
         "cmux.workspaceTerminalScrollBarHiddenDidChange"
     )
+    private static let browserModeContextMenuActionID = "cmux.surfaceTabBar.browser.useNativeBrowser"
 
     let id: UUID
     @Published var title: String
@@ -7168,6 +7178,7 @@ final class Workspace: Identifiable, ObservableObject {
     private var surfaceTabBarCommandButtons: [String: SurfaceTabBarExecutableButton] = [:]
     private var surfaceTabBarButtonSourcePath: String?
     private var surfaceTabBarButtonGlobalConfigPath: String?
+    private var browserAvailabilityObserver: NSObjectProtocol?
 
     /// Mapping from bonsplit TabID to our Panel instances
     @Published var panels: [UUID: any Panel] = [:]
@@ -7855,6 +7866,13 @@ final class Workspace: Identifiable, ObservableObject {
 
         // Set ourselves as delegate
         bonsplitController.delegate = self
+        browserAvailabilityObserver = NotificationCenter.default.addObserver(
+            forName: BrowserAvailabilitySettings.didChangeNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.refreshBrowserSplitButtonPresentation()
+        }
 
         // Ensure bonsplit has a focused pane and our didSelectTab handler runs for the
         // initial terminal. bonsplit's createTab selects internally but does not emit
@@ -7878,6 +7896,9 @@ final class Workspace: Identifiable, ObservableObject {
     }
 
     deinit {
+        if let browserAvailabilityObserver {
+            NotificationCenter.default.removeObserver(browserAvailabilityObserver)
+        }
         for registrations in pendingTerminalInputObserversByPanelId.values {
             for registration in registrations {
                 if let observer = registration.observer {
@@ -7900,6 +7921,37 @@ final class Workspace: Identifiable, ObservableObject {
     func refreshSplitButtonBackdropEffect() {
         var configuration = bonsplitController.configuration
         configuration.appearance.splitButtonBackdropEffect = Self.bonsplitSplitButtonBackdropEffect()
+        bonsplitController.configuration = configuration
+    }
+
+    private static func browserSplitButtonContextMenuItems() -> [BonsplitConfiguration.SplitActionButton.ContextMenuItem] {
+        [
+            BonsplitConfiguration.SplitActionButton.ContextMenuItem(
+                id: browserModeContextMenuActionID,
+                title: String(
+                    localized: "surfaceTabBar.browser.useNativeBrowser",
+                    defaultValue: "Use Native Browser"
+                ),
+                isChecked: BrowserAvailabilitySettings.isDisabled()
+            )
+        ]
+    }
+
+    private static func browserPresentedSplitButton(
+        _ button: BonsplitConfiguration.SplitActionButton
+    ) -> BonsplitConfiguration.SplitActionButton {
+        guard button.action == .newBrowser else { return button }
+        var presentedButton = button
+        presentedButton.isActive = BrowserAvailabilitySettings.isEnabled()
+        presentedButton.contextMenuItems = browserSplitButtonContextMenuItems()
+        return presentedButton
+    }
+
+    private func refreshBrowserSplitButtonPresentation() {
+        var configuration = bonsplitController.configuration
+        let buttons = configuration.appearance.splitButtons.map(Self.browserPresentedSplitButton)
+        guard configuration.appearance.splitButtons != buttons else { return }
+        configuration.appearance.splitButtons = buttons
         bonsplitController.configuration = configuration
     }
 
@@ -7969,7 +8021,7 @@ final class Workspace: Identifiable, ObservableObject {
                 globalConfigPath: globalConfigPath,
                 allowProjectLocalIcon: allowProjectLocalIcon
             )
-        }
+        }.map(Self.browserPresentedSplitButton)
         var configuration = bonsplitController.configuration
         guard configuration.appearance.splitButtons != bonsplitButtons else { return }
         configuration.appearance.splitButtons = bonsplitButtons
@@ -14321,7 +14373,11 @@ extension Workspace: BonsplitDelegate {
         case "terminal":
             _ = newTerminalSurface(inPane: pane)
         case "browser":
-            _ = newBrowserSurface(inPane: pane)
+            if BrowserAvailabilitySettings.isEnabled() {
+                _ = newBrowserSurface(inPane: pane)
+            } else {
+                _ = openSystemBrowserFromSurfaceTabBar()
+            }
         default:
             _ = newTerminalSurface(inPane: pane)
         }
@@ -14335,6 +14391,39 @@ extension Workspace: BonsplitDelegate {
         )
 #endif
         executeSurfaceTabBarCommandButton(identifier: identifier, inPane: pane)
+    }
+
+    func splitTabBar(
+        _ controller: BonsplitController,
+        didRequestSplitActionContextMenuAction identifier: String,
+        for button: BonsplitConfiguration.SplitActionButton,
+        inPane pane: PaneID
+    ) {
+        switch identifier {
+        case Self.browserModeContextMenuActionID:
+            BrowserAvailabilitySettings.setDisabled(BrowserAvailabilitySettings.isEnabled())
+            refreshBrowserSplitButtonPresentation()
+        default:
+            executeSurfaceTabBarCommandButton(identifier: identifier, inPane: pane)
+        }
+    }
+
+    @discardableResult
+    private func openSystemBrowserFromSurfaceTabBar() -> Bool {
+        guard let probeURL = URL(string: "https://www.google.com") else { return false }
+        guard let applicationURL = NSWorkspace.shared.urlForApplication(toOpen: probeURL) else {
+            return NSWorkspace.shared.open(probeURL)
+        }
+
+        let configuration = NSWorkspace.OpenConfiguration()
+        NSWorkspace.shared.openApplication(at: applicationURL, configuration: configuration) { _, error in
+#if DEBUG
+            if let error {
+                cmuxDebugLog("surfaceTabBar.browser.externalOpenFailed error=\(error.localizedDescription)")
+            }
+#endif
+        }
+        return true
     }
 
     func splitTabBar(_ controller: BonsplitController, didRequestTabContextAction action: TabContextAction, for tab: Bonsplit.Tab, inPane pane: PaneID) {
