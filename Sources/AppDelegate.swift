@@ -8719,6 +8719,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         TaskManagerWindowController.shared.show()
     }
 
+    /// Open (or focus, if already open) the Task Manager as a tab in the active
+    /// workspace's focused pane. Falls back to the floating window when there is
+    /// no active workspace/pane to host the tab.
+    @discardableResult
+    func openTaskManagerTab() -> Bool {
+        guard let workspace = tabManager?.selectedWorkspace,
+              let paneId = workspace.bonsplitController.focusedPaneId
+                ?? workspace.bonsplitController.allPaneIds.first else {
+            openTaskManagerWindow()
+            return false
+        }
+        workspace.openOrFocusTaskManagerSurface(inPane: paneId)
+        return true
+    }
+
     func captureMainWindowVisibilityRestoreTargetsForApplicationHide() {
         mainWindowVisibilityController.captureHiddenWindowRestoreTargets(windows: mainWindowsForVisibilityController())
     }

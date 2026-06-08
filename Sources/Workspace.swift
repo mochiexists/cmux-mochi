@@ -710,6 +710,9 @@ extension Workspace {
             agentSessionSnapshot = nil
         case .extensionBrowser:
             return nil
+        case .taskManager:
+            // Task Manager surfaces are ephemeral and intentionally not persisted.
+            return nil
         }
 
         return SessionPanelSnapshot(
@@ -1954,6 +1957,9 @@ extension Workspace {
             applySessionPanelMetadata(snapshot, toPanelId: projectPanel.id)
             return projectPanel.id
         case .extensionBrowser:
+            return nil
+        case .taskManager:
+            // Task Manager surfaces are ephemeral and intentionally not persisted.
             return nil
         }
     }
@@ -10985,6 +10991,7 @@ final class Workspace: Identifiable, ObservableObject {
         static let agentSession = "agentSession"
         static let project = "project"
         static let extensionBrowser = "extensionBrowser"
+        static let taskManager = "taskManager"
     }
 
     enum PanelShellActivityState: String {
@@ -12047,6 +12054,8 @@ final class Workspace: Identifiable, ObservableObject {
             return SurfaceKind.project
         case .extensionBrowser:
             return SurfaceKind.extensionBrowser
+        case .taskManager:
+            return SurfaceKind.taskManager
         }
     }
 
@@ -15619,6 +15628,74 @@ final class Workspace: Identifiable, ObservableObject {
 
         projectPanel.reload()
         return projectPanel
+    }
+
+    /// Create a new Task Manager surface (hosted as a tab) in the given pane.
+    @discardableResult
+    func newTaskManagerSurface(
+        inPane paneId: PaneID,
+        focus: Bool? = nil,
+        targetIndex: Int? = nil
+    ) -> TaskManagerPanel? {
+        let shouldFocusNewTab = focus ?? (bonsplitController.focusedPaneId == paneId)
+        let previousFocusedPanelId = focusedPanelId
+        let previousHostedView = focusedTerminalPanel?.hostedView
+
+        let taskManagerPanel = TaskManagerPanel()
+        panels[taskManagerPanel.id] = taskManagerPanel
+        panelTitles[taskManagerPanel.id] = taskManagerPanel.displayTitle
+
+        guard let newTabId = bonsplitController.createTab(
+            title: taskManagerPanel.displayTitle,
+            icon: taskManagerPanel.displayIcon,
+            kind: SurfaceKind.taskManager,
+            isDirty: false,
+            isLoading: false,
+            isPinned: false,
+            inPane: paneId
+        ) else {
+            panels.removeValue(forKey: taskManagerPanel.id)
+            panelTitles.removeValue(forKey: taskManagerPanel.id)
+            return nil
+        }
+
+        surfaceIdToPanelId[newTabId] = taskManagerPanel.id
+        if let targetIndex {
+            _ = bonsplitController.reorderTab(newTabId, toIndex: targetIndex)
+        }
+        publishCmuxSurfaceCreated(
+            taskManagerPanel.id,
+            paneId: paneId,
+            kind: SurfaceKind.taskManager,
+            origin: "task_manager_tab",
+            focused: shouldFocusNewTab
+        )
+        if shouldFocusNewTab {
+            bonsplitController.focusPane(paneId)
+            bonsplitController.selectTab(newTabId)
+            applyTabSelection(tabId: newTabId, inPane: paneId)
+        } else {
+            preserveFocusAfterNonFocusSplit(
+                preferredPanelId: previousFocusedPanelId,
+                splitPanelId: taskManagerPanel.id,
+                previousHostedView: previousHostedView
+            )
+        }
+        return taskManagerPanel
+    }
+
+    /// Focus an existing Task Manager surface if one is open, otherwise create a
+    /// new one. Task Manager tabs are interchangeable, so any open one is reused.
+    @discardableResult
+    func openOrFocusTaskManagerSurface(inPane paneId: PaneID, focus: Bool = true) -> TaskManagerPanel? {
+        for (existingId, panel) in panels {
+            guard let taskManagerPanel = panel as? TaskManagerPanel else { continue }
+            if focus {
+                focusPanel(existingId)
+            }
+            return taskManagerPanel
+        }
+        return newTaskManagerSurface(inPane: paneId, focus: focus)
     }
 
     @discardableResult
