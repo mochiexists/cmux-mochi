@@ -4708,7 +4708,7 @@ enum AppIconSettings {
                     return NSImage(named: imageName)
                 },
                 setApplicationIconImage: { icon in
-                    NSApplication.shared.applicationIconImage = icon
+                    NSApplication.shared.applicationIconImage = AppIconDevBadge.applied(to: icon)
                 },
                 startAppearanceObservation: {
                     AppIconAppearanceObserver.shared.startObserving()
@@ -4769,6 +4769,55 @@ enum AppIconSettings {
     }
 }
 
+/// In debug/dev builds, overlays a "DEV" ribbon on the app icon so the dock /
+/// app-switcher icon is visually distinct from the release build. The dark-mode
+/// icon work replaced the badged icon assets, so we re-apply the badge at
+/// runtime wherever the app icon is set. No-op in release builds.
+enum AppIconDevBadge {
+    static func applied(to icon: NSImage) -> NSImage {
+        #if DEBUG
+        return composeDevBadge(onto: icon)
+        #else
+        return icon
+        #endif
+    }
+
+    #if DEBUG
+    private static func composeDevBadge(onto icon: NSImage) -> NSImage {
+        let size = icon.size
+        guard size.width > 0, size.height > 0 else { return icon }
+        let badged = NSImage(size: size)
+        badged.lockFocus()
+        defer { badged.unlockFocus() }
+        icon.draw(in: NSRect(origin: .zero, size: size))
+
+        let ribbonHeight = size.height * 0.26
+        let ribbonRect = NSRect(x: 0, y: 0, width: size.width, height: ribbonHeight)
+        NSColor.systemRed.withAlphaComponent(0.92).setFill()
+        NSBezierPath(rect: ribbonRect).fill()
+
+        let text = "DEV" as NSString
+        let font = NSFont.systemFont(ofSize: ribbonHeight * 0.62, weight: .heavy)
+        let attrs: [NSAttributedString.Key: Any] = [
+            .font: font,
+            .foregroundColor: NSColor.white,
+            .kern: ribbonHeight * 0.08,
+        ]
+        let textSize = text.size(withAttributes: attrs)
+        text.draw(
+            in: NSRect(
+                x: (size.width - textSize.width) / 2,
+                y: (ribbonHeight - textSize.height) / 2,
+                width: textSize.width,
+                height: textSize.height
+            ),
+            withAttributes: attrs
+        )
+        return badged
+    }
+    #endif
+}
+
 protocol AppIconAppearanceObservation: AnyObject {
     func invalidate()
 }
@@ -4818,7 +4867,7 @@ final class AppIconAppearanceObserver: NSObject {
                     NSImage(named: imageName)
                 },
                 setApplicationIconImage: { icon in
-                    NSApplication.shared.applicationIconImage = icon
+                    NSApplication.shared.applicationIconImage = AppIconDevBadge.applied(to: icon)
                 }
             )
         }
