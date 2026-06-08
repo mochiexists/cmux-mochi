@@ -1731,9 +1731,25 @@ extension Workspace {
                 ?? restoredTmuxStartupScript?.path
                 ?? restoredBindingLaunch?.initialCommand
                 ?? restoredAgentResumeLaunch?.initialCommand
-            let restoredStartupInput = restoredRemotePTYAttachCommand == nil
+            let rawRestoredStartupInput = restoredRemotePTYAttachCommand == nil
                 ? (restoredBindingLaunch?.initialInput ?? restoredAgentResumeLaunch?.initialInput)
                 : nil
+            // Resume command prefill: for an agent resume, drop the resume
+            // command into the terminal input ready to run rather than
+            // auto-executing it on launch, unless the user opted into
+            // auto-submit. Implemented by stripping the trailing newline so the
+            // command sits in the input instead of being submitted.
+            let restoredStartupInput: String? = {
+                guard let input = rawRestoredStartupInput, input.hasSuffix("\n") else {
+                    return rawRestoredStartupInput
+                }
+                let isAgentResume = restoredAgentResumeLaunch != nil
+                    || resumeBinding?.isAgentHookBinding == true
+                guard isAgentResume, !AgentResumeSubmitSettings.autoSubmits() else {
+                    return input
+                }
+                return String(input.dropLast())
+            }()
             let startupHandlesWorkingDirectory =
                 restoredTmuxStartupScript != nil ||
                 restoredAgentResumeLaunch != nil ||
