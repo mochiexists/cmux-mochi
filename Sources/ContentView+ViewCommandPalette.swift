@@ -28,7 +28,9 @@ extension ContentView {
             tabManager.triggerFocusFlash()
         }
         registry.register(commandId: "palette.openTaskManager") {
-            TaskManagerWindowController.shared.show()
+            // The footer chip opens the full-area Task Manager page; the palette
+            // opens it as a tab in the focused pane (falling back to the window).
+            AppDelegate.shared?.openTaskManagerTab()
         }
     }
 }

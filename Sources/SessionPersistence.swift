@@ -215,6 +215,10 @@ enum SessionSidebarSelection: String, Codable, Sendable, Equatable {
             self = .tabs
         case .notifications:
             self = .notifications
+        case .taskManager:
+            // Task Manager is an ephemeral selection; persist as the normal
+            // tabs view so it doesn't restore into the Task Manager on launch.
+            self = .tabs
         }
     }
 
