@@ -19,7 +19,7 @@ public struct TerminalSection: View {
     @State private var activeScrollSpeedDragValue: Double?
     @State private var scrollBar: DefaultsValueModel<Bool>
     @State private var copyOnSelect: DefaultsValueModel<Bool>
-    @State private var autoResume: DefaultsValueModel<Bool>
+    @State private var agentResumeMode: DefaultsValueModel<String>
     @State private var hibernation: DefaultsValueModel<Bool>
     @State private var idleSeconds: DefaultsValueModel<Double>
     @State private var maxLive: DefaultsValueModel<Int>
@@ -42,7 +42,7 @@ public struct TerminalSection: View {
         _scrollSpeed = State(initialValue: DefaultsValueModel(store: defaultsStore, key: catalog.terminal.scrollSpeed))
         _scrollBar = State(initialValue: DefaultsValueModel(store: defaultsStore, key: catalog.terminal.showScrollBar))
         _copyOnSelect = State(initialValue: DefaultsValueModel(store: defaultsStore, key: catalog.terminal.copyOnSelect))
-        _autoResume = State(initialValue: DefaultsValueModel(store: defaultsStore, key: catalog.terminal.autoResumeAgentSessions))
+        _agentResumeMode = State(initialValue: DefaultsValueModel(store: defaultsStore, key: catalog.terminal.agentResumeMode))
         _hibernation = State(initialValue: DefaultsValueModel(store: defaultsStore, key: catalog.terminal.agentHibernationEnabled))
         _idleSeconds = State(initialValue: DefaultsValueModel(store: defaultsStore, key: catalog.terminal.agentHibernationIdleSeconds))
         _maxLive = State(initialValue: DefaultsValueModel(store: defaultsStore, key: catalog.terminal.agentHibernationMaxLiveTerminals))
@@ -78,6 +78,17 @@ public struct TerminalSection: View {
             memGuardrailThresholdGB,
         ]
         models.forEach { $0.startObserving() }
+    }
+
+    private var agentResumeModeSubtitle: String {
+        switch agentResumeMode.current {
+        case "off":
+            return String(localized: "settings.terminal.agentResumeMode.off.subtitle", defaultValue: "Restored agent terminals start fresh with no scrollback or resume command.")
+        case "full":
+            return String(localized: "settings.terminal.agentResumeMode.full.subtitle", defaultValue: "Restored agent terminals immediately run their resume command.")
+        default:
+            return String(localized: "settings.terminal.agentResumeMode.medium.subtitle", defaultValue: "Restored agent terminals show their previous scrollback and leave the resume command ready to run.")
+        }
     }
 
     /// Persists a new tab-bar font size, cancelling any in-flight save so a
@@ -230,16 +241,19 @@ public struct TerminalSection: View {
             }
             SettingsCardDivider()
             SettingsCardRow(
-                configurationReview: .json("terminal.autoResumeAgentSessions"),
-                String(localized: "settings.terminal.agentAutoResume", defaultValue: "Resume Agent Sessions on Reopen"),
-                subtitle: autoResume.current
-                    ? String(localized: "settings.terminal.agentAutoResume.subtitleOn", defaultValue: "When cmux reopens after quit, restored agent terminals automatically run their resume command.")
-                    : String(localized: "settings.terminal.agentAutoResume.subtitleOff", defaultValue: "When cmux reopens after quit, restored agent terminals stay idle until you resume them manually.")
+                configurationReview: .json("terminal.agentResumeMode"),
+                String(localized: "settings.terminal.agentResumeMode", defaultValue: "Agent Resume on Reopen"),
+                subtitle: agentResumeModeSubtitle
             ) {
-                Toggle("", isOn: Binding(get: { autoResume.current }, set: { autoResume.set($0) }))
-                    .labelsHidden()
-                    .controlSize(.small)
-                    .accessibilityIdentifier("SettingsTerminalAgentAutoResumeToggle")
+                Picker("", selection: Binding(get: { agentResumeMode.current }, set: { agentResumeMode.set($0) })) {
+                    Text(String(localized: "settings.terminal.agentResumeMode.off", defaultValue: "Off")).tag("off")
+                    Text(String(localized: "settings.terminal.agentResumeMode.medium", defaultValue: "Scrollback + Prefill")).tag("medium")
+                    Text(String(localized: "settings.terminal.agentResumeMode.full", defaultValue: "Auto-Run Resume")).tag("full")
+                }
+                .labelsHidden()
+                .pickerStyle(.menu)
+                .controlSize(.small)
+                .accessibilityIdentifier("SettingsTerminalAgentResumeModePicker")
             }
             SettingsCardDivider()
             SettingsCardRow(

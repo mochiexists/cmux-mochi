@@ -1323,7 +1323,11 @@ final class SessionPersistenceTests: XCTestCase {
             launchCommand: nil
         )
 
-        XCTAssertFalse(Workspace.shouldReplaySessionScrollback(restorableAgent: agent))
+        // Full and Off agents do not replay saved scrollback; Medium does.
+        XCTAssertFalse(Workspace.shouldReplaySessionScrollback(restorableAgent: agent, resumeMode: .full))
+        XCTAssertFalse(Workspace.shouldReplaySessionScrollback(restorableAgent: agent, resumeMode: .off))
+        XCTAssertTrue(Workspace.shouldReplaySessionScrollback(restorableAgent: agent, resumeMode: .medium))
+        // Non-agent terminals always replay their scrollback.
         XCTAssertTrue(Workspace.shouldReplaySessionScrollback(restorableAgent: nil))
     }
 

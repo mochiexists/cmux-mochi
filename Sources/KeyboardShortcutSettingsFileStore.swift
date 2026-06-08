@@ -507,6 +507,23 @@ final class CmuxSettingsFileStore {
     ) {
         applyBooleanSettings(TerminalSettingsFileMapping.booleanSettings, from: section, sourcePath: sourcePath, snapshot: &snapshot)
         applyTerminalScrollSpeedSetting(from: section, assign: { snapshot.managedUserDefaults[$0] = .double($1) }, logInvalid: { logInvalid($0, sourcePath: sourcePath) })
+
+        if let raw = jsonString(section["agentResumeMode"]) {
+            guard let mode = AgentSessionResumeMode(rawValue: raw) else {
+                logInvalid("terminal.agentResumeMode", sourcePath: sourcePath)
+                return
+            }
+            snapshot.managedUserDefaults[AgentSessionAutoResumeSettings.modeKey] = .string(mode.rawValue)
+        } else if section.keys.contains("agentResumeMode") {
+            logInvalid("terminal.agentResumeMode", sourcePath: sourcePath)
+        } else if let value = jsonBool(section["autoResumeAgentSessions"]) {
+            // Legacy boolean: auto-resume on -> full, off -> medium.
+            let mode: AgentSessionResumeMode = value ? .full : .medium
+            snapshot.managedUserDefaults[AgentSessionAutoResumeSettings.modeKey] = .string(mode.rawValue)
+        } else if section.keys.contains("autoResumeAgentSessions") {
+            logInvalid("terminal.autoResumeAgentSessions", sourcePath: sourcePath)
+        }
+
         if let value = jsonBool(section["showTextBoxOnNewTerminals"]) {
             snapshot.managedUserDefaults[TerminalTextBoxInputSettings.showOnNewTerminalsKey] = .bool(value)
         } else if section.keys.contains("showTextBoxOnNewTerminals") {
@@ -1574,7 +1591,7 @@ final class CmuxSettingsFileStore {
                     TerminalCopyOnSelectSettings.notifyDidChange(notificationCenter: notificationCenter)
                 }
 
-                if change.defaultsKey == AgentSessionAutoResumeSettings.autoResumeAgentSessionsKey {
+                if change.defaultsKey == AgentSessionAutoResumeSettings.modeKey {
                     agentSessionAutoResumeDidChange = true
                 }
                 if change.defaultsKey == AgentHibernationSettings.enabledKey ||

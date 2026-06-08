@@ -424,10 +424,17 @@
           "descriptionKey": "schemaDescriptions.terminal.copyOnSelect",
           "description": "When true, copy selected terminal text to the system clipboard when the selection is committed. When false, cmux does not emit a Ghostty copy-on-select override; Ghostty config and defaults control selection-clipboard behavior."
         },
+        "agentResumeMode": {
+          "type": "string",
+          "enum": ["off", "medium", "full"],
+          "default": "medium",
+          "description": "How restored agent terminals behave when cmux reopens after quit. 'off': start fresh with no scrollback and no resume command. 'medium': restore the previous scrollback and prefill the resume command without running it, so you can hit enter to continue. 'full': immediately run the resume command (no scrollback)."
+        },
         "autoResumeAgentSessions": {
           "type": "boolean",
           "default": true,
-          "description": "Automatically run agent resume commands for restored terminal sessions when cmux reopens after quit. Set false to restore panes while keeping Claude Code, Codex, OpenCode, and other saved agent sessions idle until you resume them manually."
+          "deprecated": true,
+          "description": "Deprecated: use agentResumeMode instead. Legacy boolean — true maps to agentResumeMode 'full', false maps to 'medium'. Ignored when agentResumeMode is set."
         },
         "showTextBoxOnNewTerminals": {
           "type": "boolean",

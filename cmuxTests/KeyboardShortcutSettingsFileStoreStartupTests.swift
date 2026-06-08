@@ -995,10 +995,12 @@ final class KeyboardShortcutSettingsFileStoreStartupTests: XCTestCase {
         }
     }
 
-    func testSettingsFileStoreAppliesTerminalAgentAutoResumeSetting() throws {
+    func testSettingsFileStoreAppliesTerminalAgentResumeMode() throws {
         let defaults = UserDefaults.standard
-        let key = AgentSessionAutoResumeSettings.autoResumeAgentSessionsKey
+        let key = AgentSessionAutoResumeSettings.modeKey
+        let legacyKey = AgentSessionAutoResumeSettings.legacyAutoResumeAgentSessionsKey
         let previousValue = defaults.object(forKey: key)
+        let previousLegacyValue = defaults.object(forKey: legacyKey)
         let previousBackups = defaults.data(forKey: settingsFileBackupsDefaultsKey)
         let previousImportedDefaults = defaults.data(forKey: importedManagedDefaultsKey)
         defer {
@@ -1007,7 +1009,11 @@ final class KeyboardShortcutSettingsFileStoreStartupTests: XCTestCase {
             } else {
                 defaults.removeObject(forKey: key)
             }
-
+            if let previousLegacyValue {
+                defaults.set(previousLegacyValue, forKey: legacyKey)
+            } else {
+                defaults.removeObject(forKey: legacyKey)
+            }
             if let previousBackups {
                 defaults.set(previousBackups, forKey: settingsFileBackupsDefaultsKey)
             } else {
@@ -1020,32 +1026,58 @@ final class KeyboardShortcutSettingsFileStoreStartupTests: XCTestCase {
             }
         }
 
-        defaults.removeObject(forKey: key)
-        defaults.removeObject(forKey: settingsFileBackupsDefaultsKey)
-        defaults.removeObject(forKey: importedManagedDefaultsKey)
+        func applySettings(_ json: String) throws {
+            defaults.removeObject(forKey: key)
+            defaults.removeObject(forKey: legacyKey)
+            defaults.removeObject(forKey: settingsFileBackupsDefaultsKey)
+            defaults.removeObject(forKey: importedManagedDefaultsKey)
 
-        let directoryURL = try makeTemporaryDirectory()
-        defer { try? FileManager.default.removeItem(at: directoryURL) }
+            let directoryURL = try makeTemporaryDirectory()
+            defer { try? FileManager.default.removeItem(at: directoryURL) }
+            let settingsFileURL = directoryURL.appendingPathComponent("cmux.json", isDirectory: false)
+            try writeSettingsFile(json, to: settingsFileURL)
+            _ = KeyboardShortcutSettingsFileStore(
+                primaryPath: settingsFileURL.path,
+                fallbackPath: nil,
+                startWatching: false
+            )
+        }
 
-        let settingsFileURL = directoryURL.appendingPathComponent("cmux.json", isDirectory: false)
-        try writeSettingsFile(
+        // New tri-state key is applied directly.
+        try applySettings(
+            """
+            {
+              "terminal": {
+                "agentResumeMode": "off"
+              }
+            }
+            """
+        )
+        XCTAssertEqual(defaults.string(forKey: key), AgentSessionResumeMode.off.rawValue)
+
+        // Legacy boolean false migrates to .medium.
+        try applySettings(
             """
             {
               "terminal": {
                 "autoResumeAgentSessions": false
               }
             }
-            """,
-            to: settingsFileURL
+            """
         )
+        XCTAssertEqual(defaults.string(forKey: key), AgentSessionResumeMode.medium.rawValue)
 
-        _ = KeyboardShortcutSettingsFileStore(
-            primaryPath: settingsFileURL.path,
-            fallbackPath: nil,
-            startWatching: false
+        // Legacy boolean true migrates to .full.
+        try applySettings(
+            """
+            {
+              "terminal": {
+                "autoResumeAgentSessions": true
+              }
+            }
+            """
         )
-
-        XCTAssertEqual(defaults.object(forKey: key) as? Bool, false)
+        XCTAssertEqual(defaults.string(forKey: key), AgentSessionResumeMode.full.rawValue)
     }
 
     func testSettingsFileStoreAppliesTerminalTextBoxMaxLinesSetting() throws {
