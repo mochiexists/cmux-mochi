@@ -35,6 +35,8 @@ extension Workspace {
             return SurfaceKind.cloudVMLoading.rawValue
         case .artifact:
             return SurfaceKind.artifact.rawValue
+        case .taskManager:
+            return SurfaceKind.taskManager.rawValue
         }
     }
 

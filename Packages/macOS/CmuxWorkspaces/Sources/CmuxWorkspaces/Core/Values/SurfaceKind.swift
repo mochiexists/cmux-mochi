@@ -39,4 +39,6 @@ public struct SurfaceKind: RawRepresentable, Hashable, Sendable {
     public static let cloudVMLoading = SurfaceKind(rawValue: "cloudVMLoading")
     /// A live artifact (React/HTML) rendering pane.
     public static let artifact = SurfaceKind(rawValue: "artifact")
+    /// An ephemeral Task Manager pane.
+    public static let taskManager = SurfaceKind(rawValue: "taskManager")
 }

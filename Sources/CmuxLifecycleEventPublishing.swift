@@ -229,6 +229,8 @@ extension Workspace {
             return "cloud_vm_loading"
         case .artifact:
             return "artifact"
+        case .taskManager:
+            return "task_manager"
         }
     }
 }

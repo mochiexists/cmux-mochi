@@ -16,6 +16,7 @@ public enum PanelType: String, Codable, Sendable {
     case workspaceTodo
     case cloudVMLoading
     case artifact
+    case taskManager
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()

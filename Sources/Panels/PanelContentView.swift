@@ -177,6 +177,15 @@ struct PanelContentView: View {
                     onRequestPanelFocus: onRequestPanelFocus
                 )
             }
+        case .taskManager:
+            if let taskManagerPanel = panel as? TaskManagerPanel {
+                TaskManagerPanelView(
+                    panel: taskManagerPanel,
+                    isFocused: isFocused,
+                    isVisibleInUI: isVisibleInUI,
+                    onRequestPanelFocus: onRequestPanelFocus
+                )
+            }
         }
     }
 
@@ -194,7 +203,8 @@ struct PanelContentView: View {
     private var shouldInstallPaneDropTarget: Bool {
         guard isVisibleInUI else { return false }
         switch panel.panelType {
-        case .markdown, .filePreview, .rightSidebarTool, .customSidebar, .agentSession, .project, .extensionBrowser, .workspaceTodo, .cloudVMLoading, .artifact:
+        case .markdown, .filePreview, .rightSidebarTool, .customSidebar, .agentSession, .project,
+             .extensionBrowser, .workspaceTodo, .cloudVMLoading, .artifact, .taskManager:
             return true
         case .terminal, .browser:
             return false
