@@ -798,7 +798,9 @@ final class ClaudeHookSessionStore {
         transcriptPath: String? = nil,
         turnId: String? = nil,
         pid: Int? = nil,
-        launchCommand: AgentHookLaunchCommandRecord? = nil
+        launchCommand: AgentHookLaunchCommandRecord? = nil,
+        markActive: Bool = false,
+        allowsNewSessionReplacement: Bool = false
     ) throws -> Bool {
         let normalized = normalizeSessionId(sessionId)
         guard !normalized.isEmpty else { return false }
@@ -834,6 +836,20 @@ final class ClaudeHookSessionStore {
                 now: now
             )
             state.sessions[normalized] = record
+            if markActive {
+                let activeRecord = ClaudeHookActiveSessionRecord(
+                    sessionId: normalized,
+                    turnId: normalizeOptional(turnId),
+                    allowsNewSessionReplacement: allowsNewSessionReplacement ? true : nil,
+                    updatedAt: now
+                )
+                if let normalizedWorkspace = normalizeOptional(workspaceId) {
+                    state.activeSessionsByWorkspace[normalizedWorkspace] = activeRecord
+                }
+                if let normalizedSurface = normalizeOptional(surfaceId) {
+                    state.activeSessionsBySurface[normalizedSurface] = activeRecord
+                }
+            }
             return true
         }
     }
@@ -30154,7 +30170,9 @@ export default function cmuxPiSessionExtension(pi: ExtensionAPI) {
                         transcriptPath: input.transcriptPath ?? mapped?.transcriptPath,
                         turnId: input.turnId,
                         pid: pid,
-                        launchCommand: launchCommand
+                        launchCommand: launchCommand,
+                        markActive: true,
+                        allowsNewSessionReplacement: true
                     )) ?? false
                 } else {
                     try? store.upsert(
@@ -30916,7 +30934,18 @@ export default function cmuxPiSessionExtension(pi: ExtensionAPI) {
             sendAgentFeedTelemetryUnlessSuppressed(workspaceId: workspaceId)
 
         case .sessionEnd:
+            // Mochi Codex surfaces a thread detach through the ThreadUnsubscribe
+            // hook, which maps to "session-end" (reason: UserRequested /
+            // ThreadSwitch / Programmatic — every reason finalizes the thread's
+            // attachment). The teardown below consumes the session record, which
+            // is exactly the signal RestorableAgentSessionIndex reads to NOT
+            // resurrect this thread on reopen — a crash leaves the record in
+            // place, so a reopen restores it, while a clean detach does not.
+            // performAgentSessionTeardown gates against stale/superseded
+            // sessions internally.
             if def.name == "codex", !sessionId.isEmpty {
+                // Retire every monitor lease for this session so the transcript
+                // monitor subprocess exits instead of lingering past detach.
                 retireCodexMonitorLeases(sessionId: sessionId, turnId: nil, env: env)
             }
             if def.sessionEndIsTurnBoundary {
