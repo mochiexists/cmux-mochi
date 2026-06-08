@@ -14190,12 +14190,22 @@ struct TabItemView: View, Equatable {
         .disabled(targetIds.isEmpty)
 
         if !isMulti {
+            let finderDirectoryURL = workspaceSnapshot.finderDirectoryPath
+                .map { URL(fileURLWithPath: $0, isDirectory: true) }
+
             Button(String(localized: "contextMenu.showWorkspaceInFinder", defaultValue: "Show in Finder")) {
-                let url = workspaceSnapshot.finderDirectoryPath
-                    .map { URL(fileURLWithPath: $0, isDirectory: true) }
-                workspaceFinderDirectoryOpenRequest = WorkspaceFinderDirectoryOpenRequest(directoryURL: url)
+                workspaceFinderDirectoryOpenRequest = WorkspaceFinderDirectoryOpenRequest(directoryURL: finderDirectoryURL)
             }
-            .disabled(workspaceSnapshot.finderDirectoryPath == nil)
+            .disabled(finderDirectoryURL == nil)
+
+            Button(String(localized: "contextMenu.copyPath", defaultValue: "Copy Path")) {
+                if let finderDirectoryURL {
+                    let pasteboard = NSPasteboard.general
+                    pasteboard.clearContents()
+                    pasteboard.setString(finderDirectoryURL.path, forType: .string)
+                }
+            }
+            .disabled(finderDirectoryURL == nil)
         }
     }
 
