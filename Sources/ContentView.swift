@@ -5525,6 +5525,8 @@ struct ContentView: View {
             return String(localized: "commandPalette.kind.project", defaultValue: "Project")
         case .extensionBrowser:
             return String(localized: "sidebar.extensions.browser.title", defaultValue: "Sidebar Extensions")
+        case .taskManager:
+            return String(localized: "commandPalette.kind.taskManager", defaultValue: "Task Manager")
         }
     }
     private func commandPaletteSurfaceKeywords(for panelType: PanelType) -> [String] {
@@ -5547,6 +5549,8 @@ struct ContentView: View {
             return ["project", "xcode", "build", "settings", "schemes", "targets"]
         case .extensionBrowser:
             return ["sidebar", "extensions", "extensionkit", "browser"]
+        case .taskManager:
+            return ["task", "manager", "activity", "cpu", "memory", "processes"]
         }
     }
     private func commandPaletteCachedCommandsContext() -> CommandPaletteCommandsContext {
@@ -11093,6 +11097,8 @@ struct VerticalTabsSidebar: View {
             return .project
         case .extensionBrowser:
             return .unknown
+        case .taskManager:
+            return .unknown
         }
     }
 
@@ -12473,7 +12479,7 @@ private struct SidebarResourceSummaryView: View {
 
     var body: some View {
         Button {
-            TaskManagerWindowController.shared.show()
+            AppDelegate.shared?.openTaskManagerTab()
         } label: {
             HStack(spacing: 5) {
                 Image(systemName: "gauge.with.dots.needle.33percent")
