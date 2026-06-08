@@ -220,6 +220,8 @@ extension Workspace {
             return "project"
         case .extensionBrowser:
             return "extension_browser"
+        case .taskManager:
+            return "task_manager"
         }
     }
 }
