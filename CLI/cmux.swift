@@ -27012,6 +27012,7 @@ export default function cmuxPiSessionExtension(pi: ExtensionAPI) {
         "SessionStart",
         "UserPromptSubmit",
         "Stop",
+        "ThreadUnsubscribe",
     ]
 
     private static func codexHookEventLabel(_ eventName: String) -> String? {
@@ -27024,6 +27025,9 @@ export default function cmuxPiSessionExtension(pi: ExtensionAPI) {
         case "SessionStart": return "session_start"
         case "UserPromptSubmit": return "user_prompt_submit"
         case "Stop": return "stop"
+        // Matches Codex's hook_event_key_label(ThreadUnsubscribe) so the
+        // pre-trusted hash cmux writes to config.toml is accepted by Codex.
+        case "ThreadUnsubscribe": return "thread_unsubscribe"
         default: return nil
         }
     }
