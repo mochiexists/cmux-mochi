@@ -2116,6 +2116,117 @@ def test_claude_subagent_stop_stays_distinct_feed_telemetry(cli_path: str, root:
     event = params["event"]
     if event.get("hook_event_name") != "SubagentStop" or event.get("_source") != "claude":
         raise AssertionError(f"SubagentStop should stay distinct in Feed, got {event!r}")
+def _seed_codex_session_and_detach(
+    cli_path: str,
+    root: Path,
+    *,
+    name: str,
+    reason: str | None,
+) -> dict:
+    """Seed a codex hook session record via session-start, then fire a
+    session-end (ThreadUnsubscribe) with the given detach reason. Returns the
+    sessions map from the codex hook store file after the detach.
+
+    The store file lives at <state_dir>/codex-hook-sessions.json (see
+    agentHookStatePath with sessionStoreSuffix="codex").
+    """
+    socket_path = root / f"cmux-detach-{name}.sock"
+    state_dir = root / f"hook-state-detach-{name}"
+    state_dir.mkdir()
+    session_id = f"codex-detach-{name}-{os.getpid()}"
+
+    env = os.environ.copy()
+    env["CMUX_SOCKET_PATH"] = str(socket_path)
+    env["CMUX_SURFACE_ID"] = FAKE_SURFACE_ID
+    env["CMUX_WORKSPACE_ID"] = FAKE_WORKSPACE_ID
+    env["CMUX_AGENT_HOOK_STATE_DIR"] = str(state_dir)
+
+    with FakeCmuxSocket(socket_path, None):
+        payload = {
+            "session_id": session_id,
+            "cwd": str(root),
+        }
+        start = subprocess.run(
+            [cli_path, "--socket", str(socket_path), "hooks", "codex", "session-start"],
+            input=json.dumps(payload),
+            capture_output=True,
+            text=True,
+            check=False,
+            env=env,
+            timeout=10,
+        )
+        if start.returncode != 0:
+            raise AssertionError(
+                f"hooks codex session-start failed exit={start.returncode}\n"
+                f"stdout={start.stdout}\nstderr={start.stderr}"
+            )
+
+        store_path = state_dir / "codex-hook-sessions.json"
+        seeded = json.loads(store_path.read_text(encoding="utf-8"))
+        if session_id not in seeded.get("sessions", {}):
+            raise AssertionError(
+                f"session-start did not seed record for {session_id}: {seeded!r}"
+            )
+
+        detach_payload = {"session_id": session_id, "cwd": str(root)}
+        if reason is not None:
+            detach_payload["reason"] = reason
+        end = subprocess.run(
+            [cli_path, "--socket", str(socket_path), "hooks", "codex", "session-end"],
+            input=json.dumps(detach_payload),
+            capture_output=True,
+            text=True,
+            check=False,
+            env=env,
+            timeout=10,
+        )
+        if end.returncode != 0:
+            raise AssertionError(
+                f"hooks codex session-end failed exit={end.returncode}\n"
+                f"stdout={end.stdout}\nstderr={end.stderr}"
+            )
+
+    after = json.loads(store_path.read_text(encoding="utf-8"))
+    return {"session_id": session_id, "sessions": after.get("sessions", {})}
+
+
+def test_codex_user_requested_detach_preserves_session_record(cli_path: str, root: Path) -> None:
+    """A clean user-requested quit (Codex /quit or Ctrl+C/Ctrl+D) must leave the
+    hook session record in place so the app can resurrect the pane / pre-type the
+    resume command on reopen — exactly like a crash does."""
+    result = _seed_codex_session_and_detach(
+        cli_path, root, name="user-requested", reason="user_requested"
+    )
+    if result["session_id"] not in result["sessions"]:
+        raise AssertionError(
+            "user_requested detach must PRESERVE the session record, but it was "
+            f"removed: {result['sessions']!r}"
+        )
+
+
+def test_codex_thread_switch_detach_consumes_session_record(cli_path: str, root: Path) -> None:
+    """thread_switch keeps the prior behavior: the record is consumed (removed),
+    so reopen does not resurrect the thread."""
+    result = _seed_codex_session_and_detach(
+        cli_path, root, name="thread-switch", reason="thread_switch"
+    )
+    if result["session_id"] in result["sessions"]:
+        raise AssertionError(
+            "thread_switch detach must CONSUME the session record, but it "
+            f"remained: {result['sessions']!r}"
+        )
+
+
+def test_codex_programmatic_detach_consumes_session_record(cli_path: str, root: Path) -> None:
+    """programmatic teardown keeps the prior behavior: the record is consumed."""
+    result = _seed_codex_session_and_detach(
+        cli_path, root, name="programmatic", reason="programmatic"
+    )
+    if result["session_id"] in result["sessions"]:
+        raise AssertionError(
+            "programmatic detach must CONSUME the session record, but it "
+            f"remained: {result['sessions']!r}"
+        )
 
 
 def main() -> int:
@@ -2165,6 +2276,9 @@ def main() -> int:
             test_codex_permission_decisions_do_not_block_approval_reviewer(cli_path, root)
             test_codex_pre_tool_use_is_telemetry_not_actionable(cli_path, root)
             test_claude_subagent_stop_stays_distinct_feed_telemetry(cli_path, root)
+            test_codex_user_requested_detach_preserves_session_record(cli_path, root)
+            test_codex_thread_switch_detach_consumes_session_record(cli_path, root)
+            test_codex_programmatic_detach_consumes_session_record(cli_path, root)
         except Exception as exc:
             print(f"FAIL: {exc}")
             return 1

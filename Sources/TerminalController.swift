@@ -1613,6 +1613,9 @@ class TerminalController {
         // report_pr_action/report_pwd/sidebar_state/reset_sidebar/right_sidebar)
         // handled by ControlCommandCoordinator.
 
+        case "agent.stage_resume_paste":
+            return stageAgentResumePaste(args)
+
         case "read_screen":
             return readScreenText(args)
 
@@ -13272,6 +13275,212 @@ class TerminalController {
             tab.currentDirectory,
         ]
         return candidates.compactMap(normalizedOptionValue).first
+    }
+
+    // MARK: - Agent resume paste (Scenario A: in-place pre-typed resume)
+
+    /// Tracks sessions for which a resume paste is already staged/in-flight so a
+    /// duplicate ThreadUnsubscribe hook (or a retry) cannot inject the command
+    /// twice. Guarded by `agentResumePasteLock`.
+    private static var stagedAgentResumeSessions: Set<String> = []
+    private static let agentResumePasteLock = NSLock()
+    /// Strong references to the process-exit watchers so they outlive this call.
+    private static var agentResumePasteWatchers: [String: DispatchSourceProcess] = [:]
+    /// Monotonic uptime of the last completed paste per session. A duplicate
+    /// `stage_resume_paste` for the SAME exit arrives within moments, so a short
+    /// cooldown collapses it; a genuine later re-park (after the user resumes and
+    /// works) happens long after the window and is still allowed. Guarded by
+    /// `agentResumePasteLock`.
+    private static var recentAgentResumePasteUptime: [String: TimeInterval] = [:]
+    private static let agentResumePasteCooldown: TimeInterval = 5
+
+    /// Handle `agent.stage_resume_paste --tab=<id> --panel=<id> --session=<id> [--pid=<n>]`.
+    ///
+    /// Codex fired a `user_requested` detach while the pane is still alive (the
+    /// shell prompt returns once Codex exits). We build the resume command from
+    /// the same RestorableAgentSessionIndex snapshot the reopen path uses, watch
+    /// the agent PID, and once it exits pre-type (un-run, no trailing CR) the
+    /// resume command into the same live terminal surface. The user presses Enter
+    /// to resume or clears the line. Scenario B (reopen restore) is handled
+    /// separately by preserving the hook session record on the CLI side.
+    private func stageAgentResumePaste(_ args: String) -> String {
+        let parsed = parseOptions(args)
+        let usage = "agent.stage_resume_paste --tab=<id> --panel=<id> --session=<id> [--pid=<n>]"
+
+        guard let sessionId = normalizedOptionValue(parsed.options["session"]) else {
+            return "ERROR: Missing session — usage: \(usage)"
+        }
+        let targetResolution = parseSidebarMutationTabTarget(options: parsed.options)
+        guard let target = targetResolution.target else {
+            return targetResolution.error ?? "ERROR: No tab selected"
+        }
+        let panelResolution = parseOptionalPanelIdOption(options: parsed.options, usage: usage)
+        if let error = panelResolution.error {
+            return error
+        }
+        guard let panelId = panelResolution.panelId else {
+            return "ERROR: Missing panel — usage: \(usage)"
+        }
+        let agentPID: pid_t? = normalizedOptionValue(parsed.options["pid"]).flatMap { Int32($0) }.flatMap { $0 > 0 ? $0 : nil }
+
+        guard let tab = resolveSidebarMutationTab(target) else {
+            return "ERROR: Tab not found"
+        }
+        let workspaceId = tab.id
+
+        // Guard against double-injection for the same session: skip if a paste is
+        // already staged/in-flight, or one completed within the cooldown (a
+        // duplicate hook for the same exit). A genuine re-park lands after the window.
+        let now = ProcessInfo.processInfo.systemUptime
+        Self.agentResumePasteLock.lock()
+        let alreadyStaged = Self.stagedAgentResumeSessions.contains(sessionId)
+        let recentlyPasted = (now - (Self.recentAgentResumePasteUptime[sessionId] ?? -Double.greatestFiniteMagnitude)) < Self.agentResumePasteCooldown
+        if !alreadyStaged && !recentlyPasted {
+            Self.stagedAgentResumeSessions.insert(sessionId)
+        }
+        Self.agentResumePasteLock.unlock()
+        if alreadyStaged || recentlyPasted {
+            return "OK"
+        }
+
+        // Build the resume command from the app's own restorable-agent index so
+        // both scenarios paste byte-identical text. resumePreparedStartupInput()
+        // returns the command WITHOUT a trailing newline (pre-typed, un-run).
+        let index = RestorableAgentSessionIndex.load()
+        guard let snapshot = index.snapshot(workspaceId: workspaceId, panelId: panelId),
+              let resumeText = snapshot.resumePreparedStartupInput(),
+              !resumeText.isEmpty else {
+            // Nothing to paste (e.g. record gone or command too large). Release the
+            // guard so a later valid event can still stage.
+            Self.agentResumePasteLock.lock()
+            Self.stagedAgentResumeSessions.remove(sessionId)
+            Self.agentResumePasteLock.unlock()
+            return "OK"
+        }
+
+        // If we have a live agent PID, wait for it to fully exit so the shell
+        // prompt is back before pasting. Otherwise (or if already dead) paste now.
+        if let agentPID, agentProcessIsAlive(agentPID) {
+            watchAgentPIDThenPaste(
+                pid: agentPID,
+                sessionId: sessionId,
+                workspaceId: workspaceId,
+                panelId: panelId,
+                text: resumeText
+            )
+        } else {
+            performAgentResumePaste(
+                sessionId: sessionId,
+                workspaceId: workspaceId,
+                panelId: panelId,
+                text: resumeText
+            )
+        }
+        return "OK"
+    }
+
+    private func agentProcessIsAlive(_ pid: pid_t) -> Bool {
+        // kill(pid, 0) returns 0 if the process exists (and we can signal it).
+        return kill(pid, 0) == 0
+    }
+
+    private func watchAgentPIDThenPaste(
+        pid: pid_t,
+        sessionId: String,
+        workspaceId: UUID,
+        panelId: UUID,
+        text: String
+    ) {
+        let queue = DispatchQueue(label: "cmux.agent.resume-paste.\(sessionId)")
+        let source = DispatchSource.makeProcessSource(
+            identifier: pid,
+            eventMask: .exit,
+            queue: queue
+        )
+        source.setEventHandler { [weak self] in
+            // Reap any zombie so the shell prompt is fully back, then paste.
+            var statusValue: Int32 = 0
+            _ = waitpid(pid, &statusValue, WNOHANG)
+            Self.agentResumePasteLock.lock()
+            Self.agentResumePasteWatchers.removeValue(forKey: sessionId)
+            Self.agentResumePasteLock.unlock()
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.performAgentResumePaste(
+                    sessionId: sessionId,
+                    workspaceId: workspaceId,
+                    panelId: panelId,
+                    text: text
+                )
+            }
+        }
+        source.setCancelHandler { /* watcher released via dictionary */ }
+        Self.agentResumePasteLock.lock()
+        Self.agentResumePasteWatchers[sessionId] = source
+        Self.agentResumePasteLock.unlock()
+        source.resume()
+
+        // Race guard: the process may have exited between the alive-check and the
+        // source resume. If so, fire the paste directly (the source may never
+        // deliver an exit event for an already-dead pid).
+        if !agentProcessIsAlive(pid) {
+            source.cancel()
+            Self.agentResumePasteLock.lock()
+            let stillWatching = Self.agentResumePasteWatchers.removeValue(forKey: sessionId) != nil
+            Self.agentResumePasteLock.unlock()
+            if stillWatching {
+                DispatchQueue.main.async { [weak self] in
+                    self?.performAgentResumePaste(
+                        sessionId: sessionId,
+                        workspaceId: workspaceId,
+                        panelId: panelId,
+                        text: text
+                    )
+                }
+            }
+        }
+    }
+
+    /// Inject the resume command into the live terminal surface as pre-typed,
+    /// un-run text (no trailing CR). Runs on the main actor.
+    private func performAgentResumePaste(
+        sessionId: String,
+        workspaceId: UUID,
+        panelId: UUID,
+        text: String
+    ) {
+        TerminalMutationBus.shared.enqueueMainActorMutation { [weak self] in
+            guard let self else { return }
+            // Atomically claim the staging token at entry. Two paths can enqueue
+            // this for one staging episode (the PID-exit handler and the
+            // already-dead race guard), and a duplicate hook could too — only the
+            // first to claim the token pastes; the rest no-op. Consuming here (not
+            // in a trailing defer) also re-arms the session so a later genuine
+            // re-park of the same session id (codex resume reuses it) can stage again.
+            Self.agentResumePasteLock.lock()
+            let shouldPaste = Self.stagedAgentResumeSessions.remove(sessionId) != nil
+            if shouldPaste {
+                Self.recentAgentResumePasteUptime[sessionId] = ProcessInfo.processInfo.systemUptime
+            }
+            Self.agentResumePasteLock.unlock()
+            guard shouldPaste else { return }
+            guard let tab = self.tabForSidebarMutation(id: workspaceId),
+                  let terminalPanel = tab.terminalPanel(for: panelId) else {
+                return
+            }
+            if let surface = terminalPanel.surface.surface {
+                self.sendSocketText(text, surface: surface)
+                terminalPanel.surface.forceRefresh(reason: "terminalController.agentResumePaste")
+            } else {
+                terminalPanel.sendText(text)
+                terminalPanel.surface.requestBackgroundSurfaceStartIfNeeded()
+            }
+#if DEBUG
+            cmuxDebugLog(
+                "agent.resume_paste.inject workspace=\(workspaceId.uuidString.prefix(8)) surface=\(panelId.uuidString.prefix(8)) chars=\(text.count) session=\(sessionId.prefix(8))"
+            )
+#endif
+        }
     }
 
     private func sidebarMetadataLine(_ entry: SidebarStatusEntry) -> String {
