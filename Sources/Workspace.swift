@@ -567,24 +567,20 @@ extension Workspace {
                     return nil
                 }
             }()
-            let resumeStartupInput = Self.surfaceResumeStartupInput(
-                resumeBinding,
-                autoResumeAgentSessions: AgentSessionAutoResumeSettings.mode() != .off && (agentWasRunning ?? true),
-                promptForApproval: false
-            )
-            // Passive autosaves stay conservative (only persist when the terminal
-            // is safely at a prompt and not an agent pane). App termination and
-            // crash recovery opt into capturing the live ("unsafe") agent TUI
-            // scrollback so the agent's last visible state survives a hard quit.
-            let shouldPersistScrollback = includeUnsafeTerminalScrollback || (
-                Self.shouldPersistSessionScrollback(
-                    shellActivityState: panelShellActivityStates[panelId],
-                    fallbackNeedsConfirmClose: terminalPanel.needsConfirmClose()
-                ) && Self.shouldReplaySessionScrollback(
-                    restorableAgent: effectiveRestorableAgent,
-                    tmuxStartCommand: restorableTmuxStartCommand,
-                    hasResumeStartupWork: resumeStartupInput != nil
-                )
+            // Scrollback autosave exists to preserve live terminal contents — most
+            // importantly running TUIs (Claude/Codex/vim) that trip
+            // needsConfirmClose()/commandRunning. WHETHER to capture scrollback at
+            // all is already decided upstream by `includeScrollback` (always true
+            // on a normal quit; gated by the autosave setting on periodic ticks),
+            // so we must not re-gate on close-confirmation or agent recognition
+            // here — the old gate silently dropped exactly the content users care
+            // about most (e.g. an open Claude session never detected as a
+            // restorable agent) and left the reopened window blank. The only
+            // suppression is the OMX-HUD tmux restart case, where a replayed
+            // scrollback would fight the HUD restart command.
+            let shouldPersistScrollback = Self.shouldPersistSessionScrollbackForRestore(
+                restorableAgent: effectiveRestorableAgent,
+                tmuxStartCommand: restorableTmuxStartCommand
             )
 #if DEBUG
             let allowDebugFallbackScrollback = debugSessionSnapshotScrollbackFallbackPanelIds.contains(panelId)
@@ -943,6 +939,21 @@ extension Workspace {
         restorableTmuxStartCommand(tmuxStartCommand) == nil
             && (restorableAgent == nil || resumeMode.replaysScrollback)
             && !hasResumeStartupWork
+    }
+
+    /// Whether to persist (capture) terminal scrollback for a restorable
+    /// session. Unlike replay, capture is intentionally permissive: the only
+    /// suppression is the OMX-HUD tmux-restart case, where a replayed scrollback
+    /// would fight the HUD restart command. WHETHER to capture at all is decided
+    /// upstream by `includeScrollback`; this must not re-gate on
+    /// close-confirmation or agent recognition, which silently dropped live TUI
+    /// scrollback (e.g. an open Claude session never detected as a restorable
+    /// agent) and left the reopened window blank.
+    nonisolated static func shouldPersistSessionScrollbackForRestore(
+        restorableAgent: SessionRestorableAgentSnapshot?,
+        tmuxStartCommand: String? = nil
+    ) -> Bool {
+        restorableTmuxStartCommand(tmuxStartCommand) == nil || restorableAgent != nil
     }
 
     nonisolated static func shouldAutoConnectRestoredRemote(
@@ -1436,16 +1447,6 @@ extension Workspace {
         let escapedWord = NSRegularExpression.escapedPattern(for: word)
         let pattern = "(^|[^A-Za-z0-9_-])\(escapedWord)([^A-Za-z0-9_-]|$)"
         return command.range(of: pattern, options: [.regularExpression, .caseInsensitive]) != nil
-    }
-
-    nonisolated static func shouldPersistSessionScrollback(
-        shellActivityState: PanelShellActivityState?,
-        fallbackNeedsConfirmClose: Bool
-    ) -> Bool {
-        !resolveCloseConfirmation(
-            shellActivityState: shellActivityState,
-            fallbackNeedsConfirmClose: fallbackNeedsConfirmClose
-        )
     }
 
     private func terminalSnapshotScrollback(
@@ -10691,7 +10692,6 @@ final class Workspace: Identifiable, ObservableObject {
     private var surfaceTabBarCommandButtons: [String: SurfaceTabBarExecutableButton] = [:]
     private var surfaceTabBarButtonSourcePath: String?
     private var surfaceTabBarButtonGlobalConfigPath: String?
-    private var browserAvailabilityObserver: NSObjectProtocol?
 
     /// Mapping from bonsplit TabID to our Panel instances
     @Published var panels: [UUID: any Panel] = [:]
@@ -11492,13 +11492,6 @@ final class Workspace: Identifiable, ObservableObject {
 
         // Set ourselves as delegate
         bonsplitController.delegate = self
-        browserAvailabilityObserver = NotificationCenter.default.addObserver(
-            forName: BrowserAvailabilitySettings.didChangeNotification,
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            self?.refreshBrowserSplitButtonPresentation()
-        }
 
         // Right-clicking the New Browser button shows a checkable
         // "Open in External Browser" item; ticking it tints (glows) the button.
@@ -11558,9 +11551,6 @@ final class Workspace: Identifiable, ObservableObject {
     private var sharedLiveAgentIndexCancellable: AnyCancellable?
 
     deinit {
-        if let browserAvailabilityObserver {
-            NotificationCenter.default.removeObserver(browserAvailabilityObserver)
-        }
         for registrations in pendingTerminalInputObserversByPanelId.values {
             for registration in registrations {
                 if let observer = registration.observer {

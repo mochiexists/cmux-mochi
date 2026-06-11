@@ -293,6 +293,25 @@ enum AgentResumeCommandBuilder {
         includeWorkingDirectoryPrefix: Bool = true
     ) -> String? {
         let customRegistration = registrationOverride
+
+        // Codex/Claude reopen + in-place re-park paste use short shell aliases
+        // instead of the verbose absolute-path + env + flags form. The fork bakes
+        // cx/cxy/cc/ccy into the spawned shell, so the pasted command stays short
+        // and readable. Both the in-place paste (TerminalController) and reopen
+        // restore (Workspace) share this builder, so both get the alias form.
+        // Special launchers (claude-teams / oh-my-* wrappers) keep their bespoke
+        // resume handling below — only the plain claude/codex CLIs alias.
+        if kind == .claude || kind == .codex,
+           !isSpecialLauncher(launchCommand?.launcher) {
+            return aliasResumeShellCommand(
+                kind: kind,
+                sessionId: sessionId,
+                launchCommand: launchCommand,
+                workingDirectory: workingDirectory,
+                includeWorkingDirectoryPrefix: includeWorkingDirectoryPrefix
+            )
+        }
+
         guard !sessionId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
               let argv = resumeArguments(
                   kind: kind,
@@ -396,6 +415,84 @@ enum AgentResumeCommandBuilder {
         default:
             let original = commandParts(launchCommand: launchCommand, fallbackExecutable: "opencode")
             return (original.executable, ["--version"])
+        }
+    }
+
+    /// Launchers that wrap claude/codex with their own resume handling and must
+    /// not be collapsed into the short alias form.
+    private static func isSpecialLauncher(_ launcher: String?) -> Bool {
+        switch launcher {
+        case "claudeTeams", "omo", "omx", "omc":
+            return true
+        default:
+            return false
+        }
+    }
+
+    /// Build the short-alias resume command for Codex/Claude:
+    ///   cd <cwd> && <alias> <resume-subcommand> <session-id>
+    /// codex yolo -> `cxy resume <id>`, codex normal -> `cx resume <id>`
+    /// claude yolo -> `ccy --resume <id>`, claude normal -> `cc --resume <id>`
+    private static func aliasResumeShellCommand(
+        kind: RestorableAgentKind,
+        sessionId: String,
+        launchCommand: AgentLaunchCommandSnapshot?,
+        workingDirectory: String?,
+        includeWorkingDirectoryPrefix: Bool
+    ) -> String? {
+        let trimmedSessionId = sessionId.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedSessionId.isEmpty else { return nil }
+
+        let isYolo = launchCommandLooksYolo(kind: kind, launchCommand: launchCommand)
+        let alias: String
+        let resumeArgs: [String]
+        switch kind {
+        case .codex:
+            alias = isYolo ? "cxy" : "cx"
+            resumeArgs = ["resume", trimmedSessionId]
+        case .claude:
+            alias = isYolo ? "ccy" : "cc"
+            resumeArgs = ["--resume", trimmedSessionId]
+        default:
+            return nil
+        }
+
+        // The alias/command word must stay UNQUOTED: zsh/bash only expand an alias
+        // when the command word is unquoted (`'cxy'` would not expand a user's
+        // `alias cxy=...`). Functions resolve either way, so unquoted works for the
+        // baked functions and a user's alias alike. Arguments stay quoted.
+        var shellCommand = ([alias] + resumeArgs.map(shellSingleQuoted)).joined(separator: " ")
+        if includeWorkingDirectoryPrefix,
+           let cwd = normalized(workingDirectory ?? launchCommand?.workingDirectory) {
+            shellCommand = "cd \(shellSingleQuoted(cwd)) && \(shellCommand)"
+        }
+        return shellCommand
+    }
+
+    /// Detect whether the recorded launch ran the agent in "yolo" (bypass
+    /// approvals/permissions) mode. When indeterminate, DEFAULT TO YOLO — the
+    /// fork owner always runs yolo.
+    private static func launchCommandLooksYolo(
+        kind: RestorableAgentKind,
+        launchCommand: AgentLaunchCommandSnapshot?
+    ) -> Bool {
+        guard let arguments = launchCommand?.arguments, !arguments.isEmpty else {
+            // No recorded arguments: indeterminate -> default to yolo.
+            return true
+        }
+        let normalizedArgs = arguments.map { $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
+        switch kind {
+        case .claude:
+            return normalizedArgs.contains("--dangerously-skip-permissions")
+        case .codex:
+            // `--sandbox danger-full-access` (usually paired with `--ask-for-approval
+            // never`) is yolo in effect, so treat it like the explicit yolo flags.
+            return normalizedArgs.contains("--dangerously-bypass-approvals-and-sandbox")
+                || normalizedArgs.contains("--yolo")
+                || normalizedArgs.contains("--full-auto")
+                || normalizedArgs.contains("danger-full-access")
+        default:
+            return true
         }
     }
 
@@ -993,6 +1090,17 @@ struct RestorableAgentSessionIndex: Sendable {
             CmuxTopProcessSnapshot.processArgumentsAndEnvironment(for: $0)
         }
     ) -> RestorableAgentSessionIndex {
+        // Lazily capture a process snapshot the first time a record needs a
+        // liveness check, so the synchronous load() path (no shared snapshot)
+        // only scans the process table when there is actually something to
+        // validate.
+        var cachedProcessSnapshot = suppliedProcessSnapshot
+        func liveProcessSnapshot() -> CmuxTopProcessSnapshot {
+            if let cachedProcessSnapshot { return cachedProcessSnapshot }
+            let captured = CmuxTopProcessSnapshot.capture(includeProcessDetails: false)
+            cachedProcessSnapshot = captured
+            return captured
+        }
         let decoder = JSONDecoder()
         var resolved: [PanelKey: Entry] = [:]
         let claudeTranscriptLookup = ClaudeTranscriptLookupCache(

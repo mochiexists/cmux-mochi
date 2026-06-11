@@ -29039,6 +29039,14 @@ export default function cmuxPiSessionExtension(pi: ExtensionAPI) {
                 )
             }
             if !sessionId.isEmpty {
+                // Codex: re-mark this session the workspace's active session on
+                // every SessionStart (including a resumed thread). Without this, a
+                // resumed-then-re-quit session is no longer the active session, so
+                // the session-end path treats the second detach as not-active and
+                // skips the in-place resume paste. Marking active here mirrors the
+                // prompt-submit path and preserves the "superseded by newer
+                // session" guard (a newer SessionStart overwrites this mapping).
+                let markActiveForCodex = def.name == "codex"
                 try? store.upsert(
                     sessionId: sessionId,
                     workspaceId: workspaceId,
@@ -29050,6 +29058,9 @@ export default function cmuxPiSessionExtension(pi: ExtensionAPI) {
                     agentLifecycle: .unknown,
                     runtimeStatus: suppressVisibleMutations ? nil : .running,
                     updateRuntimeStatus: !suppressVisibleMutations
+                    markActive: markActiveForCodex,
+                    turnId: input.turnId,
+                    allowsNewSessionReplacement: markActiveForCodex
                 )
                 if suppressVisibleMutations {
                     telemetry.breadcrumb("\(def.name)-hook.session-start.nested-suppressed")

@@ -555,6 +555,12 @@ final class CmuxSettingsFileStore {
             logInvalid("terminal.copyOnSelect", sourcePath: sourcePath)
         }
 
+        if let value = jsonBool(section["autosaveScrollback"]) {
+            snapshot.managedUserDefaults[TerminalScrollbackAutosaveSettings.enabledKey] = .bool(value)
+        } else if section.keys.contains("autosaveScrollback") {
+            logInvalid("terminal.autosaveScrollback", sourcePath: sourcePath)
+        }
+
         if let raw = jsonString(section["agentResumeMode"]) {
             guard let mode = AgentSessionResumeMode(rawValue: raw) else {
                 logInvalid("terminal.agentResumeMode", sourcePath: sourcePath)

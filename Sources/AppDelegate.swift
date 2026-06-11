@@ -1072,6 +1072,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
     private var lastSessionAutosaveFingerprint: Int?
     private var lastSessionAutosavePersistedAt: Date = .distantPast
     private var lastTypingActivityAt: TimeInterval = 0
+    private var sessionScrollbackAutosaveDirty = true
     var didHandleExplicitOpenIntentAtStartup = false
     private var didScheduleInitialMainWindowBootstrap = false
     var shouldDeferInitialMainWindowBootstrapForExternalConfirmation = false
@@ -3245,19 +3246,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
     }
 
     private func completeSessionRestoreOperation(isManualReopen: Bool) {
+        let restoredSnapshotContainsScrollback = startupSessionSnapshot?.containsTerminalScrollback == true
         startupSessionSnapshot = nil
         isApplyingSessionRestore = false
-        if Self.shouldSaveSessionSnapshotOnRestoreCompletion(isManualReopen: isManualReopen) {
-            // Auto-resume input can be queued before tmux has spawned; preserve
-            // restored process-detected bindings until a later live scan.
+        if Self.shouldSaveSessionSnapshotOnRestoreCompletion(
+            isManualReopen: isManualReopen,
+            restoredSnapshotContainsScrollback: restoredSnapshotContainsScrollback
+        ) {
             _ = saveSessionSnapshot(includeScrollback: false)
         }
     }
 
     nonisolated static func shouldSaveSessionSnapshotOnRestoreCompletion(
-        isManualReopen: Bool
+        isManualReopen: Bool,
+        restoredSnapshotContainsScrollback: Bool
     ) -> Bool {
-        !isManualReopen
+        !isManualReopen && !restoredSnapshotContainsScrollback
     }
 
     @discardableResult
@@ -3847,9 +3851,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         restorableAgentIndex: RestorableAgentSessionIndex,
         surfaceResumeBindingIndex: SurfaceResumeBindingIndex
     ) -> Int? {
-        guard !includeScrollback else { return nil }
-
         var hasher = Hasher()
+        hasher.combine(includeScrollback)
         let contexts = mainWindowContexts.values.sorted { lhs, rhs in
             lhs.windowId.uuidString < rhs.windowId.uuidString
         }
@@ -4036,6 +4039,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         false
     }
 
+    nonisolated static func shouldIncludeScrollbackInSessionAutosave(
+        defaults: UserDefaults = .standard
+    ) -> Bool {
+        TerminalScrollbackAutosaveSettings.isEnabled(defaults: defaults)
+    }
+
     private func remainingSessionAutosaveTypingQuietPeriod(
         nowUptime: TimeInterval = ProcessInfo.processInfo.systemUptime
     ) -> TimeInterval? {
@@ -4061,10 +4070,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
     private func runSessionAutosaveTick(source: String) {
         guard Self.shouldRunSessionAutosaveTick(isTerminatingApp: isTerminatingApp) else { return }
         guard !sessionAutosaveTickInFlight else { return }
+        let includeScrollbackInAutosave = Self.shouldIncludeScrollbackInSessionAutosave(defaults: .standard)
         if let remainingQuietPeriod = remainingSessionAutosaveTypingQuietPeriod() {
 #if DEBUG
             cmuxDebugLog(
-                "session.save.skipped reason=typing_recent includeScrollback=0 source=\(source) " +
+                "session.save.skipped reason=typing_recent includeScrollback=\(includeScrollbackInAutosave ? 1 : 0) source=\(source) " +
                 "retryMs=\(Int((remainingQuietPeriod * 1000).rounded()))"
             )
 #endif
@@ -4107,6 +4117,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
 #endif
 
         let now = Date()
+        let includeScrollbackInAutosave = Self.shouldIncludeScrollbackInSessionAutosave(defaults: .standard)
 #if DEBUG
         let fingerprintStart = ProcessInfo.processInfo.systemUptime
 #endif
@@ -4121,7 +4132,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
             return
         }
         let autosaveFingerprint = sessionAutosaveFingerprint(
-            includeScrollback: false,
+            includeScrollback: includeScrollbackInAutosave,
             restorableAgentIndex: resumeIndexes.restorableAgentIndex,
             surfaceResumeBindingIndex: resumeIndexes.surfaceResumeBindingIndex
         )
@@ -4130,7 +4141,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
 #endif
         if Self.shouldSkipSessionAutosaveForUnchangedFingerprint(
             isTerminatingApp: isTerminatingApp,
-            includeScrollback: false,
+            includeScrollback: includeScrollbackInAutosave,
+            scrollbackDirty: sessionScrollbackAutosaveDirty,
             previousFingerprint: lastSessionAutosaveFingerprint,
             currentFingerprint: autosaveFingerprint,
             lastPersistedAt: lastSessionAutosavePersistedAt,
@@ -4138,7 +4150,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         ) {
 #if DEBUG
             cmuxDebugLog(
-                "session.save.skipped reason=unchanged_autosave_fingerprint includeScrollback=0 source=\(source)"
+                "session.save.skipped reason=unchanged_autosave_fingerprint includeScrollback=\(includeScrollbackInAutosave ? 1 : 0) source=\(source)"
             )
 #endif
             return
@@ -4148,7 +4160,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         let saveStart = ProcessInfo.processInfo.systemUptime
 #endif
         _ = saveSessionSnapshot(
-            includeScrollback: false,
+            includeScrollback: includeScrollbackInAutosave,
             restorableAgentIndex: resumeIndexes.restorableAgentIndex,
             surfaceResumeBindingIndex: resumeIndexes.surfaceResumeBindingIndex
         )
@@ -4156,7 +4168,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         saveMs = (ProcessInfo.processInfo.systemUptime - saveStart) * 1000.0
 #endif
         updateSessionAutosaveSaveState(
-            includeScrollback: false,
+            includeScrollback: includeScrollbackInAutosave,
             persistedAt: now,
             fingerprint: autosaveFingerprint
         )
@@ -4209,6 +4221,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
 
     fileprivate func recordTypingActivity() {
         lastTypingActivityAt = ProcessInfo.processInfo.systemUptime
+        markTerminalScrollbackAutosaveDirty()
+    }
+
+    func markTerminalScrollbackAutosaveDirty() {
+        sessionScrollbackAutosaveDirty = true
     }
 
     nonisolated static func shouldWriteSessionSnapshotSynchronously(
@@ -4221,6 +4238,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
     nonisolated static func shouldSkipSessionAutosaveForUnchangedFingerprint(
         isTerminatingApp: Bool,
         includeScrollback: Bool,
+        scrollbackDirty: Bool,
         previousFingerprint: Int?,
         currentFingerprint: Int?,
         lastPersistedAt: Date,
@@ -4228,11 +4246,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         maximumAutosaveSkippableInterval: TimeInterval = 60
     ) -> Bool {
         guard !isTerminatingApp,
-              !includeScrollback,
               let previousFingerprint,
               let currentFingerprint,
               previousFingerprint == currentFingerprint else {
             return false
+        }
+
+        if includeScrollback {
+            return !scrollbackDirty
         }
 
         return now.timeIntervalSince(lastPersistedAt) < maximumAutosaveSkippableInterval
@@ -4243,7 +4264,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         persistedAt: Date,
         fingerprint: Int?
     ) {
-        guard !isTerminatingApp, !includeScrollback else { return }
+        guard !isTerminatingApp else { return }
+        if includeScrollback {
+            sessionScrollbackAutosaveDirty = false
+        }
         lastSessionAutosaveFingerprint = fingerprint
         lastSessionAutosavePersistedAt = persistedAt
     }

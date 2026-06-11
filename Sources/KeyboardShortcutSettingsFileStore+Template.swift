@@ -105,6 +105,7 @@ extension CmuxSettingsFileStore {
                     ],
                     "textBoxMaxLines": TerminalTextBoxInputSettings.defaultMaxLines,
                     "resumeCommands": [],
+                    "autosaveScrollback": TerminalScrollbackAutosaveSettings.defaultEnabled,
                 ],
             ],
             [

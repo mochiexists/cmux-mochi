@@ -209,6 +209,15 @@ enum TerminalManagedGhosttySettings {
     }
 }
 
+enum TerminalScrollbackAutosaveSettings {
+    static let enabledKey = "terminal.autosaveScrollback"
+    static let defaultEnabled = true
+
+    static func isEnabled(defaults: UserDefaults = .standard) -> Bool {
+        defaults.object(forKey: enabledKey) as? Bool ?? defaultEnabled
+    }
+}
+
 /// How restored agent terminals behave when cmux Mochi reopens after a quit.
 /// Off:    no scrollback replay, no resume command prefill (fresh terminal).
 /// medium: replay scrollback and prefill the resume command without submitting it.
