@@ -25,6 +25,25 @@ enum AgentResumeCommandBuilder {
         includeWorkingDirectoryPrefix: Bool = true
     ) -> String? {
         let customRegistration = registrationOverride
+
+        // Codex/Claude reopen + in-place re-park paste use short shell aliases
+        // instead of the verbose absolute-path + env + flags form. The fork bakes
+        // cx/cxy/cc/ccy into the spawned shell, so the pasted command stays short
+        // and readable. Both the in-place paste (TerminalController) and reopen
+        // restore (Workspace) share this builder, so both get the alias form.
+        // Special launchers (claude-teams / oh-my-* wrappers) keep their bespoke
+        // resume handling below — only the plain claude/codex CLIs alias.
+        if kind == .claude || kind == .codex,
+           !isSpecialLauncher(launchCommand?.launcher) {
+            return aliasResumeShellCommand(
+                kind: kind,
+                sessionId: sessionId,
+                launchCommand: launchCommand,
+                workingDirectory: workingDirectory,
+                includeWorkingDirectoryPrefix: includeWorkingDirectoryPrefix
+            )
+        }
+
         guard !sessionId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
               let argv = resumeArguments(
                   kind: kind,
@@ -113,6 +132,84 @@ enum AgentResumeCommandBuilder {
         default:
             let original = commandParts(launchCommand: launchCommand, fallbackExecutable: "opencode")
             return (original.executable, ["--version"])
+        }
+    }
+
+    /// Launchers that wrap claude/codex with their own resume handling and must
+    /// not be collapsed into the short alias form.
+    private static func isSpecialLauncher(_ launcher: String?) -> Bool {
+        switch launcher {
+        case "claudeTeams", "omo", "omx", "omc":
+            return true
+        default:
+            return false
+        }
+    }
+
+    /// Build the short-alias resume command for Codex/Claude:
+    ///   cd <cwd> && <alias> <resume-subcommand> <session-id>
+    /// codex yolo -> `cxy resume <id>`, codex normal -> `cx resume <id>`
+    /// claude yolo -> `ccy --resume <id>`, claude normal -> `cc --resume <id>`
+    private static func aliasResumeShellCommand(
+        kind: RestorableAgentKind,
+        sessionId: String,
+        launchCommand: AgentLaunchCommandSnapshot?,
+        workingDirectory: String?,
+        includeWorkingDirectoryPrefix: Bool
+    ) -> String? {
+        let trimmedSessionId = sessionId.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedSessionId.isEmpty else { return nil }
+
+        let isYolo = launchCommandLooksYolo(kind: kind, launchCommand: launchCommand)
+        let alias: String
+        let resumeArgs: [String]
+        switch kind {
+        case .codex:
+            alias = isYolo ? "cxy" : "cx"
+            resumeArgs = ["resume", trimmedSessionId]
+        case .claude:
+            alias = isYolo ? "ccy" : "cc"
+            resumeArgs = ["--resume", trimmedSessionId]
+        default:
+            return nil
+        }
+
+        // The alias/command word must stay UNQUOTED: zsh/bash only expand an alias
+        // when the command word is unquoted (`'cxy'` would not expand a user's
+        // `alias cxy=...`). Functions resolve either way, so unquoted works for the
+        // baked functions and a user's alias alike. Arguments stay quoted.
+        var shellCommand = ([alias] + resumeArgs.map(shellSingleQuoted)).joined(separator: " ")
+        if includeWorkingDirectoryPrefix,
+           let cwd = normalized(workingDirectory ?? launchCommand?.workingDirectory) {
+            shellCommand = "cd \(shellSingleQuoted(cwd)) && \(shellCommand)"
+        }
+        return shellCommand
+    }
+
+    /// Detect whether the recorded launch ran the agent in "yolo" (bypass
+    /// approvals/permissions) mode. When indeterminate, DEFAULT TO YOLO — the
+    /// fork owner always runs yolo.
+    private static func launchCommandLooksYolo(
+        kind: RestorableAgentKind,
+        launchCommand: AgentLaunchCommandSnapshot?
+    ) -> Bool {
+        guard let arguments = launchCommand?.arguments, !arguments.isEmpty else {
+            // No recorded arguments: indeterminate -> default to yolo.
+            return true
+        }
+        let normalizedArgs = arguments.map { $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
+        switch kind {
+        case .claude:
+            return normalizedArgs.contains("--dangerously-skip-permissions")
+        case .codex:
+            // `--sandbox danger-full-access` (usually paired with `--ask-for-approval
+            // never`) is yolo in effect, so treat it like the explicit yolo flags.
+            return normalizedArgs.contains("--dangerously-bypass-approvals-and-sandbox")
+                || normalizedArgs.contains("--yolo")
+                || normalizedArgs.contains("--full-auto")
+                || normalizedArgs.contains("danger-full-access")
+        default:
+            return true
         }
     }
 
@@ -681,15 +778,22 @@ struct RestorableAgentSessionIndex: Sendable {
     ) async -> RestorableAgentSessionIndex {
         await Task.detached(priority: .utility) {
             let registry = CmuxVaultAgentRegistry.load(homeDirectory: homeDirectory, fileManager: fileManager)
+            // Capture one process snapshot and share it between custom-agent
+            // process detection and the hook-record liveness check, so codex
+            // liveness is validated against live pane processes (not a possibly
+            // mis-captured recorded pid) without scanning the process table twice.
+            let processSnapshot = CmuxTopProcessSnapshot.capture(includeProcessDetails: false)
             let detectedSnapshots = processDetectedSnapshots(
                 registry: registry,
-                fileManager: fileManager
+                fileManager: fileManager,
+                processSnapshot: processSnapshot
             )
             return load(
                 homeDirectory: homeDirectory,
                 fileManager: fileManager,
                 registry: registry,
-                detectedSnapshots: detectedSnapshots
+                detectedSnapshots: detectedSnapshots,
+                processSnapshot: processSnapshot
             )
         }.value
     }
@@ -698,8 +802,20 @@ struct RestorableAgentSessionIndex: Sendable {
         homeDirectory: String,
         fileManager: FileManager,
         registry: CmuxVaultAgentRegistry,
-        detectedSnapshots: [PanelKey: (snapshot: SessionRestorableAgentSnapshot, updatedAt: TimeInterval)]
+        detectedSnapshots: [PanelKey: (snapshot: SessionRestorableAgentSnapshot, updatedAt: TimeInterval)],
+        processSnapshot suppliedProcessSnapshot: CmuxTopProcessSnapshot? = nil
     ) -> RestorableAgentSessionIndex {
+        // Lazily capture a process snapshot the first time a record needs a
+        // liveness check, so the synchronous load() path (no shared snapshot)
+        // only scans the process table when there is actually something to
+        // validate.
+        var cachedProcessSnapshot = suppliedProcessSnapshot
+        func liveProcessSnapshot() -> CmuxTopProcessSnapshot {
+            if let cachedProcessSnapshot { return cachedProcessSnapshot }
+            let captured = CmuxTopProcessSnapshot.capture(includeProcessDetails: false)
+            cachedProcessSnapshot = captured
+            return captured
+        }
         let decoder = JSONDecoder()
         var resolved: [PanelKey: (snapshot: SessionRestorableAgentSnapshot, updatedAt: TimeInterval)] = [:]
         let claudeTranscriptLookup = ClaudeTranscriptLookupCache(
@@ -732,7 +848,8 @@ struct RestorableAgentSessionIndex: Sendable {
                           record,
                           kind: kind,
                           workspaceId: workspaceId,
-                          panelId: panelId
+                          panelId: panelId,
+                          liveProcessSnapshot: liveProcessSnapshot
                       ),
                       hookRecordIsRestorable(
                           record,
@@ -963,13 +1080,90 @@ struct RestorableAgentSessionIndex: Sendable {
         _ record: RestorableAgentHookSessionRecord,
         kind: RestorableAgentKind,
         workspaceId: UUID,
-        panelId: UUID
+        panelId: UUID,
+        liveProcessSnapshot: () -> CmuxTopProcessSnapshot
     ) -> Bool {
-        guard let pid = record.pid else {
+        guard let pid = record.pid, pid > 0 else {
+            // No recorded pid -> liveness is not gated (e.g. transcript-backed
+            // Claude startup records). Restorability is decided elsewhere.
             return true
         }
-        guard pid > 0,
-              let process = CmuxTopProcessSnapshot.processArgumentsAndEnvironment(for: pid),
+
+        // Codex records validate liveness PID-INDEPENDENTLY: the record is live
+        // iff some process currently scoped to this pane (matching the inherited
+        // CMUX_WORKSPACE_ID / CMUX_SURFACE_ID env) runs the codex executable.
+        // The recorded pid is NOT trusted: inferredCodexAgentPID() can land on a
+        // wrapper shell (it stops the parent walk on a transient `ps` failure,
+        // and a login shell reports as "-zsh" which is not in its skip set), and
+        // a relaunched/resumed codex gets a fresh pid. Either previously dropped
+        // a perfectly live session and lost the resume paste.
+        if kind == .codex {
+            return paneHasLiveExecutable(
+                snapshot: liveProcessSnapshot(),
+                workspaceId: workspaceId,
+                panelId: panelId,
+                expectedBasenames: expectedCodexExecutableBasenames(record)
+            )
+        }
+
+        return recordedPIDStillBelongsToLiveAgent(
+            record,
+            pid: pid,
+            kind: kind,
+            workspaceId: workspaceId,
+            panelId: panelId
+        )
+    }
+
+    /// Canonical executable basenames that identify a live codex process. The
+    /// kernel comm is "codex" for the codex binary; the recorded launch
+    /// executable is included as a fallback in case codex is invoked under a
+    /// differently-named launcher.
+    private static func expectedCodexExecutableBasenames(
+        _ record: RestorableAgentHookSessionRecord
+    ) -> Set<String> {
+        var names: Set<String> = ["codex"]
+        if let recorded = recordedExecutableBasename(record) {
+            names.insert(recorded.lowercased())
+        }
+        return names
+    }
+
+    /// Pure liveness predicate: true iff any process scoped to the pane runs one
+    /// of `expectedBasenames`. Split out from the snapshot lookup so it can be
+    /// unit-tested without a live process table.
+    static func paneHasLiveExecutable(
+        scopedProcessExecutableNames: [String],
+        expectedBasenames: Set<String>
+    ) -> Bool {
+        scopedProcessExecutableNames.contains { name in
+            expectedBasenames.contains(executableBasename(name).lowercased())
+        }
+    }
+
+    private static func paneHasLiveExecutable(
+        snapshot: CmuxTopProcessSnapshot,
+        workspaceId: UUID,
+        panelId: UUID,
+        expectedBasenames: Set<String>
+    ) -> Bool {
+        paneHasLiveExecutable(
+            scopedProcessExecutableNames: snapshot.cmuxScopedProcessExecutableNames(
+                workspaceID: workspaceId,
+                surfaceID: panelId
+            ),
+            expectedBasenames: expectedBasenames
+        )
+    }
+
+    private static func recordedPIDStillBelongsToLiveAgent(
+        _ record: RestorableAgentHookSessionRecord,
+        pid: Int,
+        kind: RestorableAgentKind,
+        workspaceId: UUID,
+        panelId: UUID
+    ) -> Bool {
+        guard let process = CmuxTopProcessSnapshot.processArgumentsAndEnvironment(for: pid),
               process.environmentUUID(forKey: "CMUX_WORKSPACE_ID") == workspaceId,
               process.environmentUUID(forKey: "CMUX_SURFACE_ID") == panelId else {
             return false

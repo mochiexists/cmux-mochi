@@ -5053,6 +5053,8 @@ struct SettingsView: View {
     private var paneFirstClickFocusEnabled = PaneFirstClickFocusSettings.defaultEnabled
     @AppStorage(TerminalScrollBarSettings.showScrollBarKey)
     private var showTerminalScrollBar = TerminalScrollBarSettings.defaultShowScrollBar
+    @AppStorage(TerminalScrollbackAutosaveSettings.enabledKey)
+    private var autosaveTerminalScrollback = TerminalScrollbackAutosaveSettings.defaultEnabled
     @AppStorage(FileDropBehaviorSettings.defaultBehaviorKey)
     private var fileDropDefaultBehavior = FileDropBehaviorSettings.defaultBehavior.rawValue
     @AppStorage(AgentSessionAutoResumeSettings.modeKey)
@@ -6288,6 +6290,25 @@ struct SettingsView: View {
                             }
                         }
                         .settingsSearchAnchor(SettingsSearchIndex.settingID(for: .terminal, idSuffix: "agent-auto-resume"))
+
+                        SettingsCardDivider()
+
+                        SettingsCardRow(
+                            configurationReview: .json("terminal.autosaveScrollback"),
+                            String(localized: "settings.terminal.autosaveScrollback", defaultValue: "Autosave Terminal Scrollback"),
+                            subtitle: autosaveTerminalScrollback
+                                ? String(localized: "settings.terminal.autosaveScrollback.subtitleOn", defaultValue: "Periodic autosaves include bounded scrollback after terminal activity, then skip redundant scrollback writes while idle.")
+                                : String(localized: "settings.terminal.autosaveScrollback.subtitleOff", defaultValue: "Periodic autosaves skip scrollback; normal quit still saves scrollback.")
+                        ) {
+                            Toggle("", isOn: $autosaveTerminalScrollback)
+                                .labelsHidden()
+                                .controlSize(.small)
+                                .accessibilityIdentifier("SettingsTerminalScrollbackAutosaveToggle")
+                                .accessibilityLabel(
+                                    String(localized: "settings.terminal.autosaveScrollback", defaultValue: "Autosave Terminal Scrollback")
+                                )
+                        }
+                        .settingsSearchAnchor(SettingsSearchIndex.settingID(for: .terminal, idSuffix: "scrollback-autosave"))
                     }
 
                     SettingsSectionHeader(title: String(localized: "settings.section.sidebarAppearance", defaultValue: "Sidebar"))
@@ -7444,6 +7465,7 @@ struct SettingsView: View {
         if previousShowTerminalScrollBar != showTerminalScrollBar {
             TerminalScrollBarSettings.notifyDidChange()
         }
+        autosaveTerminalScrollback = TerminalScrollbackAutosaveSettings.defaultEnabled
         fileDropDefaultBehavior = FileDropBehaviorSettings.defaultBehavior.rawValue
         let previousAgentResumeMode = agentResumeModeRawValue
         agentResumeModeRawValue = AgentSessionAutoResumeSettings.defaultMode.rawValue

@@ -453,10 +453,18 @@ extension Workspace {
             let restorableTmuxStartCommand = effectiveRestorableAgent == nil
                 ? Self.restorableTmuxStartCommand(terminalPanel.surface.debugTmuxStartCommand())
                 : nil
-            let shouldPersistScrollback = Self.shouldPersistSessionScrollback(
-                shellActivityState: panelShellActivityStates[panelId],
-                fallbackNeedsConfirmClose: terminalPanel.needsConfirmClose()
-            ) && Self.shouldPersistSessionScrollbackForRestore(
+            // Scrollback autosave exists to preserve live terminal contents — most
+            // importantly running TUIs (Claude/Codex/vim) that trip
+            // needsConfirmClose()/commandRunning. WHETHER to capture scrollback at
+            // all is already decided upstream by `includeScrollback` (always true
+            // on a normal quit; gated by the autosave setting on periodic ticks),
+            // so we must not re-gate on close-confirmation or agent recognition
+            // here — the old gate silently dropped exactly the content users care
+            // about most (e.g. an open Claude session never detected as a
+            // restorable agent) and left the reopened window blank. The only
+            // suppression is the OMX-HUD tmux restart case, where a replayed
+            // scrollback would fight the HUD restart command.
+            let shouldPersistScrollback = Self.shouldPersistSessionScrollbackForRestore(
                 restorableAgent: effectiveRestorableAgent,
                 tmuxStartCommand: restorableTmuxStartCommand
             )
@@ -603,16 +611,6 @@ extension Workspace {
         let escapedWord = NSRegularExpression.escapedPattern(for: word)
         let pattern = "(^|[^A-Za-z0-9_-])\(escapedWord)([^A-Za-z0-9_-]|$)"
         return command.range(of: pattern, options: [.regularExpression, .caseInsensitive]) != nil
-    }
-
-    nonisolated static func shouldPersistSessionScrollback(
-        shellActivityState: PanelShellActivityState?,
-        fallbackNeedsConfirmClose: Bool
-    ) -> Bool {
-        !resolveCloseConfirmation(
-            shellActivityState: shellActivityState,
-            fallbackNeedsConfirmClose: fallbackNeedsConfirmClose
-        )
     }
 
     private func terminalSnapshotScrollback(
@@ -7184,7 +7182,6 @@ final class Workspace: Identifiable, ObservableObject {
     static let terminalScrollBarHiddenDidChangeNotification = Notification.Name(
         "cmux.workspaceTerminalScrollBarHiddenDidChange"
     )
-    private static let browserModeContextMenuActionID = "cmux.surfaceTabBar.browser.useNativeBrowser"
 
     let id: UUID
     @Published var title: String
@@ -7212,7 +7209,6 @@ final class Workspace: Identifiable, ObservableObject {
     private var surfaceTabBarCommandButtons: [String: SurfaceTabBarExecutableButton] = [:]
     private var surfaceTabBarButtonSourcePath: String?
     private var surfaceTabBarButtonGlobalConfigPath: String?
-    private var browserAvailabilityObserver: NSObjectProtocol?
 
     /// Mapping from bonsplit TabID to our Panel instances
     @Published var panels: [UUID: any Panel] = [:]
@@ -7906,13 +7902,6 @@ final class Workspace: Identifiable, ObservableObject {
 
         // Set ourselves as delegate
         bonsplitController.delegate = self
-        browserAvailabilityObserver = NotificationCenter.default.addObserver(
-            forName: BrowserAvailabilitySettings.didChangeNotification,
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            self?.refreshBrowserSplitButtonPresentation()
-        }
 
         // Ensure bonsplit has a focused pane and our didSelectTab handler runs for the
         // initial terminal. bonsplit's createTab selects internally but does not emit
@@ -7936,9 +7925,6 @@ final class Workspace: Identifiable, ObservableObject {
     }
 
     deinit {
-        if let browserAvailabilityObserver {
-            NotificationCenter.default.removeObserver(browserAvailabilityObserver)
-        }
         for registrations in pendingTerminalInputObserversByPanelId.values {
             for registration in registrations {
                 if let observer = registration.observer {
@@ -7961,37 +7947,6 @@ final class Workspace: Identifiable, ObservableObject {
     func refreshSplitButtonBackdropEffect() {
         var configuration = bonsplitController.configuration
         configuration.appearance.splitButtonBackdropEffect = Self.bonsplitSplitButtonBackdropEffect()
-        bonsplitController.configuration = configuration
-    }
-
-    private static func browserSplitButtonContextMenuItems() -> [BonsplitConfiguration.SplitActionButton.ContextMenuItem] {
-        [
-            BonsplitConfiguration.SplitActionButton.ContextMenuItem(
-                id: browserModeContextMenuActionID,
-                title: String(
-                    localized: "surfaceTabBar.browser.useNativeBrowser",
-                    defaultValue: "Use Native Browser"
-                ),
-                isChecked: BrowserAvailabilitySettings.isDisabled()
-            )
-        ]
-    }
-
-    private static func browserPresentedSplitButton(
-        _ button: BonsplitConfiguration.SplitActionButton
-    ) -> BonsplitConfiguration.SplitActionButton {
-        guard button.action == .newBrowser else { return button }
-        var presentedButton = button
-        presentedButton.isActive = BrowserAvailabilitySettings.isEnabled()
-        presentedButton.contextMenuItems = browserSplitButtonContextMenuItems()
-        return presentedButton
-    }
-
-    private func refreshBrowserSplitButtonPresentation() {
-        var configuration = bonsplitController.configuration
-        let buttons = configuration.appearance.splitButtons.map(Self.browserPresentedSplitButton)
-        guard configuration.appearance.splitButtons != buttons else { return }
-        configuration.appearance.splitButtons = buttons
         bonsplitController.configuration = configuration
     }
 
@@ -8061,7 +8016,7 @@ final class Workspace: Identifiable, ObservableObject {
                 globalConfigPath: globalConfigPath,
                 allowProjectLocalIcon: allowProjectLocalIcon
             )
-        }.map(Self.browserPresentedSplitButton)
+        }
         var configuration = bonsplitController.configuration
         guard configuration.appearance.splitButtons != bonsplitButtons else { return }
         configuration.appearance.splitButtons = bonsplitButtons
@@ -14688,11 +14643,7 @@ extension Workspace: BonsplitDelegate {
         case "terminal":
             _ = newTerminalSurface(inPane: pane)
         case "browser":
-            if BrowserAvailabilitySettings.isEnabled() {
-                _ = newBrowserSurface(inPane: pane)
-            } else {
-                _ = openSystemBrowserFromSurfaceTabBar()
-            }
+            _ = newBrowserSurface(inPane: pane)
         default:
             _ = newTerminalSurface(inPane: pane)
         }
@@ -14706,39 +14657,6 @@ extension Workspace: BonsplitDelegate {
         )
 #endif
         executeSurfaceTabBarCommandButton(identifier: identifier, inPane: pane)
-    }
-
-    func splitTabBar(
-        _ controller: BonsplitController,
-        didRequestSplitActionContextMenuAction identifier: String,
-        for button: BonsplitConfiguration.SplitActionButton,
-        inPane pane: PaneID
-    ) {
-        switch identifier {
-        case Self.browserModeContextMenuActionID:
-            BrowserAvailabilitySettings.setDisabled(BrowserAvailabilitySettings.isEnabled())
-            refreshBrowserSplitButtonPresentation()
-        default:
-            executeSurfaceTabBarCommandButton(identifier: identifier, inPane: pane)
-        }
-    }
-
-    @discardableResult
-    private func openSystemBrowserFromSurfaceTabBar() -> Bool {
-        guard let probeURL = URL(string: "https://www.google.com") else { return false }
-        guard let applicationURL = NSWorkspace.shared.urlForApplication(toOpen: probeURL) else {
-            return NSWorkspace.shared.open(probeURL)
-        }
-
-        let configuration = NSWorkspace.OpenConfiguration()
-        NSWorkspace.shared.openApplication(at: applicationURL, configuration: configuration) { _, error in
-#if DEBUG
-            if let error {
-                cmuxDebugLog("surfaceTabBar.browser.externalOpenFailed error=\(error.localizedDescription)")
-            }
-#endif
-        }
-        return true
     }
 
     func splitTabBar(_ controller: BonsplitController, didRequestTabContextAction action: TabContextAction, for tab: Bonsplit.Tab, inPane pane: PaneID) {

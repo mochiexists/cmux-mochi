@@ -31,10 +31,13 @@ extension AgentLaunchCommandSnapshot {
 extension RestorableAgentSessionIndex {
     static func processDetectedSnapshots(
         registry: CmuxVaultAgentRegistry,
-        fileManager: FileManager
+        fileManager: FileManager,
+        processSnapshot: CmuxTopProcessSnapshot
     ) -> [PanelKey: (snapshot: SessionRestorableAgentSnapshot, updatedAt: TimeInterval)] {
         let capturedAt = Date().timeIntervalSince1970
-        let processSnapshot = CmuxTopProcessSnapshot.capture(includeProcessDetails: false)
+        // `processSnapshot` is injected (shared with the hook-record liveness
+        // check) instead of captured here, so the process table is scanned once
+        // per index refresh. Main's opencode seeding still runs against it.
         var resolved = processDetectedOpenCodeSnapshots(
             processSnapshot: processSnapshot,
             capturedAt: capturedAt,

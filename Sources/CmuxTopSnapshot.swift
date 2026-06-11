@@ -126,6 +126,22 @@ nonisolated final class CmuxTopProcessSnapshot: @unchecked Sendable {
         Set(pidsByCMUXSurfaceID[surfaceID] ?? [])
     }
 
+    /// Executable comm names of every live process whose inherited cmux env
+    /// scopes it to the given pane (CMUX_WORKSPACE_ID + CMUX_SURFACE_ID). Used
+    /// to check agent liveness PID-independently: an agent is still live in a
+    /// pane when *some* process there runs its executable, regardless of which
+    /// pid a hook happened to record. Surface IDs are globally unique, but the
+    /// workspace is matched too as a defensive cross-check.
+    func cmuxScopedProcessExecutableNames(workspaceID: UUID, surfaceID: UUID) -> [String] {
+        (pidsByCMUXSurfaceID[surfaceID] ?? []).compactMap { pid -> String? in
+            guard let process = processesByPID[pid],
+                  process.cmuxWorkspaceID == workspaceID else {
+                return nil
+            }
+            return process.name
+        }
+    }
+
     func cmuxScopedProcesses() -> [CmuxTopProcessInfo] {
         processesByPID.values
             .filter { $0.cmuxWorkspaceID != nil && $0.cmuxSurfaceID != nil }
