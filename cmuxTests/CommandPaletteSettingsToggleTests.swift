@@ -66,6 +66,22 @@ final class CommandPaletteSettingsToggleTests: XCTestCase {
         }
     }
 
+    func testAutosaveTerminalScrollbackToggleUsesTerminalSetting() throws {
+        try withTemporaryDefaults { defaults in
+            let descriptor = try XCTUnwrap(
+                CommandPaletteSettingsToggleCommands.descriptor(
+                    commandId: "palette.toggleSetting.autosaveTerminalScrollback"
+                )
+            )
+
+            XCTAssertTrue(descriptor.isOn(defaults))
+            descriptor.toggle(defaults: defaults, notificationCenter: NotificationCenter())
+
+            XCTAssertFalse(defaults.bool(forKey: TerminalScrollbackAutosaveSettings.enabledKey))
+            XCTAssertFalse(descriptor.isOn(defaults))
+        }
+    }
+
     func testShowMenuBarCommandIsUnavailableWhenMenuBarOnlyIsEnabled() throws {
         try withTemporaryDefaults { defaults in
             let descriptor = try XCTUnwrap(

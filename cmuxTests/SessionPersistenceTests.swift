@@ -649,28 +649,45 @@ final class SessionPersistenceTests: XCTestCase {
     }
 
     func testSessionScrollbackPersistenceHonorsReportedShellState() {
+    func testSessionScrollbackPersistenceKeepsLiveTUIs() {
+        // The live-TUI bug case: a running command (e.g. an open Claude TUI that
+        // was not detected as a restorable agent, with no tmux restart command) is
+        // exactly the content the feature exists to preserve — the old gate
+        // dropped it and left the reopened window blank. Persistence must no longer
+        // be gated on close-confirmation or agent recognition.
         XCTAssertTrue(
-            Workspace.shouldPersistSessionScrollback(
-                shellActivityState: .promptIdle,
-                fallbackNeedsConfirmClose: true
-            )
+            Workspace.shouldPersistSessionScrollbackForRestore(
+                restorableAgent: nil,
+                tmuxStartCommand: nil
+            ),
+            "scrollback must persist for a live TUI with no restorable agent"
         )
-        XCTAssertFalse(
-            Workspace.shouldPersistSessionScrollback(
-                shellActivityState: .commandRunning,
-                fallbackNeedsConfirmClose: false
-            )
+    }
+
+    func testSessionScrollbackPersistenceAllowsActiveRestorableAgent() {
+        let agent = SessionRestorableAgentSnapshot(
+            kind: .codex,
+            sessionId: "codex-session-active-tui",
+            workingDirectory: "/tmp/repo",
+            launchCommand: nil
         )
-        XCTAssertFalse(
-            Workspace.shouldPersistSessionScrollback(
-                shellActivityState: .unknown,
-                fallbackNeedsConfirmClose: true
-            )
-        )
+
         XCTAssertTrue(
-            Workspace.shouldPersistSessionScrollback(
-                shellActivityState: nil,
-                fallbackNeedsConfirmClose: false
+            Workspace.shouldPersistSessionScrollbackForRestore(
+                restorableAgent: agent,
+                tmuxStartCommand: nil
+            )
+        )
+    }
+
+    func testSessionScrollbackPersistenceSuppressedForOMXHudRestart() {
+        // The one intentional suppression: when the pane restarts via an OMX-HUD
+        // tmux command and no restorable agent was detected, a replayed scrollback
+        // would fight the HUD restart, so it is dropped on purpose.
+        XCTAssertFalse(
+            Workspace.shouldPersistSessionScrollbackForRestore(
+                restorableAgent: nil,
+                tmuxStartCommand: "omx hud --foo"
             )
         )
     }
@@ -864,13 +881,37 @@ final class SessionPersistenceTests: XCTestCase {
     func testRestoreCompletionSavePolicySkipsManualReopen() {
         XCTAssertTrue(
             AppDelegate.shouldSaveSessionSnapshotOnRestoreCompletion(
-                isManualReopen: false
+                isManualReopen: false,
+                restoredSnapshotContainsScrollback: false
             )
         )
         XCTAssertFalse(
             AppDelegate.shouldSaveSessionSnapshotOnRestoreCompletion(
-                isManualReopen: true
+                isManualReopen: true,
+                restoredSnapshotContainsScrollback: false
             )
+        )
+        XCTAssertFalse(
+            AppDelegate.shouldSaveSessionSnapshotOnRestoreCompletion(
+                isManualReopen: false,
+                restoredSnapshotContainsScrollback: true
+            )
+        )
+    }
+
+    func testAppSessionSnapshotDetectsTerminalScrollback() {
+        XCTAssertFalse(makeSnapshot(version: SessionSnapshotSchema.currentVersion).containsTerminalScrollback)
+        XCTAssertTrue(
+            makeSnapshot(
+                version: SessionSnapshotSchema.currentVersion,
+                scrollback: "restored scrollback"
+            ).containsTerminalScrollback
+        )
+        XCTAssertFalse(
+            makeSnapshot(
+                version: SessionSnapshotSchema.currentVersion,
+                scrollback: ""
+            ).containsTerminalScrollback
         )
     }
 
@@ -880,6 +921,7 @@ final class SessionPersistenceTests: XCTestCase {
             AppDelegate.shouldSkipSessionAutosaveForUnchangedFingerprint(
                 isTerminatingApp: false,
                 includeScrollback: false,
+                scrollbackDirty: false,
                 previousFingerprint: 1234,
                 currentFingerprint: 1234,
                 lastPersistedAt: now.addingTimeInterval(-5),
@@ -895,6 +937,7 @@ final class SessionPersistenceTests: XCTestCase {
             AppDelegate.shouldSkipSessionAutosaveForUnchangedFingerprint(
                 isTerminatingApp: false,
                 includeScrollback: false,
+                scrollbackDirty: false,
                 previousFingerprint: 1234,
                 currentFingerprint: 1234,
                 lastPersistedAt: now.addingTimeInterval(-120),
@@ -904,12 +947,13 @@ final class SessionPersistenceTests: XCTestCase {
         )
     }
 
-    func testUnchangedAutosaveFingerprintNeverSkipsTerminatingOrScrollbackWrites() {
+    func testUnchangedAutosaveFingerprintDoesNotSkipTerminatingOrDirtyScrollbackWrites() {
         let now = Date()
         XCTAssertFalse(
             AppDelegate.shouldSkipSessionAutosaveForUnchangedFingerprint(
                 isTerminatingApp: true,
                 includeScrollback: false,
+                scrollbackDirty: false,
                 previousFingerprint: 1234,
                 currentFingerprint: 1234,
                 lastPersistedAt: now.addingTimeInterval(-1),
@@ -920,12 +964,50 @@ final class SessionPersistenceTests: XCTestCase {
             AppDelegate.shouldSkipSessionAutosaveForUnchangedFingerprint(
                 isTerminatingApp: false,
                 includeScrollback: true,
+                scrollbackDirty: true,
                 previousFingerprint: 1234,
                 currentFingerprint: 1234,
                 lastPersistedAt: now.addingTimeInterval(-1),
                 now: now
             )
         )
+    }
+
+    func testCleanScrollbackAutosaveSkipsUnchangedFingerprint() {
+        let now = Date()
+        XCTAssertTrue(
+            AppDelegate.shouldSkipSessionAutosaveForUnchangedFingerprint(
+                isTerminatingApp: false,
+                includeScrollback: true,
+                scrollbackDirty: false,
+                previousFingerprint: 1234,
+                currentFingerprint: 1234,
+                lastPersistedAt: now.addingTimeInterval(-120),
+                now: now
+            )
+        )
+        XCTAssertFalse(
+            AppDelegate.shouldSkipSessionAutosaveForUnchangedFingerprint(
+                isTerminatingApp: false,
+                includeScrollback: true,
+                scrollbackDirty: false,
+                previousFingerprint: 1234,
+                currentFingerprint: 5678,
+                lastPersistedAt: now.addingTimeInterval(-120),
+                now: now
+            )
+        )
+    }
+
+    func testSessionAutosaveScrollbackSettingControlsAutosaveSnapshotMode() throws {
+        let suiteName = "cmux-session-autosave-scrollback-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        XCTAssertTrue(AppDelegate.shouldIncludeScrollbackInSessionAutosave(defaults: defaults))
+
+        defaults.set(false, forKey: TerminalScrollbackAutosaveSettings.enabledKey)
+        XCTAssertFalse(AppDelegate.shouldIncludeScrollbackInSessionAutosave(defaults: defaults))
     }
 
     func testSessionAutosaveFingerprintIncludesRestorableAgentMetadata() throws {
@@ -1833,16 +1915,40 @@ final class SessionPersistenceTests: XCTestCase {
         return RestorableAgentSessionIndex.load(homeDirectory: home.path)
     }
 
-    private func makeSnapshot(version: Int) -> AppSessionSnapshot {
+    private func makeSnapshot(version: Int, scrollback: String? = nil) -> AppSessionSnapshot {
+        let panelId = UUID()
         let workspace = SessionWorkspaceSnapshot(
             processTitle: "Terminal",
             customTitle: "Restored",
             customColor: nil,
             isPinned: true,
             currentDirectory: "/tmp",
-            focusedPanelId: nil,
-            layout: .pane(SessionPaneLayoutSnapshot(panelIds: [], selectedPanelId: nil)),
-            panels: [],
+            focusedPanelId: panelId,
+            layout: .pane(SessionPaneLayoutSnapshot(panelIds: [panelId], selectedPanelId: panelId)),
+            panels: [
+                SessionPanelSnapshot(
+                    id: panelId,
+                    type: .terminal,
+                    title: "Terminal",
+                    customTitle: nil,
+                    directory: "/tmp",
+                    isPinned: false,
+                    isManuallyUnread: false,
+                    gitBranch: nil,
+                    listeningPorts: [],
+                    ttyName: nil,
+                    terminal: SessionTerminalPanelSnapshot(
+                        workingDirectory: "/tmp",
+                        scrollback: scrollback,
+                        agent: nil,
+                        tmuxStartCommand: nil
+                    ),
+                    browser: nil,
+                    markdown: nil,
+                    filePreview: nil,
+                    rightSidebarTool: nil
+                ),
+            ],
             statusEntries: [],
             logEntries: [],
             progress: nil,
@@ -1879,12 +1985,177 @@ final class SessionPersistenceTests: XCTestCase {
 }
 
 final class SocketListenerAcceptPolicyTests: XCTestCase {
-    func testClaudeResumeCommandRoutesThroughWrapperInsteadOfCapturedRealBinary() {
-        // The captured launch executable is the real claude binary
-        // (CMUX_AGENT_LAUNCH_EXECUTABLE). Resuming with it directly bypasses
-        // cmux's `claude` wrapper, which is what injects the hooks, so resumed
-        // sessions silently lost SessionStart/Stop/Notification. Resume must use
-        // the bare `claude` wrapper. https://github.com/manaflow-ai/cmux/issues/5427
+    func testAcceptErrorClassificationBucketsExpectedErrnos() {
+        XCTAssertEqual(
+            TerminalController.acceptErrorClassification(errnoCode: EINTR),
+            "immediate_retry"
+        )
+        XCTAssertEqual(
+            TerminalController.acceptErrorClassification(errnoCode: ECONNABORTED),
+            "immediate_retry"
+        )
+        XCTAssertEqual(
+            TerminalController.acceptErrorClassification(errnoCode: EMFILE),
+            "resource_pressure"
+        )
+        XCTAssertEqual(
+            TerminalController.acceptErrorClassification(errnoCode: ENOMEM),
+            "resource_pressure"
+        )
+        XCTAssertEqual(
+            TerminalController.acceptErrorClassification(errnoCode: EBADF),
+            "fatal"
+        )
+        XCTAssertEqual(
+            TerminalController.acceptErrorClassification(errnoCode: EINVAL),
+            "fatal"
+        )
+    }
+
+    func testAcceptErrorPolicySignalsRearmOnlyForFatalErrors() {
+        XCTAssertTrue(TerminalController.shouldRearmListenerForAcceptError(errnoCode: EBADF))
+        XCTAssertTrue(TerminalController.shouldRearmListenerForAcceptError(errnoCode: ENOTSOCK))
+        XCTAssertFalse(TerminalController.shouldRearmListenerForAcceptError(errnoCode: EMFILE))
+        XCTAssertFalse(TerminalController.shouldRearmListenerForAcceptError(errnoCode: EINTR))
+    }
+
+    func testAcceptErrorPolicyRearmsAfterPersistentFailures() {
+        XCTAssertFalse(TerminalController.shouldRearmForConsecutiveAcceptFailures(consecutiveFailures: 0))
+        XCTAssertFalse(TerminalController.shouldRearmForConsecutiveAcceptFailures(consecutiveFailures: 49))
+        XCTAssertTrue(TerminalController.shouldRearmForConsecutiveAcceptFailures(consecutiveFailures: 50))
+        XCTAssertTrue(TerminalController.shouldRearmForConsecutiveAcceptFailures(consecutiveFailures: 120))
+    }
+
+    func testAcceptFailureBackoffIsExponentialAndCapped() {
+        XCTAssertEqual(
+            TerminalController.acceptFailureBackoffMilliseconds(consecutiveFailures: 0),
+            0
+        )
+        XCTAssertEqual(
+            TerminalController.acceptFailureBackoffMilliseconds(consecutiveFailures: 1),
+            10
+        )
+        XCTAssertEqual(
+            TerminalController.acceptFailureBackoffMilliseconds(consecutiveFailures: 2),
+            20
+        )
+        XCTAssertEqual(
+            TerminalController.acceptFailureBackoffMilliseconds(consecutiveFailures: 6),
+            320
+        )
+        XCTAssertEqual(
+            TerminalController.acceptFailureBackoffMilliseconds(consecutiveFailures: 12),
+            5_000
+        )
+        XCTAssertEqual(
+            TerminalController.acceptFailureBackoffMilliseconds(consecutiveFailures: 50),
+            5_000
+        )
+    }
+
+    func testAcceptFailureRearmDelayAppliesMinimumThrottle() {
+        XCTAssertEqual(
+            TerminalController.acceptFailureRearmDelayMilliseconds(consecutiveFailures: 0),
+            100
+        )
+        XCTAssertEqual(
+            TerminalController.acceptFailureRearmDelayMilliseconds(consecutiveFailures: 1),
+            100
+        )
+        XCTAssertEqual(
+            TerminalController.acceptFailureRearmDelayMilliseconds(consecutiveFailures: 2),
+            100
+        )
+        XCTAssertEqual(
+            TerminalController.acceptFailureRearmDelayMilliseconds(consecutiveFailures: 6),
+            320
+        )
+        XCTAssertEqual(
+            TerminalController.acceptFailureRearmDelayMilliseconds(consecutiveFailures: 12),
+            5_000
+        )
+    }
+
+    func testAcceptFailureRecoveryActionResumesAfterDelayForTransientErrors() {
+        XCTAssertEqual(
+            TerminalController.acceptFailureRecoveryAction(
+                errnoCode: EPROTO,
+                consecutiveFailures: 1
+            ),
+            .resumeAfterDelay(delayMs: 10)
+        )
+        XCTAssertEqual(
+            TerminalController.acceptFailureRecoveryAction(
+                errnoCode: EMFILE,
+                consecutiveFailures: 3
+            ),
+            .resumeAfterDelay(delayMs: 40)
+        )
+    }
+
+    func testAcceptFailureRecoveryActionRearmsForFatalAndPersistentFailures() {
+        XCTAssertEqual(
+            TerminalController.acceptFailureRecoveryAction(
+                errnoCode: EBADF,
+                consecutiveFailures: 1
+            ),
+            .rearmAfterDelay(delayMs: 100)
+        )
+        XCTAssertEqual(
+            TerminalController.acceptFailureRecoveryAction(
+                errnoCode: EPROTO,
+                consecutiveFailures: 50
+            ),
+            .rearmAfterDelay(delayMs: 5_000)
+        )
+    }
+
+    func testAcceptFailureBreadcrumbSamplingPrefersEarlyAndPowerOfTwoMilestones() {
+        XCTAssertTrue(TerminalController.shouldEmitAcceptFailureBreadcrumb(consecutiveFailures: 1))
+        XCTAssertTrue(TerminalController.shouldEmitAcceptFailureBreadcrumb(consecutiveFailures: 2))
+        XCTAssertTrue(TerminalController.shouldEmitAcceptFailureBreadcrumb(consecutiveFailures: 3))
+        XCTAssertFalse(TerminalController.shouldEmitAcceptFailureBreadcrumb(consecutiveFailures: 5))
+        XCTAssertTrue(TerminalController.shouldEmitAcceptFailureBreadcrumb(consecutiveFailures: 8))
+        XCTAssertFalse(TerminalController.shouldEmitAcceptFailureBreadcrumb(consecutiveFailures: 9))
+        XCTAssertTrue(TerminalController.shouldEmitAcceptFailureBreadcrumb(consecutiveFailures: 16))
+    }
+
+    func testAcceptLoopCleanupUnlinkPolicySkipsDuringListenerStartup() {
+        XCTAssertFalse(
+            TerminalController.shouldUnlinkSocketPathAfterAcceptLoopCleanup(
+                pathMatches: true,
+                isRunning: false,
+                activeGeneration: 0,
+                listenerStartInProgress: true
+            )
+        )
+        XCTAssertFalse(
+            TerminalController.shouldUnlinkSocketPathAfterAcceptLoopCleanup(
+                pathMatches: false,
+                isRunning: false,
+                activeGeneration: 0,
+                listenerStartInProgress: false
+            )
+        )
+        XCTAssertFalse(
+            TerminalController.shouldUnlinkSocketPathAfterAcceptLoopCleanup(
+                pathMatches: true,
+                isRunning: true,
+                activeGeneration: 7,
+                listenerStartInProgress: false
+            )
+        )
+        XCTAssertTrue(
+            TerminalController.shouldUnlinkSocketPathAfterAcceptLoopCleanup(
+                pathMatches: true,
+                isRunning: false,
+                activeGeneration: 0,
+                listenerStartInProgress: false
+            )
+        )
+    }
+
+    func testClaudeResumeCommandUsesNonYoloAliasWhenNoSkipPermissionsFlag() {
         let snapshot = SessionRestorableAgentSnapshot(
             kind: .claude,
             sessionId: "claude-session-123",
@@ -1906,10 +2177,25 @@ final class SocketListenerAcceptPolicyTests: XCTestCase {
             )
         )
 
+        // Recorded args have no --dangerously-skip-permissions -> normal alias.
         XCTAssertEqual(
             snapshot.resumeCommand,
-            "{ cd -- '/tmp/cmux project' 2>/dev/null || [ ! -d '/tmp/cmux project' ]; } && /bin/sh -c "
-                + shellQuotedForTest("'env' 'CLAUDE_CONFIG_DIR=/tmp/claude config' 'CMUX_PRESERVE_CLAUDE_AUTH_SELECTION_ENV=1' 'CMUX_PRESERVE_CLAUDE_AUTH_SELECTION_ENV_KEYS=CLAUDE_CONFIG_DIR' \"$([ -x \"${CMUX_CLAUDE_WRAPPER_SHIM:-}\" ] && printf '%s' \"$CMUX_CLAUDE_WRAPPER_SHIM\" || printf claude)\" '--resume' 'claude-session-123' '--model' 'sonnet' '--permission-mode' 'auto'")
+            "cd '/tmp/cmux project' && cc '--resume' 'claude-session-123'"
+        )
+    }
+
+    func testClaudeResumeCommandDefaultsToYoloAliasWhenLaunchArgumentsUnknown() {
+        let snapshot = SessionRestorableAgentSnapshot(
+            kind: .claude,
+            sessionId: "claude-session-456",
+            workingDirectory: "/tmp/cmux project",
+            launchCommand: nil
+        )
+
+        // Indeterminate launch -> default to yolo alias (ccy).
+        XCTAssertEqual(
+            snapshot.resumeCommand,
+            "cd '/tmp/cmux project' && ccy '--resume' 'claude-session-456'"
         )
         // The captured real-binary path must not survive: it would bypass the wrapper.
         XCTAssertFalse(snapshot.resumeCommand?.contains("/opt/Claude Code/bin/claude") ?? true)
@@ -2645,7 +2931,7 @@ final class SocketListenerAcceptPolicyTests: XCTestCase {
         XCTAssertNil(snapshot.resumeStartupInput(temporaryDirectory: blockedDirectory))
     }
 
-    func testClaudeResumeCommandPreservesDangerouslySkipPermissionsAndObservedEnvironment() {
+    func testClaudeResumeCommandUsesYoloAliasWhenSkipPermissionsFlagPresent() {
         let snapshot = SessionRestorableAgentSnapshot(
             kind: .claude,
             sessionId: "24ec0052-450c-4914-b1dd-2ee80d4bc84b",
@@ -2670,14 +2956,14 @@ final class SocketListenerAcceptPolicyTests: XCTestCase {
             )
         )
 
+        // --dangerously-skip-permissions -> yolo alias (ccy).
         XCTAssertEqual(
             snapshot.resumeCommand,
-            "{ cd -- '/Users/lawrence/fun' 2>/dev/null || [ ! -d '/Users/lawrence/fun' ]; } && /bin/sh -c "
-                + shellQuotedForTest("'env' 'CLAUDE_CONFIG_DIR=/Users/lawrence/.codex-accounts/claude/_p1775010019397' 'CMUX_PRESERVE_CLAUDE_AUTH_SELECTION_ENV=1' 'CMUX_PRESERVE_CLAUDE_AUTH_SELECTION_ENV_KEYS=CLAUDE_CONFIG_DIR' \"$([ -x \"${CMUX_CLAUDE_WRAPPER_SHIM:-}\" ] && printf '%s' \"$CMUX_CLAUDE_WRAPPER_SHIM\" || printf claude)\" '--resume' '24ec0052-450c-4914-b1dd-2ee80d4bc84b' '--dangerously-load-development-channels' 'server:custom-dev-channel' '--dangerously-skip-permissions'")
+            "cd '/Users/lawrence/fun' && ccy '--resume' '24ec0052-450c-4914-b1dd-2ee80d4bc84b'"
         )
     }
 
-    func testCodexResumeCommandPreservesFlagsAndDropsOriginalPrompt() {
+    func testCodexResumeCommandUsesNonYoloAliasWhenNoBypassFlag() {
         let snapshot = SessionRestorableAgentSnapshot(
             kind: .codex,
             sessionId: "019dad34-d218-7943-b81a-eddac5c87951",
@@ -2705,104 +2991,39 @@ final class SocketListenerAcceptPolicyTests: XCTestCase {
             )
         )
 
+        // `--sandbox danger-full-access --ask-for-approval never` is yolo in effect
+        // -> yolo alias (cxy).
         XCTAssertEqual(
             snapshot.resumeCommand,
-            "{ cd -- '/Users/example/repo' 2>/dev/null || [ ! -d '/Users/example/repo' ]; } && 'env' 'CODEX_HOME=/tmp/codex home' '/Users/example/.bun/bin/codex' 'resume' '019dad34-d218-7943-b81a-eddac5c87951' '--model' 'gpt-5.4' '--sandbox' 'danger-full-access' '--ask-for-approval' 'never' '--search'"
+            "cd '/Users/example/repo' && cxy 'resume' '019dad34-d218-7943-b81a-eddac5c87951'"
         )
     }
 
-    func testCodexResumeCommandDropsStartupImagesAndPlacesSessionBeforeFlags() {
-        let snapshot = SessionRestorableAgentSnapshot(
-            kind: .codex,
-            sessionId: "019e2bb9-5544-7201-a517-d77bb00d724f",
-            workingDirectory: "/Users/lawrence/fun/cmuxterm-hq",
-            launchCommand: AgentLaunchCommandSnapshot(
-                launcher: "codex",
-                executablePath: "/Users/lawrence/.bun/bin/codex",
-                arguments: [
-                    "/Users/lawrence/.bun/bin/codex",
-                    "resume",
-                    "--yolo",
-                    "--image",
-                    "[Image #1]",
-                    "[Image #1] cmd clicking this should open the crash file in finder",
-                    "--model",
-                    "gpt-5.4",
-                ],
-                workingDirectory: "/Users/lawrence/fun/cmuxterm-hq",
-                environment: nil,
-                capturedAt: 123,
-                source: "process"
-            )
-        )
-
-        XCTAssertEqual(
-            snapshot.resumeCommand,
-            "{ cd -- '/Users/lawrence/fun/cmuxterm-hq' 2>/dev/null || [ ! -d '/Users/lawrence/fun/cmuxterm-hq' ]; } && '/Users/lawrence/.bun/bin/codex' 'resume' '019e2bb9-5544-7201-a517-d77bb00d724f' '--yolo' '--model' 'gpt-5.4'"
-        )
-    }
-
-    func testCodexTeamsResumeCommandUsesWrapperSubcommand() {
+    func testCodexResumeCommandUsesYoloAliasWhenBypassFlagPresent() {
         let snapshot = SessionRestorableAgentSnapshot(
             kind: .codex,
             sessionId: "019dad34-d218-7943-b81a-eddac5c87951",
             workingDirectory: "/Users/example/repo",
             launchCommand: AgentLaunchCommandSnapshot(
-                launcher: "codexTeams",
-                executablePath: "/usr/local/bin/cmux",
+                launcher: "codex",
+                executablePath: "/Users/example/.bun/bin/codex",
                 arguments: [
-                    "/usr/local/bin/cmux",
-                    "codex-teams",
+                    "/Users/example/.bun/bin/codex",
+                    "--dangerously-bypass-approvals-and-sandbox",
                     "--model",
-                    "gpt-5.4",
-                    "--image",
-                    "/tmp/team screenshot.png",
-                    "--sandbox",
-                    "danger-full-access",
-                    "initial prompt should not replay"
+                    "gpt-5.4"
                 ],
                 workingDirectory: "/Users/example/repo",
                 environment: ["CODEX_HOME": "/tmp/codex home"],
                 capturedAt: 123,
-                source: "environment"
+                source: "process"
             )
         )
 
+        // --dangerously-bypass-approvals-and-sandbox -> yolo alias (cxy).
         XCTAssertEqual(
             snapshot.resumeCommand,
-            "{ cd -- '/Users/example/repo' 2>/dev/null || [ ! -d '/Users/example/repo' ]; } && 'env' 'CODEX_HOME=/tmp/codex home' '/usr/local/bin/cmux' 'codex-teams' 'resume' '019dad34-d218-7943-b81a-eddac5c87951' '--model' 'gpt-5.4' '--sandbox' 'danger-full-access'"
-        )
-    }
-
-    func testCodexTeamsResumeCommandDropsOriginalForkTarget() {
-        let snapshot = SessionRestorableAgentSnapshot(
-            kind: .codex,
-            sessionId: "019dad34-d218-7943-b81a-eddac5c87952",
-            workingDirectory: "/Users/example/repo",
-            launchCommand: AgentLaunchCommandSnapshot(
-                launcher: "codexTeams",
-                executablePath: "/usr/local/bin/cmux",
-                arguments: [
-                    "/usr/local/bin/cmux",
-                    "codex-teams",
-                    "fork",
-                    "019dad34-d218-7943-b81a-eddac5c87951",
-                    "--model",
-                    "gpt-5.4",
-                    "stale fork prompt",
-                    "--sandbox",
-                    "danger-full-access"
-                ],
-                workingDirectory: "/Users/example/repo",
-                environment: ["CODEX_HOME": "/tmp/codex home"],
-                capturedAt: 123,
-                source: "environment"
-            )
-        )
-
-        XCTAssertEqual(
-            snapshot.resumeCommand,
-            "{ cd -- '/Users/example/repo' 2>/dev/null || [ ! -d '/Users/example/repo' ]; } && 'env' 'CODEX_HOME=/tmp/codex home' '/usr/local/bin/cmux' 'codex-teams' 'resume' '019dad34-d218-7943-b81a-eddac5c87952' '--model' 'gpt-5.4' '--sandbox' 'danger-full-access'"
+            "cd '/Users/example/repo' && cxy 'resume' '019dad34-d218-7943-b81a-eddac5c87951'"
         )
     }
 
@@ -3727,9 +3948,10 @@ final class SocketListenerAcceptPolicyTests: XCTestCase {
             )
         )
 
+        // Plain claude launcher with no yolo flag and no cwd -> bare normal alias.
         XCTAssertEqual(
             snapshot.resumeCommand,
-            "/bin/sh -c " + shellQuotedForTest("'env' 'NODE_OPTIONS=--max-old-space-size=4096' \"$([ -x \"${CMUX_CLAUDE_WRAPPER_SHIM:-}\" ] && printf '%s' \"$CMUX_CLAUDE_WRAPPER_SHIM\" || printf claude)\" '--resume' 'claude-session-debug' '--debug' 'api,mcp' '--model' 'sonnet'")
+            "cc '--resume' 'claude-session-debug'"
         )
     }
 
@@ -3755,9 +3977,11 @@ final class SocketListenerAcceptPolicyTests: XCTestCase {
             )
         )
 
+        // The alias form does not re-inject launch environment; the baked alias
+        // resolves the provider binary via the user's shell instead.
         XCTAssertEqual(
             snapshot.resumeCommand,
-            "/bin/sh -c " + shellQuotedForTest("'env' 'ANTHROPIC_BASE_URL=https://api.example.test' 'ANTHROPIC_MODEL=' 'CMUX_PRESERVE_CLAUDE_AUTH_SELECTION_ENV=1' 'CMUX_PRESERVE_CLAUDE_AUTH_SELECTION_ENV_KEYS=ANTHROPIC_BASE_URL,ANTHROPIC_MODEL' \"$([ -x \"${CMUX_CLAUDE_WRAPPER_SHIM:-}\" ] && printf '%s' \"$CMUX_CLAUDE_WRAPPER_SHIM\" || printf claude)\" '--resume' 'claude-session-env'")
+            "cc '--resume' 'claude-session-env'"
         )
         XCTAssertFalse(snapshot.resumeCommand?.contains("ANTHROPIC_AUTH_TOKEN") ?? true)
     }
@@ -3780,9 +4004,11 @@ final class SocketListenerAcceptPolicyTests: XCTestCase {
             )
         )
 
+        // The alias form does not propagate NODE_OPTIONS; the baked alias runs
+        // the provider binary with a clean environment.
         XCTAssertEqual(
             snapshot.resumeCommand,
-            "/bin/sh -c " + shellQuotedForTest("'env' 'NODE_OPTIONS=--trace-warnings' \"$([ -x \"${CMUX_CLAUDE_WRAPPER_SHIM:-}\" ] && printf '%s' \"$CMUX_CLAUDE_WRAPPER_SHIM\" || printf claude)\" '--resume' 'claude-session-node-options' '--model' 'sonnet'")
+            "cc '--resume' 'claude-session-node-options'"
         )
     }
 
@@ -3806,7 +4032,7 @@ final class SocketListenerAcceptPolicyTests: XCTestCase {
 
         XCTAssertEqual(
             snapshot.resumeCommand,
-            "/bin/sh -c " + shellQuotedForTest("\"$([ -x \"${CMUX_CLAUDE_WRAPPER_SHIM:-}\" ] && printf '%s' \"$CMUX_CLAUDE_WRAPPER_SHIM\" || printf claude)\" '--resume' 'claude-session-empty-node-options' '--model' 'sonnet'")
+            "cc '--resume' 'claude-session-empty-node-options'"
         )
     }
 
@@ -3970,9 +4196,10 @@ final class SocketListenerAcceptPolicyTests: XCTestCase {
         let snapshot = try XCTUnwrap(index.snapshot(workspaceId: workspaceId, panelId: panelId))
 
         XCTAssertEqual(snapshot.launchCommand?.arguments.first, "/usr/local/bin/codex")
+        // Plain codex launcher, no yolo flag -> normal alias.
         XCTAssertEqual(
             snapshot.resumeCommand,
-            "{ cd -- '/tmp/repo' 2>/dev/null || [ ! -d '/tmp/repo' ]; } && 'env' 'CODEX_HOME=/tmp/codex' '/usr/local/bin/codex' 'resume' 'codex-session-123' '--model' 'gpt-5.4' '--search'"
+            "cd '/tmp/repo' && cx 'resume' 'codex-session-123'"
         )
     }
 

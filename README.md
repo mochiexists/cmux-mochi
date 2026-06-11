@@ -292,20 +292,25 @@ resume bindings it marks trusted, such as live process-detected tmux bindings or
 user-approved prefixes. Sensitive environment keys such as tokens, passwords,
 secrets, and API keys are dropped before a resume binding is stored.
 
-To keep restored agent terminals idle instead of automatically running their resume commands,
-turn off **Settings > Terminal > Resume Agent Sessions on Reopen** or set this in
-`~/.config/cmux/cmux.json`:
+Restored agent terminals follow a tri-state resume mode (**Settings > Terminal > Resume
+Agent Sessions on Reopen**). The default `medium` **pre-types** the resume command (with
+prior scrollback visible) so you press Enter to resume or clear the line to start fresh;
+`full` auto-runs it; `off` restores the pane idle. Set it in `~/.config/cmux/cmux.json`:
 
 ```json
 {
   "terminal": {
-    "autoResumeAgentSessions": false
+    "agentResumeMode": "medium",
+    "autosaveScrollback": true
   }
 }
 ```
 
-This only disables automatic agent resume commands. cmux still restores the saved layout,
-working directories, scrollback, and browser history.
+In every mode cmux still restores the saved layout, working directories, and
+browser history. Normal quit saves bounded terminal scrollback. Force quit or a
+crash restores the latest periodic autosave. By default, periodic autosaves
+include bounded scrollback after terminal activity, then skip redundant
+scrollback writes while idle.
 
 If you need to reapply the last saved snapshot manually, use:
 - `File > Reopen Previous Session`
@@ -314,8 +319,8 @@ If you need to reapply the last saved snapshot manually, use:
 
 Under the hood, cmux writes a versioned snapshot under
 `~/Library/Application Support/cmux/` and agent hooks write session mappings
-under `~/.cmuxterm/`. On restore, cmux rebuilds the layout first, then runs the
-supported agent's native resume command when automatic agent resume is enabled.
+under `~/.cmuxterm/`. On restore, cmux rebuilds the layout first, then pre-types
+(or, in `full` mode, runs) the supported agent's resume command.
 
 Read the full guide at <https://cmux.com/docs/session-restore>.
 

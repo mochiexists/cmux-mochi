@@ -508,6 +508,12 @@ final class CmuxSettingsFileStore {
         applyBooleanSettings(TerminalSettingsFileMapping.booleanSettings, from: section, sourcePath: sourcePath, snapshot: &snapshot)
         applyTerminalScrollSpeedSetting(from: section, assign: { snapshot.managedUserDefaults[$0] = .double($1) }, logInvalid: { logInvalid($0, sourcePath: sourcePath) })
 
+        if let value = jsonBool(section["autosaveScrollback"]) {
+            snapshot.managedUserDefaults[TerminalScrollbackAutosaveSettings.enabledKey] = .bool(value)
+        } else if section.keys.contains("autosaveScrollback") {
+            logInvalid("terminal.autosaveScrollback", sourcePath: sourcePath)
+        }
+
         if let raw = jsonString(section["agentResumeMode"]) {
             guard let mode = AgentSessionResumeMode(rawValue: raw) else {
                 logInvalid("terminal.agentResumeMode", sourcePath: sourcePath)

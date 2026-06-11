@@ -1912,6 +1912,17 @@ struct AppSessionSnapshot: Codable, Sendable {
     var version: Int
     var createdAt: TimeInterval
     var windows: [SessionWindowSnapshot]
+
+    var containsTerminalScrollback: Bool {
+        windows.contains { window in
+            window.tabManager.workspaces.contains { workspace in
+                workspace.panels.contains { panel in
+                    guard let scrollback = panel.terminal?.scrollback else { return false }
+                    return !scrollback.isEmpty
+                }
+            }
+        }
+    }
 }
 
 extension AppSessionSnapshot: SessionSnapshotRepresenting {
