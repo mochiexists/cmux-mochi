@@ -17,9 +17,14 @@ Supported agent names are `codex`, `grok`, `opencode`, `pi`, `omp`, `amp`, `curs
 
 | Agent | Binary checked | Installed file | Session restore | Feed bridge |
 | --- | --- | --- | --- | --- |
+<<<<<<< HEAD
 | Claude Code | `claude` through wrapper | wrapper-injected settings | `claude --resume <id>` | PermissionRequest |
 | Codex | `codex` | `~/.codex/hooks.json`, `~/.codex/config.toml` | `codex resume <id>` | PreToolUse, PermissionRequest telemetry |
 | Grok | `grok` | `~/.grok/hooks/cmux-session.json` | `grok -r <id>` | PreToolUse |
+=======
+| Claude Code | `claude` through wrapper | wrapper-injected settings | `ccy`/`cc` `--resume <id>` | PermissionRequest |
+| Codex | `codex` | `~/.codex/hooks.json`, `~/.codex/config.toml` | `cxy`/`cx` `resume <id>` | PreToolUse, PermissionRequest |
+>>>>>>> 43d27b30e (feat: scrollback persistence + PID-independent codex liveness)
 | OpenCode | `opencode` | `~/.config/opencode/plugins/cmux-session.js`, `~/.config/opencode/plugins/cmux-feed.js` | `opencode --session <id>` | plugin event bus |
 | Pi | `pi` | `~/.pi/agent/extensions/cmux-session.ts` | `pi --session <id>` | none |
 | OMP | `omp` | `~/.omp/agent/extensions/cmux-omp-session.ts` or `$PI_CODING_AGENT_DIR/extensions/cmux-omp-session.ts` | `omp --session <id>` | none |
@@ -43,6 +48,7 @@ That writes `.opencode/plugins/cmux-feed.js` in the current directory.
 
 ## What the hooks record
 
+<<<<<<< HEAD
 Session hooks write `~/.cmuxterm/<agent>-hook-sessions.json`. Each entry stores the agent session ID, cmux workspace ID, surface ID, cwd, process ID when available, current lifecycle (`running`, `idle`, `needsInput`, or `unknown`), and a sanitized launch command. On app relaunch, cmux rebuilds each workspace and runs the agent's native resume command with the saved session ID.
 
 The sanitizer preserves model, sandbox, config, and cwd-related flags. It drops prompts, credentials, old session selectors, and noninteractive commands so relaunch resumes the session instead of starting a new task or leaking secrets.
@@ -110,22 +116,40 @@ Use `cmux surface resume set --shell <command>` to attach a resume command to th
 Approvals are prefix-based and signed by cmux. They also bind the working directory and exact environment values when present. A process can propose a command, but it cannot make that command sticky without the user choosing Auto-Restore or Ask Each Time in cmux.
 
 ## Disable automatic resume
+=======
+Session hooks write `~/.cmuxterm/<agent>-hook-sessions.json`. Each entry stores the agent session ID, cmux workspace ID, surface ID, cwd, process ID when available, and a sanitized launch command. On app relaunch, cmux rebuilds each workspace and, in the default `medium` resume mode, **pre-types** the agent's resume command with the saved session ID (ready for you to run with Enter) while keeping the prior scrollback visible. The `full` mode auto-runs it; `off` skips it. For Codex and Claude the pre-typed command uses cmux's short shell aliases (`cxy`/`ccy` for yolo launches, `cx`/`cc` otherwise) rather than the verbose binary path.
 
-To restore panes without automatically restarting saved agent sessions, turn off
-**Settings > Terminal > Resume Agent Sessions on Reopen**.
+The sanitizer preserves model, sandbox, config, and cwd-related flags. It drops prompts, credentials, old session selectors, and noninteractive commands so relaunch resumes the session instead of starting a new task or leaking secrets.
 
-You can also set the same preference in `~/.config/cmux/cmux.json`:
+## Resume mode
+>>>>>>> 43d27b30e (feat: scrollback persistence + PID-independent codex liveness)
+
+Restored agent panes follow a tri-state resume mode (**Settings > Terminal > Resume
+Agent Sessions on Reopen**):
+
+- `medium` (default) — pre-type the resume command on the restored pane and keep the
+  prior scrollback visible, but do not run it. Press Enter to resume, or clear the
+  line to start fresh.
+- `full` — auto-run the resume command on reopen.
+- `off` — restore the pane idle with no resume command.
+
+Set it in `~/.config/cmux/cmux.json`:
 
 ```json
 {
   "terminal": {
-    "autoResumeAgentSessions": false
+    "agentResumeMode": "medium",
+    "autosaveScrollback": true
   }
 }
 ```
 
-When this is off, cmux still restores the saved window, workspace, pane, scrollback,
-and browser state. Restored agent terminals stay idle until you resume them manually.
+(The legacy boolean `autoResumeAgentSessions` is still honored for migration:
+`true` maps to `full`, otherwise `medium`.) In every mode cmux restores the saved
+window, workspace, pane, and browser state. Normal quit saves bounded terminal
+scrollback. Force quit or a crash restores the latest periodic autosave. By
+default, periodic autosaves include bounded scrollback after terminal activity,
+then skip redundant scrollback writes while idle.
 
 ## Environment overrides
 

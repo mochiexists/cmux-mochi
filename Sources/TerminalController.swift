@@ -12907,12 +12907,25 @@ class TerminalController {
                   let terminalPanel = tab.terminalPanel(for: panelId) else {
                 return
             }
-            if let surface = terminalPanel.surface.surface {
-                self.sendSocketText(text, surface: surface)
+            switch terminalPanel.surface.sendInputResult(text) {
+            case .sent:
                 terminalPanel.surface.forceRefresh(reason: "terminalController.agentResumePaste")
-            } else {
+            case .queued:
+                // Cold surface: sendInputResult already enqueued the input and
+                // requested a background surface start; it flushes after the
+                // runtime is created. Nothing more to do here.
+                break
+            case .surfaceUnavailable:
+                // No live surface and the surface path can't create one here —
+                // fall back to the panel-level send and kick a background start,
+                // mirroring the pre-port no-surface path.
                 terminalPanel.sendText(text)
                 terminalPanel.surface.requestBackgroundSurfaceStartIfNeeded()
+            case .processExited, .inputQueueFull:
+                // Process already exited or the input queue is saturated —
+                // pre-typing the resume command is moot; drop it rather than
+                // mis-deliver through the panel-level path.
+                break
             }
 #if DEBUG
             cmuxDebugLog(

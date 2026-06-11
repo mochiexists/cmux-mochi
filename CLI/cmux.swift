@@ -749,7 +749,10 @@ final class ClaudeHookSessionStore {
         launchCommand: AgentHookLaunchCommandRecord? = nil,
         agentLifecycle: AgentHibernationLifecycleState? = nil,
         runtimeStatus: AgentHookRuntimeStatus? = nil,
-        updateRuntimeStatus: Bool = false
+        updateRuntimeStatus: Bool = false,
+        markActive: Bool = false,
+        turnId: String? = nil,
+        allowsNewSessionReplacement: Bool = false
     ) throws -> Bool {
         let normalized = normalizeSessionId(sessionId)
         guard !normalized.isEmpty else { return false }
@@ -785,6 +788,20 @@ final class ClaudeHookSessionStore {
                 now: now
             )
             state.sessions[normalized] = record
+            if markActive {
+                let activeRecord = ClaudeHookActiveSessionRecord(
+                    sessionId: normalized,
+                    turnId: normalizeOptional(turnId),
+                    allowsNewSessionReplacement: allowsNewSessionReplacement ? true : nil,
+                    updatedAt: now
+                )
+                if let normalizedWorkspace = normalizeOptional(workspaceId) {
+                    state.activeSessionsByWorkspace[normalizedWorkspace] = activeRecord
+                }
+                if let normalizedSurface = normalizeOptional(surfaceId) {
+                    state.activeSessionsBySurface[normalizedSurface] = activeRecord
+                }
+            }
             return true
         }
     }
@@ -29947,7 +29964,10 @@ export default function cmuxPiSessionExtension(pi: ExtensionAPI) {
                         launchCommand: launchCommand,
                         agentLifecycle: .unknown,
                         runtimeStatus: suppressVisibleMutations ? nil : .running,
-                        updateRuntimeStatus: !suppressVisibleMutations
+                        updateRuntimeStatus: !suppressVisibleMutations,
+                        markActive: true,
+                        turnId: input.turnId,
+                        allowsNewSessionReplacement: true
                     )) ?? false
                 } else {
                     try? store.upsert(

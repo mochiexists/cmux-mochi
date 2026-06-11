@@ -1,12 +1,15 @@
 #!/usr/bin/env python3
 """
-Regression: normal relaunch should resume saved Claude/Codex/OpenCode/Pi sessions.
+Regression: normal relaunch should restore saved Claude/Codex/OpenCode/Pi sessions
+with the resume command PRE-TYPED (medium resume mode), not auto-executed.
 
-Repro for issue #2923:
+Repro for issue #2923 (updated for the medium-default resume behavior):
 1) Launch cmux and seed workspaces with tracked Claude/Codex/OpenCode/Pi sessions.
 2) Quit the app normally so the session snapshot is saved.
-3) Relaunch cmux the next day.
-4) Verify the restored panels automatically run the saved resume commands.
+3) Relaunch cmux the next day (resume mode forced to medium).
+4) Verify the restored panels PRE-TYPE the saved resume command (session id visible
+   on the input line) WITHOUT executing it (the fake agent's resume echo must be
+   absent — execution would print CMUX_FAKE_*_RESUME).
 """
 
 from __future__ import annotations
@@ -75,10 +78,52 @@ def _wait_for_socket_closed(socket_path: Path, timeout: float = 20.0) -> None:
     raise RuntimeError(f"Socket still reachable after quit: {socket_path}")
 
 
+def _bundle_executable(app_path: Path) -> str:
+    info_path = app_path / "Contents" / "Info.plist"
+    with info_path.open("rb") as f:
+        info = plistlib.load(f)
+    name = str(info.get("CFBundleExecutable", "")).strip()
+    if not name:
+        raise RuntimeError("Missing CFBundleExecutable")
+    return name
+
+
 def _kill_existing(app_path: Path) -> None:
-    exe = app_path / "Contents" / "MacOS" / "cmux DEV"
+    # Target the full executable path so only THIS tagged build is killed, never
+    # another cmux DEV variant the user is running.
+    exe = app_path / "Contents" / "MacOS" / _bundle_executable(app_path)
     subprocess.run(["pkill", "-f", str(exe)], capture_output=True, text=True)
     time.sleep(1.0)
+
+
+def _force_medium_resume_mode(bundle_id: str) -> None:
+    # Make the relaunch deterministic regardless of any stored/legacy setting:
+    # medium = pre-type the resume command without executing it.
+    subprocess.run(
+        ["defaults", "write", bundle_id, "terminal.agentResumeMode", "-string", "medium"],
+        capture_output=True,
+        text=True,
+    )
+    # This test quits through AppleScript. Keep that automation non-interactive
+    # now that tagged DEV builds use the normal quit confirmation path again.
+    subprocess.run(
+        ["defaults", "write", bundle_id, "warnBeforeQuitShortcut", "-bool", "false"],
+        capture_output=True,
+        text=True,
+    )
+
+
+def _clear_resume_mode(bundle_id: str) -> None:
+    subprocess.run(
+        ["defaults", "delete", bundle_id, "terminal.agentResumeMode"],
+        capture_output=True,
+        text=True,
+    )
+    subprocess.run(
+        ["defaults", "delete", bundle_id, "warnBeforeQuitShortcut"],
+        capture_output=True,
+        text=True,
+    )
 
 
 def _launch(app_path: Path, socket_path: Path, env_overrides: dict[str, str] | None = None) -> None:
@@ -155,10 +200,10 @@ def _write_hook_state(
     executable_path: Path,
     arguments: list[str] | None = None,
     environment: dict[str, str] | None = None,
-    transcript_path: Path | None = None,
+    transcript_path: str | None = None,
 ) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    session: dict = {
+    session: dict[str, object] = {
         "sessionId": session_id,
         "workspaceId": workspace_id,
         "surfaceId": surface_id,
@@ -171,6 +216,17 @@ def _write_hook_state(
             "environment": environment,
             "capturedAt": time.time(),
             "source": "test",
+        },
+        "updatedAt": time.time(),
+    }
+    # Claude records are only restorable when a non-empty transcript file exists
+    # (hookRecordIsRestorable). Allow the caller to point at one.
+    if transcript_path is not None:
+        session["transcriptPath"] = transcript_path
+    payload = {
+        "version": 1,
+        "sessions": {
+            session_id: session,
         },
         "updatedAt": time.time(),
     }
@@ -196,16 +252,21 @@ def main() -> int:
     socket_path = Path(f"/tmp/cmux-session-relaunch-agents-{bundle_id.replace('.', '-')}.sock")
     snapshot = _snapshot_path(bundle_id)
     previous_snapshot = _snapshot_path(bundle_id, suffix="-previous")
-    codex_expected = "CMUX_FAKE_CODEX_RESUME:resume codex-session-relaunch-2923"
-    # The cmux claude wrapper inserts its own arguments around --resume, so
-    # claude expectations are order-agnostic tokens that must share one line.
-    claude_expected_tokens = (
-        "CMUX_FAKE_CLAUDE_RESUME:",
-        "--resume claude-session-relaunch-2923",
-        "--dangerously-skip-permissions",
-    )
-    opencode_expected = "CMUX_FAKE_OPENCODE_RESUME:--session opencode-session-relaunch-2923"
-    pi_expected = "CMUX_FAKE_PI_RESUME:--session pi-session-relaunch-2923"
+    # Medium mode pre-types the resume command (session id visible on the input
+    # line) but does NOT run it, so the fake agent's CMUX_FAKE_*_RESUME echo —
+    # which only prints when the binary actually executes — must be ABSENT.
+    # (index, session_id pre-typed marker, execution-echo prefix that must NOT appear)
+    resume_checks = [
+        (0, "codex-session-relaunch-2923", "CMUX_FAKE_CODEX_RESUME:"),
+        (1, "claude-session-relaunch-2923", "CMUX_FAKE_CLAUDE_RESUME:"),
+        (2, "opencode-session-relaunch-2923", "CMUX_FAKE_OPENCODE_RESUME:"),
+        (3, "pi-session-relaunch-2923", "CMUX_FAKE_PI_RESUME:"),
+    ]
+
+    # Unique marker printed by a still-running command in the Codex pane (workspace 0)
+    # before quit, used to verify active TUI/agent scrollback is REPLAYED on reopen
+    # (not just quiet shell prompt history). Distinct from the resume-command session ids.
+    scrollback_marker = f"CMUX_SCROLLBACK_MARKER_{os.getpid()}"
 
     failures: list[str] = []
 
@@ -230,6 +291,7 @@ def main() -> int:
         }
 
         _kill_existing(app_path)
+        _force_medium_resume_mode(bundle_id)
         snapshot.unlink(missing_ok=True)
         previous_snapshot.unlink(missing_ok=True)
         claude_hook_state.unlink(missing_ok=True)
@@ -255,6 +317,16 @@ def main() -> int:
                         launcher="codex",
                         executable_path=fake_bin_dir / "codex",
                     )
+                    # Seed distinctive scrollback while leaving a command running,
+                    # matching an active TUI/agent pane at quit time. This catches
+                    # the regression where `needsConfirmClose` caused saved agent
+                    # scrollback to be dropped even though medium restore should
+                    # replay it with the resume command pre-typed.
+                    client.send_line(f"printf '%s\\n' '{scrollback_marker}'; sleep 300")
+                    if not _wait_for_condition(
+                        8.0, lambda: scrollback_marker in _read_scrollback(client)
+                    ):
+                        failures.append("active TUI scrollback marker did not appear in the Codex pane before quit")
 
                 claude_workspace_id = client.new_workspace()
                 time.sleep(0.4)
@@ -264,8 +336,13 @@ def main() -> int:
                 if not claude_surfaces:
                     failures.append("expected a Claude workspace surface during setup")
                 else:
+                    # Claude records are only restorable with a non-empty transcript
+                    # (hookRecordIsRestorable), so seed one and point the record at it.
                     claude_transcript = Path(td) / "claude-transcript.jsonl"
-                    claude_transcript.write_text('{"type":"user"}\n', encoding="utf-8")
+                    claude_transcript.write_text(
+                        '{"type":"summary","summary":"test transcript"}\n',
+                        encoding="utf-8",
+                    )
                     _write_hook_state(
                         claude_hook_state,
                         session_id="claude-session-relaunch-2923",
@@ -284,7 +361,7 @@ def main() -> int:
                             "SHELL": "/bin/zsh",
                             "UNSAFE_TOKEN": "must-not-restore",
                         },
-                        transcript_path=claude_transcript,
+                        transcript_path=str(claude_transcript),
                     )
 
                 opencode_workspace_id = client.new_workspace()
@@ -351,65 +428,81 @@ def main() -> int:
                 if len(workspaces) < 4:
                     failures.append(f"expected >=4 restored workspaces after relaunch, got {len(workspaces)}")
 
-                def find_workspace_with(expected: str) -> bool:
-                    # Restored workspaces are not guaranteed to keep their
-                    # seeding order, so scan every workspace for the expected
-                    # resume output instead of trusting a fixed index.
+                def workspace_screens() -> list[str]:
+                    screens: list[str] = []
                     for index in range(len(client.list_workspaces())):
                         client.select_workspace(index)
-                        if expected in _read_scrollback(client):
-                            return True
-                    return False
+                        screens.append(_read_scrollback(client))
+                    return screens
 
-                def find_workspace_with_tokens(tokens: tuple[str, ...]) -> bool:
-                    for index in range(len(client.list_workspaces())):
-                        client.select_workspace(index)
-                        if any(
-                            all(token in line for token in tokens)
-                            for line in _read_scrollback(client).splitlines()
-                        ):
-                            return True
-                    return False
-
-                def best_scrollback_tail() -> str:
+                def best_scrollback_tail(screens: list[str]) -> str:
                     # Pick the longest scrollback across all workspaces so the
                     # failure report shows the most informative pane.
                     best = ""
-                    for index in range(len(client.list_workspaces())):
-                        client.select_workspace(index)
-                        lines = _read_scrollback(client).splitlines()
+                    for screen in screens:
+                        lines = screen.splitlines()
                         if len(lines) >= len(best.splitlines()):
                             best = "\n".join(lines[-20:])
                     return best
 
-                if not _wait_for_condition(12.0, lambda: find_workspace_with(codex_expected)):
-                    failures.append(
-                        "normal relaunch did not resume the saved Codex session; "
-                        f"tail:\n{best_scrollback_tail()}"
-                    )
+                for _index, session_id, echo_prefix in resume_checks:
+                    # 1) the resume command must be PRE-TYPED on a restored pane
+                    #    (the session id is visible on the input line). Restored
+                    #    workspaces are not guaranteed to keep their seeding order.
+                    matching_screen: str | None = None
 
-                if not _wait_for_condition(12.0, lambda: find_workspace_with_tokens(claude_expected_tokens)):
-                    failures.append(
-                        "normal relaunch did not resume the saved Claude session; "
-                        f"tail:\n{best_scrollback_tail()}"
-                    )
+                    def find_pretyped_screen() -> bool:
+                        nonlocal matching_screen
+                        for screen in workspace_screens():
+                            if session_id in screen:
+                                matching_screen = screen
+                                return True
+                        return False
 
-                if not _wait_for_condition(12.0, lambda: find_workspace_with(opencode_expected)):
-                    failures.append(
-                        "normal relaunch did not resume the saved OpenCode session; "
-                        f"tail:\n{best_scrollback_tail()}"
-                    )
+                    pre_typed = _wait_for_condition(12.0, find_pretyped_screen)
+                    screen = matching_screen or best_scrollback_tail(workspace_screens())
+                    if not pre_typed:
+                        tail = "\n".join(screen.splitlines()[-20:])
+                        failures.append(
+                            f"relaunch did not pre-type the saved resume command for {session_id}; "
+                            f"tail:\n{tail}"
+                        )
+                        continue
+                    # 2) medium mode must NOT execute it — the fake agent's resume
+                    #    echo prints only on execution, so it must be absent.
+                    if echo_prefix in screen:
+                        tail = "\n".join(screen.splitlines()[-20:])
+                        failures.append(
+                            f"medium relaunch auto-EXECUTED the resume command for {session_id} "
+                            f"(expected pre-typed only); saw {echo_prefix} in tail:\n{tail}"
+                        )
+                    # 3) guard against a false pass where the command WAS submitted but
+                    #    errored before reaching the fake agent (e.g. an unresolved
+                    #    alias): a pre-typed command never runs, so no shell error.
+                    elif "command not found" in screen.lower():
+                        tail = "\n".join(screen.splitlines()[-20:])
+                        failures.append(
+                            f"resume command for {session_id} was submitted and errored "
+                            f"(command not found — alias/function unresolved), not pre-typed; "
+                            f"tail:\n{tail}"
+                        )
 
-                if not _wait_for_condition(12.0, lambda: find_workspace_with(pi_expected)):
+                # Scrollback regression: the Codex pane must replay its prior
+                # active-TUI scrollback on reopen, not just the pre-typed resume line.
+                if not _wait_for_condition(
+                    12.0, lambda: any(scrollback_marker in screen for screen in workspace_screens())
+                ):
+                    screens = workspace_screens()
                     failures.append(
-                        "normal relaunch did not resume the saved Pi session; "
-                        f"tail:\n{best_scrollback_tail()}"
+                        "normal quit + reopen did NOT replay the Codex pane active TUI scrollback "
+                        f"(marker {scrollback_marker} missing); tail:\n{best_scrollback_tail(screens)}"
                     )
             finally:
                 client.close()
             _quit(bundle_id, socket_path)
         finally:
             _kill_existing(app_path)
+            _clear_resume_mode(bundle_id)
             socket_path.unlink(missing_ok=True)
             snapshot.unlink(missing_ok=True)
             previous_snapshot.unlink(missing_ok=True)
@@ -424,7 +517,7 @@ def main() -> int:
             print(f"- {failure}")
         return 1
 
-    print("PASS: normal relaunch resumes saved Claude, Codex, OpenCode, and Pi sessions")
+    print("PASS: normal relaunch pre-types saved Claude, Codex, OpenCode, and Pi resume commands without executing them")
     return 0
 
 

@@ -18,6 +18,7 @@ struct SettingsSearchIndexTests {
         assertSearch("http allowlist", contains: SettingsSearchIndex.settingID(for: .browser, idSuffix: "http-allowlist"))
         assertSearch("claude executable", contains: SettingsSearchIndex.settingID(for: .automation, idSuffix: "claude-path"))
         assertSearch("resume on reopen", contains: SettingsSearchIndex.settingID(for: .terminal, idSuffix: "agent-auto-resume"))
+        assertSearch("force quit scrollback", contains: SettingsSearchIndex.settingID(for: .terminal, idSuffix: "scrollback-autosave"))
         assertSearch("workspace cwd", contains: SettingsSearchIndex.settingID(for: .app, idSuffix: "workspace-inherit-working-directory"))
         assertSearch("claude sessions", contains: SettingsSearchIndex.settingID(for: .terminal, idSuffix: "agent-auto-resume"))
         assertSearch("opencode resume", contains: SettingsSearchIndex.settingID(for: .terminal, idSuffix: "agent-auto-resume"))
@@ -95,6 +96,13 @@ struct SettingsSearchIndexTests {
         #expect(
             SettingsSearchIndex.anchorID(forSettingsPath: "terminal.focusTextBoxOnNewTerminals")
                 == SettingsSearchIndex.settingID(for: .textBox, idSuffix: "focus-textbox-new-terminals")
+        )
+    }
+
+    @Test func settingsPathAnchorIncludesScrollbackAutosave() {
+        #expect(
+            SettingsSearchIndex.anchorID(forSettingsPath: "terminal.autosaveScrollback")
+                == SettingsSearchIndex.settingID(for: .terminal, idSuffix: "scrollback-autosave")
         )
     }
 

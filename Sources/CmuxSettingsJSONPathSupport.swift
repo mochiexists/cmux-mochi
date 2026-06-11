@@ -357,6 +357,7 @@ extension CmuxSettingsFileStore {
         "terminal.rendererRealization.maxWarmRenderers",
         "terminal.textBoxMaxLines",
         "terminal.resumeCommands",
+        "terminal.autosaveScrollback",
         "notifications.dockBadge",
         "notifications.showInMenuBar",
         "notifications.unreadPaneRing",

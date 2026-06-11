@@ -9,13 +9,25 @@ import XCTest
 #endif
 
 final class AgentSessionAutoResumeSettingsTests: XCTestCase {
+    func testScrollbackAutosaveDefaultAndStoredValue() throws {
+        let suiteName = "cmux-scrollback-autosave-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        XCTAssertEqual(TerminalScrollbackAutosaveSettings.enabledKey, "terminal.autosaveScrollback")
+        XCTAssertTrue(TerminalScrollbackAutosaveSettings.isEnabled(defaults: defaults))
+
+        defaults.set(false, forKey: TerminalScrollbackAutosaveSettings.enabledKey)
+        XCTAssertFalse(TerminalScrollbackAutosaveSettings.isEnabled(defaults: defaults))
+    }
+
     func testModeKeyDefaultAndNotificationOnChange() throws {
         let suiteName = "cmux-agent-session-resume-mode-\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
         XCTAssertEqual(AgentSessionAutoResumeSettings.modeKey, "terminal.agentResumeMode")
-        XCTAssertEqual(AgentSessionAutoResumeSettings.mode(defaults: defaults), .full)
+        XCTAssertEqual(AgentSessionAutoResumeSettings.mode(defaults: defaults), .medium)
 
         let notificationCenter = NotificationCenter()
         var notificationCount = 0
@@ -30,19 +42,19 @@ final class AgentSessionAutoResumeSettingsTests: XCTestCase {
 
         AgentSessionAutoResumeSettings.setMode(.medium, defaults: defaults, notificationCenter: notificationCenter)
         XCTAssertEqual(AgentSessionAutoResumeSettings.mode(defaults: defaults), .medium)
-        XCTAssertEqual(notificationCount, 1)
+        XCTAssertEqual(notificationCount, 0)
 
         // Setting the same mode does not notify.
         AgentSessionAutoResumeSettings.setMode(.medium, defaults: defaults, notificationCenter: notificationCenter)
-        XCTAssertEqual(notificationCount, 1)
+        XCTAssertEqual(notificationCount, 0)
 
         AgentSessionAutoResumeSettings.setMode(.off, defaults: defaults, notificationCenter: notificationCenter)
         XCTAssertEqual(AgentSessionAutoResumeSettings.mode(defaults: defaults), .off)
-        XCTAssertEqual(notificationCount, 2)
+        XCTAssertEqual(notificationCount, 1)
 
         AgentSessionAutoResumeSettings.reset(defaults: defaults, notificationCenter: notificationCenter)
-        XCTAssertEqual(AgentSessionAutoResumeSettings.mode(defaults: defaults), .full)
-        XCTAssertEqual(notificationCount, 3)
+        XCTAssertEqual(AgentSessionAutoResumeSettings.mode(defaults: defaults), .medium)
+        XCTAssertEqual(notificationCount, 2)
     }
 
     func testLegacyBooleanMigratesToMode() throws {
