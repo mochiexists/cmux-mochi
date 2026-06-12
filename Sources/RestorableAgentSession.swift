@@ -308,28 +308,16 @@ enum AgentResumeCommandBuilder {
         launchCommand: AgentLaunchCommandSnapshot?,
         workingDirectory: String?,
         registrationOverride: CmuxVaultAgentRegistration? = nil,
-        includeWorkingDirectoryPrefix: Bool = true
+        includeWorkingDirectoryPrefix: Bool = true,
+        style: AgentResumeCommandStyle = .alias
     ) -> String? {
         let customRegistration = registrationOverride
 
-        // Codex/Claude reopen + in-place re-park paste use short shell aliases
-        // instead of the verbose absolute-path + env + flags form. The fork bakes
-        // cx/cxy/cc/ccy into the spawned shell, so the pasted command stays short
-        // and readable. Both the in-place paste (TerminalController) and reopen
-        // restore (Workspace) share this builder, so both get the alias form.
-        // Special launchers (claude-teams / oh-my-* wrappers) keep their bespoke
-        // resume handling below — only the plain claude/codex CLIs alias.
-        if kind == .claude || kind == .codex,
-           !isSpecialLauncher(launchCommand?.launcher) {
-            return aliasResumeShellCommand(
-                kind: kind,
-                sessionId: sessionId,
-                launchCommand: launchCommand,
-                workingDirectory: workingDirectory,
-                includeWorkingDirectoryPrefix: includeWorkingDirectoryPrefix
-            )
-        }
-
+        // Resolve the verbose argv FIRST so every eligibility guard runs uniformly
+        // for both the alias and the verbose form: empty session, non-interactive
+        // (`--print`/exec one-shot) launches, and unsupported launchers all collapse
+        // to nil here. The alias shortcut must NOT bypass these — otherwise a
+        // `claude --print` one-shot would incorrectly emit `cc --resume <id>`.
         guard !sessionId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
               let argv = resumeArguments(
                   kind: kind,
@@ -340,6 +328,26 @@ enum AgentResumeCommandBuilder {
               ),
               !argv.isEmpty else {
             return nil
+        }
+
+        // Codex/Claude reopen + in-place re-park paste prefer the short shell alias
+        // form when the resume-style toggle selects it (the default). The fork bakes
+        // cx/cxy/cc/ccy into every cmux-spawned shell, so the pasted command stays
+        // short and readable. Both the in-place paste (TerminalController) and reopen
+        // restore (Workspace) share this builder, so both honor the same style.
+        // Special launchers (claude-teams / oh-my-* wrappers) keep their bespoke
+        // resume handling below — only the plain claude/codex CLIs alias.
+        if style == .alias,
+           kind == .claude || kind == .codex,
+           !isSpecialLauncher(launchCommand?.launcher),
+           let alias = aliasResumeShellCommand(
+               kind: kind,
+               sessionId: sessionId,
+               launchCommand: launchCommand,
+               workingDirectory: workingDirectory,
+               includeWorkingDirectoryPrefix: includeWorkingDirectoryPrefix
+           ) {
+            return alias
         }
 
         return shellCommand(
@@ -850,14 +858,22 @@ struct SessionRestorableAgentSnapshot: Codable, Sendable {
     var launchCommand: AgentLaunchCommandSnapshot?
     var registration: CmuxVaultAgentRegistration? = nil
 
-    var resumeCommand: String? {
+    func resolvedResumeCommand(style: AgentResumeCommandStyle) -> String? {
         AgentResumeCommandBuilder.resumeShellCommand(
             kind: kind,
             sessionId: sessionId,
             launchCommand: launchCommand,
             workingDirectory: workingDirectory,
-            registrationOverride: registration
+            registrationOverride: registration,
+            style: style
         )
+    }
+
+    /// Default resume command in the short alias form. Production restore/paste
+    /// entry points honor the user's `AgentResumeCommandStyleSettings` toggle via
+    /// `resumeStartupInput`/`resumePreparedStartupInput`.
+    var resumeCommand: String? {
+        resolvedResumeCommand(style: .alias)
     }
 
     var forkCommand: String? {
@@ -870,14 +886,25 @@ struct SessionRestorableAgentSnapshot: Codable, Sendable {
         )
     }
 
+    func resumePreparedStartupInput(
+        style: AgentResumeCommandStyle = AgentResumeCommandStyleSettings.style()
+    ) -> String? {
+        guard let command = resolvedResumeCommand(style: style),
+              command.utf8.count <= Self.maxInlineStartupInputBytes else {
+            return nil
+        }
+        return command
+    }
+
     func resumeStartupInput(
+        style: AgentResumeCommandStyle = AgentResumeCommandStyleSettings.style(),
         fileManager: FileManager = .default,
         temporaryDirectory: URL = FileManager.default.temporaryDirectory,
         allowLauncherScript: Bool = true,
         allowOversizedInlineInput: Bool = false
     ) -> String? {
         startupInput(
-            command: resumeCommand,
+            command: resolvedResumeCommand(style: style),
             fileManager: fileManager,
             temporaryDirectory: temporaryDirectory,
             allowLauncherScript: allowLauncherScript,

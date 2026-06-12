@@ -574,6 +574,17 @@
               }
             }
           }
+        },
+        "agentResumeCommandStyle": {
+          "type": "string",
+          "enum": ["alias", "verbose"],
+          "default": "alias",
+          "description": "Shell command form used when resuming an agent session. 'alias': the short fork alias (e.g. `cxy resume <id>`), which the cmux shell integration always defines — relies on the session id to re-attach. 'verbose': the full command, preserving the original model, --add-dir, and environment flags."
+        },
+        "autosaveScrollback": {
+          "type": "boolean",
+          "default": true,
+          "description": "Persist terminal scrollback on a periodic timer so a force-quit or crash can restore the most recent terminal contents (including running TUIs) on reopen."
         }
       }
     },
