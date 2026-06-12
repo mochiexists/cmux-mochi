@@ -137,6 +137,34 @@ final class TerminalControllerSocketSecurityTests {
         teardownBlocks.append(block)
     }
 
+    @Test func testAgentResumePasteSessionMatchAcceptsSameSessionIgnoringWhitespace() {
+        XCTAssertTrue(
+            TerminalController.agentResumePasteSessionMatches(
+                snapshotSessionId: "019dad34-d218-7943-b81a-eddac5c87951",
+                hookSessionId: "019dad34-d218-7943-b81a-eddac5c87951"
+            )
+        )
+        // Trimmed equality so stray whitespace from the hook arg never trips a
+        // spurious mismatch / Sentry report.
+        XCTAssertTrue(
+            TerminalController.agentResumePasteSessionMatches(
+                snapshotSessionId: "  codex-session-1\n",
+                hookSessionId: "codex-session-1"
+            )
+        )
+    }
+
+    @Test func testAgentResumePasteSessionMatchRejectsDriftedSession() {
+        // A different session recorded for the pane than the one that exited: the
+        // paste must be refused so we never resume the wrong session into the pane.
+        XCTAssertFalse(
+            TerminalController.agentResumePasteSessionMatches(
+                snapshotSessionId: "codex-session-NEW",
+                hookSessionId: "codex-session-OLD"
+            )
+        )
+    }
+
     @Test func testSocketPermissionsFollowAccessMode() throws {
         let tabManager = TabManager()
 

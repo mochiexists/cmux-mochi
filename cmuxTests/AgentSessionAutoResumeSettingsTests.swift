@@ -21,6 +21,38 @@ final class AgentSessionAutoResumeSettingsTests: XCTestCase {
         XCTAssertFalse(TerminalScrollbackAutosaveSettings.isEnabled(defaults: defaults))
     }
 
+    func testResumeCommandStyleDefaultsToAliasAndRoundTrips() throws {
+        let suiteName = "cmux-agent-resume-style-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        XCTAssertEqual(AgentResumeCommandStyleSettings.styleKey, "terminal.agentResumeCommandStyle")
+        // Default MUST stay .alias: it keeps the short-alias resume the out-of-box
+        // behavior (and what the alias resume tests assume).
+        XCTAssertEqual(AgentResumeCommandStyleSettings.style(defaults: defaults), .alias)
+
+        let notificationCenter = NotificationCenter()
+        var changes = 0
+        let observer = notificationCenter.addObserver(
+            forName: AgentResumeCommandStyleSettings.didChangeNotification,
+            object: nil,
+            queue: nil
+        ) { _ in changes += 1 }
+        defer { notificationCenter.removeObserver(observer) }
+
+        AgentResumeCommandStyleSettings.setStyle(.verbose, defaults: defaults, notificationCenter: notificationCenter)
+        XCTAssertEqual(AgentResumeCommandStyleSettings.style(defaults: defaults), .verbose)
+        XCTAssertEqual(changes, 1)
+
+        // Setting the same value again does not re-notify.
+        AgentResumeCommandStyleSettings.setStyle(.verbose, defaults: defaults, notificationCenter: notificationCenter)
+        XCTAssertEqual(changes, 1)
+
+        XCTAssertTrue(AgentResumeCommandStyleSettings.reset(defaults: defaults, notificationCenter: notificationCenter))
+        XCTAssertEqual(AgentResumeCommandStyleSettings.style(defaults: defaults), .alias)
+        XCTAssertEqual(changes, 2)
+    }
+
     func testModeKeyDefaultAndNotificationOnChange() throws {
         let suiteName = "cmux-agent-session-resume-mode-\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
