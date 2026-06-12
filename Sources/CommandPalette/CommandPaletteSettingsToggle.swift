@@ -505,6 +505,31 @@ enum CommandPaletteSettingsToggleCommands {
                 defaultsKey: TerminalScrollbackAutosaveSettings.enabledKey
             ),
             CommandPaletteSettingToggleDescriptor(
+                commandId: commandIdPrefix + "agentResumeUsesFullCommand",
+                settingsKey: AgentResumeCommandStyleSettings.styleKey,
+                title: {
+                    String(
+                        localized: "settings.terminal.agentResumeStyle.useFullCommand",
+                        defaultValue: "Resume Agents With Full Command"
+                    )
+                },
+                sectionTitle: terminal,
+                keywords: [
+                    AgentResumeCommandStyleSettings.styleKey, "terminal", "agent", "resume",
+                    "alias", "verbose", "full", "command", "model", "add-dir", "flags"
+                ],
+                // On = verbose (preserve original --model/--add-dir/env across resume).
+                // Off = short alias form (default), which relies on the session id.
+                isOn: { defaults in AgentResumeCommandStyleSettings.style(defaults: defaults) == .verbose },
+                setOn: { newValue, defaults, notificationCenter in
+                    AgentResumeCommandStyleSettings.setStyle(
+                        newValue ? .verbose : .alias,
+                        defaults: defaults,
+                        notificationCenter: notificationCenter
+                    )
+                }
+            ),
+            CommandPaletteSettingToggleDescriptor(
                 commandId: commandIdPrefix + "hideAllSidebarDetails",
                 settingsKey: "sidebar.hideAllDetails",
                 title: {
