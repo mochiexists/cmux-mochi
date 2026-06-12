@@ -387,29 +387,45 @@ final class SessionPersistenceTests: XCTestCase {
         XCTAssertTrue(contents.hasSuffix(reset))
     }
 
-    func testSessionScrollbackPersistenceHonorsReportedShellState() {
+    func testSessionScrollbackPersistenceKeepsLiveTUIs() {
+        // The live-TUI bug case: a running command (e.g. an open Claude TUI that
+        // was not detected as a restorable agent, with no tmux restart command) is
+        // exactly the content the feature exists to preserve — the old gate
+        // dropped it and left the reopened window blank. Persistence must no longer
+        // be gated on close-confirmation or agent recognition.
         XCTAssertTrue(
-            Workspace.shouldPersistSessionScrollback(
-                shellActivityState: .promptIdle,
-                fallbackNeedsConfirmClose: true
-            )
+            Workspace.shouldPersistSessionScrollbackForRestore(
+                restorableAgent: nil,
+                tmuxStartCommand: nil
+            ),
+            "scrollback must persist for a live TUI with no restorable agent"
         )
-        XCTAssertFalse(
-            Workspace.shouldPersistSessionScrollback(
-                shellActivityState: .commandRunning,
-                fallbackNeedsConfirmClose: false
-            )
+    }
+
+    func testSessionScrollbackPersistenceAllowsActiveRestorableAgent() {
+        let agent = SessionRestorableAgentSnapshot(
+            kind: .codex,
+            sessionId: "codex-session-active-tui",
+            workingDirectory: "/tmp/repo",
+            launchCommand: nil
         )
-        XCTAssertFalse(
-            Workspace.shouldPersistSessionScrollback(
-                shellActivityState: .unknown,
-                fallbackNeedsConfirmClose: true
-            )
-        )
+
         XCTAssertTrue(
-            Workspace.shouldPersistSessionScrollback(
-                shellActivityState: nil,
-                fallbackNeedsConfirmClose: false
+            Workspace.shouldPersistSessionScrollbackForRestore(
+                restorableAgent: agent,
+                tmuxStartCommand: nil
+            )
+        )
+    }
+
+    func testSessionScrollbackPersistenceSuppressedForOMXHudRestart() {
+        // The one intentional suppression: when the pane restarts via an OMX-HUD
+        // tmux command and no restorable agent was detected, a replayed scrollback
+        // would fight the HUD restart, so it is dropped on purpose.
+        XCTAssertFalse(
+            Workspace.shouldPersistSessionScrollbackForRestore(
+                restorableAgent: nil,
+                tmuxStartCommand: "omx hud --foo"
             )
         )
     }
@@ -556,13 +572,37 @@ final class SessionPersistenceTests: XCTestCase {
     func testRestoreCompletionSavePolicySkipsManualReopen() {
         XCTAssertTrue(
             AppDelegate.shouldSaveSessionSnapshotOnRestoreCompletion(
-                isManualReopen: false
+                isManualReopen: false,
+                restoredSnapshotContainsScrollback: false
             )
         )
         XCTAssertFalse(
             AppDelegate.shouldSaveSessionSnapshotOnRestoreCompletion(
-                isManualReopen: true
+                isManualReopen: true,
+                restoredSnapshotContainsScrollback: false
             )
+        )
+        XCTAssertFalse(
+            AppDelegate.shouldSaveSessionSnapshotOnRestoreCompletion(
+                isManualReopen: false,
+                restoredSnapshotContainsScrollback: true
+            )
+        )
+    }
+
+    func testAppSessionSnapshotDetectsTerminalScrollback() {
+        XCTAssertFalse(makeSnapshot(version: SessionSnapshotSchema.currentVersion).containsTerminalScrollback)
+        XCTAssertTrue(
+            makeSnapshot(
+                version: SessionSnapshotSchema.currentVersion,
+                scrollback: "restored scrollback"
+            ).containsTerminalScrollback
+        )
+        XCTAssertFalse(
+            makeSnapshot(
+                version: SessionSnapshotSchema.currentVersion,
+                scrollback: ""
+            ).containsTerminalScrollback
         )
     }
 
@@ -572,6 +612,7 @@ final class SessionPersistenceTests: XCTestCase {
             AppDelegate.shouldSkipSessionAutosaveForUnchangedFingerprint(
                 isTerminatingApp: false,
                 includeScrollback: false,
+                scrollbackDirty: false,
                 previousFingerprint: 1234,
                 currentFingerprint: 1234,
                 lastPersistedAt: now.addingTimeInterval(-5),
@@ -587,6 +628,7 @@ final class SessionPersistenceTests: XCTestCase {
             AppDelegate.shouldSkipSessionAutosaveForUnchangedFingerprint(
                 isTerminatingApp: false,
                 includeScrollback: false,
+                scrollbackDirty: false,
                 previousFingerprint: 1234,
                 currentFingerprint: 1234,
                 lastPersistedAt: now.addingTimeInterval(-120),
@@ -596,12 +638,13 @@ final class SessionPersistenceTests: XCTestCase {
         )
     }
 
-    func testUnchangedAutosaveFingerprintNeverSkipsTerminatingOrScrollbackWrites() {
+    func testUnchangedAutosaveFingerprintDoesNotSkipTerminatingOrDirtyScrollbackWrites() {
         let now = Date()
         XCTAssertFalse(
             AppDelegate.shouldSkipSessionAutosaveForUnchangedFingerprint(
                 isTerminatingApp: true,
                 includeScrollback: false,
+                scrollbackDirty: false,
                 previousFingerprint: 1234,
                 currentFingerprint: 1234,
                 lastPersistedAt: now.addingTimeInterval(-1),
@@ -612,12 +655,50 @@ final class SessionPersistenceTests: XCTestCase {
             AppDelegate.shouldSkipSessionAutosaveForUnchangedFingerprint(
                 isTerminatingApp: false,
                 includeScrollback: true,
+                scrollbackDirty: true,
                 previousFingerprint: 1234,
                 currentFingerprint: 1234,
                 lastPersistedAt: now.addingTimeInterval(-1),
                 now: now
             )
         )
+    }
+
+    func testCleanScrollbackAutosaveSkipsUnchangedFingerprint() {
+        let now = Date()
+        XCTAssertTrue(
+            AppDelegate.shouldSkipSessionAutosaveForUnchangedFingerprint(
+                isTerminatingApp: false,
+                includeScrollback: true,
+                scrollbackDirty: false,
+                previousFingerprint: 1234,
+                currentFingerprint: 1234,
+                lastPersistedAt: now.addingTimeInterval(-120),
+                now: now
+            )
+        )
+        XCTAssertFalse(
+            AppDelegate.shouldSkipSessionAutosaveForUnchangedFingerprint(
+                isTerminatingApp: false,
+                includeScrollback: true,
+                scrollbackDirty: false,
+                previousFingerprint: 1234,
+                currentFingerprint: 5678,
+                lastPersistedAt: now.addingTimeInterval(-120),
+                now: now
+            )
+        )
+    }
+
+    func testSessionAutosaveScrollbackSettingControlsAutosaveSnapshotMode() throws {
+        let suiteName = "cmux-session-autosave-scrollback-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        XCTAssertTrue(AppDelegate.shouldIncludeScrollbackInSessionAutosave(defaults: defaults))
+
+        defaults.set(false, forKey: TerminalScrollbackAutosaveSettings.enabledKey)
+        XCTAssertFalse(AppDelegate.shouldIncludeScrollbackInSessionAutosave(defaults: defaults))
     }
 
     func testSessionAutosaveFingerprintIncludesRestorableAgentMetadata() throws {
@@ -1464,16 +1545,40 @@ final class SessionPersistenceTests: XCTestCase {
         return RestorableAgentSessionIndex.load(homeDirectory: home.path)
     }
 
-    private func makeSnapshot(version: Int) -> AppSessionSnapshot {
+    private func makeSnapshot(version: Int, scrollback: String? = nil) -> AppSessionSnapshot {
+        let panelId = UUID()
         let workspace = SessionWorkspaceSnapshot(
             processTitle: "Terminal",
             customTitle: "Restored",
             customColor: nil,
             isPinned: true,
             currentDirectory: "/tmp",
-            focusedPanelId: nil,
-            layout: .pane(SessionPaneLayoutSnapshot(panelIds: [], selectedPanelId: nil)),
-            panels: [],
+            focusedPanelId: panelId,
+            layout: .pane(SessionPaneLayoutSnapshot(panelIds: [panelId], selectedPanelId: panelId)),
+            panels: [
+                SessionPanelSnapshot(
+                    id: panelId,
+                    type: .terminal,
+                    title: "Terminal",
+                    customTitle: nil,
+                    directory: "/tmp",
+                    isPinned: false,
+                    isManuallyUnread: false,
+                    gitBranch: nil,
+                    listeningPorts: [],
+                    ttyName: nil,
+                    terminal: SessionTerminalPanelSnapshot(
+                        workingDirectory: "/tmp",
+                        scrollback: scrollback,
+                        agent: nil,
+                        tmuxStartCommand: nil
+                    ),
+                    browser: nil,
+                    markdown: nil,
+                    filePreview: nil,
+                    rightSidebarTool: nil
+                ),
+            ],
             statusEntries: [],
             logEntries: [],
             progress: nil,
@@ -1680,7 +1785,7 @@ final class SocketListenerAcceptPolicyTests: XCTestCase {
         )
     }
 
-    func testClaudeResumeCommandPreservesLaunchFlagsAndDropsInjectedHookSettings() {
+    func testClaudeResumeCommandUsesNonYoloAliasWhenNoSkipPermissionsFlag() {
         let snapshot = SessionRestorableAgentSnapshot(
             kind: .claude,
             sessionId: "claude-session-123",
@@ -1707,9 +1812,25 @@ final class SocketListenerAcceptPolicyTests: XCTestCase {
             )
         )
 
+        // Recorded args have no --dangerously-skip-permissions -> normal alias.
         XCTAssertEqual(
             snapshot.resumeCommand,
-            "cd '/tmp/cmux project' && 'env' 'CLAUDE_CONFIG_DIR=/tmp/claude config' 'CMUX_PRESERVE_CLAUDE_AUTH_SELECTION_ENV=1' 'CMUX_PRESERVE_CLAUDE_AUTH_SELECTION_ENV_KEYS=CLAUDE_CONFIG_DIR' '/opt/Claude Code/bin/claude' '--resume' 'claude-session-123' '--model' 'sonnet' '--permission-mode' 'auto'"
+            "cd '/tmp/cmux project' && cc '--resume' 'claude-session-123'"
+        )
+    }
+
+    func testClaudeResumeCommandDefaultsToYoloAliasWhenLaunchArgumentsUnknown() {
+        let snapshot = SessionRestorableAgentSnapshot(
+            kind: .claude,
+            sessionId: "claude-session-456",
+            workingDirectory: "/tmp/cmux project",
+            launchCommand: nil
+        )
+
+        // Indeterminate launch -> default to yolo alias (ccy).
+        XCTAssertEqual(
+            snapshot.resumeCommand,
+            "cd '/tmp/cmux project' && ccy '--resume' 'claude-session-456'"
         )
     }
 
@@ -1864,7 +1985,7 @@ final class SocketListenerAcceptPolicyTests: XCTestCase {
         XCTAssertNil(snapshot.resumeStartupInput(temporaryDirectory: blockedDirectory))
     }
 
-    func testClaudeResumeCommandPreservesDangerouslySkipPermissionsAndObservedEnvironment() {
+    func testClaudeResumeCommandUsesYoloAliasWhenSkipPermissionsFlagPresent() {
         let snapshot = SessionRestorableAgentSnapshot(
             kind: .claude,
             sessionId: "24ec0052-450c-4914-b1dd-2ee80d4bc84b",
@@ -1889,13 +2010,14 @@ final class SocketListenerAcceptPolicyTests: XCTestCase {
             )
         )
 
+        // --dangerously-skip-permissions -> yolo alias (ccy).
         XCTAssertEqual(
             snapshot.resumeCommand,
-            "cd '/Users/lawrence/fun' && 'env' 'CLAUDE_CONFIG_DIR=/Users/lawrence/.codex-accounts/claude/_p1775010019397' 'CMUX_PRESERVE_CLAUDE_AUTH_SELECTION_ENV=1' 'CMUX_PRESERVE_CLAUDE_AUTH_SELECTION_ENV_KEYS=CLAUDE_CONFIG_DIR' '/Users/lawrence/.local/bin/claude' '--resume' '24ec0052-450c-4914-b1dd-2ee80d4bc84b' '--dangerously-load-development-channels' 'server:custom-dev-channel' '--dangerously-skip-permissions'"
+            "cd '/Users/lawrence/fun' && ccy '--resume' '24ec0052-450c-4914-b1dd-2ee80d4bc84b'"
         )
     }
 
-    func testCodexResumeCommandPreservesFlagsAndDropsOriginalPrompt() {
+    func testCodexResumeCommandUsesNonYoloAliasWhenNoBypassFlag() {
         let snapshot = SessionRestorableAgentSnapshot(
             kind: .codex,
             sessionId: "019dad34-d218-7943-b81a-eddac5c87951",
@@ -1923,9 +2045,39 @@ final class SocketListenerAcceptPolicyTests: XCTestCase {
             )
         )
 
+        // `--sandbox danger-full-access --ask-for-approval never` is yolo in effect
+        // -> yolo alias (cxy).
         XCTAssertEqual(
             snapshot.resumeCommand,
-            "cd '/Users/example/repo' && 'env' 'CODEX_HOME=/tmp/codex home' '/Users/example/.bun/bin/codex' 'resume' '--model' 'gpt-5.4' '--sandbox' 'danger-full-access' '--ask-for-approval' 'never' '--search' '--cd' '/Users/example/repo' '019dad34-d218-7943-b81a-eddac5c87951'"
+            "cd '/Users/example/repo' && cxy 'resume' '019dad34-d218-7943-b81a-eddac5c87951'"
+        )
+    }
+
+    func testCodexResumeCommandUsesYoloAliasWhenBypassFlagPresent() {
+        let snapshot = SessionRestorableAgentSnapshot(
+            kind: .codex,
+            sessionId: "019dad34-d218-7943-b81a-eddac5c87951",
+            workingDirectory: "/Users/example/repo",
+            launchCommand: AgentLaunchCommandSnapshot(
+                launcher: "codex",
+                executablePath: "/Users/example/.bun/bin/codex",
+                arguments: [
+                    "/Users/example/.bun/bin/codex",
+                    "--dangerously-bypass-approvals-and-sandbox",
+                    "--model",
+                    "gpt-5.4"
+                ],
+                workingDirectory: "/Users/example/repo",
+                environment: ["CODEX_HOME": "/tmp/codex home"],
+                capturedAt: 123,
+                source: "process"
+            )
+        )
+
+        // --dangerously-bypass-approvals-and-sandbox -> yolo alias (cxy).
+        XCTAssertEqual(
+            snapshot.resumeCommand,
+            "cd '/Users/example/repo' && cxy 'resume' '019dad34-d218-7943-b81a-eddac5c87951'"
         )
     }
 
@@ -1994,9 +2146,10 @@ final class SocketListenerAcceptPolicyTests: XCTestCase {
             )
         )
 
+        // Plain claude launcher with no yolo flag and no cwd -> bare normal alias.
         XCTAssertEqual(
             snapshot.resumeCommand,
-            "'env' 'NODE_OPTIONS=--max-old-space-size=4096' 'claude' '--resume' 'claude-session-debug' '--debug' 'api,mcp' '--model' 'sonnet'"
+            "cc '--resume' 'claude-session-debug'"
         )
     }
 
@@ -2022,9 +2175,11 @@ final class SocketListenerAcceptPolicyTests: XCTestCase {
             )
         )
 
+        // The alias form does not re-inject launch environment; the baked alias
+        // resolves the provider binary via the user's shell instead.
         XCTAssertEqual(
             snapshot.resumeCommand,
-            "'env' 'ANTHROPIC_BASE_URL=https://api.example.test' 'ANTHROPIC_MODEL=' 'CMUX_PRESERVE_CLAUDE_AUTH_SELECTION_ENV=1' 'CMUX_PRESERVE_CLAUDE_AUTH_SELECTION_ENV_KEYS=ANTHROPIC_BASE_URL,ANTHROPIC_MODEL' 'claude' '--resume' 'claude-session-env'"
+            "cc '--resume' 'claude-session-env'"
         )
         XCTAssertFalse(snapshot.resumeCommand?.contains("ANTHROPIC_AUTH_TOKEN") ?? true)
     }
@@ -2047,9 +2202,11 @@ final class SocketListenerAcceptPolicyTests: XCTestCase {
             )
         )
 
+        // The alias form does not propagate NODE_OPTIONS; the baked alias runs
+        // the provider binary with a clean environment.
         XCTAssertEqual(
             snapshot.resumeCommand,
-            "'env' 'NODE_OPTIONS=--trace-warnings' 'claude' '--resume' 'claude-session-node-options' '--model' 'sonnet'"
+            "cc '--resume' 'claude-session-node-options'"
         )
     }
 
@@ -2073,7 +2230,7 @@ final class SocketListenerAcceptPolicyTests: XCTestCase {
 
         XCTAssertEqual(
             snapshot.resumeCommand,
-            "'claude' '--resume' 'claude-session-empty-node-options' '--model' 'sonnet'"
+            "cc '--resume' 'claude-session-empty-node-options'"
         )
     }
 
@@ -2237,9 +2394,10 @@ final class SocketListenerAcceptPolicyTests: XCTestCase {
         let snapshot = try XCTUnwrap(index.snapshot(workspaceId: workspaceId, panelId: panelId))
 
         XCTAssertEqual(snapshot.launchCommand?.arguments.first, "/usr/local/bin/codex")
+        // Plain codex launcher, no yolo flag -> normal alias.
         XCTAssertEqual(
             snapshot.resumeCommand,
-            "cd '/tmp/repo' && 'env' 'CODEX_HOME=/tmp/codex' '/usr/local/bin/codex' 'resume' '--model' 'gpt-5.4' '--search' 'codex-session-123'"
+            "cd '/tmp/repo' && cx 'resume' 'codex-session-123'"
         )
     }
 

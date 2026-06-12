@@ -436,10 +436,18 @@ extension Workspace {
             let restorableTmuxStartCommand = effectiveRestorableAgent == nil
                 ? Self.restorableTmuxStartCommand(terminalPanel.surface.debugTmuxStartCommand())
                 : nil
-            let shouldPersistScrollback = Self.shouldPersistSessionScrollback(
-                shellActivityState: panelShellActivityStates[panelId],
-                fallbackNeedsConfirmClose: terminalPanel.needsConfirmClose()
-            ) && Self.shouldPersistSessionScrollbackForRestore(
+            // Scrollback autosave exists to preserve live terminal contents — most
+            // importantly running TUIs (Claude/Codex/vim) that trip
+            // needsConfirmClose()/commandRunning. WHETHER to capture scrollback at
+            // all is already decided upstream by `includeScrollback` (always true
+            // on a normal quit; gated by the autosave setting on periodic ticks),
+            // so we must not re-gate on close-confirmation or agent recognition
+            // here — the old gate silently dropped exactly the content users care
+            // about most (e.g. an open Claude session never detected as a
+            // restorable agent) and left the reopened window blank. The only
+            // suppression is the OMX-HUD tmux restart case, where a replayed
+            // scrollback would fight the HUD restart command.
+            let shouldPersistScrollback = Self.shouldPersistSessionScrollbackForRestore(
                 restorableAgent: effectiveRestorableAgent,
                 tmuxStartCommand: restorableTmuxStartCommand
             )
@@ -585,16 +593,6 @@ extension Workspace {
         let escapedWord = NSRegularExpression.escapedPattern(for: word)
         let pattern = "(^|[^A-Za-z0-9_-])\(escapedWord)([^A-Za-z0-9_-]|$)"
         return command.range(of: pattern, options: [.regularExpression, .caseInsensitive]) != nil
-    }
-
-    nonisolated static func shouldPersistSessionScrollback(
-        shellActivityState: PanelShellActivityState?,
-        fallbackNeedsConfirmClose: Bool
-    ) -> Bool {
-        !resolveCloseConfirmation(
-            shellActivityState: shellActivityState,
-            fallbackNeedsConfirmClose: fallbackNeedsConfirmClose
-        )
     }
 
     private func terminalSnapshotScrollback(

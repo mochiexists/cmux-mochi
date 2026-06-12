@@ -3,11 +3,11 @@ import Foundation
 extension RestorableAgentSessionIndex {
     static func processDetectedSnapshots(
         registry: CmuxVaultAgentRegistry,
-        fileManager: FileManager
+        fileManager: FileManager,
+        processSnapshot: CmuxTopProcessSnapshot
     ) -> [PanelKey: (snapshot: SessionRestorableAgentSnapshot, updatedAt: TimeInterval)] {
         guard !registry.registrations.isEmpty else { return [:] }
         let capturedAt = Date().timeIntervalSince1970
-        let processSnapshot = CmuxTopProcessSnapshot.capture(includeProcessDetails: false)
         var resolved: [PanelKey: (snapshot: SessionRestorableAgentSnapshot, updatedAt: TimeInterval)] = [:]
         var registriesByWorkingDirectory: [String: CmuxVaultAgentRegistry] = [:]
 

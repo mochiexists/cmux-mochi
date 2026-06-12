@@ -106311,6 +106311,57 @@
         }
       }
     },
+    "settings.terminal.autosaveScrollback": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Autosave Terminal Scrollback"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ターミナルのスクロールバックを自動保存"
+          }
+        }
+      }
+    },
+    "settings.terminal.autosaveScrollback.subtitleOff": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Periodic autosaves skip scrollback; normal quit still saves scrollback."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "定期自動保存では負荷を抑えるためスクロールバックを省略します。通常終了時は引き続き保存されます。"
+          }
+        }
+      }
+    },
+    "settings.terminal.autosaveScrollback.subtitleOn": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Periodic autosaves include bounded scrollback after terminal activity, then skip redundant scrollback writes while idle."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "クラッシュや強制終了から復元できるよう、定期セッション自動保存に上限付きのターミナルスクロールバックを含めます。"
+          }
+        }
+      }
+    },
     "settings.terminal.agentAutoResume": {
       "extractionState": "manual",
       "localizations": {

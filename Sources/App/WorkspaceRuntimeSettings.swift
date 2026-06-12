@@ -109,6 +109,15 @@ enum TerminalScrollBarSettings {
     }
 }
 
+enum TerminalScrollbackAutosaveSettings {
+    static let enabledKey = "terminal.autosaveScrollback"
+    static let defaultEnabled = true
+
+    static func isEnabled(defaults: UserDefaults = .standard) -> Bool {
+        defaults.object(forKey: enabledKey) as? Bool ?? defaultEnabled
+    }
+}
+
 /// How restored agent terminals behave when cmux Mochi reopens after a quit.
 /// Off:    no scrollback replay, no resume command prefill (fresh terminal).
 /// medium: replay scrollback and prefill the resume command without submitting it.
@@ -166,7 +175,7 @@ enum AgentSessionAutoResumeSettings {
     static let modeKey = "terminal.agentResumeMode"
     /// Legacy boolean key (true == full, false == medium). Read for migration only.
     static let legacyAutoResumeAgentSessionsKey = "terminal.autoResumeAgentSessions"
-    static let defaultMode: AgentSessionResumeMode = .full
+    static let defaultMode: AgentSessionResumeMode = .medium
     static let didChangeNotification = Notification.Name("cmux.agentSessionAutoResumeSettingsDidChange")
 
     static func mode(defaults: UserDefaults = .standard) -> AgentSessionResumeMode {

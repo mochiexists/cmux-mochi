@@ -355,6 +355,17 @@ enum CommandPaletteSettingsToggleCommands {
                 }
             ),
             CommandPaletteSettingToggleDescriptor(
+                commandId: commandIdPrefix + "autosaveTerminalScrollback",
+                settingsKey: "terminal.autosaveScrollback",
+                title: {
+                    String(localized: "settings.terminal.autosaveScrollback", defaultValue: "Autosave Terminal Scrollback")
+                },
+                sectionTitle: terminal,
+                keywords: ["terminal.autosaveScrollback", "terminal", "autosave", "scrollback", "crash", "force", "quit", "kill", "restore"],
+                defaultValue: TerminalScrollbackAutosaveSettings.defaultEnabled,
+                defaultsKey: TerminalScrollbackAutosaveSettings.enabledKey
+            ),
+            CommandPaletteSettingToggleDescriptor(
                 commandId: commandIdPrefix + "hideAllSidebarDetails",
                 settingsKey: "sidebar.hideAllDetails",
                 title: {

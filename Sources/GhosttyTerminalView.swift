@@ -6148,6 +6148,7 @@ class GhosttyNSView: NSView, NSUserInterfaceValidations {
 
         guard let pending else { return }
         scrollbar = pending
+        AppDelegate.shared?.markTerminalScrollbackAutosaveDirty()
         NotificationCenter.default.post(
             name: .ghosttyDidUpdateScrollbar,
             object: self,
