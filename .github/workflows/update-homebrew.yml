@@ -1,11 +1,12 @@
 name: Update Homebrew Cask
 
 on:
-  # Trigger after the release workflow completes (not on release:published,
-  # which fires before assets finish uploading — causing SHA mismatch).
-  workflow_run:
-    workflows: ["Release macOS app"]
-    types: [completed]
+  # Fork (cmux Mochi): auto-trigger disabled until the mochiexists/homebrew-cmux
+  # tap exists — otherwise every release pushes to a nonexistent tap. Re-enable
+  # the workflow_run block below once the tap is created.
+  # workflow_run:
+  #   workflows: ["Release macOS app"]
+  #   types: [completed]
   workflow_dispatch:
     inputs:
       version:
@@ -55,7 +56,7 @@ jobs:
         if: steps.version.outputs.skip != 'true'
         run: |
           VERSION="${{ steps.version.outputs.version }}"
-          URL="https://github.com/manaflow-ai/cmux/releases/download/v${VERSION}/cmux-macos.dmg"
+          URL="https://github.com/mochiexists/cmux-mochi/releases/download/v${VERSION}/cmux-macos.dmg"
           MAX_RETRIES=5
           for i in $(seq 1 $MAX_RETRIES); do
             HTTP_CODE=$(curl -sL -w '%{http_code}' "$URL" -o cmux.dmg)
@@ -94,7 +95,7 @@ jobs:
             version "${VERSION}"
             sha256 "${SHA256}"
 
-            url "https://github.com/manaflow-ai/cmux/releases/download/v#{version}/cmux-macos.dmg"
+            url "https://github.com/mochiexists/cmux-mochi/releases/download/v#{version}/cmux-macos.dmg"
             name "cmux"
             desc "Lightweight native macOS terminal with vertical tabs for AI coding agents"
             homepage "https://cmux.com"

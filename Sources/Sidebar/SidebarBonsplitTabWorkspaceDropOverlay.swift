@@ -264,6 +264,9 @@ final class SidebarBonsplitTabWorkspaceDropView: NSView {
         pendingDrop = nil
         isRequestingWorkspaceDropTargets = false
         workspaceDropTargetRequestId &+= 1
+        // Reset spring-load tracking so the next drag can spring-switch into the
+        // same workspace again; stale state suppressed the repeat switch.
+        lastSprungWorkspaceId = nil
     }
 
     func clearPendingDropIfIdle() {
