@@ -87,7 +87,7 @@ APP_PLIST="$APP_PATH/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c "Delete :SUPublicEDKey" "$APP_PLIST" 2>/dev/null || true
 /usr/libexec/PlistBuddy -c "Delete :SUFeedURL" "$APP_PLIST" 2>/dev/null || true
 /usr/libexec/PlistBuddy -c "Add :SUPublicEDKey string $SPARKLE_PUBLIC_KEY_DERIVED" "$APP_PLIST"
-/usr/libexec/PlistBuddy -c "Add :SUFeedURL string https://github.com/manaflow-ai/cmux/releases/latest/download/appcast.xml" "$APP_PLIST"
+/usr/libexec/PlistBuddy -c "Add :SUFeedURL string https://github.com/mochiexists/cmux-mochi/releases/latest/download/appcast.xml" "$APP_PLIST"
 echo "Sparkle keys injected"
 
 # cmux is a non-sandboxed app. Sparkle's sandbox-only XPC services make the
@@ -166,7 +166,9 @@ fi
 gh release view "$TAG"
 
 # --- Update Homebrew cask (skip for nightlies) ---
-if [[ "$TAG" != *"-nightly"* ]]; then
+# Fork (cmux Mochi): gated off by default until the mochiexists tap exists.
+# Opt in with UPDATE_HOMEBREW=1.
+if [[ "${UPDATE_HOMEBREW:-0}" == "1" && "$TAG" != *"-nightly"* ]]; then
   VERSION="${TAG#v}"
   DMG_SHA256=$(shasum -a 256 cmux-macos.dmg | cut -d' ' -f1)
   echo "Updating homebrew cask to $VERSION (SHA: $DMG_SHA256)..."
@@ -177,10 +179,10 @@ cask "cmux" do
   version "${VERSION}"
   sha256 "${DMG_SHA256}"
 
-  url "https://github.com/manaflow-ai/cmux/releases/download/v#{version}/cmux-macos.dmg"
+  url "https://github.com/mochiexists/cmux-mochi/releases/download/v#{version}/cmux-macos.dmg"
   name "cmux"
   desc "Lightweight native macOS terminal with vertical tabs for AI coding agents"
-  homepage "https://github.com/manaflow-ai/cmux"
+  homepage "https://github.com/mochiexists/cmux-mochi"
 
   livecheck do
     url :url
@@ -195,7 +197,7 @@ cask "cmux" do
   zap trash: [
     "~/Library/Application Support/cmux",
     "~/Library/Caches/cmux",
-    "~/Library/Preferences/ai.manaflow.cmuxterm.plist",
+    "~/Library/Preferences/com.cmux-mochi.plist",
   ]
 end
 CASKEOF
