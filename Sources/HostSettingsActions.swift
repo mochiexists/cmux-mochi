@@ -79,7 +79,7 @@ final class HostSettingsActions: SettingsHostActions {
     }
 
     func sendFeedback() {
-        guard let url = URL(string: "https://github.com/manaflow-ai/cmux/issues/new") else { return }
+        guard let url = URL(string: "https://github.com/mochiexists/cmux-mochi/issues/new") else { return }
         NSWorkspace.shared.open(url)
     }
 

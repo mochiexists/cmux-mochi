@@ -67,7 +67,7 @@ private final class CLISocketSentryTelemetry {
 #if canImport(Sentry)
     private static let startupLock = NSLock()
     private static var started = false
-    private static let dsn = "https://ecba1ec90ecaee02a102fba931b6d2b3@o4507547940749312.ingest.us.sentry.io/4510796264636416"
+    private static let dsn = "https://cf9f50c96d0e1872f0f774d70da71b1c@o4510776019910656.ingest.de.sentry.io/4511100296101968"
 
     private static func currentSentryReleaseName() -> String? {
         guard let bundleIdentifier = currentSentryBundleIdentifier(),
@@ -10998,13 +10998,13 @@ struct CMUXCLI {
         let downloadURL = entry?.downloadURL ?? "unknown"
         let checksumsAssetName = manifest?.checksumsAssetName ?? "unknown"
         let checksumsURL = manifest?.checksumsURL ?? "unknown"
-        let downloadCommand = "gh release download \(releaseTag) --repo manaflow-ai/cmux --pattern \(assetName)"
-        let downloadChecksumsCommand = "gh release download \(releaseTag) --repo manaflow-ai/cmux --pattern \(checksumsAssetName)"
+        let downloadCommand = "gh release download \(releaseTag) --repo mochiexists/cmux-mochi --pattern \(assetName)"
+        let downloadChecksumsCommand = "gh release download \(releaseTag) --repo mochiexists/cmux-mochi --pattern \(checksumsAssetName)"
         let checksumVerifyCommand = "shasum -a 256 -c \(checksumsAssetName) --ignore-missing"
         let signerWorkflow = releaseTag == "nightly"
-            ? "manaflow-ai/cmux/.github/workflows/nightly.yml"
-            : "manaflow-ai/cmux/.github/workflows/release.yml"
-        let verifyCommand = "gh attestation verify ./\(assetName) --repo manaflow-ai/cmux --signer-workflow \(signerWorkflow)"
+            ? "mochiexists/cmux-mochi/.github/workflows/nightly.yml"
+            : "mochiexists/cmux-mochi/.github/workflows/release.yml"
+        let verifyCommand = "gh attestation verify ./\(assetName) --repo mochiexists/cmux-mochi --signer-workflow \(signerWorkflow)"
 
         let payload: [String: Any] = [
             "app_version": remoteDaemonVersionString(from: info),
@@ -32749,7 +32749,7 @@ export default function cmuxPiSessionExtension(pi: ExtensionAPI) {
         print()
         print("  \(bold)Docs\(reset)\(subdued)                https://cmux.com/docs\(reset)")
         print("  \(bold)Discord\(reset)\(subdued)             https://discord.gg/xsgFEVrWCZ\(reset)")
-        print("  \(bold)GitHub\(reset)\(subdued)              https://github.com/manaflow-ai/cmux (please leave a star ⭐)\(reset)")
+        print("  \(bold)GitHub\(reset)\(subdued)              https://github.com/mochiexists/cmux-mochi (please leave a star ⭐)\(reset)")
         print("  \(bold)Email\(reset)\(subdued)               founders@manaflow.com\(reset)")
         print()
         print("  \(subdued)Run \(reset)\(bold)cmux --help\(reset)\(subdued) for all commands.\(reset)")

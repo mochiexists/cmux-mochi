@@ -8,7 +8,7 @@
 #   scripts/sign-cmux-bundle.sh \
 #     "build-universal/Build/Products/Release/cmux NIGHTLY.app" \
 #     cmux.nightly.entitlements \
-#     "Developer ID Application: Manaflow, Inc. (7WLXT3NR37)"
+#     "Developer ID Application: Atlas Codes LTD (599WAZ6282)"
 #
 # Optional env:
 #   CMUX_HELPER_ENTITLEMENTS  (default: cmux-helper.entitlements)
@@ -100,11 +100,13 @@ if [[ -n "$APP_ID" ]]; then
     exit 1
   }
 fi
-/usr/bin/codesign -d --entitlements :- "$APP_PATH" 2>&1 \
-  | grep -q "com.apple.developer.web-browser.public-key-credential" || {
-    echo "error: signed app missing web-browser entitlement" >&2
+# Fork (cmux Mochi): ships pure Developer ID with no provisioning profile, so
+# the WebAuthn browser entitlement must NOT be present (it would require one).
+if /usr/bin/codesign -d --entitlements :- "$APP_PATH" 2>&1 \
+  | grep -q "com.apple.developer.web-browser.public-key-credential"; then
+    echo "error: signed app unexpectedly carries the web-browser entitlement" >&2
     exit 1
-  }
+fi
 
 # Helpers must NOT carry the main app's application-identifier.
 for helper in "$APP_PATH/Contents/Resources/bin"/*; do

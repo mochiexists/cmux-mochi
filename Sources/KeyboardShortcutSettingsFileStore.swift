@@ -26,8 +26,8 @@ final class CmuxSettingsFileStore {
     static let shared = CmuxSettingsFileStore()
 
     static let currentSchemaVersion = 1
-    static let schemaURLString = "https://raw.githubusercontent.com/manaflow-ai/cmux/main/web/data/cmux.schema.json"
-    private static let legacySchemaURLString = "https://raw.githubusercontent.com/manaflow-ai/cmux/main/web/data/cmux-settings.schema.json"
+    static let schemaURLString = "https://raw.githubusercontent.com/mochiexists/cmux-mochi/main/web/data/cmux.schema.json"
+    private static let legacySchemaURLString = "https://raw.githubusercontent.com/mochiexists/cmux-mochi/main/web/data/cmux-settings.schema.json"
     private static let releaseBundleIdentifier = "com.cmux-mochi"
     private static let backupsDefaultsKey = "cmux.settingsFile.backups.v1"
     private static let importedManagedDefaultsDefaultsKey = "cmux.settingsFile.importedManagedDefaults.v1"
