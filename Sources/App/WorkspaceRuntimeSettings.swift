@@ -228,6 +228,63 @@ enum AgentSessionAutoResumeSettings {
     }
 }
 
+/// Selects the shell command form used when resuming an agent session.
+///
+/// `alias` emits the short, baked-in fork aliases (`cx`/`cxy`/`cc`/`ccy resume <id>`),
+/// which the cmux shell integration always defines in a cmux-spawned terminal. It is
+/// short and readable but relies on the provider session id to re-attach context.
+/// `verbose` emits the full absolute-path + env + preserved-flags form, which carries
+/// the original `--model`/`--add-dir`/env across the resume. Both forms `cd` into the
+/// recorded working directory first.
+enum AgentResumeCommandStyle: String, Sendable {
+    case alias
+    case verbose
+}
+
+enum AgentResumeCommandStyleSettings {
+    static let styleKey = "terminal.agentResumeCommandStyle"
+    static let defaultStyle: AgentResumeCommandStyle = .alias
+    static let didChangeNotification = Notification.Name("cmux.agentResumeCommandStyleDidChange")
+
+    static func style(defaults: UserDefaults = .standard) -> AgentResumeCommandStyle {
+        if let raw = defaults.string(forKey: styleKey),
+           let style = AgentResumeCommandStyle(rawValue: raw) {
+            return style
+        }
+        return defaultStyle
+    }
+
+    static var defaultStyleRawValueForStorage: String {
+        style().rawValue
+    }
+
+    static func setStyle(
+        _ style: AgentResumeCommandStyle,
+        defaults: UserDefaults = .standard,
+        notificationCenter: NotificationCenter = .default
+    ) {
+        let previous = self.style(defaults: defaults)
+        defaults.set(style.rawValue, forKey: styleKey)
+        if previous != style {
+            notificationCenter.post(name: didChangeNotification, object: nil)
+        }
+    }
+
+    @discardableResult
+    static func reset(
+        defaults: UserDefaults = .standard,
+        notificationCenter: NotificationCenter = .default
+    ) -> Bool {
+        let previous = style(defaults: defaults)
+        defaults.removeObject(forKey: styleKey)
+        let didChange = previous != style(defaults: defaults)
+        if didChange {
+            notificationCenter.post(name: didChangeNotification, object: nil)
+        }
+        return didChange
+    }
+}
+
 enum RightSidebarBetaFeatureSettings {
     static let dockEnabledKey = "rightSidebar.beta.dock.enabled"
 

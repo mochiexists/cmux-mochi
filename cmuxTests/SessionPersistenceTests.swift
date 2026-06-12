@@ -1949,7 +1949,10 @@ final class SocketListenerAcceptPolicyTests: XCTestCase {
             )
         )
 
-        let input = try XCTUnwrap(snapshot.resumeStartupInput(temporaryDirectory: tempDir))
+        // Verbose style preserves the original flags (--add-dir <longPath>), so the
+        // command is large enough to exercise the launcher-script fallback. The
+        // short alias style never reaches this path (covered separately below).
+        let input = try XCTUnwrap(snapshot.resumeStartupInput(style: .verbose, temporaryDirectory: tempDir))
         XCTAssertLessThanOrEqual(input.utf8.count, SessionRestorableAgentSnapshot.maxInlineStartupInputBytes)
         XCTAssertTrue(input.hasPrefix("/bin/zsh '"))
         XCTAssertFalse(input.contains(longPath))
@@ -1998,7 +2001,50 @@ final class SocketListenerAcceptPolicyTests: XCTestCase {
             )
         )
 
-        XCTAssertNil(snapshot.resumeStartupInput(temporaryDirectory: blockedDirectory))
+        // Verbose style produces the oversized command; with the script directory
+        // unwritable there is no inline-safe fallback, so the input is nil.
+        XCTAssertNil(snapshot.resumeStartupInput(style: .verbose, temporaryDirectory: blockedDirectory))
+    }
+
+    func testRestorableAgentStartupInputUsesShortInlineAliasEvenWhenLaunchArgsAreOversized() throws {
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("cmux-agent-resume-test-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let longPath = "/tmp/" + String(repeating: "nested-path-", count: 120)
+        let snapshot = SessionRestorableAgentSnapshot(
+            kind: .codex,
+            sessionId: "019dad34-d218-7943-b81a-eddac5c87951",
+            workingDirectory: "/tmp/repo",
+            launchCommand: AgentLaunchCommandSnapshot(
+                launcher: "codex",
+                executablePath: "/Users/example/.bun/bin/codex",
+                arguments: [
+                    "/Users/example/.bun/bin/codex",
+                    "--model",
+                    "gpt-5.4",
+                    "--add-dir",
+                    longPath,
+                    "initial prompt should not replay"
+                ],
+                workingDirectory: "/tmp/repo",
+                environment: ["CODEX_HOME": "/tmp/codex"],
+                capturedAt: 123,
+                source: "environment"
+            )
+        )
+
+        // Alias style ignores the oversized original flags and emits the short,
+        // inline `cd <cwd> && cxy resume <id>` form — no launcher script needed.
+        let input = try XCTUnwrap(snapshot.resumeStartupInput(style: .alias, temporaryDirectory: tempDir))
+        XCTAssertFalse(input.hasPrefix("/bin/zsh '"))
+        XCTAssertFalse(input.contains(longPath))
+        // No bypass/yolo flag in the launch args -> non-yolo alias `cx`.
+        XCTAssertEqual(
+            input,
+            "cd '/tmp/repo' && cx 'resume' '019dad34-d218-7943-b81a-eddac5c87951'\n"
+        )
     }
 
     func testClaudeResumeCommandUsesYoloAliasWhenSkipPermissionsFlagPresent() {

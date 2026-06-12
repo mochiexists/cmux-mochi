@@ -16697,14 +16697,49 @@ class TerminalController {
         // both scenarios paste byte-identical text. resumePreparedStartupInput()
         // returns the command WITHOUT a trailing newline (pre-typed, un-run).
         let index = RestorableAgentSessionIndex.load()
-        guard let snapshot = index.snapshot(workspaceId: workspaceId, panelId: panelId),
-              let resumeText = snapshot.resumePreparedStartupInput(),
+        guard let snapshot = index.snapshot(workspaceId: workspaceId, panelId: panelId) else {
+            // No record for this pane (e.g. index pruned). Release the guard so a
+            // later valid event can still stage.
+            releaseAgentResumePasteGuard(sessionId)
+            return "OK"
+        }
+
+        // Correctness guard: the resume command is built from the pane's recorded
+        // snapshot, but the hook reported a specific session id that just exited.
+        // If they disagree the index has drifted (a different/newer session is now
+        // recorded for this pane) and pasting would resume the WRONG session into a
+        // live terminal. Refuse to paste and report it so resume-targeting
+        // regressions surface instead of silently mis-resuming.
+        guard Self.agentResumePasteSessionMatches(
+            snapshotSessionId: snapshot.sessionId,
+            hookSessionId: sessionId
+        ) else {
+            sentryCaptureError(
+                "agent resume paste session mismatch",
+                category: "agent.resume",
+                data: [
+                    "expected_session": sessionId,
+                    "snapshot_session": snapshot.sessionId,
+                    "workspace": workspaceId.uuidString,
+                    "panel": panelId.uuidString,
+                    "kind": snapshot.kind.rawValue
+                ],
+                contextKey: "agent_resume_paste"
+            )
+#if DEBUG
+            cmuxDebugLog(
+                "agent.resume_paste.session_mismatch expected=\(sessionId.prefix(8)) snapshot=\(snapshot.sessionId.prefix(8)) surface=\(panelId.uuidString.prefix(8))"
+            )
+#endif
+            releaseAgentResumePasteGuard(sessionId)
+            return "OK"
+        }
+
+        guard let resumeText = snapshot.resumePreparedStartupInput(),
               !resumeText.isEmpty else {
-            // Nothing to paste (e.g. record gone or command too large). Release the
+            // Nothing to paste (e.g. command too large for inline input). Release the
             // guard so a later valid event can still stage.
-            Self.agentResumePasteLock.lock()
-            Self.stagedAgentResumeSessions.remove(sessionId)
-            Self.agentResumePasteLock.unlock()
+            releaseAgentResumePasteGuard(sessionId)
             return "OK"
         }
 
@@ -16727,6 +16762,25 @@ class TerminalController {
             )
         }
         return "OK"
+    }
+
+    /// Whether a staged resume paste targets the same session the hook reported.
+    /// Both ids are trimmed so stray whitespace does not trigger a false mismatch
+    /// (and a spurious Sentry report). A real mismatch means the pane's recorded
+    /// session has drifted from the one that exited — pasting would mis-resume.
+    nonisolated static func agentResumePasteSessionMatches(
+        snapshotSessionId: String,
+        hookSessionId: String
+    ) -> Bool {
+        snapshotSessionId.trimmingCharacters(in: .whitespacesAndNewlines)
+            == hookSessionId.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// Release the per-session staging token so a later valid stage event can run.
+    private func releaseAgentResumePasteGuard(_ sessionId: String) {
+        Self.agentResumePasteLock.lock()
+        Self.stagedAgentResumeSessions.remove(sessionId)
+        Self.agentResumePasteLock.unlock()
     }
 
     private func agentProcessIsAlive(_ pid: pid_t) -> Bool {
