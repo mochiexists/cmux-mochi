@@ -810,7 +810,7 @@ def test_install_registers_codex_thread_unsubscribe_session_end_hook(
     if "matcher" in groups[-1]:
         raise AssertionError(f"ThreadUnsubscribe must be matcher-less: {groups[-1]!r}")
     command = groups[-1]["hooks"][0]["command"]
-    if "cmux hooks codex session-end" not in command:
+    if cmux_codex_hook_command("session-end") not in command:
         raise AssertionError(f"wrong ThreadUnsubscribe command: {command!r}")
 
     # The lifecycle hook must be pre-trusted in config.toml so Codex runs it
