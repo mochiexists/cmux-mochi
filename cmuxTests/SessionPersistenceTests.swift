@@ -14,6 +14,24 @@ final class SessionPersistenceTests: XCTestCase {
         let display: SessionDisplaySnapshot?
     }
 
+    // This suite predates the tri-state agent resume mode and was authored
+    // against the historical auto-resume-on default (now `.full`). The fork
+    // ships `.medium` (pre-type, don't auto-run) as the default, so restore the
+    // auto-run assumption for the suite; tests that exercise medium/off set the
+    // mode explicitly and override this.
+    override func setUp() {
+        super.setUp()
+        UserDefaults.standard.set(
+            AgentSessionResumeMode.full.rawValue,
+            forKey: AgentSessionAutoResumeSettings.modeKey
+        )
+    }
+
+    override func tearDown() {
+        UserDefaults.standard.removeObject(forKey: AgentSessionAutoResumeSettings.modeKey)
+        super.tearDown()
+    }
+
     @MainActor
     func testWorkspaceSessionSnapshotRestoresMarkdownPanel() throws {
         let root = FileManager.default.temporaryDirectory
