@@ -58,30 +58,24 @@ final class MochiFeatureTests: XCTestCase {
         wait(for: [expectation], timeout: 1)
     }
 
-    // MARK: - #1b AgentResumeSubmitSettings
+    // MARK: - #1b agent resume prefill (now the tri-state resume mode)
 
-    func testAgentResumeSubmitDefaultsToPrefillNotAutoSubmit() throws {
-        let suiteName = "cmux-agent-resume-submit-\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
-        defer { defaults.removePersistentDomain(forName: suiteName) }
-
-        XCTAssertEqual(
-            AgentResumeSubmitSettings.autoSubmitKey,
-            "terminal.autoSubmitAgentResumeCommand"
-        )
-        // Default is prefill-only: the resume command is inserted but not sent.
-        XCTAssertFalse(AgentResumeSubmitSettings.autoSubmits(defaults: defaults))
+    func testAgentResumeMediumPrefillsWithoutSubmitting() throws {
+        // Medium (the default) prefills the resume command but does not submit it —
+        // the prefill-not-auto-submit behavior #1b introduced, now folded into the
+        // tri-state resume mode.
+        XCTAssertEqual(AgentSessionAutoResumeSettings.defaultMode, .medium)
+        XCTAssertTrue(AgentSessionResumeMode.medium.prefillsResumeCommand)
+        XCTAssertFalse(AgentSessionResumeMode.medium.submitsResumeCommand)
     }
 
-    func testAgentResumeSubmitCanOptIntoAutoSubmit() throws {
-        let suiteName = "cmux-agent-resume-submit-\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
-        defer { defaults.removePersistentDomain(forName: suiteName) }
-
-        AgentResumeSubmitSettings.setAutoSubmits(true, defaults: defaults)
-        XCTAssertTrue(AgentResumeSubmitSettings.autoSubmits(defaults: defaults))
-        AgentResumeSubmitSettings.setAutoSubmits(false, defaults: defaults)
-        XCTAssertFalse(AgentResumeSubmitSettings.autoSubmits(defaults: defaults))
+    func testAgentResumeFullPrefillsAndSubmits() throws {
+        // Full opts into auto-running the resume command (prefill + submit).
+        XCTAssertTrue(AgentSessionResumeMode.full.prefillsResumeCommand)
+        XCTAssertTrue(AgentSessionResumeMode.full.submitsResumeCommand)
+        // Off neither prefills nor submits.
+        XCTAssertFalse(AgentSessionResumeMode.off.prefillsResumeCommand)
+        XCTAssertFalse(AgentSessionResumeMode.off.submitsResumeCommand)
     }
 
     // MARK: - #4 PanelType.taskManager
@@ -148,20 +142,23 @@ final class MochiFeatureTests: XCTestCase {
         )
     }
 
-    func testScrollbackPersistGatedByCloseConfirmation() {
-        // Idle prompt → no close confirmation → safe to persist passively.
+    func testScrollbackPersistForRestoreKeepsLiveContent() {
+        // The live-TUI fix: persistence is no longer gated on close-confirmation
+        // or agent recognition. A live terminal with no restorable agent (e.g. an
+        // open Claude TUI never detected as an agent) must still persist — the old
+        // gate dropped exactly that content and left the reopened window blank.
         XCTAssertTrue(
-            Workspace.shouldPersistSessionScrollback(
-                shellActivityState: .promptIdle,
-                fallbackNeedsConfirmClose: false
+            Workspace.shouldPersistSessionScrollbackForRestore(
+                restorableAgent: nil,
+                tmuxStartCommand: nil
             )
         )
-        // Running command → would confirm close → passive persistence backs off
-        // (the unsafe-capture path on hard quit covers this case instead).
+        // The one intentional suppression: an OMX-HUD tmux restart with no
+        // restorable agent, where a replayed scrollback would fight the restart.
         XCTAssertFalse(
-            Workspace.shouldPersistSessionScrollback(
-                shellActivityState: .commandRunning,
-                fallbackNeedsConfirmClose: false
+            Workspace.shouldPersistSessionScrollbackForRestore(
+                restorableAgent: nil,
+                tmuxStartCommand: "omx hud --foo"
             )
         )
     }

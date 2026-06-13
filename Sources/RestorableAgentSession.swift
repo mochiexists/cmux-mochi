@@ -1197,17 +1197,6 @@ struct RestorableAgentSessionIndex: Sendable {
             CmuxTopProcessSnapshot.processArgumentsAndEnvironment(for: $0)
         }
     ) -> RestorableAgentSessionIndex {
-        // Lazily capture a process snapshot the first time a record needs a
-        // liveness check, so the synchronous load() path (no shared snapshot)
-        // only scans the process table when there is actually something to
-        // validate.
-        var cachedProcessSnapshot = suppliedProcessSnapshot
-        func liveProcessSnapshot() -> CmuxTopProcessSnapshot {
-            if let cachedProcessSnapshot { return cachedProcessSnapshot }
-            let captured = CmuxTopProcessSnapshot.capture(includeProcessDetails: false)
-            cachedProcessSnapshot = captured
-            return captured
-        }
         let decoder = JSONDecoder()
         var resolved: [PanelKey: Entry] = [:]
         let claudeTranscriptLookup = ClaudeTranscriptLookupCache(
