@@ -916,7 +916,7 @@ final class KeyboardShortcutSettingsFileStoreStartupTests: XCTestCase {
     func testInitialSettingsFileLoadImportsDefaultsWithoutLiveDefaultNotifications() throws {
         let defaults = UserDefaults.standard
         let scrollBarKey = TerminalScrollBarSettings.showScrollBarKey
-        let autoResumeKey = AgentSessionAutoResumeSettings.autoResumeAgentSessionsKey
+        let autoResumeKey = AgentSessionAutoResumeSettings.modeKey
 
         try preservingDefaults(keys: [
             scrollBarKey,
@@ -938,7 +938,7 @@ final class KeyboardShortcutSettingsFileStoreStartupTests: XCTestCase {
                 {
                   "terminal": {
                     "showScrollBar": false,
-                    "autoResumeAgentSessions": false
+                    "agentResumeMode": "off"
                   }
                 }
                 """,
@@ -976,7 +976,7 @@ final class KeyboardShortcutSettingsFileStoreStartupTests: XCTestCase {
             )
 
             XCTAssertEqual(defaults.object(forKey: scrollBarKey) as? Bool, false)
-            XCTAssertEqual(defaults.object(forKey: autoResumeKey) as? Bool, false)
+            XCTAssertEqual(defaults.string(forKey: autoResumeKey), AgentSessionResumeMode.off.rawValue)
             XCTAssertEqual(scrollBarNotificationCount, 0)
             XCTAssertEqual(autoResumeNotificationCount, 0)
 
@@ -1370,6 +1370,8 @@ final class KeyboardShortcutSettingsFileStoreStartupTests: XCTestCase {
                 TerminalTextBoxInputSettings.defaultMaxLines
             )
         }
+    }
+
     func testSettingsFileStoreAppliesTerminalScrollbackAutosave() throws {
         let defaults = UserDefaults.standard
         let key = TerminalScrollbackAutosaveSettings.enabledKey

@@ -29057,7 +29057,7 @@ export default function cmuxPiSessionExtension(pi: ExtensionAPI) {
                     launchCommand: launchCommand,
                     agentLifecycle: .unknown,
                     runtimeStatus: suppressVisibleMutations ? nil : .running,
-                    updateRuntimeStatus: !suppressVisibleMutations
+                    updateRuntimeStatus: !suppressVisibleMutations,
                     markActive: markActiveForCodex,
                     turnId: input.turnId,
                     allowsNewSessionReplacement: markActiveForCodex

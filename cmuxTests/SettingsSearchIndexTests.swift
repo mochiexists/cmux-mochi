@@ -67,6 +67,9 @@ final class SettingsSearchIndexTests: XCTestCase {
         XCTAssertEqual(
             SettingsSearchIndex.anchorID(forSettingsPath: "terminal.focusTextBoxOnNewTerminals"),
             SettingsSearchIndex.settingID(for: .textBox, idSuffix: "focus-textbox-new-terminals")
+        )
+    }
+
     func testSettingsPathAnchorIncludesScrollbackAutosave() {
         XCTAssertEqual(
             SettingsSearchIndex.anchorID(forSettingsPath: "terminal.autosaveScrollback"),
