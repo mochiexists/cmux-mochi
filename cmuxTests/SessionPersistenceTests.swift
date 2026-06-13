@@ -18,13 +18,31 @@ final class SessionPersistenceTests: XCTestCase {
         let display: SessionDisplaySnapshot?
     }
 
+    // This suite predates the tri-state agent resume mode and was authored
+    // against the historical auto-resume-on default (now `.full`). The fork
+    // ships `.medium` (pre-type, don't auto-run) as the default, so restore the
+    // auto-run assumption for the suite; tests that exercise medium/off set the
+    // mode explicitly and override this.
+    override func setUp() {
+        super.setUp()
+        UserDefaults.standard.set(
+            AgentSessionResumeMode.full.rawValue,
+            forKey: AgentSessionAutoResumeSettings.modeKey
+        )
+    }
+
+    override func tearDown() {
+        UserDefaults.standard.removeObject(forKey: AgentSessionAutoResumeSettings.modeKey)
+        super.tearDown()
+    }
+
     /// Builds the session snapshot repository under test. The legacy
     /// `SessionPersistenceStore` namespace enum took `bundleIdentifier` /
     /// `appSupportDirectory` per call; `SessionSnapshotRepository` binds them
     /// at construction, so each test constructs the store with the same
     /// scoping it previously passed per call.
     private func sessionStore(
-        bundleIdentifier: String? = "com.cmuxterm.tests",
+        bundleIdentifier: String? = "com.cmux-mochi.tests",
         appSupportDirectory: URL? = nil
     ) -> SessionSnapshotRepository<AppSessionSnapshot> {
         SessionSnapshotRepository(
