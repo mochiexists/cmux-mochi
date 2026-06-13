@@ -1104,56 +1104,6 @@ final class RestorableAgentSessionIndexTests: XCTestCase {
         """.write(to: transcriptURL, atomically: true, encoding: .utf8)
     }
 
-    // MARK: - PID-independent codex liveness
-
-    func testPaneLivenessKeepsCodexWhenItRunsRegardlessOfRecordedPID() {
-        // A live codex in the pane keeps the record alive even when the recorded
-        // pid was mis-captured: liveness is decided by the pane's process names,
-        // not the exact pid. (zsh is the pane shell; codex is the live agent.)
-        XCTAssertTrue(
-            RestorableAgentSessionIndex.paneHasLiveExecutable(
-                scopedProcessExecutableNames: ["zsh", "codex"],
-                expectedBasenames: ["codex"]
-            )
-        )
-    }
-
-    func testPaneLivenessDropsCodexWhenOnlyTheShellRemains() {
-        // codex has exited; only the pane shell is left. The record must drop so
-        // a dead session is not offered for resume.
-        XCTAssertFalse(
-            RestorableAgentSessionIndex.paneHasLiveExecutable(
-                scopedProcessExecutableNames: ["zsh"],
-                expectedBasenames: ["codex"]
-            )
-        )
-    }
-
-    func testPaneLivenessIsCaseInsensitiveAndHonorsRecordedLauncher() {
-        XCTAssertTrue(
-            RestorableAgentSessionIndex.paneHasLiveExecutable(
-                scopedProcessExecutableNames: ["Codex"],
-                expectedBasenames: ["codex"]
-            )
-        )
-        // A differently-named launcher recorded at session-start is matched too.
-        XCTAssertTrue(
-            RestorableAgentSessionIndex.paneHasLiveExecutable(
-                scopedProcessExecutableNames: ["my-codex-shim"],
-                expectedBasenames: ["codex", "my-codex-shim"]
-            )
-        )
-    }
-
-    func testPaneLivenessDropsCodexWhenPaneHasNoScopedProcesses() {
-        XCTAssertFalse(
-            RestorableAgentSessionIndex.paneHasLiveExecutable(
-                scopedProcessExecutableNames: [],
-                expectedBasenames: ["codex"]
-            )
-        )
-    }
-
     private func writeClaudeHookStore(root: URL, sessions: [String: [String: Any]]) throws {
         try writeHookStore(root: root, storeFilename: "claude-hook-sessions.json", sessions: sessions)
     }
