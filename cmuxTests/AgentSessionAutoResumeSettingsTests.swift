@@ -196,6 +196,68 @@ final class AgentSessionAutoResumeSettingsTests: XCTestCase {
         XCTAssertNil(restoredMedium.sessionSnapshot(includeScrollback: false).panels.first?.terminal?.agent)
     }
 
+    /// Regression: an agent launched through cmux records an upstream
+    /// `agent-hook` resume binding with `autoResume == true`, which on restore
+    /// produces an auto-running `.command` launch and bypasses the fork's
+    /// tri-state resume mode entirely. Medium (the fork default) must still
+    /// PRE-TYPE the resume command — not auto-run it — when such a binding is
+    /// present. Without the reconciliation fix the binding wins and nothing is
+    /// pre-typed (the command auto-executes instead).
+    @MainActor
+    func testMediumPrefillsEvenWhenAutoResumeBindingPresent() throws {
+        let defaults = UserDefaults.standard
+        let key = AgentSessionAutoResumeSettings.modeKey
+        let legacyKey = AgentSessionAutoResumeSettings.legacyAutoResumeAgentSessionsKey
+        let previous = defaults.object(forKey: key)
+        let previousLegacy = defaults.object(forKey: legacyKey)
+        defer {
+            if let previous { defaults.set(previous, forKey: key) } else { defaults.removeObject(forKey: key) }
+            if let previousLegacy {
+                defaults.set(previousLegacy, forKey: legacyKey)
+            } else {
+                defaults.removeObject(forKey: legacyKey)
+            }
+        }
+
+        let source = Workspace()
+        let sourcePanelId = try XCTUnwrap(source.focusedPanelId)
+        let sourceIndex = try makeRestorableAgentIndex(
+            workspaceId: source.id,
+            panelId: sourcePanelId,
+            sessionId: "codex-binding-prefill-session"
+        )
+        var snapshot = source.sessionSnapshot(includeScrollback: false, restorableAgentIndex: sourceIndex)
+        let preparedResumeInput = try XCTUnwrap(
+            snapshot.panels.first?.terminal?.agent?.resumePreparedStartupInput()
+        )
+        // Inject upstream's auto-running agent-hook resume binding alongside the
+        // restorable agent — exactly what cmux records for a hook-launched agent.
+        snapshot.panels[0].terminal?.resumeBinding = SurfaceResumeBindingSnapshot(
+            kind: "codex",
+            command: "codex resume codex-binding-prefill-session",
+            cwd: "/tmp/repo",
+            source: "agent-hook",
+            autoResume: true,
+            approvalPolicy: .auto
+        )
+
+        defaults.set(AgentSessionResumeMode.medium.rawValue, forKey: key)
+        let restored = Workspace()
+        restored.restoreSessionSnapshot(snapshot)
+        let panelId = try XCTUnwrap(restored.focusedPanelId)
+        let panel = try XCTUnwrap(restored.terminalPanel(for: panelId))
+        let input = panel.surface.debugInitialInputMetadata()
+        XCTAssertTrue(
+            input.hasInitialInput,
+            "Medium must pre-type the resume command even when an auto-resume binding is present"
+        )
+        XCTAssertEqual(
+            input.byteCount,
+            preparedResumeInput.utf8.count,
+            "Medium must pre-type WITHOUT submitting (no trailing newline)"
+        )
+    }
+
     private func makeRestorableAgentIndex(
         workspaceId: UUID,
         panelId: UUID,
