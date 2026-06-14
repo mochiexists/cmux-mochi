@@ -2596,7 +2596,8 @@ final class Workspace: Identifiable, ObservableObject {
     @Published private(set) var surfaceTabBarDirectory: String?
     private(set) var preferredBrowserProfileID: UUID?
 
-    /// Token for the BrowserLaunchTargetSettings change observer; removed in deinit.
+    /// Token for the BrowserAvailabilitySettings change observer (drives the New
+    /// Browser button glow); removed in deinit.
     private var browserLaunchTargetObserver: NSObjectProtocol?
 
     /// Ordinal for CMUX_PORT range assignment (monotonically increasing per app session)
@@ -3452,6 +3453,10 @@ final class Workspace: Identifiable, ObservableObject {
 
         // Right-clicking the New Browser button shows a checkable
         // "Open in External Browser" item; ticking it tints (glows) the button.
+        // This is the single control for external-vs-in-app: it drives the
+        // global `BrowserAvailabilitySettings` (disable the cmux in-app browser),
+        // which routes every web open — the New Browser button, agent/CLI
+        // `open <url|file.html>`, and ⌘-clicked links — to the system browser.
         bonsplitController.splitButtonContextToggleProvider = { action in
             guard action == .newBrowser else { return nil }
             return SplitButtonContextToggle(
@@ -3459,17 +3464,17 @@ final class Workspace: Identifiable, ObservableObject {
                     localized: "browser.openInExternalBrowser.menu",
                     defaultValue: "Open in External Browser"
                 ),
-                isOn: BrowserLaunchTargetSettings.opensExternally(),
-                onToggle: { BrowserLaunchTargetSettings.setOpensExternally($0) }
+                isOn: BrowserAvailabilitySettings.isDisabled(),
+                onToggle: { BrowserAvailabilitySettings.setDisabled($0) }
             )
         }
 
-        // Seed the browser button glow from the persisted launch-target setting,
-        // and keep it in sync when the setting is toggled (here or in any other
-        // workspace/window).
+        // Seed the browser button glow from the persisted setting, and keep it in
+        // sync when the in-app browser is enabled/disabled (here, via the Command
+        // Palette, or in any other workspace/window).
         syncBrowserButtonHighlight()
         browserLaunchTargetObserver = NotificationCenter.default.addObserver(
-            forName: BrowserLaunchTargetSettings.didChangeNotification,
+            forName: BrowserAvailabilitySettings.didChangeNotification,
             object: nil,
             queue: .main
         ) { [weak self] _ in
@@ -12058,7 +12063,7 @@ extension Workspace: BonsplitDelegate {
         case "terminal":
             _ = newTerminalSurface(inPane: pane, inheritWorkingDirectoryFallback: true)
         case "browser":
-            if BrowserLaunchTargetSettings.opensExternally() {
+            if BrowserAvailabilitySettings.isDisabled() {
                 Workspace.openExternalDefaultBrowser()
             } else {
                 _ = newBrowserSurface(inPane: pane)
@@ -12069,10 +12074,11 @@ extension Workspace: BonsplitDelegate {
     }
 
 
-    /// Reflect the persisted browser launch target on the tab bar button glow.
+    /// Glow the New Browser button while the cmux in-app browser is disabled
+    /// (i.e. "Open in External Browser" mode), so the active control is visible.
     func syncBrowserButtonHighlight() {
         let raw = BonsplitConfiguration.SplitActionButton.Action.newBrowser.rawValue
-        if BrowserLaunchTargetSettings.opensExternally() {
+        if BrowserAvailabilitySettings.isDisabled() {
             bonsplitController.highlightedSplitButtonActions.insert(raw)
         } else {
             bonsplitController.highlightedSplitButtonActions.remove(raw)
