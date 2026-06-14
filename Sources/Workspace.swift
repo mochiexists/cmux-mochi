@@ -1234,7 +1234,7 @@ extension Workspace {
             let remoteStartupCommand = remoteTerminalStartupCommand()
             let restoresRemoteWorkspaceTerminalSnapshot = remoteStartupCommand != nil && snapshot.terminal?.isRemoteTerminal != false
             let restoresLocalTerminalInRemoteWorkspace = remoteStartupCommand != nil && snapshot.terminal?.isRemoteTerminal == false
-            let restoredBindingLaunch: SurfaceResumeStartupLaunch? = if restoresRemoteWorkspaceTerminalSnapshot {
+            let restoredBindingLaunchRaw: SurfaceResumeStartupLaunch? = if restoresRemoteWorkspaceTerminalSnapshot {
                 effectiveResumeBindingForStartup?.remoteStartupInputWithLauncherScript(allowLauncherScript: false)
                     .map(SurfaceResumeStartupLaunch.input)
             } else if restoresLocalTerminalInRemoteWorkspace {
@@ -1248,6 +1248,20 @@ extension Workspace {
                     )
                 }
             }
+            // Resume-mode reconciliation: upstream's agent-hook resume binding
+            // auto-runs the resume command on restore (it produces a `.command`
+            // launch). In medium mode — the fork default — the user wants the
+            // resume command PRE-TYPED for them to submit, not executed. When we
+            // also hold a restorable agent that can supply the prepared (alias,
+            // no-newline) prefill, drop the auto-running binding launch so the
+            // tri-state medium branch below pre-types the clean command instead.
+            // Full mode keeps auto-running; off is already suppressed in
+            // approvedSurfaceResumeBinding via autoResumeAgentSessions.
+            let mediumPrefersAgentPrefill =
+                resumeMode == .medium
+                && effectiveResumeBindingForStartup?.isAgentHookBinding == true
+                && restorableAgent?.resumePreparedStartupInput() != nil
+            let restoredBindingLaunch = mediumPrefersAgentPrefill ? nil : restoredBindingLaunchRaw
             let effectiveResumeBinding = restoredBindingLaunch == nil ? nil : resumeBinding
             let savedWorkingDirectory =
                 effectiveResumeBinding?.cwd
@@ -1272,14 +1286,16 @@ extension Workspace {
                         restorableAgent?.resumeStartupInput(allowLauncherScript: false, allowOversizedInlineInput: true)
                             .map(SurfaceResumeStartupLaunch.input)
                     } else if resumeMode == .medium {
-                        // Medium: pre-type the resume command into the terminal
-                        // input instead of executing a launcher script, so the
-                        // user chooses which restored sessions to start.
-                        restorableAgent?.resumeStartupInput(allowLauncherScript: false)
+                        // Medium: pre-type the resume command (no trailing newline)
+                        // into the terminal input so the user chooses which restored
+                        // sessions to start by pressing Enter.
+                        restorableAgent?.resumePreparedStartupInput()
                             .map(SurfaceResumeStartupLaunch.input)
                     } else {
-                        restorableAgent?.resumeStartupCommand()
-                            .map(SurfaceResumeStartupLaunch.command)
+                        // Full: pre-type AND submit the resume command — the input
+                        // carries a trailing newline so it auto-runs on restore.
+                        restorableAgent?.resumeStartupInput()
+                            .map(SurfaceResumeStartupLaunch.input)
                     }
                 } else {
                     nil
@@ -1360,7 +1376,10 @@ extension Workspace {
                 (restoredBindingLaunch?.initialCommand != nil && resumeBinding?.isAgentHookBinding == true)
             )
             let restoredAgentWillRunStartupInput = restorableAgent != nil && (
-                restoredAgentResumeLaunch?.initialInput != nil ||
+                // Snapshot-agent resume input auto-runs only in full mode (it carries
+                // a trailing newline); medium pre-types it for the user to submit, so
+                // medium stays "manual resume available", not "awaiting".
+                (restoredAgentResumeLaunch?.initialInput != nil && resumeMode.submitsResumeCommand) ||
                 (restoredBindingLaunch?.initialInput != nil && resumeBinding?.isAgentHookBinding == true)
             )
 #if DEBUG
