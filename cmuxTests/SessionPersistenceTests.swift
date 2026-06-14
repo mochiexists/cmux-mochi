@@ -1,6 +1,9 @@
 import CMUXAgentLaunch
+import CmuxSession
+import CmuxCore
 import Darwin
 import XCTest
+import CmuxTerminal
 
 #if canImport(cmux_DEV)
 @testable import cmux_DEV
@@ -30,6 +33,22 @@ final class SessionPersistenceTests: XCTestCase {
     override func tearDown() {
         UserDefaults.standard.removeObject(forKey: AgentSessionAutoResumeSettings.modeKey)
         super.tearDown()
+    }
+
+    /// Builds the session snapshot repository under test. The legacy
+    /// `SessionPersistenceStore` namespace enum took `bundleIdentifier` /
+    /// `appSupportDirectory` per call; `SessionSnapshotRepository` binds them
+    /// at construction, so each test constructs the store with the same
+    /// scoping it previously passed per call.
+    private func sessionStore(
+        bundleIdentifier: String? = "com.cmux-mochi.tests",
+        appSupportDirectory: URL? = nil
+    ) -> SessionSnapshotRepository<AppSessionSnapshot> {
+        SessionSnapshotRepository(
+            schemaVersion: SessionSnapshotSchema.currentVersion,
+            bundleIdentifier: bundleIdentifier,
+            appSupportDirectory: appSupportDirectory
+        )
     }
 
     @MainActor
@@ -192,10 +211,11 @@ final class SessionPersistenceTests: XCTestCase {
 
         let snapshotURL = tempDir.appendingPathComponent("session.json", isDirectory: false)
         let snapshot = makeSnapshot(version: SessionSnapshotSchema.currentVersion)
+        let store = sessionStore()
 
-        XCTAssertTrue(SessionPersistenceStore.save(snapshot, fileURL: snapshotURL))
+        XCTAssertTrue(store.save(snapshot, fileURL: snapshotURL))
 
-        let loaded = SessionPersistenceStore.load(fileURL: snapshotURL)
+        let loaded = store.load(fileURL: snapshotURL)
         XCTAssertNotNil(loaded)
         XCTAssertEqual(loaded?.version, SessionSnapshotSchema.currentVersion)
         XCTAssertEqual(loaded?.windows.count, 1)
@@ -217,48 +237,30 @@ final class SessionPersistenceTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: tempDir) }
 
         let bundleIdentifier = "dev.cmux.tests.\(UUID().uuidString)"
-        let activeSnapshotURL = try XCTUnwrap(
-            SessionPersistenceStore.defaultSnapshotFileURL(
-                bundleIdentifier: bundleIdentifier,
-                appSupportDirectory: tempDir
-            )
-        )
-        let previousSnapshotURL = try XCTUnwrap(
-            SessionPersistenceStore.manualRestoreSnapshotFileURL(
-                bundleIdentifier: bundleIdentifier,
-                appSupportDirectory: tempDir
-            )
-        )
+        let store = sessionStore(bundleIdentifier: bundleIdentifier, appSupportDirectory: tempDir)
+        let activeSnapshotURL = try XCTUnwrap(store.defaultSnapshotFileURL())
+        let previousSnapshotURL = try XCTUnwrap(store.manualRestoreSnapshotFileURL())
 
         XCTAssertTrue(
-            SessionPersistenceStore.save(
+            store.save(
                 makeSnapshot(version: SessionSnapshotSchema.currentVersion),
                 fileURL: activeSnapshotURL
             )
         )
-        XCTAssertNil(
-            SessionPersistenceStore.loadReopenSessionSnapshot(
-                bundleIdentifier: bundleIdentifier,
-                appSupportDirectory: tempDir
-            )
-        )
+        XCTAssertNil(store.loadReopenSessionSnapshot(fileURL: nil))
 
         var previousSnapshot = makeSnapshot(version: SessionSnapshotSchema.currentVersion)
         previousSnapshot.windows[0].sidebar.width = 321
-        XCTAssertTrue(SessionPersistenceStore.save(previousSnapshot, fileURL: previousSnapshotURL))
+        XCTAssertTrue(store.save(previousSnapshot, fileURL: previousSnapshotURL))
 
-        let loaded = try XCTUnwrap(
-            SessionPersistenceStore.loadReopenSessionSnapshot(
-                bundleIdentifier: bundleIdentifier,
-                appSupportDirectory: tempDir
-            )
-        )
+        let loaded = try XCTUnwrap(store.loadReopenSessionSnapshot(fileURL: nil))
         XCTAssertEqual(loaded.windows.first?.sidebar.width, 321)
     }
 
     private struct SnapshotBackupFixture {
         let tempDir: URL
         let bundleIdentifier: String
+        let store: SessionSnapshotRepository<AppSessionSnapshot>
         let primaryURL: URL
         let backupURL: URL
 
@@ -276,23 +278,15 @@ final class SessionPersistenceTests: XCTestCase {
             .appendingPathComponent("cmux-session-tests-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
         let bundleIdentifier = "dev.cmux.tests.\(UUID().uuidString)"
+        let store = sessionStore(bundleIdentifier: bundleIdentifier, appSupportDirectory: tempDir)
         let fixture = SnapshotBackupFixture(
             tempDir: tempDir,
             bundleIdentifier: bundleIdentifier,
-            primaryURL: try XCTUnwrap(
-                SessionPersistenceStore.defaultSnapshotFileURL(
-                    bundleIdentifier: bundleIdentifier,
-                    appSupportDirectory: tempDir
-                )
-            ),
-            backupURL: try XCTUnwrap(
-                SessionPersistenceStore.manualRestoreSnapshotFileURL(
-                    bundleIdentifier: bundleIdentifier,
-                    appSupportDirectory: tempDir
-                )
-            )
+            store: store,
+            primaryURL: try XCTUnwrap(store.defaultSnapshotFileURL()),
+            backupURL: try XCTUnwrap(store.manualRestoreSnapshotFileURL())
         )
-        XCTAssertTrue(SessionPersistenceStore.save(backupSnapshot, fileURL: fixture.backupURL))
+        XCTAssertTrue(store.save(backupSnapshot, fileURL: fixture.backupURL))
         return fixture
     }
 
@@ -303,13 +297,10 @@ final class SessionPersistenceTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: fixture.tempDir) }
         try fixture.writeCorruptPrimary()
 
-        SessionPersistenceStore.syncManualRestoreSnapshotCache(
-            bundleIdentifier: fixture.bundleIdentifier,
-            appSupportDirectory: fixture.tempDir
-        )
+        fixture.store.syncManualRestoreSnapshotCache()
 
         XCTAssertNotNil(
-            SessionPersistenceStore.load(fileURL: fixture.backupURL),
+            fixture.store.load(fileURL: fixture.backupURL),
             "A corrupt primary snapshot must not destroy the restore-session backup"
         )
     }
@@ -320,13 +311,10 @@ final class SessionPersistenceTests: XCTestCase {
         )
         defer { try? FileManager.default.removeItem(at: fixture.tempDir) }
 
-        SessionPersistenceStore.syncManualRestoreSnapshotCache(
-            bundleIdentifier: fixture.bundleIdentifier,
-            appSupportDirectory: fixture.tempDir
-        )
+        fixture.store.syncManualRestoreSnapshotCache()
 
         XCTAssertNil(
-            SessionPersistenceStore.load(fileURL: fixture.backupURL),
+            fixture.store.load(fileURL: fixture.backupURL),
             "A genuinely absent primary snapshot still clears the stale backup"
         )
     }
@@ -338,10 +326,7 @@ final class SessionPersistenceTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: fixture.tempDir) }
         try fixture.writeCorruptPrimary()
 
-        let loaded = SessionPersistenceStore.loadStartupSnapshot(
-            bundleIdentifier: fixture.bundleIdentifier,
-            appSupportDirectory: fixture.tempDir
-        )
+        let loaded = fixture.store.loadStartupSnapshot()
 
         XCTAssertEqual(
             loaded?.windows.first?.sidebar.width,
@@ -357,10 +342,7 @@ final class SessionPersistenceTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: fixture.tempDir) }
 
         XCTAssertNil(
-            SessionPersistenceStore.loadStartupSnapshot(
-                bundleIdentifier: fixture.bundleIdentifier,
-                appSupportDirectory: fixture.tempDir
-            ),
+            fixture.store.loadStartupSnapshot(),
             "A clean start without a primary snapshot must not resurrect the backup"
         )
     }
@@ -374,10 +356,11 @@ final class SessionPersistenceTests: XCTestCase {
         let snapshotURL = tempDir.appendingPathComponent("session.json", isDirectory: false)
         var snapshot = makeSnapshot(version: SessionSnapshotSchema.currentVersion)
         snapshot.windows[0].tabManager.workspaces[0].customColor = "#C0392B"
+        let store = sessionStore()
 
-        XCTAssertTrue(SessionPersistenceStore.save(snapshot, fileURL: snapshotURL))
+        XCTAssertTrue(store.save(snapshot, fileURL: snapshotURL))
 
-        let loaded = SessionPersistenceStore.load(fileURL: snapshotURL)
+        let loaded = store.load(fileURL: snapshotURL)
         XCTAssertEqual(
             loaded?.windows.first?.tabManager.workspaces.first?.customColor,
             "#C0392B"
@@ -392,11 +375,12 @@ final class SessionPersistenceTests: XCTestCase {
 
         let snapshotURL = tempDir.appendingPathComponent("session.json", isDirectory: false)
         let snapshot = makeSnapshot(version: SessionSnapshotSchema.currentVersion)
+        let store = sessionStore()
 
-        XCTAssertTrue(SessionPersistenceStore.save(snapshot, fileURL: snapshotURL))
+        XCTAssertTrue(store.save(snapshot, fileURL: snapshotURL))
         let firstFileNumber = try fileNumber(for: snapshotURL)
 
-        XCTAssertTrue(SessionPersistenceStore.save(snapshot, fileURL: snapshotURL))
+        XCTAssertTrue(store.save(snapshot, fileURL: snapshotURL))
         let secondFileNumber = try fileNumber(for: snapshotURL)
 
         XCTAssertEqual(
@@ -426,9 +410,10 @@ final class SessionPersistenceTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: tempDir) }
 
         let snapshotURL = tempDir.appendingPathComponent("session.json", isDirectory: false)
-        XCTAssertTrue(SessionPersistenceStore.save(makeSnapshot(version: SessionSnapshotSchema.currentVersion + 1), fileURL: snapshotURL))
+        let store = sessionStore()
+        XCTAssertTrue(store.save(makeSnapshot(version: SessionSnapshotSchema.currentVersion + 1), fileURL: snapshotURL))
 
-        XCTAssertNil(SessionPersistenceStore.load(fileURL: snapshotURL))
+        XCTAssertNil(store.load(fileURL: snapshotURL))
     }
 
     func testDefaultSnapshotPathSanitizesBundleIdentifier() {
@@ -437,10 +422,10 @@ final class SessionPersistenceTests: XCTestCase {
         try? FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: tempDir) }
 
-        let path = SessionPersistenceStore.defaultSnapshotFileURL(
+        let path = sessionStore(
             bundleIdentifier: "com.example/unsafe id",
             appSupportDirectory: tempDir
-        )
+        ).defaultSnapshotFileURL()
 
         XCTAssertNotNil(path)
         XCTAssertTrue(path?.path.contains("com.example_unsafe_id") == true)
@@ -4177,7 +4162,8 @@ final class SocketListenerAcceptPolicyTests: XCTestCase {
                 RestorableAgentSessionIndex.PanelKey(workspaceId: workspaceId, panelId: panelId): (
                     snapshot: detectedSnapshot,
                     updatedAt: 999,
-                    processIDs: [123]
+                    processIDs: Set([123]),
+                    sessionIDSource: .explicit
                 ),
             ]
         )
@@ -4244,7 +4230,8 @@ final class SocketListenerAcceptPolicyTests: XCTestCase {
                 RestorableAgentSessionIndex.PanelKey(workspaceId: workspaceId, panelId: panelId): (
                     snapshot: detectedSnapshot,
                     updatedAt: 999,
-                    processIDs: [456]
+                    processIDs: Set([456]),
+                    sessionIDSource: .explicit
                 ),
             ]
         )
