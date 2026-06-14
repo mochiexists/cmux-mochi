@@ -332,6 +332,65 @@ def test_codex_stop_without_turn_keeps_session_wide_monitor(cli_path: str, root:
                 subprocess.run(["/bin/kill", str(pid)], check=False)
 
 
+def test_codex_session_start_defers_resume_binding_until_first_turn(cli_path: str, root: Path) -> None:
+    """A zero-turn codex session must NOT publish a resume binding at
+    session-start: codex hasn't persisted a rollout yet, so resuming the
+    session-start id fails with "No saved session found". The binding is
+    published from the first prompt-submit, which carries the persisted id."""
+    socket_path = root / "cmux-resume-binding-gate.sock"
+    state_dir = root / "hook-state-resume-gate"
+    transcript_path = root / "codex-resume-gate.jsonl"
+    state_dir.mkdir()
+    transcript_path.write_text("", encoding="utf-8")
+
+    session_id = f"codex-resume-gate-session-{os.getpid()}"
+    env = os.environ.copy()
+    env["CMUX_SOCKET_PATH"] = str(socket_path)
+    env["CMUX_SURFACE_ID"] = FAKE_SURFACE_ID
+    env["CMUX_WORKSPACE_ID"] = FAKE_WORKSPACE_ID
+    env["CMUX_AGENT_HOOK_STATE_DIR"] = str(state_dir)
+    payload = {
+        "session_id": session_id,
+        "cwd": str(root),
+        "transcript_path": str(transcript_path),
+    }
+
+    def run_hook(subcommand: str) -> None:
+        result = subprocess.run(
+            [cli_path, "--socket", str(socket_path), "hooks", "codex", subcommand],
+            input=json.dumps(payload),
+            capture_output=True,
+            text=True,
+            check=False,
+            env=env,
+            timeout=10,
+        )
+        if result.returncode != 0:
+            raise AssertionError(
+                f"hooks codex {subcommand} failed exit={result.returncode}\n"
+                f"stdout={result.stdout}\nstderr={result.stderr}"
+            )
+
+    try:
+        with FakeCmuxSocket(socket_path, None) as sock:
+            run_hook("session-start")
+            methods_after_start = [f.get("method") for f in sock.frames]
+            assert "surface.resume.set" not in methods_after_start, (
+                "codex session-start must NOT publish a resume binding for a "
+                f"zero-turn (unsaved) session; methods={methods_after_start}"
+            )
+
+            run_hook("prompt-submit")
+            methods_after_prompt = [f.get("method") for f in sock.frames]
+            assert "surface.resume.set" in methods_after_prompt, (
+                "codex prompt-submit must publish the resume binding (persisted "
+                f"session id); methods={methods_after_prompt}"
+            )
+    finally:
+        for pid in monitor_pids_for_session(session_id):
+            subprocess.run(["/bin/kill", str(pid)], check=False)
+
+
 def test_codex_prompt_submit_starts_monitor_when_lease_write_fails(cli_path: str, root: Path) -> None:
     socket_path = root / "cmux-monitor-lease-failure.sock"
     transcript_path = root / "codex-session-lease-failure.jsonl"
@@ -2241,6 +2300,7 @@ def main() -> int:
         try:
             test_codex_stop_reaps_transcript_monitor(cli_path, root)
             test_codex_stop_without_turn_keeps_session_wide_monitor(cli_path, root)
+            test_codex_session_start_defers_resume_binding_until_first_turn(cli_path, root)
             test_codex_prompt_submit_starts_monitor_when_lease_write_fails(cli_path, root)
             test_codex_monitor_exits_when_workspace_has_no_surfaces(cli_path, root)
             test_codex_monitor_survives_transient_owner_rpc_timeout(cli_path, root)
