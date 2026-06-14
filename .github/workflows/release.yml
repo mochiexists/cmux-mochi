@@ -17,7 +17,7 @@ env:
 jobs:
   build-ghostty-cli-helper:
     runs-on: ${{ vars.MACOS_RUNNER_15 || 'blacksmith-6vcpu-macos-15' }}
-    timeout-minutes: 20
+    timeout-minutes: 40
     steps:
       - name: Clear stale git locks (self-hosted reused workspace)
         shell: bash
@@ -70,7 +70,7 @@ jobs:
     runs-on: ${{ vars.MACOS_RUNNER_26 || 'blacksmith-6vcpu-macos-26' }}
     # Notarization wait times vary on Apple's side; v0.64.14 finished at 19m16s
     # and v0.64.15 attempt 1 was killed by a 20-minute budget mid-notarization.
-    timeout-minutes: 40
+    timeout-minutes: 75
     steps:
       - name: Clear stale git locks (self-hosted reused workspace)
         shell: bash
