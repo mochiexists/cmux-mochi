@@ -2,6 +2,28 @@
 
 All notable changes to cmux are documented here.
 
+## [0.64.151] - 2026-06-14
+
+cmux **Mochi** fork release. Rebased onto upstream cmux 0.64.15 — so it includes
+everything in upstream 0.64.9–0.64.15 — plus the Mochi features and fixes below.
+(The trailing `.151` digit marks this as the Mochi fork build of 0.64.15.)
+
+### Added
+- Agent session resume mode (Off / Medium / Full). On quit, **Medium** pre-types the Claude/Codex resume command so you press Enter to continue, **Full** auto-runs it, **Off** starts fresh — with captured scrollback replay so the reopened session reads as continuous.
+- Reveal in Finder / Copy Path on surface tabs — for terminals (working directory), markdown panes (the file), and browser panes showing a local file.
+- Full-area Task Manager — open it as a tab or a dedicated page, with per-process CPU/memory detail.
+- Always-on CPU / memory readout in the sidebar footer.
+- Sidebar spring-load — drag a session onto a collapsed workspace to switch to it.
+- Reopen Closed Tab restores the tab's scrollback and last command.
+- A single "Open in External Browser" control (right-click the New Browser button) that routes every web open — the button, agent/CLI `open`, and ⌘-clicked links — to your system browser.
+
+### Fixed
+- Codex resume no longer errors with "No saved session found" for a session you never prompted — the resume command is only offered once Codex has actually saved the session.
+- Medium resume mode reliably pre-types the resume command instead of auto-running it, even when an auto-resume binding is present.
+
+### Changed
+- Rebased the entire Mochi fork onto current upstream cmux (0.64.15), inheriting all upstream fixes (terminal/launch crashes, TUI arrow-key routing, sidebar performance, session restore) underneath the Mochi feature set.
+
 ## [0.64.17] - 2026-06-23
 
 ### Added
