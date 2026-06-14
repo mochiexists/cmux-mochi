@@ -9783,7 +9783,7 @@ final class Workspace: Identifiable, ObservableObject {
     }
 
     private func bonsplitTabContextMenuItems(for tabId: TabID) -> [TabContextMenuItem] {
-        guard directoryForTabContextAction(tabId: tabId) != nil else { return [] }
+        guard tabContextActionTarget(tabId: tabId) != nil else { return [] }
         return [
             TabContextMenuItem(
                 id: Self.revealInFinderTabContextMenuItemId,
@@ -11448,6 +11448,43 @@ extension Workspace: BonsplitDelegate {
         return directory.isEmpty ? nil : directory
     }
 
+    /// Pure target-resolution for a tab's Reveal-in-Finder / Copy-Path actions.
+    /// A markdown pane's backing file wins, then a browser pane showing a local
+    /// `file://` page (its file) — both revealed as a *selected file*. Otherwise
+    /// fall back to the pane's working directory, revealed as a *folder*. A
+    /// non-`file://` browser URL (http/https) is ignored, so a remote page falls
+    /// through to the directory (or yields nothing).
+    nonisolated static func tabContextActionTarget(
+        markdownFilePath: String?,
+        browserURL: URL?,
+        directory: String?
+    ) -> (path: String, isFile: Bool)? {
+        if let markdown = markdownFilePath?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !markdown.isEmpty {
+            return (markdown, true)
+        }
+        if let browserURL, browserURL.isFileURL {
+            let path = browserURL.path.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !path.isEmpty { return (path, true) }
+        }
+        if let directory = directory?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !directory.isEmpty {
+            return (directory, false)
+        }
+        return nil
+    }
+
+    /// Resolves the Reveal-in-Finder / Copy-Path target for a live tab by
+    /// reading the backing panel, then delegating to the pure resolver.
+    private func tabContextActionTarget(tabId: TabID) -> (path: String, isFile: Bool)? {
+        let panel = panelIdFromSurfaceId(tabId).flatMap { panels[$0] }
+        return Self.tabContextActionTarget(
+            markdownFilePath: (panel as? MarkdownPanel)?.filePath,
+            browserURL: (panel as? BrowserPanel)?.currentURL,
+            directory: directoryForTabContextAction(tabId: tabId)
+        )
+    }
+
     @MainActor
     /// - Parameter nameOverride: when non-nil, the dialog names this instead of
     ///   the panel title. The mirror window-tab path passes the LIVE foreground
@@ -13008,13 +13045,20 @@ extension Workspace: BonsplitDelegate {
     func splitTabBar(_ controller: BonsplitController, didRequestTabContextMenuItem identifier: String, for tab: Bonsplit.Tab, inPane pane: PaneID) {
         switch identifier {
         case Self.revealInFinderTabContextMenuItemId:
-            guard let directory = directoryForTabContextAction(tabId: tab.id) else { return }
-            NSWorkspace.shared.selectFile(nil, inFileViewerRootedAtPath: directory)
+            guard let target = tabContextActionTarget(tabId: tab.id) else { return }
+            if target.isFile {
+                NSWorkspace.shared.selectFile(
+                    target.path,
+                    inFileViewerRootedAtPath: (target.path as NSString).deletingLastPathComponent
+                )
+            } else {
+                NSWorkspace.shared.selectFile(nil, inFileViewerRootedAtPath: target.path)
+            }
         case Self.copyPathTabContextMenuItemId:
-            guard let directory = directoryForTabContextAction(tabId: tab.id) else { return }
+            guard let target = tabContextActionTarget(tabId: tab.id) else { return }
             let pasteboard = NSPasteboard.general
             pasteboard.clearContents()
-            pasteboard.setString(directory, forType: .string)
+            pasteboard.setString(target.path, forType: .string)
         default:
             break
         }
