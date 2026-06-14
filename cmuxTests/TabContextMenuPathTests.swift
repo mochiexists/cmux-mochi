@@ -58,6 +58,80 @@ final class TabContextMenuPathTests: XCTestCase {
         XCTAssertEqual(pasteboard.string(forType: .string), directory)
     }
 
+    // MARK: - Markdown / browser-local-file targets (pure resolver)
+
+    func testActionTargetPrefersMarkdownFileAsSelectedFile() {
+        let target = Workspace.tabContextActionTarget(
+            markdownFilePath: "  /Users/test/Documents/notes/readme.md  ",
+            browserURL: nil,
+            directory: "/Users/test/Documents/notes"
+        )
+        XCTAssertEqual(target?.path, "/Users/test/Documents/notes/readme.md")
+        XCTAssertEqual(target?.isFile, true)
+    }
+
+    func testActionTargetUsesBrowserLocalFileURLAsSelectedFile() {
+        let target = Workspace.tabContextActionTarget(
+            markdownFilePath: nil,
+            browserURL: URL(fileURLWithPath: "/Users/test/site/index.html"),
+            directory: nil
+        )
+        XCTAssertEqual(target?.path, "/Users/test/site/index.html")
+        XCTAssertEqual(target?.isFile, true)
+    }
+
+    func testActionTargetIgnoresRemoteBrowserURLAndFallsBackToDirectory() {
+        let target = Workspace.tabContextActionTarget(
+            markdownFilePath: nil,
+            browserURL: URL(string: "https://example.com/page.html"),
+            directory: "/Users/test/project"
+        )
+        XCTAssertEqual(target?.path, "/Users/test/project")
+        XCTAssertEqual(target?.isFile, false)
+    }
+
+    func testActionTargetFallsBackToDirectoryAsFolder() {
+        let target = Workspace.tabContextActionTarget(
+            markdownFilePath: "   ",
+            browserURL: nil,
+            directory: "/Users/test/project"
+        )
+        XCTAssertEqual(target?.path, "/Users/test/project")
+        XCTAssertEqual(target?.isFile, false)
+    }
+
+    func testActionTargetNilWhenNothingResolvable() {
+        XCTAssertNil(Workspace.tabContextActionTarget(markdownFilePath: nil, browserURL: nil, directory: nil))
+        XCTAssertNil(Workspace.tabContextActionTarget(markdownFilePath: "  ", browserURL: nil, directory: "   "))
+    }
+
+    func testMarkdownTabExposesPathActionsAndCopiesFilePath() throws {
+        let workspace = Workspace()
+        let paneId = try XCTUnwrap(workspace.bonsplitController.allPaneIds.first)
+        let filePath = "/Users/test/Documents/notes/readme.md"
+        let panel = try XCTUnwrap(
+            workspace.newMarkdownSurface(inPane: paneId, filePath: filePath)
+        )
+        let tabId = try XCTUnwrap(workspace.surfaceIdFromPanelId(panel.id))
+
+        // A markdown tab shows the path actions even with no working directory.
+        let items = workspace.bonsplitController.tabContextMenuItemsProvider?(tabId, PaneID()) ?? []
+        XCTAssertEqual(items.map(\.id), ["revealInFinder", "copyPath"])
+
+        // Copy Path writes the markdown FILE path, not a directory.
+        let tab = try XCTUnwrap(workspace.bonsplitController.tab(tabId))
+        let actionPane = try XCTUnwrap(workspace.paneId(forPanelId: panel.id))
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        workspace.splitTabBar(
+            workspace.bonsplitController,
+            didRequestTabContextMenuItem: "copyPath",
+            for: tab,
+            inPane: actionPane
+        )
+        XCTAssertEqual(pasteboard.string(forType: .string), filePath)
+    }
+
     func testBonsplitPathActionsUseGenericCustomMenuItems() throws {
         let workspace = Workspace()
         let panelId = try XCTUnwrap(workspace.focusedPanelId)
