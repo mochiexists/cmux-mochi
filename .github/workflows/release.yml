@@ -464,6 +464,14 @@ jobs:
           R2_ENDPOINT: "https://${{ secrets.CF_R2_ACCOUNT_ID }}.r2.cloudflarestorage.com"
         run: |
           set -euo pipefail
+          # The stable Sparkle feed is the GitHub Release appcast
+          # (releases/latest/download/appcast.xml); the R2 mirror at
+          # files.cmux.com is optional. Skip cleanly when CF_R2 creds aren't
+          # configured so a missing optional secret doesn't fail the release.
+          if [ -z "${AWS_ACCESS_KEY_ID:-}" ] || [ -z "${AWS_SECRET_ACCESS_KEY:-}" ]; then
+            echo "Skipping R2 stable appcast mirror: CF_R2 credentials not configured."
+            exit 0
+          fi
           command -v aws >/dev/null 2>&1 || { echo "Installing AWS CLI..."; brew install awscli; }
 
           # Guard: only upload if this tag is the highest semver release.
