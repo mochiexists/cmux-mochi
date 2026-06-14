@@ -386,33 +386,10 @@ enum AgentResumeCommandStyleSettings {
     }
 }
 
-/// Controls where the tab bar's "New Browser" button opens links: in a cmux
-/// browser panel (default) or the system's external default browser. Toggled
-/// by right-clicking the browser button in the pane tab bar.
-enum BrowserLaunchTargetSettings {
-    static let opensExternallyKey = "browser.openInExternalBrowser"
-    static let defaultOpensExternally = false
-    static let didChangeNotification = Notification.Name("cmux.browserLaunchTargetDidChange")
-
-    static func opensExternally(defaults: UserDefaults = .standard) -> Bool {
-        guard defaults.object(forKey: opensExternallyKey) != nil else {
-            return defaultOpensExternally
-        }
-        return defaults.bool(forKey: opensExternallyKey)
-    }
-
-    static func setOpensExternally(_ enabled: Bool, defaults: UserDefaults = .standard) {
-        defaults.set(enabled, forKey: opensExternallyKey)
-        NotificationCenter.default.post(name: didChangeNotification, object: nil)
-    }
-
-    @discardableResult
-    static func toggle(defaults: UserDefaults = .standard) -> Bool {
-        let next = !opensExternally(defaults: defaults)
-        setOpensExternally(next, defaults: defaults)
-        return next
-    }
-}
+// `BrowserLaunchTargetSettings` (a narrow New-Browser-button-only "open
+// externally" flag) was removed: the button's right-click toggle now drives the
+// global `BrowserAvailabilitySettings` (disable the in-app browser) so a single
+// control routes every web open to the system browser. See `BrowserPanel`.
 
 enum AgentHibernationSettings {
     struct Values: Equatable, Sendable {

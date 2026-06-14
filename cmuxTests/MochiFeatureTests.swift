@@ -1,5 +1,6 @@
 import Foundation
 import XCTest
+import Bonsplit
 
 #if canImport(cmux_DEV)
 @testable import cmux_DEV
@@ -12,50 +13,40 @@ import XCTest
 /// #2 DEV app-icon badge, #3 external-browser toggle, #4 Task Manager tab.
 final class MochiFeatureTests: XCTestCase {
 
-    // MARK: - #3 / #4 BrowserLaunchTargetSettings
+    // MARK: - #3 Unified external-browser control
 
-    func testBrowserLaunchTargetDefaultsToInternal() throws {
-        let suiteName = "cmux-browser-launch-target-\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
-        defer { defaults.removePersistentDomain(forName: suiteName) }
+    /// The New Browser button's right-click "Open in External Browser" toggle is
+    /// the single control: it reads and drives the global
+    /// `BrowserAvailabilitySettings` (disable the cmux in-app browser), and the
+    /// button glow reflects that same state — so one toggle routes every web open
+    /// (button, agent/CLI `open`, ⌘-click) to the system browser.
+    @MainActor
+    func testNewBrowserToggleDrivesGlobalBrowserAvailabilityAndGlow() throws {
+        let key = BrowserAvailabilitySettings.disabledKey
+        let defaults = UserDefaults.standard
+        let previous = defaults.object(forKey: key)
+        defer {
+            if let previous { defaults.set(previous, forKey: key) } else { defaults.removeObject(forKey: key) }
+        }
+        defaults.removeObject(forKey: key) // default: in-app browser enabled
 
-        XCTAssertEqual(
-            BrowserLaunchTargetSettings.opensExternallyKey,
-            "browser.openInExternalBrowser"
-        )
-        XCTAssertFalse(BrowserLaunchTargetSettings.opensExternally(defaults: defaults))
-    }
+        let newBrowserRaw = BonsplitConfiguration.SplitActionButton.Action.newBrowser.rawValue
+        let workspace = Workspace()
+        let toggleProvider = try XCTUnwrap(workspace.bonsplitController.splitButtonContextToggleProvider)
 
-    func testBrowserLaunchTargetSetAndToggle() throws {
-        let suiteName = "cmux-browser-launch-target-\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
-        defer { defaults.removePersistentDomain(forName: suiteName) }
+        // Default (enabled): toggle off, no glow.
+        XCTAssertEqual(try XCTUnwrap(toggleProvider(.newBrowser)).isOn, false)
+        workspace.syncBrowserButtonHighlight()
+        XCTAssertFalse(workspace.bonsplitController.highlightedSplitButtonActions.contains(newBrowserRaw))
 
-        BrowserLaunchTargetSettings.setOpensExternally(true, defaults: defaults)
-        XCTAssertTrue(BrowserLaunchTargetSettings.opensExternally(defaults: defaults))
+        // Ticking the toggle disables the in-app browser globally.
+        try XCTUnwrap(toggleProvider(.newBrowser)).onToggle(true)
+        XCTAssertTrue(BrowserAvailabilitySettings.isDisabled())
 
-        // toggle() returns the new value and flips persisted state.
-        let afterFirstToggle = BrowserLaunchTargetSettings.toggle(defaults: defaults)
-        XCTAssertFalse(afterFirstToggle)
-        XCTAssertFalse(BrowserLaunchTargetSettings.opensExternally(defaults: defaults))
-
-        let afterSecondToggle = BrowserLaunchTargetSettings.toggle(defaults: defaults)
-        XCTAssertTrue(afterSecondToggle)
-        XCTAssertTrue(BrowserLaunchTargetSettings.opensExternally(defaults: defaults))
-    }
-
-    func testBrowserLaunchTargetPostsChangeNotification() throws {
-        let suiteName = "cmux-browser-launch-target-\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
-        defer { defaults.removePersistentDomain(forName: suiteName) }
-
-        let expectation = expectation(
-            forNotification: BrowserLaunchTargetSettings.didChangeNotification,
-            object: nil,
-            notificationCenter: .default
-        )
-        BrowserLaunchTargetSettings.setOpensExternally(true, defaults: defaults)
-        wait(for: [expectation], timeout: 1)
+        // A freshly-read toggle + the glow both reflect the external state.
+        XCTAssertEqual(try XCTUnwrap(toggleProvider(.newBrowser)).isOn, true)
+        workspace.syncBrowserButtonHighlight()
+        XCTAssertTrue(workspace.bonsplitController.highlightedSplitButtonActions.contains(newBrowserRaw))
     }
 
     // MARK: - #1b agent resume prefill (now the tri-state resume mode)
