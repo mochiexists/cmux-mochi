@@ -30027,16 +30027,24 @@ export default function cmuxPiSessionExtension(pi: ExtensionAPI) {
                         return
                     }
                     try? store.clearNotificationEmission(sessionId: sessionId)
-                    publishAgentSurfaceResumeBinding(
-                        client: client,
-                        workspaceId: workspaceId,
-                        surfaceId: surfaceId,
-                        kind: def.name,
-                        displayName: def.displayName,
-                        sessionId: sessionId,
-                        cwd: hookCwd ?? mapped?.cwd,
-                        launchCommand: launchCommand
-                    )
+                    // Only publish a resume binding at session-start for agents that
+                    // persist a resumable session immediately (e.g. Claude). Codex
+                    // persists a rollout only once a real turn runs, so a zero-turn
+                    // session-start binding would point at an id codex never saved
+                    // ("No saved session found" on resume). For those agents the
+                    // first prompt-submit publishes the binding with the persisted id.
+                    if def.sessionResumableFromStart {
+                        publishAgentSurfaceResumeBinding(
+                            client: client,
+                            workspaceId: workspaceId,
+                            surfaceId: surfaceId,
+                            kind: def.name,
+                            displayName: def.displayName,
+                            sessionId: sessionId,
+                            cwd: hookCwd ?? mapped?.cwd,
+                            launchCommand: launchCommand
+                        )
+                    }
                 }
             }
             if codexSessionStartWentStaleAfterAccept() {

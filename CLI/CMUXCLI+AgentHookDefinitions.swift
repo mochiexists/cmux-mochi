@@ -39,6 +39,17 @@ extension CMUXCLI {
         /// separate `session-finalize` subcommand / ``AgentHookAction/sessionFinalize``
         /// action, which performs the destructive cleanup this flag suppresses.
         let sessionEndIsTurnBoundary: Bool
+        /// Whether a freshly-started session is immediately resumable, i.e. the
+        /// agent has persisted a restorable session by the `SessionStart` hook.
+        ///
+        /// Claude writes its session file at start, so its session-start resume
+        /// binding is valid. Codex only persists a rollout once a real turn runs
+        /// (`UserPromptSubmit`/`Stop`), so a session-start binding for a
+        /// zero-turn codex session points at an ID codex never saved — resuming
+        /// it errors with "No saved session found". When false, the resume
+        /// binding is published only from the first turn (prompt-submit), which
+        /// already carries the persisted session ID.
+        let sessionResumableFromStart: Bool
         /// Feed-hook events. Each entry installs a second hook for
         /// `agentEvent` that invokes `cmux hooks feed --source <name>`
         /// with a 120s timeout so the socket reply wait doesn't trip the
@@ -109,6 +120,7 @@ extension CMUXCLI {
              aliases: Set<String> = [],
              publishesStopNotification: Bool = true,
              sessionEndIsTurnBoundary: Bool = false,
+             sessionResumableFromStart: Bool = true,
              feedHookEvents: [String] = [],
              postInstallAction: PostInstallAction? = nil,
              postInstallNote: String? = nil) {
@@ -123,6 +135,7 @@ extension CMUXCLI {
             self.hookMarker = hookMarker; self.format = format; self.events = events
             self.publishesStopNotification = publishesStopNotification
             self.sessionEndIsTurnBoundary = sessionEndIsTurnBoundary
+            self.sessionResumableFromStart = sessionResumableFromStart
             self.aliases = Set(aliases.compactMap { alias in
                 let normalized = alias.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
                 return normalized.isEmpty ? nil : normalized
@@ -170,6 +183,10 @@ extension CMUXCLI {
                 // status) via performAgentSessionTeardown. Matcher-less, like Stop.
                 .init(agentEvent: "ThreadUnsubscribe", cmuxSubcommand: "session-end"),
             ],
+            // Codex persists a resumable rollout only once a real turn runs, so a
+            // zero-turn session-start binding points at an unsaved id. Publish the
+            // resume binding from the first turn (prompt-submit) instead.
+            sessionResumableFromStart: false,
             feedHookEvents: [
                 "PreToolUse",
                 "PermissionRequest",
