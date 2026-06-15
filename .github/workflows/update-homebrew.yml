@@ -1,11 +1,12 @@
 name: Update Homebrew Cask
 
 on:
-  # Trigger after the release workflow completes (not on release:published,
-  # which fires before assets finish uploading — causing SHA mismatch).
-  workflow_run:
-    workflows: ["Release macOS app"]
-    types: [completed]
+  # Auto-update on release is DISABLED for the Mochi fork: no mochiexists homebrew
+  # tap yet, and the step targets manaflow-ai/homebrew-cmux and fails on a missing
+  # token. Re-enable the workflow_run block once a fork tap + token exist.
+  # workflow_run:
+  #   workflows: ["Release macOS app"]
+  #   types: [completed]
   workflow_dispatch:
     inputs:
       version:
