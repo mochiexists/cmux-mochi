@@ -2,6 +2,13 @@
 
 All notable changes to cmux are documented here.
 
+## [0.64.152] - 2026-06-15
+
+cmux **Mochi** fork patch release.
+
+### Fixed
+- `cmux-workspace` agent skill: require an explicit `cmux send-key … enter` to submit input to another pane, and stop relying on a trailing `\n` (which silently failed to submit from agents/tools that expand it to a real newline). Makes agent-to-agent pane messaging fire reliably; added a worked "drive another pane" example (identify → tree → send → send-key enter → read-screen).
+
 ## [0.64.151] - 2026-06-14
 
 cmux **Mochi** fork release. Rebased onto upstream cmux 0.64.15 — so it includes
