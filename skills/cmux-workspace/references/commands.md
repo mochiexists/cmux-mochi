@@ -58,13 +58,17 @@ cmux move-tab-to-new-workspace --surface surface:7 --title "browser"
 
 ## Input
 
+**Submit rule (REQUIRED — read carefully):** `cmux send` only *types* text into the target surface. It does NOT press Enter. Until Enter is pressed, your text just sits in the other pane's input box, unsent, and that agent's turn never fires.
+
+**Always submit with a separate `cmux send-key … enter` — two commands, every time:**
+
 ```bash
-cmux send "echo hello\n"
-cmux send-key enter
-cmux send --surface "$CMUX_SURFACE_ID" "git status\n"
-cmux send-key --surface "$CMUX_SURFACE_ID" enter
-cmux read-screen --surface "$CMUX_SURFACE_ID"
+cmux send --surface "$TARGET" "your message"
+cmux send-key --surface "$TARGET" enter
+cmux read-screen --surface "$TARGET"
 ```
+
+Do NOT rely on a trailing `\n` inside the `send` string. It is unreliable: in some shells/agents `"...\n"` is the literal escape that cmux converts to Enter, but in others (e.g. tools that expand escapes before exec) it becomes a real newline character, which only inserts a line break in the target's composer and does NOT submit. The explicit `send-key … enter` always works regardless of how your shell quotes strings. Multi-line input: send each line, then `send-key … enter` between lines.
 
 ## Sidebar Metadata
 
