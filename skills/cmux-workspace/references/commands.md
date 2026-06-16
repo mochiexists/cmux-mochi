@@ -58,17 +58,22 @@ cmux move-tab-to-new-workspace --surface surface:7 --title "browser"
 
 ## Input
 
-**Submit rule (REQUIRED — read carefully):** `cmux send` only *types* text into the target surface. It does NOT press Enter. Until Enter is pressed, your text just sits in the other pane's input box, unsent, and that agent's turn never fires.
+**Submit rule (REQUIRED — read carefully):** `cmux send` only *types* text into the target surface. It does NOT press Enter on its own. Until Enter is pressed, your text just sits in the other pane's input box, unsent, and that agent's turn never fires.
 
-**Always submit with a separate `cmux send-key … enter` — two commands, every time:**
+**Submit with `--enter` (one command, preferred):**
 
 ```bash
-cmux send --surface "$TARGET" "your message"
-cmux send-key --surface "$TARGET" enter
+cmux send --surface "$TARGET" --enter "your message"
 cmux read-screen --surface "$TARGET"
+
+# send and wait for the reply in one call (blocks until the target's screen
+# settles, i.e. its turn finished, then prints it):
+cmux send --surface "$TARGET" --wait "your message"
 ```
 
-Do NOT rely on a trailing `\n` inside the `send` string. It is unreliable: in some shells/agents `"...\n"` is the literal escape that cmux converts to Enter, but in others (e.g. tools that expand escapes before exec) it becomes a real newline character, which only inserts a line break in the target's composer and does NOT submit. The explicit `send-key … enter` always works regardless of how your shell quotes strings. Multi-line input: send each line, then `send-key … enter` between lines.
+`--wait` options: `--wait-timeout <s>` (default 120), `--wait-settle <s>` (default 2), `--wait-poll <ms>` (default 400). `--wait` implies `--enter`.
+
+The older two-step form still works (`cmux send …` then `cmux send-key --surface "$TARGET" enter`). Do NOT rely on a trailing `\n` inside the `send` string to submit. It is unreliable: in some shells/agents `"...\n"` is the literal escape that cmux converts to Enter, but in others (e.g. tools that expand escapes before exec) it becomes a real newline character, which only inserts a line break and does NOT submit. `--enter` (or `send-key … enter`) always works regardless of how your shell quotes strings. Multi-line input: send each line, then submit.
 
 ## Sidebar Metadata
 

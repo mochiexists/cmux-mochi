@@ -9468,7 +9468,7 @@ struct ContentView: View {
     private func openFocusedDirectory(_ directoryURL: URL, in target: TerminalDirectoryOpenTarget) -> Bool {
         switch target {
         case .finder:
-            NSWorkspace.shared.selectFile(nil, inFileViewerRootedAtPath: directoryURL.path)
+            FileExternalOpenAction.revealInFinder(path: directoryURL.path, isFile: false)
             return true
         case .vscodeInline:
             return openFocusedDirectoryInInlineVSCode(directoryURL)
@@ -14279,9 +14279,7 @@ struct TabItemView: View, Equatable {
 
             Button(String(localized: "contextMenu.copyPath", defaultValue: "Copy Path")) {
                 if let finderDirectoryURL {
-                    let pasteboard = NSPasteboard.general
-                    pasteboard.clearContents()
-                    pasteboard.setString(finderDirectoryURL.path, forType: .string)
+                    FileExternalOpenAction.copyPath(finderDirectoryURL.path)
                 }
             }
             .disabled(finderDirectoryURL == nil)

@@ -62,7 +62,7 @@ final class TabContextMenuPathTests: XCTestCase {
 
     func testActionTargetPrefersMarkdownFileAsSelectedFile() {
         let target = Workspace.tabContextActionTarget(
-            markdownFilePath: "  /Users/test/Documents/notes/readme.md  ",
+            filePath: "  /Users/test/Documents/notes/readme.md  ",
             browserURL: nil,
             directory: "/Users/test/Documents/notes"
         )
@@ -72,7 +72,7 @@ final class TabContextMenuPathTests: XCTestCase {
 
     func testActionTargetUsesBrowserLocalFileURLAsSelectedFile() {
         let target = Workspace.tabContextActionTarget(
-            markdownFilePath: nil,
+            filePath: nil,
             browserURL: URL(fileURLWithPath: "/Users/test/site/index.html"),
             directory: nil
         )
@@ -82,7 +82,7 @@ final class TabContextMenuPathTests: XCTestCase {
 
     func testActionTargetIgnoresRemoteBrowserURLAndFallsBackToDirectory() {
         let target = Workspace.tabContextActionTarget(
-            markdownFilePath: nil,
+            filePath: nil,
             browserURL: URL(string: "https://example.com/page.html"),
             directory: "/Users/test/project"
         )
@@ -92,7 +92,7 @@ final class TabContextMenuPathTests: XCTestCase {
 
     func testActionTargetFallsBackToDirectoryAsFolder() {
         let target = Workspace.tabContextActionTarget(
-            markdownFilePath: "   ",
+            filePath: "   ",
             browserURL: nil,
             directory: "/Users/test/project"
         )
@@ -101,8 +101,8 @@ final class TabContextMenuPathTests: XCTestCase {
     }
 
     func testActionTargetNilWhenNothingResolvable() {
-        XCTAssertNil(Workspace.tabContextActionTarget(markdownFilePath: nil, browserURL: nil, directory: nil))
-        XCTAssertNil(Workspace.tabContextActionTarget(markdownFilePath: "  ", browserURL: nil, directory: "   "))
+        XCTAssertNil(Workspace.tabContextActionTarget(filePath: nil, browserURL: nil, directory: nil))
+        XCTAssertNil(Workspace.tabContextActionTarget(filePath: "  ", browserURL: nil, directory: "   "))
     }
 
     func testMarkdownTabExposesPathActionsAndCopiesFilePath() throws {
@@ -119,6 +119,33 @@ final class TabContextMenuPathTests: XCTestCase {
         XCTAssertEqual(items.map(\.id), ["revealInFinder", "copyPath"])
 
         // Copy Path writes the markdown FILE path, not a directory.
+        let tab = try XCTUnwrap(workspace.bonsplitController.tab(tabId))
+        let actionPane = try XCTUnwrap(workspace.paneId(forPanelId: panel.id))
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        workspace.splitTabBar(
+            workspace.bonsplitController,
+            didRequestTabContextMenuItem: "copyPath",
+            for: tab,
+            inPane: actionPane
+        )
+        XCTAssertEqual(pasteboard.string(forType: .string), filePath)
+    }
+
+    func testFilePreviewTabExposesPathActionsAndCopiesFilePath() throws {
+        let workspace = Workspace()
+        let paneId = try XCTUnwrap(workspace.bonsplitController.allPaneIds.first)
+        let filePath = "/Users/test/Documents/project/.build/release/tool"
+        let panel = try XCTUnwrap(
+            workspace.newFilePreviewSurface(inPane: paneId, filePath: filePath)
+        )
+        let tabId = try XCTUnwrap(workspace.surfaceIdFromPanelId(panel.id))
+
+        // A file-preview tab shows the path actions even with no working directory.
+        let items = workspace.bonsplitController.tabContextMenuItemsProvider?(tabId, PaneID()) ?? []
+        XCTAssertEqual(items.map(\.id), ["revealInFinder", "copyPath"])
+
+        // Copy Path writes the previewed FILE path, not a directory.
         let tab = try XCTUnwrap(workspace.bonsplitController.tab(tabId))
         let actionPane = try XCTUnwrap(workspace.paneId(forPanelId: panel.id))
         let pasteboard = NSPasteboard.general

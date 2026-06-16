@@ -126,31 +126,35 @@ cmux focus-panel --workspace "${CMUX_WORKSPACE_ID:-}" --panel surface:3
 
 The current terminal is the surface that invoked the agent. Treat it as the safest anchor for relative operations.
 
-**Submit rule:** `cmux send` only *types* text — it does NOT press Enter. Always follow it with a separate `cmux send-key … enter`. Do NOT rely on a trailing `\n` inside the string: it is unreliable across shells/agents (a literal escape in zsh, a real newline that fails to submit when a tool expands it). See [references/commands.md](references/commands.md) for the full rule.
+**Submit rule:** `cmux send` only *types* text — it does NOT press Enter. Submit with `--enter` (one call, preferred) or a separate `cmux send-key … enter`. Do NOT rely on a trailing `\n` inside the string: it is unreliable across shells/agents (a literal escape in zsh, a real newline that fails to submit when a tool expands it). See [references/commands.md](references/commands.md) for the full rule.
 
 ```bash
-# send to the focused terminal in the caller workspace, then submit
-cmux send "npm test"
-cmux send-key enter
+# send to the focused terminal in the caller workspace, and submit (one call)
+cmux send --enter "npm test"
 
-# send to the exact caller surface, then submit
-cmux send --surface "${CMUX_SURFACE_ID:-}" "git status"
-cmux send-key --surface "${CMUX_SURFACE_ID:-}" enter
+# send to the exact caller surface, and submit
+cmux send --surface "${CMUX_SURFACE_ID:-}" --enter "git status"
 ```
 
 Do not send keystrokes, close surfaces, or change focus in other workspaces unless the user asked for that target.
 
 ## Driving Another Pane (agent-to-agent)
 
-To message another pane (e.g. a second agent), target its surface and always submit with an explicit Enter, then read its reply. Surface refs are workspace-relative; pass a UUID (`--id-format uuids`) when targeting across workspaces.
+To message another pane (e.g. a second agent), target its surface, submit with `--enter`, and read its reply. Use `--wait` to send-and-wait: it submits, blocks until the target agent's screen stops changing (its turn finished), and prints the reply — no manual polling. Surface refs are workspace-relative; pass a UUID (`--id-format uuids`) when targeting across workspaces.
 
 ```bash
 cmux identify --json                       # discover your own surface/workspace
 cmux tree --all --id-format both           # find the target surface (ref + uuid)
-cmux send --surface "$TARGET" "your message here"
-cmux send-key --surface "$TARGET" enter    # REQUIRED — this is what submits
-cmux read-screen --surface "$TARGET"       # read the reply back
+
+# one-shot: send, submit, and wait for the reply
+cmux send --surface "$TARGET" --wait "your message here"
+
+# or step by step:
+cmux send --surface "$TARGET" --enter "your message here"   # --enter submits
+cmux read-screen --surface "$TARGET"                        # read the reply back
 ```
+
+`--wait` tuning: `--wait-timeout <s>` (default 120), `--wait-settle <s>` (default 2; how long the screen must be static to count as done), `--wait-poll <ms>` (default 400).
 
 ## Moving Surfaces
 

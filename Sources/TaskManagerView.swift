@@ -9,6 +9,11 @@ struct CmuxTaskManagerView: View {
     /// pass nil so the table fills the container instead of overflowing and
     /// clipping its leading edge.
     var minimumSize: CGSize? = CGSize(width: 820, height: 480)
+    /// When provided, a close (✕) button is shown at the trailing edge of the
+    /// toolbar. Embedded contexts (pane tab / sidebar page) pass an action to
+    /// dismiss the Task Manager; the floating window omits it (it already has
+    /// the standard window close control).
+    var onClose: (() -> Void)? = nil
 
     var body: some View {
         // Outer view observes the model so the toolbar/summary/sort
@@ -67,6 +72,16 @@ struct CmuxTaskManagerView: View {
                 model.refresh(force: true)
             } label: {
                 Label(String(localized: "taskManager.refresh", defaultValue: "Refresh"), systemImage: "arrow.clockwise")
+            }
+
+            if let onClose {
+                Button(role: .cancel) {
+                    onClose()
+                } label: {
+                    Image(systemName: "xmark")
+                }
+                .help(String(localized: "taskManager.close", defaultValue: "Close Task Manager"))
+                .accessibilityLabel(String(localized: "taskManager.close", defaultValue: "Close Task Manager"))
             }
         }
         .padding(.horizontal, 16)

@@ -136,7 +136,7 @@ final class DraggableFolderNSView: NSView, NSDraggingSource {
 
         if event.clickCount == 2 {
             clearPendingDrag()
-            NSWorkspace.shared.selectFile(nil, inFileViewerRootedAtPath: directory)
+            FileExternalOpenAction.revealInFinder(path: directory, isFile: false)
             return
         }
 
@@ -260,7 +260,7 @@ final class DraggableFolderNSView: NSView, NSDraggingSource {
 
     @objc private func openPathComponent(_ sender: NSMenuItem) {
         guard let url = sender.representedObject as? URL else { return }
-        NSWorkspace.shared.selectFile(nil, inFileViewerRootedAtPath: url.path)
+        FileExternalOpenAction.revealInFinder(path: url.path, isFile: false)
     }
 
     @objc private func openComputer(_ sender: NSMenuItem) {

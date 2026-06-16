@@ -126,6 +126,46 @@ enum FileExternalOpenAction {
     static func revealInFinder(fileURL: URL) {
         NSWorkspace.shared.activateFileViewerSelecting([fileURL])
     }
+
+    /// Reveal a path in Finder. When `isFile` is true the file is selected
+    /// inside its parent directory; otherwise the directory itself is opened.
+    static func revealInFinder(path: String, isFile: Bool) {
+        if isFile {
+            NSWorkspace.shared.selectFile(
+                path,
+                inFileViewerRootedAtPath: (path as NSString).deletingLastPathComponent
+            )
+        } else {
+            NSWorkspace.shared.selectFile(nil, inFileViewerRootedAtPath: path)
+        }
+    }
+
+    /// Reveal a path that may not exist: tilde-expanded, selects the file if it
+    /// exists, otherwise falls back to opening its parent directory. Returns
+    /// whether anything was revealed.
+    @discardableResult
+    static func revealInFinderResolvingFallback(path: String) -> Bool {
+        let expandedPath = (path as NSString).expandingTildeInPath
+        guard !expandedPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return false }
+        let fileURL = URL(fileURLWithPath: expandedPath)
+        let fileManager = FileManager.default
+        if fileManager.fileExists(atPath: fileURL.path) {
+            NSWorkspace.shared.activateFileViewerSelecting([fileURL])
+            return true
+        }
+        let directoryURL = fileURL.deletingLastPathComponent()
+        if fileManager.fileExists(atPath: directoryURL.path) {
+            return NSWorkspace.shared.open(directoryURL)
+        }
+        return false
+    }
+
+    /// Copy an absolute path string to the general pasteboard.
+    static func copyPath(_ path: String) {
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setString(path, forType: .string)
+    }
 }
 
 enum FileExternalOpenText {

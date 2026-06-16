@@ -11460,13 +11460,13 @@ extension Workspace: BonsplitDelegate {
     /// non-`file://` browser URL (http/https) is ignored, so a remote page falls
     /// through to the directory (or yields nothing).
     nonisolated static func tabContextActionTarget(
-        markdownFilePath: String?,
+        filePath: String?,
         browserURL: URL?,
         directory: String?
     ) -> (path: String, isFile: Bool)? {
-        if let markdown = markdownFilePath?.trimmingCharacters(in: .whitespacesAndNewlines),
-           !markdown.isEmpty {
-            return (markdown, true)
+        if let file = filePath?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !file.isEmpty {
+            return (file, true)
         }
         if let browserURL, browserURL.isFileURL {
             let path = browserURL.path.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -11483,8 +11483,12 @@ extension Workspace: BonsplitDelegate {
     /// reading the backing panel, then delegating to the pure resolver.
     private func tabContextActionTarget(tabId: TabID) -> (path: String, isFile: Bool)? {
         let panel = panelIdFromSurfaceId(tabId).flatMap { panels[$0] }
+        // Any file-backed panel (markdown, file preview, …) conforms to
+        // FilePreviewTextEditingPanel and exposes its file via `filePath`, so
+        // every such tab gets Reveal in Finder / Copy Path without enumerating
+        // concrete panel types here.
         return Self.tabContextActionTarget(
-            markdownFilePath: (panel as? MarkdownPanel)?.filePath,
+            filePath: (panel as? FilePreviewTextEditingPanel)?.filePath,
             browserURL: (panel as? BrowserPanel)?.currentURL,
             directory: directoryForTabContextAction(tabId: tabId)
         )
@@ -13052,19 +13056,10 @@ extension Workspace: BonsplitDelegate {
         switch identifier {
         case Self.revealInFinderTabContextMenuItemId:
             guard let target = tabContextActionTarget(tabId: tab.id) else { return }
-            if target.isFile {
-                NSWorkspace.shared.selectFile(
-                    target.path,
-                    inFileViewerRootedAtPath: (target.path as NSString).deletingLastPathComponent
-                )
-            } else {
-                NSWorkspace.shared.selectFile(nil, inFileViewerRootedAtPath: target.path)
-            }
+            FileExternalOpenAction.revealInFinder(path: target.path, isFile: target.isFile)
         case Self.copyPathTabContextMenuItemId:
             guard let target = tabContextActionTarget(tabId: tab.id) else { return }
-            let pasteboard = NSPasteboard.general
-            pasteboard.clearContents()
-            pasteboard.setString(target.path, forType: .string)
+            FileExternalOpenAction.copyPath(target.path)
         default:
             break
         }
