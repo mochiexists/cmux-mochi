@@ -2,6 +2,19 @@
 
 All notable changes to cmux are documented here.
 
+## [0.64.153] - 2026-06-16
+
+cmux **Mochi** fork patch release.
+
+### Added
+- **Bundled agent skills.** The cmux agent skills now ship inside the app and sync to `~/.codex/skills` on launch, so a fresh install carries them with no manual `skills.sh` step. The sync is hash-guarded — it never overwrites a skill you've edited, and notifies you when skills are updated.
+- **`cmux send --enter` / `--submit`** — type and submit in one call, instead of a separate `cmux send-key … enter`. Removes the most common way agent-to-agent messages got stranded unsent.
+- **`cmux send --wait`** — send to another pane, then block until that agent finishes its turn (its screen stops changing) and print the reply. Turns driving a second agent into one command instead of send-then-poll. Tunable via `--wait-timeout` / `--wait-settle` / `--wait-poll`.
+
+### Changed
+- **Reveal in Finder / Copy Path now work on every file-backed tab**, not just markdown — any file preview tab gets the path actions.
+- **Task Manager** gained a close (✕) button when shown as an embedded pane.
+
 ## [0.64.152] - 2026-06-15
 
 cmux **Mochi** fork patch release.
