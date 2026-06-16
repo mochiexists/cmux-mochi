@@ -100,6 +100,15 @@ rm -rf build/
 xcodebuild -scheme cmux -configuration Release -derivedDataPath build CODE_SIGNING_ALLOWED=NO build 2>&1 | tail -5
 echo "Build succeeded"
 
+# --- Build + install the universal Ghostty CLI (theme picker) helper ---
+# xcodebuild does not produce this helper; CI builds it in a separate job and
+# injects it into the bundle. Replicate that here so the app is complete.
+echo "Building Ghostty CLI helper..."
+GHOSTTY_HELPER_BUILD="build/ghostty-cli-helper/ghostty"
+mkdir -p "$(dirname "$GHOSTTY_HELPER_BUILD")"
+./scripts/build-ghostty-cli-helper.sh --universal --output "$GHOSTTY_HELPER_BUILD"
+./scripts/install-prebuilt-ghostty-cli-helper.sh "$GHOSTTY_HELPER_BUILD" "$APP_PATH"
+
 HELPER_PATH="$APP_PATH/Contents/Resources/bin/ghostty"
 if [ ! -x "$HELPER_PATH" ]; then
   echo "Ghostty theme picker helper not found at $HELPER_PATH" >&2
