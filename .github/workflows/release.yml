@@ -311,6 +311,11 @@ jobs:
           security set-keychain-settings -lut 21600 build.keychain
           security unlock-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
           security import /tmp/cert.p12 -k build.keychain -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign -T /usr/bin/security
+          # Import the Apple "Developer ID Certification Authority" intermediate into the SAME build keychain
+          # as the leaf, so codesign can build the full chain (leaf -> intermediate -> Apple Root) after the
+          # search list is narrowed below. Hosted runners ship this intermediate in the System keychain;
+          # self-hosted runners may not. Importing a public CA cert is harmless on hosted runners.
+          security import "$GITHUB_WORKSPACE/.github/certs/developer-id-intermediate.pem" -k build.keychain -t cert
           security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" build.keychain
           security list-keychains -d user -s build.keychain
 
