@@ -12,15 +12,27 @@ Usage: ./scripts/build-sign-upload.sh <tag> [--allow-overwrite]
 Options:
   --allow-overwrite   Permit replacing existing release assets for the same tag.
                       Use only for emergency rerolls.
+  --dry-run           Build, sign, notarize, staple and Gatekeeper-verify, but
+                      do NOT create or upload a GitHub release. Validates the
+                      local pipeline with no published assets and no Sparkle
+                      feed change.
 EOF
 }
 
 ALLOW_OVERWRITE="false"
+DRY_RUN="false"
 POSITIONAL=()
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --allow-overwrite)
       ALLOW_OVERWRITE="true"
+      shift
+      ;;
+    --dry-run)
+      # Build, sign, notarize, staple and verify locally, but do NOT create or
+      # upload a GitHub release. For validating the local release pipeline with
+      # zero outward effect (no published assets, no Sparkle feed change).
+      DRY_RUN="true"
       shift
       ;;
     -h|--help)
@@ -46,17 +58,31 @@ if [[ $# -ne 1 ]]; then
 fi
 
 TAG="$1"
-SIGN_HASH="A050CC7E193C8221BDBA204E731B046CDCCC1B30"
+# Fork (cmux Mochi) signing identity. The fork signs with its own Developer ID
+# Application cert (Atlas Codes LTD, Team 599WAZ6282), not upstream cmux's.
+# Override with SIGN_HASH=... if the cert is ever rotated.
+SIGN_HASH="${SIGN_HASH:-33FD69D8D96F40228978FFA0F36771AA007DF335}"
+# notarytool keychain profile created via `xcrun notarytool store-credentials`.
+NOTARY_PROFILE="${NOTARY_PROFILE:-cmux-mochi-notary}"
 ENTITLEMENTS="cmux.entitlements"
 APP_PATH="build/Build/Products/Release/cmux.app"
 GHOSTTYKIT_CRASH_REPORT_SUBDIR="cmux/crash"
 
 # --- Pre-flight ---
-source ~/.secrets/cmuxterm.env
+# Fork secrets file (Sparkle keys). Falls back to the legacy upstream name.
+SECRETS_ENV="${SECRETS_ENV:-$HOME/.secrets/cmux-mochi.env}"
+[ -f "$SECRETS_ENV" ] || SECRETS_ENV="$HOME/.secrets/cmuxterm.env"
+# shellcheck source=/dev/null
+source "$SECRETS_ENV"
 export SPARKLE_PRIVATE_KEY
 for tool in zig xcodebuild create-dmg xcrun codesign ditto gh; do
   command -v "$tool" >/dev/null || { echo "MISSING: $tool" >&2; exit 1; }
 done
+[ -n "${SPARKLE_PRIVATE_KEY:-}" ] || { echo "MISSING: SPARKLE_PRIVATE_KEY (expected in $SECRETS_ENV)" >&2; exit 1; }
+security find-identity -v -p codesigning 2>/dev/null | grep -q "$SIGN_HASH" \
+  || { echo "MISSING: signing identity $SIGN_HASH not in keychain" >&2; exit 1; }
+xcrun notarytool history --keychain-profile "$NOTARY_PROFILE" >/dev/null 2>&1 \
+  || { echo "MISSING: notarytool keychain profile '$NOTARY_PROFILE' (run: xcrun notarytool store-credentials)" >&2; exit 1; }
 echo "Pre-flight checks passed"
 
 # --- Build GhosttyKit ---
@@ -110,8 +136,7 @@ echo "Codesign verified"
 # --- Notarize app ---
 echo "Notarizing app..."
 ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" cmux-notary.zip
-xcrun notarytool submit cmux-notary.zip \
-  --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_APP_SPECIFIC_PASSWORD" --wait
+xcrun notarytool submit cmux-notary.zip --keychain-profile "$NOTARY_PROFILE" --wait
 xcrun stapler staple "$APP_PATH"
 xcrun stapler validate "$APP_PATH"
 rm -f cmux-notary.zip
@@ -122,15 +147,26 @@ echo "Creating DMG..."
 rm -f cmux-macos.dmg
 create-dmg --codesign "$SIGN_HASH" cmux-macos.dmg "$APP_PATH"
 echo "Notarizing DMG..."
-xcrun notarytool submit cmux-macos.dmg \
-  --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_APP_SPECIFIC_PASSWORD" --wait
+xcrun notarytool submit cmux-macos.dmg --keychain-profile "$NOTARY_PROFILE" --wait
 xcrun stapler staple cmux-macos.dmg
 xcrun stapler validate cmux-macos.dmg
 echo "DMG notarized"
 
+# --- Gatekeeper assessment (proves the signed+notarized+stapled app passes) ---
+echo "Gatekeeper assessment..."
+spctl --assess --type execute --verbose=4 "$APP_PATH"
+
 # --- Generate Sparkle appcast ---
 echo "Generating appcast..."
 ./scripts/sparkle_generate_appcast.sh cmux-macos.dmg "$TAG" appcast.xml
+
+if [[ "$DRY_RUN" == "true" ]]; then
+  echo
+  echo "DRY RUN complete — built, signed, notarized, stapled and Gatekeeper-verified."
+  echo "Artifacts left in place (not uploaded): $(pwd)/cmux-macos.dmg, $(pwd)/appcast.xml"
+  echo "Re-run without --dry-run to publish release $TAG."
+  exit 0
+fi
 
 # --- Create GitHub release (if needed) and upload ---
 if gh release view "$TAG" >/dev/null 2>&1; then
