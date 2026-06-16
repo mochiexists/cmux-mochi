@@ -2,6 +2,57 @@
   "sourceLanguage": "en",
   "version": "1.0",
   "strings": {
+    "skills.sync.skipped": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kept your edited copy of: %@"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "編集済みのコピーを保持しました: %@"
+          }
+        }
+      }
+    },
+    "skills.sync.title": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "cmux skills updated"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "cmux スキルを更新しました"
+          }
+        }
+      }
+    },
+    "skills.sync.updated": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Updated: %@"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "更新: %@"
+          }
+        }
+      }
+    },
     "browser.openInExternalBrowser.menu": {
       "extractionState": "manual",
       "localizations": {
@@ -158901,6 +158952,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "プロセス"
+          }
+        }
+      }
+    },
+    "taskManager.close": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Close Task Manager"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "タスクマネージャを閉じる"
           }
         }
       }

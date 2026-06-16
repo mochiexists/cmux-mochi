@@ -279,7 +279,11 @@ struct WorkspaceContentView: View {
                         guard workspace.panels[panel.id] != nil else { return }
                         workspace.resumeAgentHibernation(panelId: panel.id, focus: false)
                     },
-                    onTriggerFlash: { workspace.triggerDebugFlash(panelId: panel.id) }
+                    onTriggerFlash: { workspace.triggerDebugFlash(panelId: panel.id) },
+                    onClose: {
+                        guard let tabId = workspace.surfaceIdFromPanelId(panel.id) else { return }
+                        _ = workspace.requestCloseTabRecordingHistory(tabId, force: false)
+                    }
                 )
                 .onTapGesture {
                     workspace.bonsplitController.focusPane(paneId)

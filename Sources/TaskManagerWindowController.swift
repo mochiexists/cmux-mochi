@@ -50,9 +50,10 @@ struct TaskManagerPanelView: View {
     let isFocused: Bool
     let isVisibleInUI: Bool
     let onRequestPanelFocus: () -> Void
+    var onClose: (() -> Void)?
 
     var body: some View {
-        CmuxTaskManagerView(model: panel.model, minimumSize: nil)
+        CmuxTaskManagerView(model: panel.model, minimumSize: nil, onClose: onClose)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .contentShape(Rectangle())
             .onTapGesture {

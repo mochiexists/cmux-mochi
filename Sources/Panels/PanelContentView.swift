@@ -21,6 +21,9 @@ struct PanelContentView: View {
     let onResumeAgentHibernation: () -> Void
     let onAutoResumeAgentHibernation: () -> Void
     let onTriggerFlash: () -> Void
+    /// Closes this panel's surface. Currently wired for the Task Manager tab so
+    /// its toolbar can offer a close (✕) control; nil for panels that don't.
+    var onClose: (() -> Void)? = nil
 
     var body: some View {
         renderedPanel
@@ -126,7 +129,8 @@ struct PanelContentView: View {
                     panel: taskManagerPanel,
                     isFocused: isFocused,
                     isVisibleInUI: isVisibleInUI,
-                    onRequestPanelFocus: onRequestPanelFocus
+                    onRequestPanelFocus: onRequestPanelFocus,
+                    onClose: onClose
                 )
             }
         }

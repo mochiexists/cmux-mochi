@@ -681,15 +681,13 @@ private func sessionRowMenuItems(entry: SessionEntry, onResume: ((SessionEntry) 
             Text(String(localized: "sessionIndex.row.open", defaultValue: "Open"))
         }
         Button {
-            NSWorkspace.shared.activateFileViewerSelecting([url])
+            FileExternalOpenAction.revealInFinder(fileURL: url)
         } label: {
             Text(String(localized: "sessionIndex.row.reveal", defaultValue: "Reveal in Finder"))
         }
         Divider()
         Button {
-            let pb = NSPasteboard.general
-            pb.clearContents()
-            pb.setString(url.path, forType: .string)
+            FileExternalOpenAction.copyPath(url.path)
         } label: {
             Text(String(localized: "sessionIndex.row.copyPath", defaultValue: "Copy File Path"))
         }
