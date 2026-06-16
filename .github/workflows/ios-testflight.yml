@@ -1,22 +1,20 @@
 name: iOS TestFlight (beta)
 
 on:
-  # Publish to the beta lane on every iOS-affecting merge to main, so testers get
-  # changes immediately instead of waiting for the nightly. Path-filtered to the
-  # inputs that actually change the iOS app (the iOS target, the linked Swift
-  # packages, and GhosttyKit); macOS-only Sources/ changes don't rebuild the iOS
-  # app, so they don't trigger an upload. Push runs always build (the SHA gate is
-  # schedule-only); each merge is a new commit, so there's no duplicate upload.
-  push:
-    branches: [main]
-    paths:
-      - "ios/**"
-      - "Packages/**"
-      - "ghostty"
-      - "scripts/ensure-ghosttykit.sh"
-      - "scripts/install-zig-ci.sh"
-      - "scripts/ghosttykit-checksums.txt"
-      - ".github/workflows/ios-testflight.yml"
+  # Fork (cmux Mochi): the fork ships the macOS app, not the iOS TestFlight beta.
+  # Both the auto-publish-on-merge push trigger and the nightly schedule are
+  # disabled to conserve CI; run manually via workflow_dispatch if an iOS beta is
+  # ever wanted.
+  # push:
+  #   branches: [main]
+  #   paths:
+  #     - "ios/**"
+  #     - "Packages/**"
+  #     - "ghostty"
+  #     - "scripts/ensure-ghosttykit.sh"
+  #     - "scripts/install-zig-ci.sh"
+  #     - "scripts/ghosttykit-checksums.txt"
+  #     - ".github/workflows/ios-testflight.yml"
   workflow_dispatch:
     inputs:
       build_number:
@@ -31,12 +29,9 @@ on:
         required: false
         default: false
         type: boolean
-  schedule:
-    # Nightly at 09:10 UTC. The decide job skips the run only when the current
-    # main HEAD was already uploaded by a prior successful run (SHA compare, not
-    # a wall-clock window), so a failed or missed nightly retries the
-    # not-yet-uploaded commit instead of permanently stranding it.
-    - cron: "10 9 * * *"
+  # schedule:
+  #   # Nightly at 09:10 UTC (disabled on the fork — see note above).
+  #   - cron: "10 9 * * *"
 
 concurrency:
   group: ios-testflight-${{ github.ref_name }}
