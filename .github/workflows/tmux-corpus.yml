@@ -11,8 +11,10 @@ on:
         description: Time per Go fuzz target
         required: false
         default: 2m
-  schedule:
-    - cron: "17 10 * * *"
+  # Fork (cmux Mochi): nightly tmux-corpus fuzzing is disabled to conserve CI.
+  # Run manually via workflow_dispatch when wanted.
+  # schedule:
+  #   - cron: "17 10 * * *"
 
 permissions:
   actions: write
