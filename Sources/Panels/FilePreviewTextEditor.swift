@@ -4,6 +4,10 @@ import SwiftUI
 
 @MainActor
 protocol FilePreviewTextEditingPanel: AnyObject {
+    /// Absolute path of the local file this panel is backed by. Used to drive
+    /// tab path actions (Reveal in Finder / Copy Path) generically for every
+    /// file-backed panel, instead of casting to each concrete panel type.
+    var filePath: String { get }
     var textContent: String { get }
 
     func attachTextView(_ textView: NSTextView)

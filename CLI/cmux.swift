@@ -4622,7 +4622,17 @@ struct CMUXCLI {
         case "send":
             let (wsArg, rem0) = parseOption(commandArgs, name: "--workspace")
             let (sfArg, rem1) = parseOption(rem0, name: "--surface")
-            let (windowOpt, rem2) = parseOption(rem1, name: "--window")
+            let (windowOpt, rem2a) = parseOption(rem1, name: "--window")
+            let (timeoutArg, rem2b) = parseOption(rem2a, name: "--wait-timeout")
+            let (settleArg, rem2c) = parseOption(rem2b, name: "--wait-settle")
+            let (pollArg, rem2d) = parseOption(rem2c, name: "--wait-poll")
+            // Pull the boolean --wait / --enter flags out BEFORE computing the
+            // text. Only honored before a `--` literal separator, so
+            // `cmux send -- "--enter"` stays literal text. --wait implies submit
+            // (you can't wait for a reply to text you never sent).
+            let (waitForReply, rem2e) = extractBoolFlag(rem2d, names: ["--wait"])
+            let (explicitSubmit, rem2) = extractSendSubmitFlag(rem2e)
+            let submitAfterSend = explicitSubmit || waitForReply
             let windowRaw = windowOpt ?? windowId
             let workspaceArg = wsArg ?? Self.callerWorkspaceForSurfaceHandle(sfArg, windowRaw: windowRaw)
             let surfaceArg = sfArg ?? (wsArg == nil && windowRaw == nil ? ProcessInfo.processInfo.environment["CMUX_SURFACE_ID"] : nil)
@@ -4636,8 +4646,63 @@ struct CMUXCLI {
             if let wsId { params["workspace_id"] = wsId }
             let sfId = try normalizeSurfaceHandle(surfaceArg, client: client, workspaceHandle: wsId, windowHandle: winId)
             if let sfId { params["surface_id"] = sfId }
+
+            // Shared surface-target params for the follow-up send_key / read_text.
+            var targetParams: [String: Any] = [:]
+            if let winId { targetParams["window_id"] = winId }
+            if let wsId { targetParams["workspace_id"] = wsId }
+            if let sfId { targetParams["surface_id"] = sfId }
+
             let payload = try client.sendV2(method: "surface.send_text", params: params)
-            printV2Payload(payload, jsonOutput: jsonOutput, idFormat: idFormat, fallbackText: v2OKSummary(payload, idFormat: idFormat))
+
+            // Pin the follow-up Enter / wait-reads to the surface the text
+            // actually landed on. When no explicit/env surface is given, the
+            // request resolves "the focused surface" — which could differ
+            // between calls if focus shifts — so prefer the concrete surface_id
+            // the send_text response resolved, falling back to the request's.
+            var resolvedTarget = targetParams
+            if let resolvedSurface = payload["surface_id"] as? String {
+                resolvedTarget = ["surface_id": resolvedSurface]
+            }
+
+            if submitAfterSend {
+                // Submit the just-typed text by pressing Enter on the same surface.
+                // This is what `cmux send-key … enter` does, folded into one call so
+                // a driver can't strand an unsent message in the target's composer.
+                var keyParams = resolvedTarget
+                keyParams["key"] = "enter"
+                _ = try client.sendV2(method: "surface.send_key", params: keyParams)
+            }
+
+            if waitForReply {
+                let timeout = timeoutArg.flatMap(Double.init) ?? 120.0
+                let settle = settleArg.flatMap(Double.init) ?? 2.0
+                let pollSeconds = (pollArg.flatMap(Double.init).map { $0 / 1000.0 }) ?? 0.4
+                let result = try awaitSurfaceSettled(
+                    read: {
+                        let readPayload = try client.sendV2(method: "surface.read_text", params: resolvedTarget)
+                        return (readPayload["text"] as? String) ?? ""
+                    },
+                    settle: settle,
+                    timeout: timeout,
+                    pollSeconds: pollSeconds
+                )
+                if jsonOutput {
+                    print(jsonString([
+                        "ok": true,
+                        "settled": result.settled,
+                        "waited_seconds": result.waited,
+                        "text": result.text,
+                    ]))
+                } else {
+                    if !result.settled {
+                        FileHandle.standardError.write(Data("cmux send --wait: timed out after \(Int(result.waited))s (screen still changing)\n".utf8))
+                    }
+                    print(result.text)
+                }
+            } else {
+                printV2Payload(payload, jsonOutput: jsonOutput, idFormat: idFormat, fallbackText: v2OKSummary(payload, idFormat: idFormat))
+            }
 
         case "send-key":
             let (wsArg, rem0) = parseOption(commandArgs, name: "--workspace")
@@ -15682,16 +15747,26 @@ struct CMUXCLI {
             return """
             Usage: cmux send [flags] [--] <text>
 
-            Send text to a terminal surface. Escape sequences: \\n and \\r send Enter, \\t sends Tab.
+            Send text to a terminal surface. `send` only TYPES the text; use --enter
+            to submit (or a separate `cmux send-key … enter`). Do not rely on a
+            trailing \\n to submit — it is unreliable across shells/agents.
 
             Flags:
               --workspace <id|ref|index>   Target workspace (default: $CMUX_WORKSPACE_ID)
               --surface <id|ref|index>     Target surface (default: $CMUX_SURFACE_ID)
               --window <id|ref|index>      Window context for workspace/surface refs and indexes
+              --enter, --submit            Press Enter after typing (atomic type + submit)
+              --wait                       Submit, then wait for the target to finish (implies --enter)
+                                           and print the resulting screen. For driving another agent.
+              --wait-timeout <seconds>     Max time to wait for --wait (default: 120)
+              --wait-settle <seconds>      Consider the turn done after the screen is unchanged
+                                           for this long (default: 2)
+              --wait-poll <ms>             Screen poll interval for --wait (default: 400)
 
             Example:
               cmux send "echo hello"
-              cmux send --surface surface:2 "ls -la\\n"
+              cmux send --surface surface:2 --enter "ls -la"
+              cmux send --surface surface:2 --wait "summarize this file"   # send + await reply
             """
         case "send-key":
             return """
@@ -16254,6 +16329,59 @@ struct CMUXCLI {
             .replacingOccurrences(of: "\\n", with: "\r")
             .replacingOccurrences(of: "\\r", with: "\r")
             .replacingOccurrences(of: "\\t", with: "\t")
+    }
+
+    /// Extract a boolean flag (any of `names`) from args, honoring it only when
+    /// it appears before a `--` literal separator so `cmux send -- "--enter"`
+    /// keeps `--enter` as literal message text. Returns whether any matched and
+    /// the args with the matches removed.
+    func extractBoolFlag(_ args: [String], names: Set<String>) -> (present: Bool, remaining: [String]) {
+        let separatorIndex = args.firstIndex(of: "--")
+        let flagRange = separatorIndex.map { 0..<$0 } ?? 0..<args.count
+        let present = args[flagRange].contains(where: names.contains)
+        guard present else { return (false, args) }
+        var remaining = Array(args[flagRange]).filter { !names.contains($0) }
+        if let separatorIndex { remaining.append(contentsOf: args[separatorIndex...]) }
+        return (true, remaining)
+    }
+
+    /// `--enter`/`--submit`: type the text then press Enter in one call.
+    func extractSendSubmitFlag(_ args: [String]) -> (submit: Bool, remaining: [String]) {
+        let result = extractBoolFlag(args, names: ["--enter", "--submit"])
+        return (result.present, result.remaining)
+    }
+
+    /// Poll `read` for a surface's text until it stops changing for `settle`
+    /// seconds (the driven agent has finished its turn — a TUI agent animates its
+    /// spinner while working, so a static screen means it returned to the prompt)
+    /// or until `timeout` seconds elapse. Returns the final text and whether it
+    /// actually settled (vs timed out). The clock/sleep are injectable for tests.
+    func awaitSurfaceSettled(
+        read: () throws -> String,
+        settle: Double,
+        timeout: Double,
+        pollSeconds: Double,
+        now: () -> Date = { Date() },
+        sleep: (Double) -> Void = { Thread.sleep(forTimeInterval: $0) }
+    ) rethrows -> (text: String, settled: Bool, waited: Double) {
+        // Clamp degenerate option values: a non-positive poll would busy-spin,
+        // and the timeout must allow at least one read so a static screen is seen.
+        let pollSeconds = max(0.05, pollSeconds)
+        let timeout = max(timeout, pollSeconds)
+        let start = now()
+        var lastText: String?
+        var lastChange = start
+        while now().timeIntervalSince(start) < timeout {
+            sleep(pollSeconds)
+            let screen = try read()
+            if screen != lastText {
+                lastText = screen
+                lastChange = now()
+            } else if now().timeIntervalSince(lastChange) >= settle {
+                return (screen, true, now().timeIntervalSince(start))
+            }
+        }
+        return (lastText ?? "", false, now().timeIntervalSince(start))
     }
 
     private func workspaceFromArgsOrEnv(_ args: [String], windowOverride: String? = nil) -> String? {

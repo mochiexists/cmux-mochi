@@ -43,7 +43,7 @@ enum WorkspaceFinderDirectoryOpener {
         }
         if let refreshedURL = await WorkspaceFinderDirectoryResolver.existingDirectoryURL(for: directoryURL.path) {
             guard !Task.isCancelled else { return }
-            NSWorkspace.shared.activateFileViewerSelecting([refreshedURL])
+            FileExternalOpenAction.revealInFinder(fileURL: refreshedURL)
         } else {
             guard !Task.isCancelled else { return }
             NSSound.beep()

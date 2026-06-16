@@ -253,11 +253,7 @@ struct ConfigSettingsView: View {
 
     private func revealCurrentSourceInFinder() {
         guard let url = materializedCmuxConfigURL() else { return }
-        if FileManager.default.fileExists(atPath: url.path) {
-            NSWorkspace.shared.activateFileViewerSelecting([url])
-        } else {
-            NSWorkspace.shared.open(url.deletingLastPathComponent())
-        }
+        FileExternalOpenAction.revealInFinderResolvingFallback(path: url.path)
     }
 
     private func materializedCmuxConfigURL() -> URL? {
