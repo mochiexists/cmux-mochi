@@ -2,6 +2,14 @@
 
 All notable changes to cmux are documented here.
 
+## [0.64.154] - 2026-06-17
+
+cmux **Mochi** fork patch release.
+
+### Fixed
+- Hardened the macOS release signing workflow for self-hosted runners by preserving access to the Developer ID certificate chain during manual codesigning.
+- Made remote daemon provenance attestation retry failures publish as workflow warnings instead of blocking an otherwise signed, notarized, Sparkle-ready release.
+
 ## [0.64.153] - 2026-06-16
 
 cmux **Mochi** fork patch release.
