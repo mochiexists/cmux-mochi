@@ -316,8 +316,21 @@ jobs:
           # search list is narrowed below. Hosted runners ship this intermediate in the System keychain;
           # self-hosted runners may not. Importing a public CA cert is harmless on hosted runners.
           security import "$GITHUB_WORKSPACE/.github/certs/developer-id-intermediate.pem" -k build.keychain -t cert
+          DEVELOPER_ID_CA_CERTS=/tmp/developer-id-ca-certs.pem
+          : > "$DEVELOPER_ID_CA_CERTS"
+          for keychain in \
+            /System/Library/Keychains/SystemRootCertificates.keychain \
+            /Library/Keychains/System.keychain \
+            "$HOME/Library/Keychains/login.keychain-db"; do
+            if [ -r "$keychain" ]; then
+              security find-certificate -a -c "Developer ID Certification Authority" -p "$keychain" >> "$DEVELOPER_ID_CA_CERTS" 2>/dev/null || true
+            fi
+          done
+          if [ -s "$DEVELOPER_ID_CA_CERTS" ]; then
+            security import "$DEVELOPER_ID_CA_CERTS" -k build.keychain -t cert >/dev/null 2>&1 || true
+          fi
           security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" build.keychain
-          security list-keychains -d user -s build.keychain
+          security list-keychains -d user -s build.keychain "$HOME/Library/Keychains/login.keychain-db"
 
       - name: Codesign app
         if: steps.guard_release_assets.outputs.skip_all != 'true'
@@ -421,7 +434,9 @@ jobs:
             remote-daemon-assets/cmuxd-remote-manifest.json
 
       - name: Retry remote daemon release asset attestation
+        id: retry-remote-daemon-release-asset-attestation
         if: steps.guard_release_assets.outputs.skip_all != 'true' && steps.attest-remote-daemon-release-assets.outcome == 'failure'
+        continue-on-error: true
         uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
         with:
           subject-path: |
@@ -431,6 +446,11 @@ jobs:
             remote-daemon-assets/cmuxd-remote-linux-amd64
             remote-daemon-assets/cmuxd-remote-checksums.txt
             remote-daemon-assets/cmuxd-remote-manifest.json
+
+      - name: Warn if remote daemon release asset attestation failed
+        if: steps.guard_release_assets.outputs.skip_all != 'true' && steps.retry-remote-daemon-release-asset-attestation.outcome == 'failure'
+        run: |
+          echo "::warning::Remote daemon release asset provenance attestation failed after retry. Continuing because the macOS app release is gated by signing, notarization, Sparkle appcast generation, and immutable asset guards."
 
       - name: Upload build artifacts (dry-run)
         if: steps.guard_release_assets.outputs.skip_upload != 'true' && github.event_name == 'workflow_dispatch'

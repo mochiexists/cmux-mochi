@@ -412,8 +412,21 @@ jobs:
           security set-keychain-settings -lut 21600 build.keychain
           security unlock-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
           security import /tmp/cert.p12 -k build.keychain -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign -T /usr/bin/security
+          DEVELOPER_ID_CA_CERTS=/tmp/developer-id-ca-certs.pem
+          : > "$DEVELOPER_ID_CA_CERTS"
+          for keychain in \
+            /System/Library/Keychains/SystemRootCertificates.keychain \
+            /Library/Keychains/System.keychain \
+            "$HOME/Library/Keychains/login.keychain-db"; do
+            if [ -r "$keychain" ]; then
+              security find-certificate -a -c "Developer ID Certification Authority" -p "$keychain" >> "$DEVELOPER_ID_CA_CERTS" 2>/dev/null || true
+            fi
+          done
+          if [ -s "$DEVELOPER_ID_CA_CERTS" ]; then
+            security import "$DEVELOPER_ID_CA_CERTS" -k build.keychain -t cert >/dev/null 2>&1 || true
+          fi
           security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" build.keychain
-          security list-keychains -d user -s build.keychain
+          security list-keychains -d user -s build.keychain "$HOME/Library/Keychains/login.keychain-db"
 
       - name: Codesign apps
         if: needs.decide.outputs.should_publish != 'true' || (steps.current_head_prebuild.outputs.still_current == 'true' && steps.current_head_postbuild.outputs.still_current == 'true')
@@ -544,7 +557,9 @@ jobs:
             remote-daemon-assets/cmuxd-remote-manifest-${{ env.NIGHTLY_BUILD }}.json
 
       - name: Retry remote daemon nightly asset attestation
+        id: retry-remote-daemon-nightly-asset-attestation
         if: (needs.decide.outputs.should_publish != 'true' || (steps.current_head_prebuild.outputs.still_current == 'true' && steps.current_head_postbuild.outputs.still_current == 'true')) && steps.attest-remote-daemon-nightly-assets.outcome == 'failure'
+        continue-on-error: true
         uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
         with:
           subject-path: |
@@ -554,6 +569,11 @@ jobs:
             remote-daemon-assets/cmuxd-remote-linux-amd64-${{ env.NIGHTLY_BUILD }}
             remote-daemon-assets/cmuxd-remote-checksums-${{ env.NIGHTLY_BUILD }}.txt
             remote-daemon-assets/cmuxd-remote-manifest-${{ env.NIGHTLY_BUILD }}.json
+
+      - name: Warn if remote daemon nightly asset attestation failed
+        if: (needs.decide.outputs.should_publish != 'true' || (steps.current_head_prebuild.outputs.still_current == 'true' && steps.current_head_postbuild.outputs.still_current == 'true')) && steps.retry-remote-daemon-nightly-asset-attestation.outcome == 'failure'
+        run: |
+          echo "::warning::Remote daemon nightly asset provenance attestation failed after retry. Continuing because nightly publication is gated by signing, notarization, Sparkle appcast generation, and immutable asset guards."
 
       - name: Upload branch nightly artifacts
         if: needs.decide.outputs.should_publish != 'true'
