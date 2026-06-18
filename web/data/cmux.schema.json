@@ -311,10 +311,28 @@
           "default": true,
           "description": "Show the right-edge terminal scroll bar when scrollback is available. cmux automatically suppresses it for alternate-screen style TUI surfaces."
         },
+        "agentResumeMode": {
+          "type": "string",
+          "enum": ["off", "medium", "full"],
+          "default": "full",
+          "description": "How restored agent terminals behave when cmux reopens after quit. 'off': start fresh with no scrollback and no resume command. 'medium': restore the previous scrollback and prefill the resume command without running it, so you can hit enter to continue. 'full': immediately run the resume command (no scrollback)."
+        },
         "autoResumeAgentSessions": {
           "type": "boolean",
           "default": true,
-          "description": "Automatically run agent resume commands for restored terminal sessions when cmux reopens after quit. Set false to restore panes while keeping Claude Code, Codex, OpenCode, and other saved agent sessions idle until you resume them manually."
+          "deprecated": true,
+          "description": "Deprecated: use agentResumeMode instead. Legacy boolean — true maps to agentResumeMode 'full', false maps to 'medium'. Ignored when agentResumeMode is set."
+        },
+        "agentResumeCommandStyle": {
+          "type": "string",
+          "enum": ["alias", "verbose"],
+          "default": "alias",
+          "description": "Shell command form used when resuming an agent session. 'alias': the short fork alias (e.g. `cxy resume <id>`), which the cmux shell integration always defines — relies on the session id to re-attach. 'verbose': the full command, preserving the original model, --add-dir, and environment flags."
+        },
+        "autosaveScrollback": {
+          "type": "boolean",
+          "default": true,
+          "description": "Persist terminal scrollback on a periodic timer so a force-quit or crash can restore the most recent terminal contents (including running TUIs) on reopen."
         }
       }
     },

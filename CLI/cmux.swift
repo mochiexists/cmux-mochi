@@ -591,6 +591,56 @@ private final class ClaudeHookSessionStore {
         }
     }
 
+    /// Like `consume`, but leaves the session record in place so the app's
+    /// RestorableAgentSessionIndex can resurrect the pane on reopen. Used for a
+    /// clean user-requested detach (Codex /quit or Ctrl+C/Ctrl+D), which we want
+    /// to behave like a crash: the record survives so reopen restores the pane
+    /// with the resume command pre-typed. We still clear the workspace's active
+    /// session mapping so a new session can take over the surface, mirroring
+    /// consume's `clearActiveSessionIfMatching`.
+    func detachPreservingRecord(
+        sessionId: String?,
+        workspaceId: String?,
+        surfaceId: String?,
+        turnId: String? = nil
+    ) throws -> ClaudeHookSessionRecord? {
+        let normalizedSessionId = normalizeOptional(sessionId)
+        let normalizedWorkspace = normalizeOptional(workspaceId)
+        let normalizedSurface = normalizeOptional(surfaceId)
+        return try withLockedState { state in
+            let record: ClaudeHookSessionRecord?
+            if let normalizedSessionId,
+               let existing = state.sessions[normalizedSessionId] {
+                record = existing
+            } else {
+                record = fallbackRecord(
+                    sessions: Array(state.sessions.values),
+                    workspaceId: normalizedWorkspace,
+                    surfaceId: normalizedSurface
+                )
+            }
+            guard let record else { return nil }
+            guard !hasActiveTurnMismatch(state, record: record, turnId: turnId) else {
+                return nil
+            }
+            clearActiveSessionIfMatching(&state, removed: record, turnId: turnId)
+            // Park the persisted record so the reopen restore path accepts it.
+            // RestorableAgentSessionIndex drops records whose recorded PID is dead
+            // (hookRecordStillBelongsToLiveAgent); a user-quit agent has exited, so
+            // clear the PID — the nil-PID branch is the restorable one. The returned
+            // copy keeps its original PID for the in-place live-paste watch (Scenario A);
+            // only the stored entry is parked.
+            if state.sessions[record.sessionId] != nil {
+                state.sessions[record.sessionId]?.pid = nil
+                state.sessions[record.sessionId]?.isRestorable = true
+            } else if let storeKey = state.sessions.first(where: { $0.value.sessionId == record.sessionId })?.key {
+                state.sessions[storeKey]?.pid = nil
+                state.sessions[storeKey]?.isRestorable = true
+            }
+            return record
+        }
+    }
+
     private func hasActiveTurnMismatch(
         _ state: ClaudeHookSessionStoreFile,
         record: ClaudeHookSessionRecord,
@@ -16665,6 +16715,16 @@ struct CMUXCLI {
             // Only clear when we are the primary cleanup path (Stop didn't fire first).
             // If Stop already consumed the session, consumedSession is nil and we skip
             // to avoid wiping the completion notification that Stop just delivered.
+            //
+            // A user-requested exit at the prompt (Ctrl+C/Ctrl+D, Claude's
+            // SessionEnd reason "prompt_input_exit") mirrors codex's
+            // user_requested detach: preserve the session record so the pane can
+            // resurrect on reopen AND so we can pre-type (un-run) the resume
+            // command into the still-live surface. Other reasons (clear, logout,
+            // programmatic shutdown) keep the consume() cleanup behavior.
+            let claudeExitReason = (parsedInput.object?["reason"] as? String)?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            let isUserRequestedClaudeExit = (claudeExitReason == "prompt_input_exit")
             let mappedSession = parsedInput.sessionId.flatMap { try? sessionStore.lookup(sessionId: $0) }
             let fallbackWorkspaceId = try? resolvePreferredWorkspaceIdForClaudeHook(
                 preferred: mappedSession?.workspaceId,
@@ -16680,15 +16740,25 @@ struct CMUXCLI {
                     client: client
                 )
             }()
-            let consumedSession = try? sessionStore.consume(
-                sessionId: parsedInput.sessionId,
-                workspaceId: fallbackWorkspaceId,
-                surfaceId: fallbackSurfaceId,
-                turnId: parsedInput.turnId
-            )
-            // consume() calls clearActiveSessionIfMatching before returning
-            // consumedSession, so isCurrent can treat consumedSession.sessionId
-            // as current only when the consumed session was the active one.
+            let consumedSession: ClaudeHookSessionRecord?
+            if isUserRequestedClaudeExit {
+                consumedSession = try? sessionStore.detachPreservingRecord(
+                    sessionId: parsedInput.sessionId,
+                    workspaceId: fallbackWorkspaceId,
+                    surfaceId: fallbackSurfaceId,
+                    turnId: parsedInput.turnId
+                )
+            } else {
+                consumedSession = try? sessionStore.consume(
+                    sessionId: parsedInput.sessionId,
+                    workspaceId: fallbackWorkspaceId,
+                    surfaceId: fallbackSurfaceId,
+                    turnId: parsedInput.turnId
+                )
+            }
+            // consume()/detachPreservingRecord() call clearActiveSessionIfMatching
+            // before returning the record, so isCurrent can treat the returned
+            // sessionId as current only when it was the active one.
             if let consumedSession {
                 let workspaceId = consumedSession.workspaceId
                 sendClaudeFeedTelemetry(workspaceId: workspaceId)
@@ -16705,6 +16775,18 @@ struct CMUXCLI {
                         client: client
                     )
                     _ = try? sendV1Command("clear_notifications --tab=\(workspaceId)", client: client)
+                    if isUserRequestedClaudeExit {
+                        // Scenario A for Claude: pane is still alive after Claude
+                        // exits. Ask the app to watch the agent PID and pre-type the
+                        // resume command once the shell prompt returns. The app
+                        // builds the command from its RestorableAgentSessionIndex
+                        // snapshot (claude --resume <id>), same path as codex.
+                        let pidArg = consumedSession.pid.map { " --pid=\($0)" } ?? ""
+                        _ = try? sendV1Command(
+                            "agent.stage_resume_paste --tab=\(workspaceId)\(socketPanelOption(consumedSession.surfaceId)) --session=\(consumedSession.sessionId)\(pidArg)",
+                            client: client
+                        )
+                    }
                 } else {
                     telemetry.breadcrumb("claude-hook.session-end.stale")
                 }
@@ -18851,16 +18933,30 @@ struct CMUXCLI {
         fallbackKind: String,
         cwd: String?
     ) -> AgentHookLaunchCommandRecord? {
-        let envArguments = decodeNULSeparatedBase64(env["CMUX_AGENT_LAUNCH_ARGV_B64"])
+        // The CMUX_AGENT_LAUNCH_* env block describes the launch of whichever
+        // agent set it. It can be inherited from an ancestor process of a
+        // DIFFERENT agent (e.g. a cmux app started from inside a Claude Code
+        // session leaks claude's launch vars into every pane, so a codex hook
+        // would otherwise record claude's executable/args). Only trust the env
+        // block when its kind matches this hook's own agent; otherwise ignore it
+        // entirely and fall back to scanning the live agent PID, so the recorded
+        // launch command (and the resume command built from it) stays the right
+        // agent.
+        let envLaunchKind = normalizedHookValue(env["CMUX_AGENT_LAUNCH_KIND"])
+        let envBlockMatchesHook = envLaunchKind == nil || envLaunchKind == fallbackKind
+        let envArguments = envBlockMatchesHook
+            ? decodeNULSeparatedBase64(env["CMUX_AGENT_LAUNCH_ARGV_B64"])
+            : nil
         let processArguments = fallbackPID.flatMap { self.processArguments(for: pid_t($0)) }
         let arguments = envArguments ?? processArguments
         guard let arguments, !arguments.isEmpty else { return nil }
 
-        let executablePath = normalizedHookValue(env["CMUX_AGENT_LAUNCH_EXECUTABLE"]) ?? arguments.first
-        let workingDirectory = normalizedHookValue(env["CMUX_AGENT_LAUNCH_CWD"])
+        let executablePath = (envBlockMatchesHook ? normalizedHookValue(env["CMUX_AGENT_LAUNCH_EXECUTABLE"]) : nil)
+            ?? arguments.first
+        let workingDirectory = (envBlockMatchesHook ? normalizedHookValue(env["CMUX_AGENT_LAUNCH_CWD"]) : nil)
             ?? normalizedHookValue(cwd)
             ?? normalizedHookValue(env["PWD"])
-        let launcher = normalizedHookValue(env["CMUX_AGENT_LAUNCH_KIND"]) ?? fallbackKind
+        let launcher = (envBlockMatchesHook ? envLaunchKind : nil) ?? fallbackKind
         guard let sanitizedArguments = sanitizedAgentLaunchArguments(
             arguments,
             launcher: launcher,
@@ -18869,7 +18965,7 @@ struct CMUXCLI {
             return nil
         }
         let source = envArguments == nil ? "process" : "environment"
-        let environment = selectedAgentLaunchEnvironment(from: env)
+        let environment = envBlockMatchesHook ? selectedAgentLaunchEnvironment(from: env) : [:]
 
         return AgentHookLaunchCommandRecord(
             launcher: launcher,
@@ -20269,6 +20365,7 @@ export default function cmuxPiSessionExtension(pi: ExtensionAPI) {
         "SessionStart",
         "UserPromptSubmit",
         "Stop",
+        "ThreadUnsubscribe",
     ]
 
     private static func codexHookEventLabel(_ eventName: String) -> String? {
@@ -20281,6 +20378,9 @@ export default function cmuxPiSessionExtension(pi: ExtensionAPI) {
         case "SessionStart": return "session_start"
         case "UserPromptSubmit": return "user_prompt_submit"
         case "Stop": return "stop"
+        // Matches Codex's hook_event_key_label(ThreadUnsubscribe) so the
+        // pre-trusted hash cmux writes to config.toml is accepted by Codex.
+        case "ThreadUnsubscribe": return "thread_unsubscribe"
         default: return nil
         }
     }
@@ -20766,13 +20866,24 @@ export default function cmuxPiSessionExtension(pi: ExtensionAPI) {
                 cwd: hookCwd ?? mapped?.cwd
             )
             if !sessionId.isEmpty {
+                // Codex: re-mark this session the workspace's active session on
+                // every SessionStart (including a resumed thread). Without this, a
+                // resumed-then-re-quit session is no longer the active session, so
+                // the session-end path treats the second detach as not-active and
+                // skips the in-place resume paste. Marking active here mirrors the
+                // prompt-submit path and preserves the "superseded by newer
+                // session" guard (a newer SessionStart overwrites this mapping).
+                let markActiveForCodex = def.name == "codex"
                 try? store.upsert(
                     sessionId: sessionId,
                     workspaceId: workspaceId,
                     surfaceId: surfaceId,
                     cwd: hookCwd ?? mapped?.cwd,
                     pid: pid,
-                    launchCommand: launchCommand
+                    launchCommand: launchCommand,
+                    markActive: markActiveForCodex,
+                    turnId: input.turnId,
+                    allowsNewSessionReplacement: markActiveForCodex
                 )
             }
             if let pid {
@@ -20800,13 +20911,21 @@ export default function cmuxPiSessionExtension(pi: ExtensionAPI) {
                 cwd: hookCwd ?? mapped?.cwd
             )
             if !sessionId.isEmpty {
+                // Codex: mark this session the workspace's active session so a
+                // later session supersedes it. This is what lets the
+                // session-end (ThreadUnsubscribe) path tell whether a detach is
+                // still current before it clears shared workspace UI.
+                let markActiveForCodex = def.name == "codex"
                 try? store.upsert(
                     sessionId: sessionId,
                     workspaceId: workspaceId,
                     surfaceId: surfaceId,
                     cwd: hookCwd ?? mapped?.cwd,
                     pid: pid,
-                    launchCommand: launchCommand
+                    launchCommand: launchCommand,
+                    markActive: markActiveForCodex,
+                    turnId: input.turnId,
+                    allowsNewSessionReplacement: markActiveForCodex
                 )
             }
             if let pid {
@@ -20946,14 +21065,83 @@ export default function cmuxPiSessionExtension(pi: ExtensionAPI) {
             }
 
         case .sessionEnd:
+            // Mochi Codex surfaces a thread detach through the ThreadUnsubscribe
+            // hook, which maps to "session-end". The reason is UserRequested /
+            // ThreadSwitch / Programmatic; every reason finalizes the thread's
+            // attachment. Removing the session record below is precisely the
+            // signal the app's RestorableAgentSessionIndex reads to NOT resurrect
+            // this thread on reopen — a crash leaves the record in place, so a
+            // reopen restores it, while a clean detach does not.
+            let detachReason = (input.object?["reason"] as? String)?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            // Capture whether this session is still the workspace's active one
+            // BEFORE consume() clears the active mapping. A stale detach (e.g. a
+            // ThreadUnsubscribe arriving after a newer session took the surface)
+            // must remove its own record but must NOT clear the newer session's
+            // shared workspace status/notifications.
+            let detachMapped = sessionId.isEmpty ? nil : (try? store.lookup(sessionId: sessionId))
+            let detachIsActiveSession = detachMapped.map { mapped in
+                (try? store.isCurrent(sessionId: sessionId, workspaceId: mapped.workspaceId, turnId: nil)) ?? true
+            } ?? true
             if def.name == "codex", !sessionId.isEmpty {
+                // Retire every monitor lease for this session so the transcript
+                // monitor subprocess exits instead of lingering past detach.
                 retireCodexMonitorLeases(sessionId: sessionId, turnId: nil, env: env)
             }
-            if let mapped = try? store.consume(sessionId: sessionId, workspaceId: nil, surfaceId: nil) {
+            // A clean user-requested detach (Codex /quit or Ctrl+C/Ctrl+D) should
+            // behave like a crash for restore purposes: preserve the session
+            // record so the app can resurrect the pane (or paste the resume
+            // command in place) instead of dropping it. thread_switch /
+            // programmatic keep the existing consume() behavior (no resurrection).
+            let isUserRequestedDetach = (detachReason == "user_requested") && def.name == "codex"
+            let mappedRecord: ClaudeHookSessionRecord?
+            if isUserRequestedDetach {
+                mappedRecord = try? store.detachPreservingRecord(sessionId: sessionId, workspaceId: nil, surfaceId: nil)
+            } else {
+                mappedRecord = try? store.consume(sessionId: sessionId, workspaceId: nil, surfaceId: nil)
+            }
+            if let mapped = mappedRecord {
                 sendAgentFeedTelemetry(workspaceId: mapped.workspaceId)
-                _ = try? sendV1Command(
-                    "clear_agent_pid \(pidKey) --tab=\(mapped.workspaceId)\(socketPanelOption(mapped.surfaceId)) --clear-status",
-                    client: client
+                if detachIsActiveSession {
+                    // Final reconciliation: clear the agent PID/status and any
+                    // pending monitor notification (e.g. a stale "Codex needs
+                    // input" toast) so a detached thread leaves no ghost state.
+                    _ = try? sendV1Command(
+                        "clear_agent_pid \(pidKey) --tab=\(mapped.workspaceId)\(socketPanelOption(mapped.surfaceId)) --clear-status",
+                        client: client
+                    )
+                    _ = try? sendV1Command(
+                        "clear_notifications --tab=\(mapped.workspaceId)",
+                        client: client
+                    )
+                    if isUserRequestedDetach {
+                        // Scenario A: the pane is still alive after Codex exits.
+                        // Ask the app to watch the agent PID and, once it fully
+                        // exits (shell prompt back), pre-type (un-run) the resume
+                        // command into the same surface. The app builds the command
+                        // from its own RestorableAgentSessionIndex snapshot.
+                        let pidArg = mapped.pid.map { " --pid=\($0)" } ?? ""
+                        _ = try? sendV1Command(
+                            "agent.stage_resume_paste --tab=\(mapped.workspaceId)\(socketPanelOption(mapped.surfaceId)) --session=\(sessionId)\(pidArg)",
+                            client: client
+                        )
+                    }
+                    telemetry.breadcrumb(
+                        "\(def.name)-hook.session-end",
+                        data: ["reason": detachReason ?? "", "workspace": mapped.workspaceId]
+                    )
+                } else {
+                    // Superseded by a newer session: drop our record quietly
+                    // without touching the active session's visible state.
+                    telemetry.breadcrumb(
+                        "\(def.name)-hook.session-end.superseded",
+                        data: ["reason": detachReason ?? "", "workspace": mapped.workspaceId]
+                    )
+                }
+            } else {
+                telemetry.breadcrumb(
+                    "\(def.name)-hook.session-end.stale",
+                    data: ["reason": detachReason ?? ""]
                 )
             }
 

@@ -1157,4 +1157,26 @@ unset -f _cmux_fix_path
 
 _cmux_detect_send_tool
 
+# Agent launch aliases (cx/cxy/cc/ccy). The reopen + in-place resume paste
+# emits short alias commands (e.g. `cd <cwd> && cxy resume <id>`). Define
+# defaults so the pasted command works even when the user's dotfiles do not
+# provide them. This integration is sourced from PROMPT_COMMAND after the
+# user's .bashrc, so only define a name that is not already an alias or
+# function to keep any user-provided definition.
+_cmux_define_agent_alias() {
+    local _name="$1"; shift
+    if alias "$_name" >/dev/null 2>&1; then
+        return 0
+    fi
+    if declare -F "$_name" >/dev/null 2>&1; then
+        return 0
+    fi
+    eval "${_name}() { $* ; }"
+}
+_cmux_define_agent_alias cx 'command codex "$@"'
+_cmux_define_agent_alias cxy 'command codex --dangerously-bypass-approvals-and-sandbox "$@"'
+_cmux_define_agent_alias cc 'command claude "$@"'
+_cmux_define_agent_alias ccy 'command claude --dangerously-skip-permissions "$@"'
+unset -f _cmux_define_agent_alias
+
 _cmux_install_prompt_command

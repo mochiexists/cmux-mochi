@@ -28,6 +28,7 @@ CODEX_HOOK_EVENT_LABELS = {
     "SessionStart": "session_start",
     "UserPromptSubmit": "user_prompt_submit",
     "Stop": "stop",
+    "ThreadUnsubscribe": "thread_unsubscribe",
 }
 
 CODEX_HOOK_EVENTS_WITH_MATCHERS = {
@@ -43,6 +44,7 @@ CMUX_CODEX_HOOK_SUBCOMMANDS = (
     "session-start",
     "prompt-submit",
     "stop",
+    "session-end",
 )
 
 CMUX_CODEX_FEED_EVENTS = (
@@ -722,6 +724,61 @@ def test_install_adds_codex_permission_request_hook(cli_path: str, root: Path) -
         if state.get(key, {}).get("trusted_hash") != trusted_hash:
             raise AssertionError(
                 f"missing trusted hash for {key}: expected {trusted_hash!r}, got state {state!r}"
+            )
+
+
+def test_install_registers_codex_thread_unsubscribe_session_end_hook(
+    cli_path: str, root: Path
+) -> None:
+    """Mochi Codex's ThreadUnsubscribe hook must install as a matcher-less
+    session-end lifecycle hook AND be pre-trusted, so Codex runs it without a
+    trust prompt. Without the pre-trust hash the hook is dormant."""
+    codex_home = root / "codex-home-thread-unsubscribe"
+    codex_home.mkdir()
+    env = os.environ.copy()
+    env["CODEX_HOME"] = str(codex_home)
+
+    result = subprocess.run(
+        [cli_path, "hooks", "codex", "install", "--yes"],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=env,
+        timeout=20,
+    )
+    if result.returncode != 0:
+        raise AssertionError(
+            f"hooks codex install failed exit={result.returncode}\nstdout={result.stdout}\nstderr={result.stderr}"
+        )
+
+    hooks = json.loads((codex_home / "hooks.json").read_text(encoding="utf-8"))
+    groups = hooks.get("hooks", {}).get("ThreadUnsubscribe")
+    if not groups:
+        raise AssertionError(f"missing ThreadUnsubscribe hook group: {hooks!r}")
+    # Matcher-less, like Stop: the group must not carry a matcher.
+    if "matcher" in groups[-1]:
+        raise AssertionError(f"ThreadUnsubscribe must be matcher-less: {groups[-1]!r}")
+    command = groups[-1]["hooks"][0]["command"]
+    if "cmux hooks codex session-end" not in command:
+        raise AssertionError(f"wrong ThreadUnsubscribe command: {command!r}")
+
+    # The lifecycle hook must be pre-trusted in config.toml so Codex runs it
+    # automatically (the trust label must match Codex's hook_event_key_label,
+    # i.e. "thread_unsubscribe").
+    config_toml = (codex_home / "config.toml").read_text(encoding="utf-8")
+    state = codex_hook_trust_state(config_toml)
+    expected_trust = expected_cmux_codex_hook_trust(hooks, codex_home / "hooks.json")
+    thread_unsubscribe_keys = [
+        key for key in expected_trust if key.endswith(":thread_unsubscribe:0:0")
+    ]
+    if not thread_unsubscribe_keys:
+        raise AssertionError(
+            f"expected a thread_unsubscribe trust entry, got {expected_trust!r}"
+        )
+    for key in thread_unsubscribe_keys:
+        if state.get(key, {}).get("trusted_hash") != expected_trust[key]:
+            raise AssertionError(
+                f"ThreadUnsubscribe hook not pre-trusted: expected {expected_trust[key]!r} for {key}, got {state!r}"
             )
 
 
@@ -2038,6 +2095,119 @@ def test_codex_pre_tool_use_is_telemetry_not_actionable(cli_path: str, root: Pat
         raise AssertionError(f"wrong PreToolUse event: {frame!r}")
 
 
+def _seed_codex_session_and_detach(
+    cli_path: str,
+    root: Path,
+    *,
+    name: str,
+    reason: str | None,
+) -> dict:
+    """Seed a codex hook session record via session-start, then fire a
+    session-end (ThreadUnsubscribe) with the given detach reason. Returns the
+    sessions map from the codex hook store file after the detach.
+
+    The store file lives at <state_dir>/codex-hook-sessions.json (see
+    agentHookStatePath with sessionStoreSuffix="codex").
+    """
+    socket_path = root / f"cmux-detach-{name}.sock"
+    state_dir = root / f"hook-state-detach-{name}"
+    state_dir.mkdir()
+    session_id = f"codex-detach-{name}-{os.getpid()}"
+
+    env = os.environ.copy()
+    env["CMUX_SOCKET_PATH"] = str(socket_path)
+    env["CMUX_SURFACE_ID"] = FAKE_SURFACE_ID
+    env["CMUX_WORKSPACE_ID"] = FAKE_WORKSPACE_ID
+    env["CMUX_AGENT_HOOK_STATE_DIR"] = str(state_dir)
+
+    with FakeCmuxSocket(socket_path, None):
+        payload = {
+            "session_id": session_id,
+            "cwd": str(root),
+        }
+        start = subprocess.run(
+            [cli_path, "--socket", str(socket_path), "hooks", "codex", "session-start"],
+            input=json.dumps(payload),
+            capture_output=True,
+            text=True,
+            check=False,
+            env=env,
+            timeout=10,
+        )
+        if start.returncode != 0:
+            raise AssertionError(
+                f"hooks codex session-start failed exit={start.returncode}\n"
+                f"stdout={start.stdout}\nstderr={start.stderr}"
+            )
+
+        store_path = state_dir / "codex-hook-sessions.json"
+        seeded = json.loads(store_path.read_text(encoding="utf-8"))
+        if session_id not in seeded.get("sessions", {}):
+            raise AssertionError(
+                f"session-start did not seed record for {session_id}: {seeded!r}"
+            )
+
+        detach_payload = {"session_id": session_id, "cwd": str(root)}
+        if reason is not None:
+            detach_payload["reason"] = reason
+        end = subprocess.run(
+            [cli_path, "--socket", str(socket_path), "hooks", "codex", "session-end"],
+            input=json.dumps(detach_payload),
+            capture_output=True,
+            text=True,
+            check=False,
+            env=env,
+            timeout=10,
+        )
+        if end.returncode != 0:
+            raise AssertionError(
+                f"hooks codex session-end failed exit={end.returncode}\n"
+                f"stdout={end.stdout}\nstderr={end.stderr}"
+            )
+
+    after = json.loads(store_path.read_text(encoding="utf-8"))
+    return {"session_id": session_id, "sessions": after.get("sessions", {})}
+
+
+def test_codex_user_requested_detach_preserves_session_record(cli_path: str, root: Path) -> None:
+    """A clean user-requested quit (Codex /quit or Ctrl+C/Ctrl+D) must leave the
+    hook session record in place so the app can resurrect the pane / pre-type the
+    resume command on reopen — exactly like a crash does."""
+    result = _seed_codex_session_and_detach(
+        cli_path, root, name="user-requested", reason="user_requested"
+    )
+    if result["session_id"] not in result["sessions"]:
+        raise AssertionError(
+            "user_requested detach must PRESERVE the session record, but it was "
+            f"removed: {result['sessions']!r}"
+        )
+
+
+def test_codex_thread_switch_detach_consumes_session_record(cli_path: str, root: Path) -> None:
+    """thread_switch keeps the prior behavior: the record is consumed (removed),
+    so reopen does not resurrect the thread."""
+    result = _seed_codex_session_and_detach(
+        cli_path, root, name="thread-switch", reason="thread_switch"
+    )
+    if result["session_id"] in result["sessions"]:
+        raise AssertionError(
+            "thread_switch detach must CONSUME the session record, but it "
+            f"remained: {result['sessions']!r}"
+        )
+
+
+def test_codex_programmatic_detach_consumes_session_record(cli_path: str, root: Path) -> None:
+    """programmatic teardown keeps the prior behavior: the record is consumed."""
+    result = _seed_codex_session_and_detach(
+        cli_path, root, name="programmatic", reason="programmatic"
+    )
+    if result["session_id"] in result["sessions"]:
+        raise AssertionError(
+            "programmatic detach must CONSUME the session record, but it "
+            f"remained: {result['sessions']!r}"
+        )
+
+
 def main() -> int:
     try:
         cli_path = resolve_cmux_cli()
@@ -2054,6 +2224,7 @@ def main() -> int:
             test_codex_monitor_exits_when_workspace_has_no_surfaces(cli_path, root)
             test_codex_monitor_survives_transient_owner_rpc_timeout(cli_path, root)
             test_install_adds_codex_permission_request_hook(cli_path, root)
+            test_install_registers_codex_thread_unsubscribe_session_end_hook(cli_path, root)
             test_install_escapes_codex_hook_trust_state_keys(cli_path, root)
             test_install_preserves_codex_hook_position_with_third_party_hooks(cli_path, root)
             test_install_preserves_each_codex_hook_position_with_interleaved_third_party_hooks(cli_path, root)
@@ -2083,6 +2254,9 @@ def main() -> int:
             test_permission_reply_uses_codex_permission_request_schema(cli_path, root)
             test_codex_persistent_permission_modes_degrade_to_once(cli_path, root)
             test_codex_pre_tool_use_is_telemetry_not_actionable(cli_path, root)
+            test_codex_user_requested_detach_preserves_session_record(cli_path, root)
+            test_codex_thread_switch_detach_consumes_session_record(cli_path, root)
+            test_codex_programmatic_detach_consumes_session_record(cli_path, root)
         except Exception as exc:
             print(f"FAIL: {exc}")
             return 1
