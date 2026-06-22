@@ -703,12 +703,23 @@ struct CmuxTaskManagerCodingAgentDefinition: Equatable {
         }
     }
 
+    /// Arguments past this index are not scanned. Coding agents are always
+    /// identified by their binary or an early subcommand argument; an unbounded
+    /// scan over a huge argv (some node/electron processes carry thousands of
+    /// args, each `lowercased()`-bridged per needle) is the O(args) work that
+    /// froze the main thread past the 8s app-hang threshold (Sentry
+    /// CMUX-ATLAS-1R).
+    static let maxScannedArgumentCount = 256
+
     static func matchingDefinition(
         processName: String,
         processPath: String?,
-        arguments: [String],
+        arguments rawArguments: [String],
         environment: [String: String]
     ) -> CmuxTaskManagerCodingAgentDefinition? {
+        let arguments = rawArguments.count > maxScannedArgumentCount
+            ? Array(rawArguments.prefix(maxScannedArgumentCount))
+            : rawArguments
         let definitions = builtIns
         let launchKind = normalized(environment["CMUX_AGENT_LAUNCH_KIND"])
         if let launchKind,

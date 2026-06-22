@@ -2505,7 +2505,19 @@ class TerminalController {
             browserPIDOccurrences: browserPIDOccurrences,
             includeProcesses: includeProcesses
         )
-        let aggregates = processAggregates(from: processSnapshot, totalPIDs: totalPIDs)
+        // Run the per-PID program/coding-agent aggregation off the main actor.
+        // The matching scan + argv sysctl is what froze the main thread past the
+        // 8s app-hang threshold (Sentry CMUX-ATLAS-1R); this refresh fires every
+        // 3s from the sidebar poller, so it must never run on main.
+        let aggregates = await withTaskGroup(
+            of: TaskManagerAggregatePayload.self,
+            returning: TaskManagerAggregatePayload.self
+        ) { group in
+            group.addTask(priority: .utility) {
+                self.processAggregates(from: processSnapshot, totalPIDs: totalPIDs)
+            }
+            return await group.next()!
+        }
         let memoryDiagnostic = v2TopMemoryDiagnosticPayload(
             processSnapshot: processSnapshot,
             annotatedWindows: annotatedWindows
@@ -2523,13 +2535,49 @@ class TerminalController {
         ]
     }
 
+    private typealias TaskManagerAggregatePayload = (
+        programs: [[String: Any]],
+        codingAgents: [[String: Any]]
+    )
+
+    /// Pass slower than this (ms) is logged as a breadcrumb so a regression or
+    /// pathological process set shows up as a trail *before* it can grow into
+    /// an 8s app-hang.
+    private nonisolated static let taskManagerAggregateSlowThresholdMs: Double = 250
+
+    /// Builds the program + coding-agent aggregates. Hot path: for every PID it
+    /// runs `CmuxTaskManagerCodingAgentDefinition.matchingDefinition` (a nested
+    /// needle/argument scan) plus a per-process argv `sysctl`, so cost is
+    /// O(processes × needles × argv). This must run off the main actor — running
+    /// it on main froze the UI past the 8s app-hang threshold (Sentry
+    /// CMUX-ATLAS-1R). Callers on the main actor go through the `withTaskGroup`
+    /// hop in `taskManagerTopPayload`; `v2SystemTop` is already `nonisolated`.
     private nonisolated func processAggregates(
         from processSnapshot: CmuxTopProcessSnapshot,
         totalPIDs: Set<Int>
-    ) -> (programs: [[String: Any]], codingAgents: [[String: Any]]) {
-        (
+    ) -> TaskManagerAggregatePayload {
+        let startedAt = DispatchTime.now().uptimeNanoseconds
+        let result: TaskManagerAggregatePayload = (
             programs: processSnapshot.programSummaryPayload(for: totalPIDs),
             codingAgents: processSnapshot.codingAgentSummaryPayload(for: totalPIDs)
+        )
+        let elapsedMs = Double(DispatchTime.now().uptimeNanoseconds &- startedAt) / 1_000_000
+        if elapsedMs > Self.taskManagerAggregateSlowThresholdMs {
+            Self.reportSlowTaskManagerAggregate(elapsedMs: elapsedMs, processCount: totalPIDs.count)
+        }
+        return result
+    }
+
+    private nonisolated static func reportSlowTaskManagerAggregate(
+        elapsedMs: Double,
+        processCount: Int
+    ) {
+        let rounded = Int(elapsedMs.rounded())
+        cmuxDebugLog("taskManager.aggregate.slow elapsedMs=\(rounded) processCount=\(processCount)")
+        sentryBreadcrumb(
+            "taskManager.aggregate.slow",
+            category: "performance",
+            data: ["elapsed_ms": rounded, "process_count": processCount]
         )
     }
 
