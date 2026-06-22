@@ -2,6 +2,13 @@
 
 All notable changes to cmux are documented here.
 
+## [0.64.155] - 2026-06-22
+
+cmux **Mochi** fork patch release.
+
+### Fixed
+- Fixed an intermittent UI freeze — often triggered by opening a new tab — where terminals stopped rendering and the whole app became unresponsive, including to Cmd-Q. The Task Manager's per-process coding-agent matching, polled every 3 seconds by the sidebar CPU/memory readout, was running on the main thread and could block it for several seconds on busy machines. It now runs off the main thread and bounds how much of a process's argument list it scans.
+
 ## [0.64.154] - 2026-06-17
 
 cmux **Mochi** fork patch release.
