@@ -2494,7 +2494,6 @@ class TerminalController {
         processCount: Int
     ) {
         let rounded = Int(elapsedMs.rounded())
-        cmuxDebugLog("taskManager.aggregate.slow elapsedMs=\(rounded) processCount=\(processCount)")
         sentryBreadcrumb(
             "taskManager.aggregate.slow",
             category: "performance",
