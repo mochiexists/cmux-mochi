@@ -6518,6 +6518,17 @@ private func browserBareHostCandidate(_ lowercasedInput: String) -> String {
     return String(lowercasedInput[..<end])
 }
 
+private func browserBareHostLooksNavigable(_ bareHost: String) -> Bool {
+    guard !bareHost.isEmpty else { return false }
+    if bareHost == "localhost" || bareHost == "127.0.0.1" || bareHost == "[::1]" {
+        return true
+    }
+    if bareHost != ".localhost", bareHost.hasSuffix(".localhost") {
+        return true
+    }
+    return bareHost.contains(".")
+}
+
 func resolveBrowserNavigableURL(_ input: String) -> URL? {
     let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !trimmed.isEmpty else { return nil }
@@ -6545,10 +6556,11 @@ func resolveBrowserNavigableURL(_ input: String) -> URL? {
     }
 
     if trimmed.contains(":") || trimmed.contains("/") {
+        guard browserBareHostLooksNavigable(bareHost) else { return nil }
         return URL(string: "https://\(trimmed)")
     }
 
-    if trimmed.contains(".") {
+    if browserBareHostLooksNavigable(bareHost) {
         return URL(string: "https://\(trimmed)")
     }
 

@@ -5254,6 +5254,13 @@ final class BrowserNavigableURLResolutionTests: XCTestCase {
         XCTAssertEqual(resolved.path, "/tmp/cmux-local-test.html")
     }
 
+    func testResolvesBareDomainWithPathAsHTTPSURL() throws {
+        let resolved = try XCTUnwrap(resolveBrowserNavigableURL("example.com/docs"))
+        XCTAssertEqual(resolved.scheme, "https")
+        XCTAssertEqual(resolved.host, "example.com")
+        XCTAssertEqual(resolved.path, "/docs")
+    }
+
     func testResolvesBareLocalhostSubdomainAsHTTPURL() throws {
         let resolved = try XCTUnwrap(resolveBrowserNavigableURL("api.localhost:3000"))
         XCTAssertEqual(resolved.scheme, "http")
@@ -5273,6 +5280,10 @@ final class BrowserNavigableURLResolutionTests: XCTestCase {
 
     func testRejectsHostOnlyFileURL() {
         XCTAssertNil(resolveBrowserNavigableURL("file://example.html"))
+    }
+
+    func testRejectsRelativeMarkdownPathWithSlashes() {
+        XCTAssertNil(resolveBrowserNavigableURL("docs/planning/followup-workpackage-modular-finish-and-skipkit.md"))
     }
 }
 
