@@ -24,10 +24,27 @@ jobs:
         with:
           submodules: recursive
 
+      # The helper is a pure function of the ghostty submodule SHA + its build
+      # script + the pinned zig version. Cache the built binary keyed on those so
+      # a release that does NOT bump ghostty reuses it and skips the only
+      # GitHub-billed step in the pipeline (the macOS-hosted zig build).
+      - name: Resolve ghostty SHA
+        id: gsha
+        run: echo "sha=$(git -C ghostty rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Restore cached Ghostty CLI helper
+        id: helper-cache
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: ghostty-cli-helper/ghostty
+          key: ghostty-cli-helper-${{ steps.gsha.outputs.sha }}-${{ hashFiles('scripts/build-ghostty-cli-helper.sh', 'scripts/install-zig-ci.sh') }}-v1
+
       - name: Install zig
+        if: steps.helper-cache.outputs.cache-hit != 'true'
         run: ./scripts/install-zig-ci.sh
 
       - name: Cache Zig packages
+        if: steps.helper-cache.outputs.cache-hit != 'true'
         uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
           path: ~/.cache/zig
@@ -35,10 +52,18 @@ jobs:
           restore-keys: zig-packages-
 
       - name: Build universal Ghostty CLI helper
+        if: steps.helper-cache.outputs.cache-hit != 'true'
         run: |
           set -euo pipefail
           mkdir -p ghostty-cli-helper
           ./scripts/build-ghostty-cli-helper.sh --universal --output ghostty-cli-helper/ghostty
+
+      # Always run — guards against a corrupted/partial cache entry serving a bad
+      # helper. Fails loudly rather than shipping a non-universal binary.
+      - name: Verify helper is universal (cached or freshly built)
+        run: |
+          set -euo pipefail
+          test -f ghostty-cli-helper/ghostty
           lipo ghostty-cli-helper/ghostty -verify_arch arm64 x86_64
 
       - name: Upload universal Ghostty CLI helper
