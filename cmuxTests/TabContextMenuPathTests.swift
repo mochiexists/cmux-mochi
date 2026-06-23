@@ -58,6 +58,28 @@ final class TabContextMenuPathTests: XCTestCase {
         XCTAssertEqual(pasteboard.string(forType: .string), directory)
     }
 
+    func testCopyIdentifiersTabContextActionWritesWorkspacePaneSurfacePayload() throws {
+        let workspace = Workspace()
+        let panelId = try XCTUnwrap(workspace.focusedPanelId)
+        let paneId = try XCTUnwrap(workspace.paneId(forPanelId: panelId))
+        let tabId = try XCTUnwrap(workspace.surfaceIdFromPanelId(panelId))
+        let tab = try XCTUnwrap(workspace.bonsplitController.tab(tabId))
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+
+        workspace.splitTabBar(
+            workspace.bonsplitController,
+            didRequestTabContextAction: .copyIdentifiers,
+            for: tab,
+            inPane: paneId
+        )
+
+        let payload = try XCTUnwrap(pasteboard.string(forType: .string))
+        XCTAssertTrue(payload.contains("workspace_id=\(workspace.id.uuidString)"))
+        XCTAssertTrue(payload.contains("pane_id=\(paneId.id.uuidString)"))
+        XCTAssertTrue(payload.contains("surface_id=\(panelId.uuidString)"))
+    }
+
     // MARK: - Markdown / browser-local-file targets (pure resolver)
 
     func testActionTargetPrefersMarkdownFileAsSelectedFile() {

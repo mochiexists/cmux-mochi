@@ -33129,6 +33129,8 @@ export default function cmuxPiSessionExtension(pi: ExtensionAPI) {
         print("  \(mochi)•\(reset) Always-on CPU / memory readout in the sidebar footer")
         print("  \(mochi)•\(reset) Sidebar spring-load — drag a session onto a workspace to switch")
         print("  \(mochi)•\(reset) One-click \"Open in External Browser\" toggle")
+        print("  \(mochi)•\(reset) Copy / Show IDs with workspace, pane, surface, agent session, and resume command details")
+        print("  \(mochi)•\(reset) cmux Mochi Conductor skill for driving visible Codex/Claude worker panes")
         print("  \(mochi)•\(reset) Codex close-and-resume (needs the Mochi Codex fork)")
         print()
 

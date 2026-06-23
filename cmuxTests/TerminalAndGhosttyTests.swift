@@ -5637,6 +5637,16 @@ final class TerminalOpenURLTargetResolutionTests: XCTestCase {
         }
     }
 
+    func testRelativeMarkdownPathDoesNotResolveAsEmbeddedBrowser() throws {
+        let target = try XCTUnwrap(resolveTerminalOpenURLTarget("docs/planning/followup-workpackage-modular-finish-and-skipkit.md"))
+        switch target {
+        case .external:
+            break
+        case let .embeddedBrowser(url):
+            XCTFail("Expected relative markdown path not to route to embedded browser: \(url.absoluteString)")
+        }
+    }
+
     func testResolvesFileSchemeAsExternal() throws {
         let target = try XCTUnwrap(resolveTerminalOpenURLTarget("file:///tmp/cmux.txt"))
         switch target {
