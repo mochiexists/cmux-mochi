@@ -363,7 +363,7 @@ final class RestorableAgentSessionIndexTests: XCTestCase {
         XCTAssertEqual(snapshot.workingDirectory, launchCwd.path)
         let resumeCommand = try XCTUnwrap(snapshot.resumeCommand)
         XCTAssertTrue(
-            resumeCommand.contains("cd -- '\(launchCwd.path)'"),
+            resumeCommand.contains("cd '\(launchCwd.path)'"),
             "resume must cd into the launch cwd; got: \(resumeCommand)"
         )
         XCTAssertFalse(
@@ -1162,7 +1162,7 @@ final class RestorableAgentSessionIndexTests: XCTestCase {
         )
         let resume = try XCTUnwrap(snapshot.resumeCommand)
         XCTAssertFalse(resume.contains("claude"), "codex resume must not run the claude binary; got: \(resume)")
-        XCTAssertTrue(resume.contains("'codex' 'resume' '\(sid)'"), "codex resume must use the bare codex verb; got: \(resume)")
+        XCTAssertTrue(resume.contains("cxy 'resume' '\(sid)'"), "codex resume must use the codex alias (cxy); got: \(resume)")
         XCTAssertFalse(resume.contains(foreignDir.path), "codex resume must not cd into the foreign launch dir; got: \(resume)")
         let fork = try XCTUnwrap(snapshot.forkCommand)
         XCTAssertFalse(fork.contains("claude"), "codex fork must not run the claude binary; got: \(fork)")
@@ -1208,7 +1208,7 @@ final class RestorableAgentSessionIndexTests: XCTestCase {
         )
         let resume = try XCTUnwrap(snapshot.resumeCommand)
         XCTAssertFalse(resume.contains("'sh'"), "codex resume must not run the hook shell wrapper; got: \(resume)")
-        XCTAssertTrue(resume.contains("'codex' 'resume' '\(sid)'"), "codex resume must use the bare codex verb; got: \(resume)")
+        XCTAssertTrue(resume.contains("cxy 'resume' '\(sid)'"), "codex resume must use the codex alias (cxy); got: \(resume)")
         let fork = try XCTUnwrap(snapshot.forkCommand)
         XCTAssertFalse(fork.contains("'sh'"), "codex fork must not run the hook shell wrapper; got: \(fork)")
         XCTAssertTrue(fork.contains("'codex' 'fork' '\(sid)'"), "codex fork must use the bare codex verb; got: \(fork)")
