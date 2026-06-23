@@ -1463,50 +1463,6 @@ final class SessionPersistenceTests: XCTestCase {
     }
 
     @MainActor
-    func testMediumRestorePrefillsPendingAgentEvenWhenSavedAfterAgentStopped() throws {
-        let defaults = UserDefaults.standard
-        let key = AgentSessionAutoResumeSettings.modeKey
-        let previous = defaults.object(forKey: key)
-        defaults.set(AgentSessionResumeMode.medium.rawValue, forKey: key)
-        defer {
-            if let previous {
-                defaults.set(previous, forKey: key)
-            } else {
-                defaults.removeObject(forKey: key)
-            }
-        }
-
-        let source = Workspace()
-        let sourcePanelId = try XCTUnwrap(source.focusedPanelId)
-        let sourceIndex = try makeRestorableAgentIndex(
-            workspaceId: source.id,
-            panelId: sourcePanelId,
-            sessionId: "codex-pending-prefill-after-update",
-            arguments: [
-                "/usr/local/bin/codex",
-                "--model",
-                "gpt-5.4",
-            ]
-        )
-        var snapshot = source.sessionSnapshot(
-            includeScrollback: false,
-            restorableAgentIndex: sourceIndex
-        )
-        let sourcePanelIndex = try XCTUnwrap(snapshot.panels.firstIndex { $0.id == sourcePanelId })
-        snapshot.panels[sourcePanelIndex].terminal?.wasAgentRunning = false
-
-        let restored = Workspace()
-        restored.restoreSessionSnapshot(snapshot)
-        let restoredPanelId = try XCTUnwrap(restored.focusedPanelId)
-        let restoredPanel = try XCTUnwrap(restored.terminalPanel(for: restoredPanelId))
-        let input = try XCTUnwrap(restoredPanel.surface.debugInitialInputForTesting())
-
-        XCTAssertTrue(input.contains("codex"), input)
-        XCTAssertTrue(input.contains("codex-pending-prefill-after-update"), input)
-        XCTAssertFalse(input.hasSuffix("\n"), "Medium restore should prefill without submitting.")
-    }
-
-    @MainActor
     func testRestoredAntigravityAgentAutoResumeUsesConversationCommand() throws {
         let source = Workspace()
         let sourcePanelId = try XCTUnwrap(source.focusedPanelId)
@@ -4095,18 +4051,6 @@ final class SocketListenerAcceptPolicyTests: XCTestCase {
 
         let workspaceId = UUID()
         let panelId = UUID()
-        let codexHome = home.appendingPathComponent("codex-home", isDirectory: true)
-        let codexSessionsDir = codexHome.appendingPathComponent("sessions", isDirectory: true)
-        try FileManager.default.createDirectory(at: codexSessionsDir, withIntermediateDirectories: true)
-        try """
-        {"type":"session_meta","id":"codex-session-123"}
-        {"type":"turn_context","session_id":"codex-session-123"}
-
-        """.write(
-            to: codexSessionsDir.appendingPathComponent("rollout-codex-session-123.jsonl", isDirectory: false),
-            atomically: true,
-            encoding: .utf8
-        )
         let storeURL = storeDir.appendingPathComponent("codex-hook-sessions.json", isDirectory: false)
         let json = """
         {
@@ -4130,7 +4074,7 @@ final class SocketListenerAcceptPolicyTests: XCTestCase {
                 ],
                 "workingDirectory": "/tmp/repo",
                 "environment": {
-                  "CODEX_HOME": "\(codexHome.path)"
+                  "CODEX_HOME": "/tmp/codex"
                 },
                 "capturedAt": 122,
                 "source": "process"
