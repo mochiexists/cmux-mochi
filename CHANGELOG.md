@@ -2,6 +2,18 @@
 
 All notable changes to cmux are documented here.
 
+## [0.64.156] - 2026-06-23
+
+cmux **Mochi** fork patch release.
+
+### Added
+- **Show IDs / Copy IDs.** A new session-identifier overlay — from the tab context menu and the command palette — surfaces the focused pane's workspace, pane, and surface IDs plus its agent kind, session id, working directory, and resume command. *Copy IDs* writes the payload to the clipboard; *Show IDs* opens a details window. These are the source of truth for routing work between agent panes.
+- **cmux Mochi Conductor skill.** A bundled agent skill for driving a visible Codex or Claude worker pane from another agent — sending a prompt with `cmux send` + `send-key enter`, reading the reply with `read-screen`, and using Show/Copy IDs to confirm the target session before acting.
+
+### Fixed
+- The browser omnibar no longer treats a bare token that contains a colon or slash but no navigable host (such as a relative file path) as a URL.
+- The update pill's popover now renders with an opaque background instead of appearing transparent.
+
 ## [0.64.155] - 2026-06-22
 
 cmux **Mochi** fork patch release.
