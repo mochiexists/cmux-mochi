@@ -136,6 +136,59 @@ final class RestorableAgentSessionIndexTests: XCTestCase {
         )
     }
 
+    func testCodexHookSnapshotRequiresRolloutFile() throws {
+        let fm = FileManager.default
+        let root = fm.temporaryDirectory
+            .appendingPathComponent("cmux-codex-restore-\(UUID().uuidString)", isDirectory: true)
+        defer { try? fm.removeItem(at: root) }
+        let cwd = root.appendingPathComponent("repo", isDirectory: true)
+        try fm.createDirectory(at: cwd, withIntermediateDirectories: true)
+
+        let validSessionId = "019ed960-1111-7222-8333-444444444444"
+        let missingSessionId = "019ed960-5555-7666-8777-888888888888"
+        let validWorkspaceId = UUID()
+        let validPanelId = UUID()
+        let missingWorkspaceId = UUID()
+        let missingPanelId = UUID()
+
+        try writeCodexRollout(root: root, sessionId: validSessionId)
+        try writeHookStore(
+            root: root,
+            storeFilename: "codex-hook-sessions.json",
+            sessions: [
+                validSessionId: driftedAgentHookRecord(
+                    launcher: "codex",
+                    sessionId: validSessionId,
+                    workspaceId: validWorkspaceId,
+                    panelId: validPanelId,
+                    recordedCwd: cwd.path,
+                    launchCwd: cwd.path,
+                    updatedAt: 20
+                ),
+                missingSessionId: driftedAgentHookRecord(
+                    launcher: "codex",
+                    sessionId: missingSessionId,
+                    workspaceId: missingWorkspaceId,
+                    panelId: missingPanelId,
+                    recordedCwd: cwd.path,
+                    launchCwd: cwd.path,
+                    updatedAt: 30
+                ),
+            ]
+        )
+
+        let index = RestorableAgentSessionIndex.load(homeDirectory: root.path, fileManager: fm)
+
+        XCTAssertEqual(
+            index.snapshot(workspaceId: validWorkspaceId, panelId: validPanelId)?.sessionId,
+            validSessionId
+        )
+        XCTAssertNil(
+            index.snapshot(workspaceId: missingWorkspaceId, panelId: missingPanelId),
+            "A Codex hook record without a rollout file must not be auto-restored because Codex cannot resume it."
+        )
+    }
+
     func testPanelFallbackUsesLatestHookRecord() throws {
         let fm = FileManager.default
         let root = fm.temporaryDirectory
@@ -772,6 +825,9 @@ final class RestorableAgentSessionIndexTests: XCTestCase {
             let ws = UUID()
             let panel = UUID()
             let sid = "55555555-5555-5555-5555-555555555555"
+            if testCase.launcher == "codex" {
+                try writeCodexRollout(root: root, sessionId: sid)
+            }
             try writeHookStore(
                 root: root,
                 storeFilename: testCase.store,
@@ -1104,6 +1160,27 @@ final class RestorableAgentSessionIndexTests: XCTestCase {
         """.write(to: transcriptURL, atomically: true, encoding: .utf8)
     }
 
+    private func writeCodexRollout(root: URL, sessionId: String) throws {
+        try writeCodexRollout(
+            codexHome: root.appendingPathComponent(".codex", isDirectory: true),
+            sessionId: sessionId
+        )
+    }
+
+    private func writeCodexRollout(codexHome: URL, sessionId: String) throws {
+        let sessionsDir = codexHome.appendingPathComponent("sessions", isDirectory: true)
+        try FileManager.default.createDirectory(at: sessionsDir, withIntermediateDirectories: true)
+        try """
+        {"type":"session_meta","id":"\(sessionId)"}
+        {"type":"turn_context","session_id":"\(sessionId)"}
+
+        """.write(
+            to: sessionsDir.appendingPathComponent("rollout-\(sessionId).jsonl", isDirectory: false),
+            atomically: true,
+            encoding: .utf8
+        )
+    }
+
     private func writeClaudeHookStore(root: URL, sessions: [String: [String: Any]]) throws {
         try writeHookStore(root: root, storeFilename: "claude-hook-sessions.json", sessions: sessions)
     }
@@ -1128,6 +1205,7 @@ final class RestorableAgentSessionIndexTests: XCTestCase {
         let ws = UUID()
         let panel = UUID()
         let sid = "66666666-6666-6666-6666-666666666666"
+        try writeCodexRollout(root: root, sessionId: sid)
         var record = driftedAgentHookRecord(
             launcher: "codex", sessionId: sid, workspaceId: ws, panelId: panel,
             recordedCwd: dir.path, launchCwd: dir.path, updatedAt: 10
@@ -1161,13 +1239,31 @@ final class RestorableAgentSessionIndexTests: XCTestCase {
             "the foreign capture's launch cwd must not leak into the snapshot"
         )
         let resume = try XCTUnwrap(snapshot.resumeCommand)
-        XCTAssertFalse(resume.contains("claude"), "codex resume must not run the claude binary; got: \(resume)")
-        XCTAssertTrue(resume.contains("'codex' 'resume' '\(sid)'"), "codex resume must use the bare codex verb; got: \(resume)")
-        XCTAssertFalse(resume.contains(foreignDir.path), "codex resume must not cd into the foreign launch dir; got: \(resume)")
+        XCTAssertFalse(
+            resume.contains("claude"),
+            "codex resume must not run the claude binary; got: \(resume)"
+        )
+        XCTAssertTrue(
+            resume.contains("'resume' '\(sid)'"),
+            "codex resume must reference the session id; got: \(resume)"
+        )
+        XCTAssertFalse(
+            resume.contains(foreignDir.path),
+            "codex resume must not cd into the foreign launch dir; got: \(resume)"
+        )
         let fork = try XCTUnwrap(snapshot.forkCommand)
-        XCTAssertFalse(fork.contains("claude"), "codex fork must not run the claude binary; got: \(fork)")
-        XCTAssertTrue(fork.contains("'codex' 'fork' '\(sid)'"), "codex fork must use the bare codex verb; got: \(fork)")
-        XCTAssertFalse(fork.contains(foreignDir.path), "codex fork must not cd into the foreign launch dir; got: \(fork)")
+        XCTAssertFalse(
+            fork.contains("claude"),
+            "codex fork must not run the claude binary; got: \(fork)"
+        )
+        XCTAssertTrue(
+            fork.contains("'codex' 'fork' '\(sid)'"),
+            "codex fork must use the bare codex verb; got: \(fork)"
+        )
+        XCTAssertFalse(
+            fork.contains(foreignDir.path),
+            "codex fork must not cd into the foreign launch dir; got: \(fork)"
+        )
     }
 
     // When the launch argv falls back to a PID that points at the hook dispatch shell instead of
@@ -1184,6 +1280,7 @@ final class RestorableAgentSessionIndexTests: XCTestCase {
         let ws = UUID()
         let panel = UUID()
         let sid = "77777777-7777-7777-7777-777777777777"
+        try writeCodexRollout(root: root, sessionId: sid)
         var record = driftedAgentHookRecord(
             launcher: "codex", sessionId: sid, workspaceId: ws, panelId: panel,
             recordedCwd: dir.path, launchCwd: dir.path, updatedAt: 10
@@ -1207,11 +1304,23 @@ final class RestorableAgentSessionIndexTests: XCTestCase {
                 .snapshot(workspaceId: ws, panelId: panel)
         )
         let resume = try XCTUnwrap(snapshot.resumeCommand)
-        XCTAssertFalse(resume.contains("'sh'"), "codex resume must not run the hook shell wrapper; got: \(resume)")
-        XCTAssertTrue(resume.contains("'codex' 'resume' '\(sid)'"), "codex resume must use the bare codex verb; got: \(resume)")
+        XCTAssertFalse(
+            resume.contains("'sh'"),
+            "codex resume must not run the hook shell wrapper; got: \(resume)"
+        )
+        XCTAssertTrue(
+            resume.contains("'resume' '\(sid)'"),
+            "codex resume must reference the session id; got: \(resume)"
+        )
         let fork = try XCTUnwrap(snapshot.forkCommand)
-        XCTAssertFalse(fork.contains("'sh'"), "codex fork must not run the hook shell wrapper; got: \(fork)")
-        XCTAssertTrue(fork.contains("'codex' 'fork' '\(sid)'"), "codex fork must use the bare codex verb; got: \(fork)")
+        XCTAssertFalse(
+            fork.contains("'sh'"),
+            "codex fork must not run the hook shell wrapper; got: \(fork)"
+        )
+        XCTAssertTrue(
+            fork.contains("'codex' 'fork' '\(sid)'"),
+            "codex fork must use the bare codex verb; got: \(fork)"
+        )
     }
 
     // Wrapper launchers legitimately differ from the hook kind; their captures must stay trusted.
@@ -1226,6 +1335,7 @@ final class RestorableAgentSessionIndexTests: XCTestCase {
         let ws = UUID()
         let panel = UUID()
         let sid = "88888888-8888-8888-8888-888888888888"
+        try writeCodexRollout(root: root, sessionId: sid)
         var record = driftedAgentHookRecord(
             launcher: "codex", sessionId: sid, workspaceId: ws, panelId: panel,
             recordedCwd: dir.path, launchCwd: dir.path, updatedAt: 10

@@ -5096,14 +5096,30 @@ class GhosttyNSView: NSView, NSUserInterfaceValidations {
 
     @IBAction func copyWorkspaceAndSurfaceIdentifiers(_ sender: Any?) {
         guard let terminalSurface else { return }
-        let paneId = terminalSurface.owningWorkspace()?.paneId(forPanelId: terminalSurface.id)?.id
         WorkspaceSurfaceIdentifierClipboardText.copy(
-            WorkspaceSurfaceIdentifierClipboardText.makeWorkspacePaneSurfaceIdentifiers(
-                workspaceId: terminalSurface.tabId,
-                paneId: paneId,
-                surfaceId: terminalSurface.id,
-                includeRefs: true
-            )
+            workspaceSurfaceIdentifierDetails(for: terminalSurface).clipboardText
+        )
+    }
+
+    @IBAction func showWorkspaceAndSurfaceIdentifiers(_ sender: Any?) {
+        guard let terminalSurface else { return }
+        SurfaceIdentifierDetailsWindowController.shared.show(
+            details: workspaceSurfaceIdentifierDetails(for: terminalSurface),
+            relativeTo: window
+        )
+    }
+
+    private func workspaceSurfaceIdentifierDetails(for terminalSurface: TerminalSurface) -> WorkspaceSurfaceIdentifierDetails {
+        let workspace = terminalSurface.owningWorkspace()
+        let paneId = workspace?.paneId(forPanelId: terminalSurface.id)?.id
+        let agent = workspace?.forkableAgentSnapshot(forPanelId: terminalSurface.id)
+            ?? SharedLiveAgentIndex.shared.snapshot(workspaceId: terminalSurface.tabId, panelId: terminalSurface.id)
+        return WorkspaceSurfaceIdentifierClipboardText.makeWorkspacePaneSurfaceIdentifierDetails(
+            workspaceId: terminalSurface.tabId,
+            paneId: paneId,
+            surfaceId: terminalSurface.id,
+            includeRefs: true,
+            agent: agent
         )
     }
 
@@ -5163,7 +5179,8 @@ class GhosttyNSView: NSView, NSUserInterfaceValidations {
             return GhosttyApp.terminalPasteboard.hasString(for: GHOSTTY_CLIPBOARD_STANDARD)
         case #selector(splitHorizontally(_:)), #selector(splitVertically(_:)):
             return canSplitCurrentSurface()
-        case #selector(copyWorkspaceAndSurfaceIdentifiers(_:)):
+        case #selector(copyWorkspaceAndSurfaceIdentifiers(_:)),
+             #selector(showWorkspaceAndSurfaceIdentifiers(_:)):
             return terminalSurface != nil
         default:
             return true
@@ -7240,6 +7257,12 @@ class GhosttyNSView: NSView, NSUserInterfaceValidations {
                 keyEquivalent: ""
             )
             identifiersItem.target = self
+            let showIdentifiersItem = menu.addItem(
+                withTitle: String(localized: "terminalContextMenu.showIdentifiers", defaultValue: "Show IDs"),
+                action: #selector(showWorkspaceAndSurfaceIdentifiers(_:)),
+                keyEquivalent: ""
+            )
+            showIdentifiersItem.target = self
             let linkItem = menu.addItem(
                 withTitle: String(localized: "command.copySurfaceLink.title", defaultValue: "Copy Surface Link"),
                 action: #selector(copyCurrentSurfaceLink(_:)),
