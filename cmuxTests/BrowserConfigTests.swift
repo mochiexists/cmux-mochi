@@ -5306,6 +5306,13 @@ final class BrowserLinkOpenSettingsTests: XCTestCase {
         #expect(resolved.path == "/tmp/cmux-local-test.html")
     }
 
+    @Test func resolvesBareDomainWithPathAsHTTPSURL() throws {
+        let resolved = try #require(resolveBrowserNavigableURL("example.com/docs"))
+        #expect(resolved.scheme == "https")
+        #expect(resolved.host == "example.com")
+        #expect(resolved.path == "/docs")
+    }
+
     @Test func resolvesBareLocalhostSubdomainAsHTTPURL() throws {
         let resolved = try #require(resolveBrowserNavigableURL("api.localhost:3000"))
         #expect(resolved.scheme == "http")
@@ -5346,6 +5353,10 @@ final class BrowserLinkOpenSettingsTests: XCTestCase {
 
     @Test func rejectsHostOnlyFileURL() {
         #expect(resolveBrowserNavigableURL("file://example.html") == nil)
+    }
+
+    @Test func rejectsRelativeMarkdownPathWithSlashes() {
+        #expect(resolveBrowserNavigableURL("docs/planning/followup-workpackage-modular-finish-and-skipkit.md") == nil)
     }
 }
 
