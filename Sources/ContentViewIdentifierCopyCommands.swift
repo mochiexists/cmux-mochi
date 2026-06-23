@@ -1,6 +1,13 @@
 import AppKit
 import Foundation
 
+private struct IdentifierCommandDescriptor {
+    let id: String
+    let title: String
+    let keywords: [String]
+    let requiresPane: Bool
+}
+
 extension ContentView {
     func appendIdentifierCopyCommandContributions(
         to contributions: inout [CommandPaletteCommandContribution],
@@ -11,22 +18,25 @@ extension ContentView {
             { _ in value }
         }
 
-        let workspaceCommands: [(id: String, title: String, keywords: [String])] = [
-            (
-                "palette.copyWorkspaceID",
-                String(localized: "contextMenu.copyWorkspaceID", defaultValue: "Copy Workspace ID"),
-                ["copy", "workspace", "id", "identifier"]
+        let workspaceCommands = [
+            IdentifierCommandDescriptor(
+                id: "palette.copyWorkspaceID",
+                title: String(localized: "contextMenu.copyWorkspaceID", defaultValue: "Copy Workspace ID"),
+                keywords: ["copy", "workspace", "id", "identifier"],
+                requiresPane: false
             ),
-            (
-                "palette.copyWorkspaceIDAndRef",
-                String(localized: "command.copyWorkspaceIDAndRef.title", defaultValue: "Copy Workspace ID and Ref"),
-                ["copy", "workspace", "id", "identifier", "ref", "reference"]
+            IdentifierCommandDescriptor(
+                id: "palette.copyWorkspaceIDAndRef",
+                title: String(localized: "command.copyWorkspaceIDAndRef.title", defaultValue: "Copy Workspace ID and Ref"),
+                keywords: ["copy", "workspace", "id", "identifier", "ref", "reference"],
+                requiresPane: false
             ),
-            (
-                "palette.copyWorkspaceLink",
-                String(localized: "command.copyWorkspaceLink.title", defaultValue: "Copy Workspace Link"),
-                ["copy", "workspace", "link", "url", "deeplink", "deep link"]
-            ),
+            IdentifierCommandDescriptor(
+                id: "palette.copyWorkspaceLink",
+                title: String(localized: "command.copyWorkspaceLink.title", defaultValue: "Copy Workspace Link"),
+                keywords: ["copy", "workspace", "link", "url", "deeplink", "deep link"],
+                requiresPane: false
+            )
         ]
         contributions += workspaceCommands.map { command in
             CommandPaletteCommandContribution(
@@ -38,37 +48,43 @@ extension ContentView {
             )
         }
 
-        let panelCommands: [(id: String, title: String, keywords: [String], requiresPane: Bool)] = [
-            (
-                "palette.copyPaneID",
-                String(localized: "command.copyPaneID.title", defaultValue: "Copy Pane ID"),
-                ["copy", "pane", "split", "id", "identifier"],
-                true
+        let panelCommands = [
+            IdentifierCommandDescriptor(
+                id: "palette.copyPaneID",
+                title: String(localized: "command.copyPaneID.title", defaultValue: "Copy Pane ID"),
+                keywords: ["copy", "pane", "split", "id", "identifier"],
+                requiresPane: true
             ),
-            (
-                "palette.copyPaneLink",
-                String(localized: "command.copyPaneLink.title", defaultValue: "Copy Pane Link"),
-                ["copy", "pane", "split", "link", "url", "deeplink", "deep link"],
-                true
+            IdentifierCommandDescriptor(
+                id: "palette.copyPaneLink",
+                title: String(localized: "command.copyPaneLink.title", defaultValue: "Copy Pane Link"),
+                keywords: ["copy", "pane", "split", "link", "url", "deeplink", "deep link"],
+                requiresPane: true
             ),
-            (
-                "palette.copySurfaceID",
-                String(localized: "command.copySurfaceID.title", defaultValue: "Copy Surface ID"),
-                ["copy", "surface", "tab", "id", "identifier"],
-                false
+            IdentifierCommandDescriptor(
+                id: "palette.copySurfaceID",
+                title: String(localized: "command.copySurfaceID.title", defaultValue: "Copy Surface ID"),
+                keywords: ["copy", "surface", "tab", "id", "identifier"],
+                requiresPane: false
             ),
-            (
-                "palette.copySurfaceLink",
-                String(localized: "command.copySurfaceLink.title", defaultValue: "Copy Surface Link"),
-                ["copy", "surface", "tab", "link", "url", "deeplink", "deep link"],
-                false
+            IdentifierCommandDescriptor(
+                id: "palette.copySurfaceLink",
+                title: String(localized: "command.copySurfaceLink.title", defaultValue: "Copy Surface Link"),
+                keywords: ["copy", "surface", "tab", "link", "url", "deeplink", "deep link"],
+                requiresPane: false
             ),
-            (
-                "palette.copyIdentifiers",
-                String(localized: "terminalContextMenu.copyIdentifiers", defaultValue: "Copy IDs"),
-                ["copy", "ids", "identifiers", "workspace", "pane", "surface", "ref", "reference"],
-                false
+            IdentifierCommandDescriptor(
+                id: "palette.copyIdentifiers",
+                title: String(localized: "terminalContextMenu.copyIdentifiers", defaultValue: "Copy IDs"),
+                keywords: ["copy", "ids", "identifiers", "workspace", "pane", "surface", "ref", "reference"],
+                requiresPane: false
             ),
+            IdentifierCommandDescriptor(
+                id: "palette.showIdentifiers",
+                title: String(localized: "terminalContextMenu.showIdentifiers", defaultValue: "Show IDs"),
+                keywords: ["show", "ids", "identifiers", "workspace", "pane", "surface", "agent", "session", "resume"],
+                requiresPane: false
+            )
         ]
         contributions += panelCommands.map { command in
             CommandPaletteCommandContribution(
@@ -94,6 +110,7 @@ extension ContentView {
         registry.register(commandId: "palette.copySurfaceID") { copyFocusedSurfaceIdentifier() }
         registry.register(commandId: "palette.copySurfaceLink") { copyFocusedSurfaceLink() }
         registry.register(commandId: "palette.copyIdentifiers") { copyFocusedWorkspacePaneSurfaceIdentifiers() }
+        registry.register(commandId: "palette.showIdentifiers") { showFocusedWorkspacePaneSurfaceIdentifiers() }
     }
 
     private func copySelectedWorkspaceIdentifiers(includeRefs: Bool) {
@@ -121,6 +138,16 @@ extension ContentView {
             paneId: panelContext.workspace.paneId(forPanelId: panelContext.panelId)?.id,
             surfaceId: panelContext.panelId
         )
+    }
+
+    private func focusedPanelAgentSnapshot(workspaceId: UUID, surfaceId: UUID) -> SessionRestorableAgentSnapshot? {
+        if let panelContext = focusedPanelContext,
+           panelContext.workspace.id == workspaceId,
+           panelContext.panelId == surfaceId,
+           let snapshot = panelContext.workspace.forkableAgentSnapshot(forPanelId: surfaceId) {
+            return snapshot
+        }
+        return SharedLiveAgentIndex.shared.snapshot(workspaceId: workspaceId, panelId: surfaceId)
     }
 
     private func copyFocusedPaneIdentifier() {
@@ -176,7 +203,24 @@ extension ContentView {
                 workspaceId: context.workspaceId,
                 paneId: context.paneId,
                 surfaceId: context.surfaceId,
-                includeRefs: true
+                includeRefs: true,
+                agent: focusedPanelAgentSnapshot(workspaceId: context.workspaceId, surfaceId: context.surfaceId)
+            )
+        )
+    }
+
+    private func showFocusedWorkspacePaneSurfaceIdentifiers() {
+        guard let context = focusedPanelIdentifierContext() else {
+            NSSound.beep()
+            return
+        }
+        SurfaceIdentifierDetailsWindowController.shared.show(
+            details: WorkspaceSurfaceIdentifierClipboardText.makeWorkspacePaneSurfaceIdentifierDetails(
+                workspaceId: context.workspaceId,
+                paneId: context.paneId,
+                surfaceId: context.surfaceId,
+                includeRefs: true,
+                agent: focusedPanelAgentSnapshot(workspaceId: context.workspaceId, surfaceId: context.surfaceId)
             )
         )
     }

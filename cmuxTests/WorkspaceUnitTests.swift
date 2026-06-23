@@ -5798,6 +5798,72 @@ final class WorkspacePanelGitBranchTests: XCTestCase {
         XCTAssertEqual(try paneId(in: split.second), forkPaneId)
     }
 
+    @MainActor
+    func testWorkspacePaneSurfaceIdentifierPayloadIncludesAgentSessionWhenAvailable() throws {
+        let workspaceId = try XCTUnwrap(UUID(uuidString: "11111111-1111-1111-1111-111111111111"))
+        let paneId = try XCTUnwrap(UUID(uuidString: "22222222-2222-2222-2222-222222222222"))
+        let surfaceId = try XCTUnwrap(UUID(uuidString: "33333333-3333-3333-3333-333333333333"))
+        let snapshot = SessionRestorableAgentSnapshot(
+            kind: .codex,
+            sessionId: "019ecf02-0761-7872-83d9-18c2470165ef",
+            workingDirectory: "/tmp/copy ids",
+            launchCommand: AgentLaunchCommandSnapshot(
+                launcher: "codex",
+                executablePath: "/usr/local/bin/codex",
+                arguments: ["codex", "--yolo"],
+                workingDirectory: "/tmp/copy ids",
+                environment: [:],
+                capturedAt: 123,
+                source: "environment"
+            )
+        )
+
+        let payload = WorkspaceSurfaceIdentifierClipboardText.makeWorkspacePaneSurfaceIdentifiers(
+            workspaceId: workspaceId,
+            paneId: paneId,
+            surfaceId: surfaceId,
+            includeRefs: false,
+            agent: snapshot
+        )
+
+        XCTAssertEqual(
+            payload,
+            """
+            workspace_id=11111111-1111-1111-1111-111111111111
+            pane_id=22222222-2222-2222-2222-222222222222
+            surface_id=33333333-3333-3333-3333-333333333333
+            agent_name=Codex
+            agent_kind=codex
+            agent_launcher=codex
+            agent_launch_source=environment
+            session_id=019ecf02-0761-7872-83d9-18c2470165ef
+            working_directory=/tmp/copy ids
+            resume_command=cd '/tmp/copy ids' && cxy 'resume' '019ecf02-0761-7872-83d9-18c2470165ef'
+            """
+        )
+    }
+
+    @MainActor
+    func testWorkspacePaneSurfaceIdentifierDetailsShowsUnavailableAgentRowsWithoutCopyingThem() throws {
+        let workspaceId = try XCTUnwrap(UUID(uuidString: "11111111-1111-1111-1111-111111111111"))
+        let paneId = try XCTUnwrap(UUID(uuidString: "22222222-2222-2222-2222-222222222222"))
+        let surfaceId = try XCTUnwrap(UUID(uuidString: "33333333-3333-3333-3333-333333333333"))
+
+        let details = WorkspaceSurfaceIdentifierClipboardText.makeWorkspacePaneSurfaceIdentifierDetails(
+            workspaceId: workspaceId,
+            paneId: paneId,
+            surfaceId: surfaceId,
+            includeRefs: false,
+            agent: nil
+        )
+
+        XCTAssertEqual(details.rows.first { $0.key == "agent_name" }?.value, nil)
+        XCTAssertEqual(details.rows.first { $0.key == "resume_command" }?.value, nil)
+        XCTAssertFalse(details.clipboardText.contains("agent_name="))
+        XCTAssertFalse(details.clipboardText.contains("resume_command="))
+        XCTAssertTrue(details.clipboardText.contains("workspace_id=11111111-1111-1111-1111-111111111111"))
+    }
+
     func testForkAgentConversationSupportsAllSplitDirections() throws {
         for direction in [SplitDirection.left, .right, .up, .down] {
             let workspace = Workspace()

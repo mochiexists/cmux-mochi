@@ -13328,6 +13328,7 @@ class TerminalController {
     /// duplicate ThreadUnsubscribe hook (or a retry) cannot inject the command
     /// twice. Guarded by `agentResumePasteLock`.
     private static var stagedAgentResumeSessions: Set<String> = []
+    /// Synchronous compare-and-set from socket/DispatchSource callbacks; an actor would add reentrant hops.
     private static let agentResumePasteLock = NSLock()
     /// Strong references to the process-exit watchers so they outlive this call.
     private static var agentResumePasteWatchers: [String: DispatchSourceProcess] = [:]
@@ -13503,7 +13504,7 @@ class TerminalController {
             Self.agentResumePasteLock.lock()
             Self.agentResumePasteWatchers.removeValue(forKey: sessionId)
             Self.agentResumePasteLock.unlock()
-            DispatchQueue.main.async {
+            Task { @MainActor in
                 guard let self else { return }
                 self.performAgentResumePaste(
                     sessionId: sessionId,
@@ -13528,7 +13529,7 @@ class TerminalController {
             let stillWatching = Self.agentResumePasteWatchers.removeValue(forKey: sessionId) != nil
             Self.agentResumePasteLock.unlock()
             if stillWatching {
-                DispatchQueue.main.async { [weak self] in
+                Task { @MainActor [weak self] in
                     self?.performAgentResumePaste(
                         sessionId: sessionId,
                         workspaceId: workspaceId,
