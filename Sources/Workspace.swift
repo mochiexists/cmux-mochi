@@ -1216,10 +1216,16 @@ extension Workspace {
             let restoredHibernation = restorableAgent != nil ? snapshot.terminal?.hibernation : nil
             let resumeMode = AgentSessionAutoResumeSettings.mode(defaults: agentSessionAutoResumeDefaults)
             let autoResumeAgentSessions = resumeMode != .off
-            // Only auto-resume if the agent was actively running when the snapshot was saved.
+            // Full auto-resume only runs when the agent was active at save time. Medium mode
+            // may still re-prefill an unsubmitted resume command for the same saved session.
             // wasAgentRunning == nil means a legacy snapshot; treat as true for backwards compatibility.
             let agentWasRunningAtQuit = snapshot.terminal?.wasAgentRunning ?? true
-            let shouldAutoResumeAgent = autoResumeAgentSessions && agentWasRunningAtQuit
+            let shouldPrepareMediumAgentPrefill =
+                resumeMode == .medium
+                && restorableAgent?.resumePreparedStartupInput() != nil
+            let shouldAutoResumeAgent =
+                autoResumeAgentSessions
+                && (agentWasRunningAtQuit || shouldPrepareMediumAgentPrefill)
             let resumeBindingForStartup =
                 restoredHibernation != nil ||
                 (resumeBinding?.isProcessDetected == true && resumeBinding?.autoResume != true)
@@ -9802,14 +9808,26 @@ final class Workspace: Identifiable, ObservableObject {
     }
 
     private func copyIdentifiersToPasteboard(surfaceId: UUID) {
-        let paneId = paneId(forPanelId: surfaceId)?.id
         WorkspaceSurfaceIdentifierClipboardText.copy(
-            WorkspaceSurfaceIdentifierClipboardText.makeWorkspacePaneSurfaceIdentifiers(
-                workspaceId: id,
-                paneId: paneId,
-                surfaceId: surfaceId,
-                includeRefs: true
-            )
+            identifierDetails(surfaceId: surfaceId).clipboardText
+        )
+    }
+
+    private func showIdentifiers(surfaceId: UUID) {
+        SurfaceIdentifierDetailsWindowController.shared.show(
+            details: identifierDetails(surfaceId: surfaceId)
+        )
+    }
+
+    private func identifierDetails(surfaceId: UUID) -> WorkspaceSurfaceIdentifierDetails {
+        let paneId = paneId(forPanelId: surfaceId)?.id
+        let agent = forkableAgentSnapshot(forPanelId: surfaceId)
+        return WorkspaceSurfaceIdentifierClipboardText.makeWorkspacePaneSurfaceIdentifierDetails(
+            workspaceId: id,
+            paneId: paneId,
+            surfaceId: surfaceId,
+            includeRefs: true,
+            agent: agent
         )
     }
 
@@ -12888,6 +12906,9 @@ extension Workspace: BonsplitDelegate {
         case .copyIdentifiers:
             guard let panelId = panelIdFromSurfaceId(tab.id) else { return }
             copyIdentifiersToPasteboard(surfaceId: panelId)
+        case .showIdentifiers:
+            guard let panelId = panelIdFromSurfaceId(tab.id) else { return }
+            showIdentifiers(surfaceId: panelId)
         case .closeToLeft:
             closeTabs(tabIdsToLeft(of: tab.id, inPane: pane))
         case .closeToRight:

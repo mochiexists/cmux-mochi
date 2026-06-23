@@ -428,12 +428,14 @@
           "type": "string",
           "enum": ["off", "medium", "full"],
           "default": "medium",
+          "descriptionKey": "schemaDescriptions.terminal.agentResumeMode",
           "description": "How restored agent terminals behave when cmux reopens after quit. 'off': start fresh with no scrollback and no resume command. 'medium': restore the previous scrollback and prefill the resume command without running it, so you can hit enter to continue. 'full': immediately run the resume command (no scrollback)."
         },
         "autoResumeAgentSessions": {
           "type": "boolean",
           "default": true,
           "deprecated": true,
+          "descriptionKey": "schemaDescriptions.terminal.autoResumeAgentSessions",
           "description": "Deprecated: use agentResumeMode instead. Legacy boolean — true maps to agentResumeMode 'full', false maps to 'medium'. Ignored when agentResumeMode is set."
         },
         "showTextBoxOnNewTerminals": {
@@ -579,11 +581,13 @@
           "type": "string",
           "enum": ["alias", "verbose"],
           "default": "alias",
+          "descriptionKey": "schemaDescriptions.terminal.agentResumeCommandStyle",
           "description": "Shell command form used when resuming an agent session. 'alias': the short fork alias (e.g. `cxy resume <id>`), which the cmux shell integration always defines — relies on the session id to re-attach. 'verbose': the full command, preserving the original model, --add-dir, and environment flags."
         },
         "autosaveScrollback": {
           "type": "boolean",
           "default": true,
+          "descriptionKey": "schemaDescriptions.terminal.autosaveScrollback",
           "description": "Persist terminal scrollback on a periodic timer so a force-quit or crash can restore the most recent terminal contents (including running TUIs) on reopen."
         }
       }
