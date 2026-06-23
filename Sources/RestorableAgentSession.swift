@@ -1181,7 +1181,6 @@ struct RestorableAgentSessionIndex: Sendable {
                       hookRecordIsRestorable(
                           effectiveRecord,
                           kind: kind,
-                          homeDirectory: homeDirectory,
                           fileManager: fileManager,
                           claudeTranscriptLookup: claudeTranscriptLookup
                       ) else {
@@ -1314,32 +1313,12 @@ struct RestorableAgentSessionIndex: Sendable {
     private static func hookRecordIsRestorable(
         _ record: RestorableAgentHookSessionRecord,
         kind: RestorableAgentKind,
-        homeDirectory: String,
         fileManager: FileManager,
         claudeTranscriptLookup: ClaudeTranscriptLookupCache
     ) -> Bool {
-        switch kind {
-        case .claude:
-            if let transcriptPath = normalizedNonEmptyValue(record.transcriptPath),
-               regularNonEmptyFileExists(
-                   atPath: (transcriptPath as NSString).expandingTildeInPath,
-                   fileManager: fileManager
-               ) {
-                return true
-            }
-            return claudeTranscriptExists(for: record, fileManager: fileManager, lookup: claudeTranscriptLookup)
-        case .codex:
-            return codexRolloutExists(for: record, homeDirectory: homeDirectory, fileManager: fileManager)
-        default:
+        guard kind == .claude else {
             return record.isRestorable != false
         }
-    }
-
-    private static func codexRolloutExists(
-        for record: RestorableAgentHookSessionRecord,
-        homeDirectory: String,
-        fileManager: FileManager
-    ) -> Bool {
         if let transcriptPath = normalizedNonEmptyValue(record.transcriptPath),
            regularNonEmptyFileExists(
                atPath: (transcriptPath as NSString).expandingTildeInPath,
@@ -1347,74 +1326,7 @@ struct RestorableAgentSessionIndex: Sendable {
            ) {
             return true
         }
-        guard let sessionId = normalizedNonEmptyValue(record.sessionId) else {
-            return false
-        }
-        for directoryURL in recentCodexSessionDirectories(
-            sessionsURL: codexSessionsURL(for: record, homeDirectory: homeDirectory),
-            fileManager: fileManager
-        ) {
-            guard let urls = try? fileManager.contentsOfDirectory(
-                at: directoryURL,
-                includingPropertiesForKeys: [.isRegularFileKey],
-                options: [.skipsHiddenFiles]
-            ) else {
-                continue
-            }
-            for url in urls where url.pathExtension == "jsonl" && url.lastPathComponent.contains(sessionId) {
-                if regularNonEmptyFileExists(atPath: url.path, fileManager: fileManager) {
-                    return true
-                }
-            }
-        }
-        return false
-    }
-
-    private static func codexSessionsURL(
-        for record: RestorableAgentHookSessionRecord,
-        homeDirectory: String
-    ) -> URL {
-        let codexHome = normalizedNonEmptyValue(record.launchCommand?.environment?["CODEX_HOME"])
-            ?? URL(fileURLWithPath: homeDirectory, isDirectory: true)
-                .appendingPathComponent(".codex", isDirectory: true)
-                .path
-        return URL(fileURLWithPath: (codexHome as NSString).expandingTildeInPath, isDirectory: true)
-            .appendingPathComponent("sessions", isDirectory: true)
-    }
-
-    private static func recentCodexSessionDirectories(sessionsURL: URL, fileManager: FileManager) -> [URL] {
-        var directories: [URL] = []
-        var seenPaths = Set<String>()
-
-        func appendIfDirectory(_ url: URL) {
-            guard seenPaths.insert(url.path).inserted else { return }
-            var isDirectory: ObjCBool = false
-            guard fileManager.fileExists(atPath: url.path, isDirectory: &isDirectory),
-                  isDirectory.boolValue else {
-                return
-            }
-            directories.append(url)
-        }
-
-        appendIfDirectory(sessionsURL)
-        let calendar = Calendar(identifier: .gregorian)
-        let today = Date()
-        for dayOffset in 0..<14 {
-            guard let date = calendar.date(byAdding: .day, value: -dayOffset, to: today) else { continue }
-            let components = calendar.dateComponents([.year, .month, .day], from: date)
-            guard let year = components.year,
-                  let month = components.month,
-                  let day = components.day else {
-                continue
-            }
-            appendIfDirectory(
-                sessionsURL
-                    .appendingPathComponent(String(format: "%04d", year), isDirectory: true)
-                    .appendingPathComponent(String(format: "%02d", month), isDirectory: true)
-                    .appendingPathComponent(String(format: "%02d", day), isDirectory: true)
-            )
-        }
-        return directories
+        return claudeTranscriptExists(for: record, fileManager: fileManager, lookup: claudeTranscriptLookup)
     }
 
     private static func resolvedClaudeWorkflowRecord(
