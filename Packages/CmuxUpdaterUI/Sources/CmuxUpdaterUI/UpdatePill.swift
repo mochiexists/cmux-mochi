@@ -145,6 +145,8 @@ private struct UpdatePillPopoverAnchor: NSViewRepresentable {
 
         init(isPresented: Binding<Bool>) {
             _isPresented = isPresented
+            hostingController.view.wantsLayer = true
+            hostingController.view.layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor
         }
 
         func updateRootView(_ rootView: AnyView) {
