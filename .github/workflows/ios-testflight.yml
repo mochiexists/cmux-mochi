@@ -226,11 +226,11 @@ jobs:
           security find-identity -v -p codesigning "$KEYCHAIN_NAME"
           IOS_DISTRIBUTION_IDENTITY="$(
             security find-identity -v -p codesigning "$KEYCHAIN_NAME" |
-              sed -n 's/.*"\(Apple Distribution: .* (7WLXT3NR37)\)".*/\1/p' |
+              sed -n 's/.*"\(Apple Distribution: .* (599WAZ6282)\)".*/\1/p' |
               head -n 1
           )"
           if [ -z "$IOS_DISTRIBUTION_IDENTITY" ]; then
-            echo "No Apple Distribution identity for team 7WLXT3NR37 was found in the imported certificate" >&2
+            echo "No Apple Distribution identity for team 599WAZ6282 was found in the imported certificate" >&2
             exit 1
           fi
           echo "IOS_DISTRIBUTION_IDENTITY=$IOS_DISTRIBUTION_IDENTITY" >> "$GITHUB_ENV"
@@ -252,7 +252,7 @@ jobs:
           security cms -D -i "$TMP_PROFILE" > "$TMP_PLIST"
 
           APP_ID="$(/usr/libexec/PlistBuddy -c "Print :Entitlements:application-identifier" "$TMP_PLIST")"
-          if [ "$APP_ID" != "7WLXT3NR37.dev.cmux.app.beta" ]; then
+          if [ "$APP_ID" != "599WAZ6282.dev.cmux.app.beta" ]; then
             echo "Beta provisioning profile targets unexpected app ID: $APP_ID" >&2
             exit 1
           fi

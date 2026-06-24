@@ -70,6 +70,6 @@ Required GitHub secrets:
 - `ASC_API_KEY_ID`
 - `ASC_API_ISSUER_ID`
 - `ASC_API_KEY_P8_BASE64`
-- `IOS_DISTRIBUTION_CERTIFICATE_BASE64` (base64-encoded `.p12` for an Apple Distribution certificate on team `7WLXT3NR37`)
+- `IOS_DISTRIBUTION_CERTIFICATE_BASE64` (base64-encoded `.p12` for an Apple Distribution certificate on team `599WAZ6282`)
 - `IOS_DISTRIBUTION_CERTIFICATE_PASSWORD`
 - `IOS_BETA_PROVISIONING_PROFILE_BASE64` (base64-encoded App Store profile for `dev.cmux.app.beta`, with `aps-environment=production`)
