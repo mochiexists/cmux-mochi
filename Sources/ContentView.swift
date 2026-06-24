@@ -961,7 +961,13 @@ struct ContentView: View {
     // activity), which reconstructs every workspace row and starves the main
     // thread (issue #2586 class; surfaced as scroll lag). `notificationStore`
     // stays available as an unobserved singleton for actions and pass-down.
-    @EnvironmentObject var sidebarUnread: SidebarUnreadModel
+    // Source the singleton directly instead of via @EnvironmentObject: these view
+    // bodies get re-evaluated by detached macOS hosts (context menus, drag previews,
+    // re-hosted NSHostingViews) that don't inherit the .environmentObject chain,
+    // which crashed with "No ObservableObject of type SidebarUnreadModel found". It
+    // is the same instance injected at AppDelegate.createMainWindow; @ObservedObject
+    // preserves the @Published coalescing behavior (#2586).
+    @ObservedObject var sidebarUnread: SidebarUnreadModel = TerminalNotificationStore.shared.sidebarUnread
     var notificationStore: TerminalNotificationStore { .shared }
     @EnvironmentObject var sidebarState: SidebarState
     @EnvironmentObject var sidebarSelectionState: SidebarSelectionState
@@ -10034,7 +10040,13 @@ struct VerticalTabsSidebar: View {
     // so notification churn (terminal/agent activity) no longer reconstructs
     // every workspace row. The store stays available as an unobserved singleton
     // for context-menu actions and pass-down. See SidebarUnreadModel / #2586.
-    @EnvironmentObject var sidebarUnread: SidebarUnreadModel
+    // Source the singleton directly instead of via @EnvironmentObject: these view
+    // bodies get re-evaluated by detached macOS hosts (context menus, drag previews,
+    // re-hosted NSHostingViews) that don't inherit the .environmentObject chain,
+    // which crashed with "No ObservableObject of type SidebarUnreadModel found". It
+    // is the same instance injected at AppDelegate.createMainWindow; @ObservedObject
+    // preserves the @Published coalescing behavior (#2586).
+    @ObservedObject var sidebarUnread: SidebarUnreadModel = TerminalNotificationStore.shared.sidebarUnread
     var notificationStore: TerminalNotificationStore { .shared }
     @EnvironmentObject var cmuxConfigStore: CmuxConfigStore
     @Binding var selection: SidebarSelection
