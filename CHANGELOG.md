@@ -2,6 +2,17 @@
 
 All notable changes to cmux are documented here.
 
+## [0.64.157] - 2026-06-24
+
+cmux **Mochi** fork patch release.
+
+### Changed
+- Rebased the Mochi fork onto current upstream `main` while preserving the fork identity, signing, updater, Sentry, release, and bonsplit overlays.
+- Added `scripts/fork-overlay-audit.sh` and wired it into the release pre-tag guard so fork releases verify the overlay before tagging.
+
+### Fixed
+- Restored fork release metadata after the upstream rebase, including version `0.64.157` build `102`, Sparkle feed/key wiring, GitHub release references, R2 guard behavior, and Codex/Claude resume aliases.
+
 ## [0.64.156] - 2026-06-23
 
 cmux **Mochi** fork patch release.
