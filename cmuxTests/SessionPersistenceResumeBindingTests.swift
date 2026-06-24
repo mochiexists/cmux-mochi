@@ -276,7 +276,7 @@ import Testing
         let suiteName = "cmux-session-resume-binding-\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: suiteName))
         defer { defaults.removePersistentDomain(forName: suiteName) }
-        defaults.set(true, forKey: AgentSessionAutoResumeSettings.autoResumeAgentSessionsKey)
+        defaults.set(AgentSessionResumeMode.full.rawValue, forKey: AgentSessionAutoResumeSettings.modeKey)
 
         let remoteWorkspace = Workspace(agentSessionAutoResumeDefaults: defaults)
         remoteWorkspace.setCustomTitle("Remote Workspace With Local Resume Binding")

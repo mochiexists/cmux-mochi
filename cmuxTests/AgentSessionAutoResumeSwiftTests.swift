@@ -39,9 +39,9 @@ struct AgentSessionAutoResumeSwiftTests {
 
     @MainActor
     @Test func claudeAgentHookResumeBindingRestoresFromLaunchCwdWhenRuntimeCwdDrifted() throws {
-        try withRestoredDefaults(key: AgentSessionAutoResumeSettings.autoResumeAgentSessionsKey) {
+        try withRestoredDefaults(key: AgentSessionAutoResumeSettings.modeKey) {
             let defaults = UserDefaults.standard
-            defaults.removeObject(forKey: AgentSessionAutoResumeSettings.autoResumeAgentSessionsKey)
+            defaults.removeObject(forKey: AgentSessionAutoResumeSettings.modeKey)
 
             let source = Workspace()
             let sourcePanelId = try #require(source.focusedPanelId)
@@ -111,8 +111,8 @@ struct AgentSessionAutoResumeSwiftTests {
     /// directory the agent is in.
     @MainActor
     @Test func cmdTAfterAgentResumeRestoreKeepsProjectCwdDespiteSpuriousHomePwdReport() throws {
-        try withRestoredDefaults(key: AgentSessionAutoResumeSettings.autoResumeAgentSessionsKey) {
-            UserDefaults.standard.set(true, forKey: AgentSessionAutoResumeSettings.autoResumeAgentSessionsKey)
+        try withRestoredDefaults(key: AgentSessionAutoResumeSettings.modeKey) {
+            UserDefaults.standard.set(AgentSessionResumeMode.full.rawValue, forKey: AgentSessionAutoResumeSettings.modeKey)
 
             // A real on-disk project directory so the restore guard can confirm it
             // still exists and treat the resumed shell's home report as spurious.
@@ -150,8 +150,8 @@ struct AgentSessionAutoResumeSwiftTests {
     /// the deleted path and make Cmd+T inherit an invalid directory).
     @MainActor
     @Test func agentResumeRestoreAcceptsHomePwdReportWhenSavedDirectoryWasDeleted() throws {
-        try withRestoredDefaults(key: AgentSessionAutoResumeSettings.autoResumeAgentSessionsKey) {
-            UserDefaults.standard.set(true, forKey: AgentSessionAutoResumeSettings.autoResumeAgentSessionsKey)
+        try withRestoredDefaults(key: AgentSessionAutoResumeSettings.modeKey) {
+            UserDefaults.standard.set(AgentSessionResumeMode.full.rawValue, forKey: AgentSessionAutoResumeSettings.modeKey)
 
             // A saved directory that no longer exists on disk (deleted between
             // sessions). It is intentionally never created.
@@ -238,9 +238,9 @@ struct AgentSessionAutoResumeSwiftTests {
 
     @MainActor
     @Test func claudeAgentHookResumeBindingIgnoresStaleRestoredAgentSnapshot() throws {
-        try withRestoredDefaults(key: AgentSessionAutoResumeSettings.autoResumeAgentSessionsKey) {
+        try withRestoredDefaults(key: AgentSessionAutoResumeSettings.modeKey) {
             let defaults = UserDefaults.standard
-            defaults.removeObject(forKey: AgentSessionAutoResumeSettings.autoResumeAgentSessionsKey)
+            defaults.removeObject(forKey: AgentSessionAutoResumeSettings.modeKey)
 
             let source = Workspace()
             let sourcePanelId = try #require(source.focusedPanelId)
@@ -304,9 +304,9 @@ struct AgentSessionAutoResumeSwiftTests {
 
     @MainActor
     @Test func crossKindAgentHookResumeBindingDoesNotRetainStaleClaudeSnapshot() throws {
-        try withRestoredDefaults(key: AgentSessionAutoResumeSettings.autoResumeAgentSessionsKey) {
+        try withRestoredDefaults(key: AgentSessionAutoResumeSettings.modeKey) {
             let defaults = UserDefaults.standard
-            defaults.removeObject(forKey: AgentSessionAutoResumeSettings.autoResumeAgentSessionsKey)
+            defaults.removeObject(forKey: AgentSessionAutoResumeSettings.modeKey)
 
             let source = Workspace()
             let sourcePanelId = try #require(source.focusedPanelId)
@@ -367,9 +367,9 @@ struct AgentSessionAutoResumeSwiftTests {
 
     @MainActor
     @Test func crossKindAgentHookResumeBindingIgnoresStaleClaudeHibernation() throws {
-        try withRestoredDefaults(key: AgentSessionAutoResumeSettings.autoResumeAgentSessionsKey) {
+        try withRestoredDefaults(key: AgentSessionAutoResumeSettings.modeKey) {
             let defaults = UserDefaults.standard
-            defaults.removeObject(forKey: AgentSessionAutoResumeSettings.autoResumeAgentSessionsKey)
+            defaults.removeObject(forKey: AgentSessionAutoResumeSettings.modeKey)
 
             let source = Workspace()
             let sourcePanelId = try #require(source.focusedPanelId)

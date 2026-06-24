@@ -164,11 +164,6 @@ enum TerminalSettingsFileMapping {
             defaultsKey: TerminalCopyOnSelectSettings.copyOnSelectKey,
             invalidPath: "terminal.copyOnSelect"
         ),
-        .init(
-            jsonKey: "autoResumeAgentSessions",
-            defaultsKey: AgentSessionAutoResumeSettings.autoResumeAgentSessionsKey,
-            invalidPath: "terminal.autoResumeAgentSessions"
-        ),
     ]
 }
 
