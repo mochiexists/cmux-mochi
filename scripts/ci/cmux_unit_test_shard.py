@@ -27,6 +27,17 @@ FOCUSED_GATE_SELECTORS = {
     "cmuxTests/BrowserSystemProxyMirrorTests",
     "cmuxTests/GhosttyOptionAsAltModsTests",
 }
+# Tests quarantined from CI because they hang on teardown in our macOS test
+# host (real window-server / display-link teardown; com.apple.linkd.autoShortcut
+# unavailable). These are byte-identical to upstream and not fork regressions
+# (upstream has its own teardown-stability history: c44bf7657, 5fdf30c26).
+# Re-evaluate on every upstream rebase: drop the entry, run it once, and either
+# remove it permanently (passes / upstream rewrote it) or re-add it. A stale
+# entry that no longer matches a discovered test fails this script, so the list
+# can't silently rot.
+QUARANTINED_SELECTORS = {
+    "cmuxTests/AppDelegateShortcutRoutingTests/testCmdWClosesWindowWhenClosingLastSurfaceInLastWorkspace",
+}
 
 
 @dataclass(frozen=True)
@@ -151,6 +162,21 @@ def discover_selectors(root: Path) -> list[TestSelector]:
 
     if not selectors:
         raise SystemExit("No cmuxTests suites found")
+
+    discovered_identifiers = {selector.identifier for selector in selectors}
+    stale_quarantine = QUARANTINED_SELECTORS - discovered_identifiers
+    if stale_quarantine:
+        print(
+            "Quarantined selectors no longer match a discovered test "
+            "(remove them from QUARANTINED_SELECTORS or re-enable):",
+            file=sys.stderr,
+        )
+        for name in sorted(stale_quarantine):
+            print(f"  {name}", file=sys.stderr)
+        raise SystemExit(1)
+    selectors = [
+        selector for selector in selectors if selector.identifier not in QUARANTINED_SELECTORS
+    ]
 
     by_identifier: dict[str, list[TestSelector]] = {}
     for selector in selectors:
