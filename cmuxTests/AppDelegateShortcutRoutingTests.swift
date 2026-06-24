@@ -2270,6 +2270,7 @@ final class AppDelegateShortcutRoutingTests: XCTestCase {
 
         let windowId = UUID()
         let manager = TabManager(autoWelcomeIfNeeded: false)
+        manager.confirmCloseHandler = { _, _, _ in true }
         let targetWindow = makeRegisteredShortcutRoutingWindow(id: windowId)
         appDelegate.registerMainWindow(
             targetWindow,
@@ -2280,13 +2281,17 @@ final class AppDelegateShortcutRoutingTests: XCTestCase {
         )
         defer { closeRegisteredShortcutRoutingWindow(targetWindow, id: windowId) }
 
-        guard let workspace = manager.selectedWorkspace else {
-            XCTFail("Expected test workspace")
+        guard let workspace = manager.selectedWorkspace,
+              let initialPanelId = workspace.focusedPanelId else {
+            XCTFail("Expected test workspace and focused panel")
             return
         }
 
         XCTAssertEqual(manager.tabs.count, 1)
         XCTAssertEqual(workspace.panels.count, 1)
+        // This test exercises last-surface window-close routing, not close-confirm heuristics.
+        // Mark the shell idle so Cmd+W routes through the immediate close path deterministically.
+        workspace.updatePanelShellActivityState(panelId: initialPanelId, state: .promptIdle)
 
         targetWindow.makeKeyAndOrderFront(nil)
         RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.05))
