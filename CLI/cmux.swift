@@ -34421,7 +34421,7 @@ export default function cmuxPiSessionExtension(pi: ExtensionAPI) {
         print("  \(subdued)\(String(repeating: "\u{2500}", count: 58))\(reset)")
         print()
         print("  \(mochi) /\\_/\\\(reset)     \(bold)This is the Mochi fork of cmux\(reset)")
-        print("  \(mochi)( ^.^ )\(reset)    \(subdued)https://github.com/mochiexists/cmux-mochi\(reset)")
+        print("  \(mochi)( ^.^ )\(reset)    \(subdued)https://github.com/mochiexists/cmux-mochi (please leave a star ⭐)\(reset)")
         print("  \(mochi) > ^ <\(reset)     \(tagline)quality-of-life touches for agent-driven work\(reset)")
         print()
         print("  \(tagline)Spawn agents fast — yolo aliases, baked into every cmux shell\(reset)")
