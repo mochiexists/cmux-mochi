@@ -41,7 +41,11 @@ struct AgentSessionAutoResumeSwiftTests {
     @Test func claudeAgentHookResumeBindingRestoresFromLaunchCwdWhenRuntimeCwdDrifted() throws {
         try withRestoredDefaults(key: AgentSessionAutoResumeSettings.modeKey) {
             let defaults = UserDefaults.standard
-            defaults.removeObject(forKey: AgentSessionAutoResumeSettings.modeKey)
+            // Full mode auto-runs the resume command as a startup command. Medium
+            // (the fork default) intentionally pre-types it as input instead, so
+            // there would be no initial command to assert on. The launch-vs-drifted
+            // cwd resolution under test is mode-independent.
+            defaults.set(AgentSessionResumeMode.full.rawValue, forKey: AgentSessionAutoResumeSettings.modeKey)
 
             let source = Workspace()
             let sourcePanelId = try #require(source.focusedPanelId)
@@ -476,7 +480,9 @@ struct AgentSessionAutoResumeSwiftTests {
         )
         #expect(snapshot.sessionId == sessionId)
         #expect(snapshot.workingDirectory == launchCwd.path)
-        #expect(snapshot.resumeCommand?.contains("cd -- '\(launchCwd.path)'") == true)
+        // Claude resumes via the short alias form, which uses a plain `cd '<path>'`
+        // prefix (the `cd -- ` verbose prefix is only for non-aliased agents).
+        #expect(snapshot.resumeCommand?.contains("cd '\(launchCwd.path)'") == true)
     }
 
     @Test func claudeRestorableIndexMapsNestedTranscriptPathToProjectCwd() throws {
@@ -523,7 +529,8 @@ struct AgentSessionAutoResumeSwiftTests {
                 .snapshot(workspaceId: workspaceId, panelId: panelId)
         )
         #expect(snapshot.workingDirectory == transcriptCwd.path)
-        #expect(snapshot.resumeCommand?.contains("cd -- '\(transcriptCwd.path)'") == true)
+        // Claude alias resume uses a plain `cd '<path>'` prefix (see above).
+        #expect(snapshot.resumeCommand?.contains("cd '\(transcriptCwd.path)'") == true)
         #expect(snapshot.resumeCommand?.contains(staleLaunchCwd.path) == false)
     }
 
