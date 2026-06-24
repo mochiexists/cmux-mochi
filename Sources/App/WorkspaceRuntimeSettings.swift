@@ -283,9 +283,12 @@ enum AgentSessionAutoResumeSettings {
            let mode = AgentSessionResumeMode(rawValue: raw) {
             return mode
         }
-        // Migrate the legacy boolean: auto-resume on -> full, off -> medium.
+        // Migrate the legacy boolean: auto-resume on -> full, off -> off. A user
+        // who explicitly turned auto-resume off wants no resume and no prefill,
+        // so map it to .off rather than .medium (which still pre-types the resume
+        // command and spawns the agent terminal in its default/home directory).
         if defaults.object(forKey: legacyAutoResumeAgentSessionsKey) != nil {
-            return defaults.bool(forKey: legacyAutoResumeAgentSessionsKey) ? .full : .medium
+            return defaults.bool(forKey: legacyAutoResumeAgentSessionsKey) ? .full : .off
         }
         return defaultMode
     }

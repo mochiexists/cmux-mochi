@@ -1371,12 +1371,34 @@ extension Workspace {
                 snapshot.terminal?.isRemoteTerminal == false &&
                 restoredRemotePTYAttachCommand == nil
             let effectiveRemoteStartupCommand = suppressWorkspaceRemoteStartupCommand ? nil : remoteStartupCommand
-            let localWorkingDirectory = effectiveRemoteStartupCommand == nil &&
-                restoredRemotePTYAttachCommand == nil &&
-                !restoresRemoteWorkspaceTerminalSnapshot &&
-                !startupHandlesWorkingDirectory
-                ? (suppressWorkspaceRemoteStartupCommand ? savedWorkingDirectory : workingDirectory)
-                : nil
+            let localWorkingDirectory: String? = {
+                guard effectiveRemoteStartupCommand == nil,
+                      restoredRemotePTYAttachCommand == nil,
+                      !restoresRemoteWorkspaceTerminalSnapshot else {
+                    return nil
+                }
+                let base = suppressWorkspaceRemoteStartupCommand ? savedWorkingDirectory : workingDirectory
+                if !startupHandlesWorkingDirectory {
+                    return base
+                }
+                // The startup command cds itself, but in medium mode the resume
+                // command is pre-typed and NOT executed, so the shell would
+                // otherwise sit in its default (home) directory and the tab would
+                // revert there once the one-shot #6617 guard fires. Spawn directly
+                // in the saved directory when it still exists on the local disk so
+                // the cwd is correct before/without running the resume command.
+                // Only fall back to no cwd (and the guard) when the directory was
+                // deleted, where passing it to Ghostty would fail before the
+                // guarded command runs.
+                guard snapshot.terminal?.isRemoteTerminal != true,
+                      let trimmedBase = base?.trimmingCharacters(in: .whitespacesAndNewlines),
+                      !trimmedBase.isEmpty else {
+                    return nil
+                }
+                var isDirectory: ObjCBool = false
+                let exists = FileManager.default.fileExists(atPath: trimmedBase, isDirectory: &isDirectory)
+                return exists && isDirectory.boolValue ? base : nil
+            }()
             let restoredAgentWillRunStartupCommand = restorableAgent != nil && (
                 restoredAgentResumeLaunch?.initialCommand != nil ||
                 (restoredBindingLaunch?.initialCommand != nil && resumeBinding?.isAgentHookBinding == true)
@@ -1474,8 +1496,13 @@ extension Workspace {
                 !restoresRemoteWorkspaceTerminalSnapshot &&
                 restoredRemotePTYSessionID == nil &&
                 snapshot.terminal?.isRemoteTerminal != true
+            // Register the guard whenever a guarded startup command cds itself,
+            // even when we also spawn the terminal directly in the saved
+            // directory above. The direct cwd handles the common case (the shell
+            // reports the saved directory, the guard confirms and releases); the
+            // guard remains as defense-in-depth for any stray pre-cd home report
+            // and for the deleted-directory fallback where the direct cwd is nil.
             if startupHandlesWorkingDirectory,
-               localWorkingDirectory == nil,
                restoredDirectoryIsLocalPath,
                let guardedWorkingDirectory = savedWorkingDirectory?.trimmingCharacters(in: .whitespacesAndNewlines),
                !guardedWorkingDirectory.isEmpty {

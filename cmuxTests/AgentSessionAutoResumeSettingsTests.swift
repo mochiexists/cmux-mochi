@@ -94,12 +94,15 @@ final class AgentSessionAutoResumeSettingsTests: XCTestCase {
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
-        // Legacy auto-resume ON migrates to .full, OFF migrates to .medium.
+        // Legacy auto-resume ON migrates to .full; explicit OFF migrates to .off
+        // (an explicit opt-out must not be silently upgraded to .medium, which
+        // still pre-types the resume command and spawns the agent terminal in
+        // its default/home directory).
         defaults.set(true, forKey: AgentSessionAutoResumeSettings.legacyAutoResumeAgentSessionsKey)
         XCTAssertEqual(AgentSessionAutoResumeSettings.mode(defaults: defaults), .full)
 
         defaults.set(false, forKey: AgentSessionAutoResumeSettings.legacyAutoResumeAgentSessionsKey)
-        XCTAssertEqual(AgentSessionAutoResumeSettings.mode(defaults: defaults), .medium)
+        XCTAssertEqual(AgentSessionAutoResumeSettings.mode(defaults: defaults), .off)
 
         // An explicit mode value takes precedence over the legacy boolean.
         defaults.set(AgentSessionResumeMode.off.rawValue, forKey: AgentSessionAutoResumeSettings.modeKey)
