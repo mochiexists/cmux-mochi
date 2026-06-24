@@ -145,6 +145,20 @@ enum CLISocketPathResolver {
         inspectSocketPathEntry: (String) -> SocketPathEntry = inspectSocketPathEntry
     ) -> String {
         guard source == .implicitDefault else {
+            // An explicit `--socket` flag is always honored verbatim. An inherited
+            // CMUX_SOCKET_PATH (.environment) is honored when it is live, but if it
+            // points at a dead socket — e.g. a hook started under an older build
+            // whose shared socket the current app has since abandoned for its
+            // user-scoped one — follow the daemon's recorded last-socket-path marker
+            // so the hook still reaches the live listener instead of failing with
+            // "connection refused".
+            if source == .environment,
+               !canConnect(to: requestedPath, currentUserID: currentUserID, inspectSocketPathEntry: inspectSocketPathEntry),
+               let recordedPath = readLastSocketPath(bundleIdentifier: bundleIdentifier, environment: environment),
+               recordedPath != requestedPath,
+               canConnect(to: recordedPath, currentUserID: currentUserID, inspectSocketPathEntry: inspectSocketPathEntry) {
+                return recordedPath
+            }
             return requestedPath
         }
 
