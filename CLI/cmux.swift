@@ -29720,6 +29720,10 @@ export default function cmuxPiSessionExtension(pi: ExtensionAPI) {
         let explicitSurfaceFlag = optionValue(hookArgs, name: "--surface")
         let directSurfaceArg = explicitSurfaceFlag
             ?? (hookWsFlag == nil ? normalizedHookValue(env["CMUX_SURFACE_ID"]) : nil)
+        let ambientWorkspaceArg = hookWsFlag == nil ? normalizedHookValue(env["CMUX_WORKSPACE_ID"]) : nil
+        let ambientSurfaceArg = (hookWsFlag == nil && explicitSurfaceFlag == nil)
+            ? normalizedHookValue(env["CMUX_SURFACE_ID"])
+            : nil
         func resolveAccessibleWorkspaceId(_ raw: String?) -> String? {
             guard let raw = nonEmptyClaudeHookIdentifier(raw) else {
                 return nil
@@ -29749,6 +29753,7 @@ export default function cmuxPiSessionExtension(pi: ExtensionAPI) {
         // stale/invalid AMBIENT CMUX_WORKSPACE_ID must not abort routing — treated as absent, it falls
         // through to the PID/TTY binding below, which is ground truth.
         let hasInvalidDirectWorkspaceArg = hookWsFlag != nil && resolvedDirectWorkspaceArg == nil
+        let hasInvalidAmbientWorkspaceArg = ambientWorkspaceArg != nil && resolvedDirectWorkspaceArg == nil
         var processBindingCache: CallerTerminalBinding?
         var didResolveProcessBinding = false
         func processBinding() -> CallerTerminalBinding? {
@@ -29782,6 +29787,7 @@ export default function cmuxPiSessionExtension(pi: ExtensionAPI) {
         // another workspace) must fall through to the PID/TTY binding instead of dropping the hook —
         // that is the stale-env variant of the codex jumble.
         let hasInvalidDirectSurfaceArg = explicitSurfaceFlag != nil && resolvedDirectSurfaceArg == nil
+        let hasInvalidAmbientSurfaceArg = ambientSurfaceArg != nil && resolvedDirectSurfaceArg == nil
         let hasUnusableDirectBinding = hasInvalidDirectWorkspaceArg || hasInvalidDirectSurfaceArg
         func workspaceArg() -> String? {
             resolvedDirectWorkspaceArg ?? processBinding()?.workspaceId
@@ -29975,16 +29981,22 @@ export default function cmuxPiSessionExtension(pi: ExtensionAPI) {
             // binding is ground truth — prefer it. Returns the env surface unchanged when there is no
             // env surface to correct, when it came from an explicit --surface flag (operator intent),
             // or when the TTY/PID binding is unavailable (remote/SSH) or already agrees. Stays within
-            // the env workspace so a flaky binding can never cross-route to a different workspace.
+            // the env workspace so a flaky binding can never cross-route to a different workspace. If
+            // ambient env supplied an invalid surface and no binding can repair it, callers must drop
+            // the hook instead of falling back to the focused/default pane.
             func correctedDirectSurfaceId(workspaceId: String) -> String? {
-                guard let envSurface = resolvedDirectSurfaceArg else { return nil }
-                guard hookWsFlag == nil, explicitSurfaceFlag == nil else { return envSurface }
+                guard hookWsFlag == nil, explicitSurfaceFlag == nil else { return resolvedDirectSurfaceArg }
                 guard let binding = processBinding(),
                       let boundSurfaceRaw = nonEmptyClaudeHookIdentifier(binding.surfaceId),
                       let boundWorkspaceRaw = nonEmptyClaudeHookIdentifier(binding.workspaceId),
                       resolveAccessibleWorkspaceId(boundWorkspaceRaw) == workspaceId,
-                      let boundSurface = resolveAccessibleSurfaceId(boundSurfaceRaw, workspaceId: workspaceId),
-                      boundSurface != envSurface else {
+                      let boundSurface = resolveAccessibleSurfaceId(boundSurfaceRaw, workspaceId: workspaceId) else {
+                    return resolvedDirectSurfaceArg
+                }
+                guard let envSurface = resolvedDirectSurfaceArg else {
+                    return boundSurface
+                }
+                guard boundSurface != envSurface else {
                     return envSurface
                 }
 #if DEBUG
@@ -30000,6 +30012,16 @@ export default function cmuxPiSessionExtension(pi: ExtensionAPI) {
             if let workspaceId = resolvedDirectWorkspaceArg {
                 let preferredSurfaceId = correctedDirectSurfaceId(workspaceId: workspaceId)
                     ?? (hookWsFlag == nil ? processBinding()?.surfaceId : nil)
+                if hasInvalidAmbientSurfaceArg && preferredSurfaceId == nil {
+#if DEBUG
+                    agentHookDebugLog(
+                        "agentHook.target.nil agent=\(def.name) subcommand=\(subcommand) session=\(agentHookDebugShort(sessionId)) reason=invalidAmbientSurface mapped=\(mapped == nil ? 0 : 1)",
+                        socketPath: client.socketPath,
+                        env: env
+                    )
+#endif
+                    return nil
+                }
                 let target = resolveTarget(workspaceId: workspaceId, preferredSurfaceId: preferredSurfaceId, mapped: mapped)
 #if DEBUG
                 agentHookDebugLog(
@@ -30026,6 +30048,17 @@ export default function cmuxPiSessionExtension(pi: ExtensionAPI) {
                 )
 #endif
                 return target
+            }
+
+            if hasInvalidAmbientWorkspaceArg || hasInvalidAmbientSurfaceArg {
+#if DEBUG
+                agentHookDebugLog(
+                    "agentHook.target.nil agent=\(def.name) subcommand=\(subcommand) session=\(agentHookDebugShort(sessionId)) reason=invalidAmbientBinding mapped=\(mapped == nil ? 0 : 1)",
+                    socketPath: client.socketPath,
+                    env: env
+                )
+#endif
+                return nil
             }
 
             guard let workspaceId = resolveAccessibleWorkspaceId(mapped?.workspaceId) else {
@@ -31226,6 +31259,19 @@ export default function cmuxPiSessionExtension(pi: ExtensionAPI) {
             // instead of dropping it. thread_switch / programmatic consume normally.
             // Other agents keep the standard teardown.
             if def.name == "codex" {
+                if managedSubagentVisibleMutationSuppressionRequested(env: env) {
+                    if let mapped = sessionId.isEmpty ? nil : (try? store.lookup(sessionId: sessionId)) {
+                        sendAgentFeedTelemetry(workspaceId: mapped.workspaceId)
+                    }
+#if DEBUG
+                    agentHookDebugLog(
+                        "agentHook.sessionEnd.keep agent=\(def.name) session=\(agentHookDebugShort(sessionId)) reason=managedSubagent",
+                        socketPath: client.socketPath,
+                        env: env
+                    )
+#endif
+                    break
+                }
                 let detachIsActiveSession = (sessionId.isEmpty ? nil : (try? store.lookup(sessionId: sessionId))).map { mapped in
                     (try? store.isCurrent(sessionId: sessionId, workspaceId: mapped.workspaceId, turnId: nil)) ?? true
                 } ?? true
@@ -31237,6 +31283,12 @@ export default function cmuxPiSessionExtension(pi: ExtensionAPI) {
                     mappedRecord = try? store.consume(sessionId: sessionId, workspaceId: nil, surfaceId: nil)
                 }
                 if let mapped = mappedRecord {
+                    clearAgentSurfaceResumeBinding(
+                        client: client,
+                        workspaceId: mapped.workspaceId,
+                        surfaceId: mapped.surfaceId,
+                        sessionId: mapped.sessionId
+                    )
                     sendAgentFeedTelemetry(workspaceId: mapped.workspaceId)
                     if detachIsActiveSession {
                         // Final reconciliation: clear the agent PID/status and any

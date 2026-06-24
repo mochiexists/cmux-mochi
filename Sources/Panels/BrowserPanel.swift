@@ -156,11 +156,12 @@ enum BrowserThemeSettings {
 
     static func mode(defaults: UserDefaults = .standard) -> BrowserThemeMode {
         let resolvedMode = mode(for: defaults.string(forKey: modeKey))
-        if defaults.string(forKey: modeKey) != nil {
+        if resolvedMode != defaultMode || defaults.object(forKey: legacyForcedDarkModeEnabledKey) == nil {
             return resolvedMode
         }
 
-        // Migrate the legacy bool toggle only when the new mode key is unset.
+        // Registered defaults can make the new key appear set; preserve the legacy
+        // forced-dark preference when the visible new value is only the fallback.
         if defaults.object(forKey: legacyForcedDarkModeEnabledKey) != nil {
             let migratedMode: BrowserThemeMode = defaults.bool(forKey: legacyForcedDarkModeEnabledKey) ? .dark : .system
             defaults.set(migratedMode.rawValue, forKey: modeKey)

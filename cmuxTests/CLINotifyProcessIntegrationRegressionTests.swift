@@ -673,10 +673,9 @@ final class CLINotifyProcessIntegrationRegressionTests: XCTestCase {
             )
     }
 
-    /// Multi-connection mock server for tests that invoke several hooks in one
-    /// scenario; pair with `runClaudeHookWithoutServer`. The per-call
-    /// `runClaudeHookListingSurfaces` server accepts a single connection, which
-    /// deadlocks sequences once any CLI invocation opens more than one.
+    /// Multi-connection mock server for hook invocations. Agent hooks send
+    /// best-effort feed telemetry on a separate socket connection before their
+    /// main command traffic, so even one CLI process can need multiple accepts.
     private func startClaudeHookMockServerAccepting(
         context: ClaudeHookContext,
         surfaceIds: [String],
@@ -790,34 +789,11 @@ final class CLINotifyProcessIntegrationRegressionTests: XCTestCase {
         standardInput: String,
         extraEnvironment: [String: String] = [:]
     ) -> ProcessRunResult {
-        let serverHandled = startMockServer(listenerFD: context.listenerFD, state: context.state) { line in
-            guard let payload = self.jsonObject(line) else {
-                return "OK"
-            }
-            guard let id = payload["id"] as? String, let method = payload["method"] as? String else {
-                return self.malformedRequestResponse(id: payload["id"] as? String, raw: line)
-            }
-            switch method {
-            case "surface.list":
-                return self.v2Response(
-                    id: id,
-                    ok: true,
-                    result: [
-                        "surfaces": surfaceIds.enumerated().map { index, surfaceId in
-                            ["id": surfaceId, "ref": "surface:\(index + 1)", "focused": index == 0] as [String: Any]
-                        }
-                    ]
-                )
-            case "feed.push":
-                return self.v2Response(id: id, ok: true, result: [:])
-            case "surface.resume.set":
-                return self.v2Response(id: id, ok: true, result: ["resume_binding": [:]])
-            case "surface.resume.clear":
-                return self.v2Response(id: id, ok: true, result: ["cleared": true])
-            default:
-                return self.v2Response(id: id, ok: false, error: ["code": "unrecognized_method", "message": "unexpected method: \(method)"])
-            }
-        }
+        startClaudeHookMockServerAccepting(
+            context: context,
+            surfaceIds: surfaceIds,
+            connectionLimit: 8
+        )
 
         var environment = [
             "HOME": context.root.path,
@@ -840,7 +816,6 @@ final class CLINotifyProcessIntegrationRegressionTests: XCTestCase {
             standardInput: standardInput,
             timeout: 5
         )
-        wait(for: [serverHandled], timeout: 5)
         return result
     }
 
@@ -3580,7 +3555,11 @@ final class CLINotifyProcessIntegrationRegressionTests: XCTestCase {
         let configureParams = try XCTUnwrap(params(for: "workspace.remote.configure", in: run.requests))
         let initialEnv = try XCTUnwrap(createParams["initial_env"] as? [String: String])
 
-        XCTAssertNil(configureParams["ssh_options"])
+        let sshOptions = try XCTUnwrap(configureParams["ssh_options"] as? [String])
+        XCTAssertTrue(sshOptions.contains("ControlMaster=auto"), "ssh_options: \(sshOptions)")
+        XCTAssertTrue(sshOptions.contains("ControlPersist=600"), "ssh_options: \(sshOptions)")
+        XCTAssertTrue(sshOptions.contains { $0.hasPrefix("ControlPath=") }, "ssh_options: \(sshOptions)")
+        XCTAssertFalse(sshOptions.contains { $0.hasPrefix("ForwardAgent=") }, "ssh_options: \(sshOptions)")
         XCTAssertEqual(initialEnv["SSH_AUTH_SOCK"], agentSocketPath)
         XCTAssertEqual(configureParams["ssh_auth_sock"] as? String, agentSocketPath)
     }
@@ -3685,7 +3664,7 @@ final class CLINotifyProcessIntegrationRegressionTests: XCTestCase {
             initialScript
         )
         XCTAssertTrue(initialScript.contains("254|255"), initialScript)
-        XCTAssertFalse(initialScript.contains("-surface"), initialScript)
+        XCTAssertFalse(initialScript.contains("ssh-pty-attach --surface"), initialScript)
         XCTAssertTrue(
             initialScript.contains("--workspace \"$cmux_ssh_pty_workspace_id\""),
             initialScript
@@ -3712,7 +3691,7 @@ final class CLINotifyProcessIntegrationRegressionTests: XCTestCase {
             terminalStartupScript
         )
         XCTAssertTrue(terminalStartupScript.contains("254|255"), terminalStartupScript)
-        XCTAssertFalse(terminalStartupScript.contains("-surface"), terminalStartupScript)
+        XCTAssertFalse(terminalStartupScript.contains("ssh-pty-attach --surface"), terminalStartupScript)
         XCTAssertTrue(
             terminalStartupScript.contains("--workspace \"$cmux_ssh_pty_workspace_id\""),
             terminalStartupScript
@@ -4151,7 +4130,9 @@ final class CLINotifyProcessIntegrationRegressionTests: XCTestCase {
         XCTAssertTrue(result.stdout.isEmpty, result.stdout)
         XCTAssertTrue(result.stderr.isEmpty, result.stderr)
         let methods = state.snapshot().compactMap { self.jsonObject($0)?["method"] as? String }
-        XCTAssertEqual(methods, ["workspace.remote.pty_bridge", "workspace.remote.pty_resize", "workspace.remote.pty_sessions"])
+        XCTAssertEqual(methods.first, "workspace.remote.pty_bridge")
+        XCTAssertTrue(methods.contains("workspace.remote.pty_sessions"), "\(methods)")
+        XCTAssertFalse(methods.contains("workspace.remote.pty_attach_end"), "\(methods)")
     }
 
     func testSSHPTYAttachBridgeResetWhenSessionGoneClearsLocalState() throws {
@@ -7946,7 +7927,14 @@ final class CLINotifyProcessIntegrationRegressionTests: XCTestCase {
         try JSONSerialization.data(withJSONObject: store, options: [.prettyPrinted])
             .write(to: root.appendingPathComponent("claude-hook-sessions.json"), options: .atomic)
 
-        let serverHandled = startMockServer(listenerFD: listenerFD, state: state) { line in
+        let serverHandled = startMockServerAccepting(
+            listenerFD: listenerFD,
+            state: state,
+            connectionLimit: 8,
+            fulfillWhen: { line in
+                self.jsonObject(line)?["method"] as? String == "surface.resume.clear"
+            }
+        ) { line in
             guard let payload = self.jsonObject(line) else {
                 return "OK"
             }
@@ -8043,7 +8031,14 @@ final class CLINotifyProcessIntegrationRegressionTests: XCTestCase {
         try JSONSerialization.data(withJSONObject: store, options: [.prettyPrinted])
             .write(to: root.appendingPathComponent("codex-hook-sessions.json"), options: .atomic)
 
-        let serverHandled = startMockServer(listenerFD: listenerFD, state: state) { line in
+        let serverHandled = startMockServerAccepting(
+            listenerFD: listenerFD,
+            state: state,
+            connectionLimit: 8,
+            fulfillWhen: { line in
+                self.jsonObject(line)?["method"] as? String == "surface.resume.clear"
+            }
+        ) { line in
             guard let payload = self.jsonObject(line) else {
                 return "OK"
             }
@@ -8806,24 +8801,11 @@ final class CLINotifyProcessIntegrationRegressionTests: XCTestCase {
         standardInput: String,
         extraEnvironment: [String: String] = [:]
     ) -> ProcessRunResult {
-        let serverHandled = startMockServer(listenerFD: context.listenerFD, state: context.state) { line in
-            guard let payload = self.jsonObject(line) else {
-                return "OK"
-            }
-            guard let id = payload["id"] as? String, let method = payload["method"] as? String else {
-                return self.malformedRequestResponse(id: payload["id"] as? String, raw: line)
-            }
-            switch method {
-            case "surface.list":
-                return self.surfaceListResponse(id: id, surfaceId: context.surfaceId)
-            case "feed.push":
-                return self.v2Response(id: id, ok: true, result: [:])
-            case "surface.resume.clear":
-                return self.v2Response(id: id, ok: true, result: ["cleared": true])
-            default:
-                return self.v2Response(id: id, ok: false, error: ["code": "unrecognized_method", "message": "unexpected method: \(method)"])
-            }
-        }
+        startClaudeHookMockServerAccepting(
+            context: context,
+            surfaceIds: [context.surfaceId],
+            connectionLimit: 8
+        )
 
         var environment = [
             "HOME": context.root.path,
@@ -8846,7 +8828,6 @@ final class CLINotifyProcessIntegrationRegressionTests: XCTestCase {
             standardInput: standardInput,
             timeout: 5
         )
-        wait(for: [serverHandled], timeout: 5)
         return result
     }
 

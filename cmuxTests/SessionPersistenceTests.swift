@@ -2183,7 +2183,7 @@ final class SocketListenerAcceptPolicyTests: XCTestCase {
                 source: "environment"
             )
         )
-        let resumeCommand = try XCTUnwrap(snapshot.resumeCommand)
+        let resumeCommand = try XCTUnwrap(snapshot.resolvedResumeCommand(style: .verbose))
 
         // Run the resume command exactly as the restore launcher does: `$SHELL -lic <cmd>`.
         let process = Process()
@@ -2250,7 +2250,7 @@ final class SocketListenerAcceptPolicyTests: XCTestCase {
         // limitation shared by every agent kind) so the assertion isolates the claude
         // executable token itself.
         let snapshot = Self.makeClaudeRestorableSnapshot(workingDirectory: nil)
-        let resumeCommand = try XCTUnwrap(snapshot.resumeCommand)
+        let resumeCommand = try XCTUnwrap(snapshot.resolvedResumeCommand(style: .verbose))
 
         let recorded = try runClaudeResumeCommand(
             resumeCommand,
@@ -2295,7 +2295,7 @@ final class SocketListenerAcceptPolicyTests: XCTestCase {
         ).write(to: fishConfigDir.appendingPathComponent("config.fish"), atomically: true, encoding: .utf8)
 
         let snapshot = Self.makeClaudeRestorableSnapshot(workingDirectory: sandbox.sandboxURL.path)
-        let resumeCommand = try XCTUnwrap(snapshot.resumeCommand)
+        let resumeCommand = try XCTUnwrap(snapshot.resolvedResumeCommand(style: .verbose))
 
         let recorded = try runClaudeResumeCommand(
             resumeCommand,
@@ -2334,7 +2334,7 @@ final class SocketListenerAcceptPolicyTests: XCTestCase {
         try "".write(to: sandbox.homeURL.appendingPathComponent(".zprofile"), atomically: true, encoding: .utf8)
 
         let snapshot = Self.makeClaudeRestorableSnapshot(workingDirectory: nil)
-        let resumeCommand = try XCTUnwrap(snapshot.resumeCommand)
+        let resumeCommand = try XCTUnwrap(snapshot.resolvedResumeCommand(style: .verbose))
 
         let reapedShimPath = sandbox.sandboxURL
             .appendingPathComponent("reaped", isDirectory: true)
@@ -5484,8 +5484,14 @@ extension SessionPersistenceTests {
             promptForApproval: false
         ))
 
-        XCTAssertTrue(input.contains("'/opt/homebrew/bin/hermes' config set model.provider"))
-        XCTAssertTrue(input.contains("'/opt/homebrew/bin/hermes' config set model.base_url"))
+        XCTAssertTrue(
+            input.contains("'/opt/homebrew/bin/hermes' config set model.provider")
+                || input.contains("'\\''/opt/homebrew/bin/hermes'\\'' config set model.provider")
+        )
+        XCTAssertTrue(
+            input.contains("'/opt/homebrew/bin/hermes' config set model.base_url")
+                || input.contains("'\\''/opt/homebrew/bin/hermes'\\'' config set model.base_url")
+        )
     }
 
     func testHermesAgentHookSurfaceResumeBootstrapStaysInsideCwdGuard() throws {
@@ -5509,8 +5515,15 @@ extension SessionPersistenceTests {
         let cdRange = try XCTUnwrap(input.range(of: "cd --"))
         let bootstrapRange = try XCTUnwrap(input.range(of: "config set model.provider"))
         XCTAssertLessThan(cdRange.lowerBound, bootstrapRange.lowerBound)
-        XCTAssertTrue(input.contains("'./hermes' config set model.provider"))
-        XCTAssertTrue(input.contains("'./hermes' '--provider' 'custom' '--resume'"))
+        XCTAssertTrue(
+            input.contains("'./hermes' config set model.provider")
+                || input.contains("'\\''./hermes'\\'' config set model.provider")
+        )
+        XCTAssertTrue(
+            input.contains("'./hermes' '--provider' 'custom' '--resume'")
+                || input.contains("'\\''./hermes'\\'' '\\''--provider'\\'' '\\''custom'\\'' '\\''--resume'\\''")
+                || input.contains("./hermes --provider custom --resume")
+        )
     }
 
     func testHermesAgentHookSurfaceResumeReplacesExistingBootstrap() throws {
@@ -5576,7 +5589,12 @@ extension SessionPersistenceTests {
         ))
 
         XCTAssertFalse(input.contains("config set model.provider"))
-        XCTAssertTrue(input.contains("'--provider' '\\''anthropic'\\'''") || input.contains("'--provider' 'anthropic'"))
+        XCTAssertTrue(
+            input.contains("'--provider' '\\''anthropic'\\'''")
+                || input.contains("'--provider' 'anthropic'")
+                || input.contains("'\\''--provider'\\'' '\\''anthropic'\\''")
+                || input.contains("--provider anthropic")
+        )
     }
 
     private func makeSurfaceResumeApprovalStoreURL() throws -> URL {

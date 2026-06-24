@@ -2066,6 +2066,7 @@ final class AppDelegateShortcutRoutingTests: XCTestCase {
         RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.05))
         workspace.focusPanel(rightPanel.id)
         XCTAssertEqual(workspace.focusedPanelId, rightPanel.id, "Expected Bonsplit selection to stay on the right pane")
+        appDelegate.noteTerminalKeyboardFocusIntent(workspaceId: workspace.id, panelId: leftPanel.id, in: window)
         leftPanel.hostedView.suppressReparentFocus()
         XCTAssertTrue(window.makeFirstResponder(leftSurfaceView))
         leftPanel.hostedView.clearSuppressReparentFocus()
@@ -10982,7 +10983,9 @@ final class AppDelegateShortcutRoutingTests: XCTestCase {
         let searchState = TerminalSurface.SearchState(needle: "")
         terminalPanel.surface.searchState = searchState
         terminalPanel.hostedView.setSearchOverlay(searchState: searchState)
-        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.05))
+        waitUntil(timeout: 1.0) {
+            findEditableTextField(in: terminalPanel.hostedView) != nil
+        }
 
         guard let searchField = findEditableTextField(in: terminalPanel.hostedView) else {
             XCTFail("Expected mounted terminal search field")

@@ -385,6 +385,107 @@ extension CLINotifyProcessIntegrationRegressionTests {
         return handled
     }
 
+    func startMockServerAccepting(
+        listenerFD: Int32,
+        state: MockSocketServerState,
+        connectionLimit: Int,
+        fulfillWhen: (@Sendable (String) -> Bool)? = nil,
+        handler: @escaping @Sendable (String) -> String
+    ) -> XCTestExpectation {
+        startMockServerAllowingNoResponseAccepting(
+            listenerFD: listenerFD,
+            state: state,
+            connectionLimit: connectionLimit,
+            fulfillWhen: fulfillWhen
+        ) { line in
+            handler(line)
+        }
+    }
+
+    func startMockServerAllowingNoResponseAccepting(
+        listenerFD: Int32,
+        state: MockSocketServerState,
+        connectionLimit: Int,
+        fulfillWhen: (@Sendable (String) -> Bool)? = nil,
+        handler: @escaping @Sendable (String) -> String?
+    ) -> XCTestExpectation {
+        let handled = expectation(description: "cli mock socket accepted")
+        let fulfillOnConnectionClose = fulfillWhen == nil
+        let fulfillLock = NSLock()
+        var didFulfill = false
+        func fulfillOnce() {
+            fulfillLock.lock()
+            defer { fulfillLock.unlock() }
+            if !didFulfill {
+                didFulfill = true
+                handled.fulfill()
+            }
+        }
+
+        if fulfillWhen == nil {
+            DispatchQueue.global(qos: .userInitiated).asyncAfter(deadline: .now() + 0.1) {
+                fulfillOnce()
+            }
+        }
+
+        DispatchQueue.global(qos: .userInitiated).async {
+            var accepted = 0
+            while accepted < connectionLimit {
+                var clientAddr = sockaddr_un()
+                var clientAddrLen = socklen_t(MemoryLayout<sockaddr_un>.size)
+                let clientFD = withUnsafeMutablePointer(to: &clientAddr) { ptr in
+                    ptr.withMemoryRebound(to: sockaddr.self, capacity: 1) { sockaddrPtr in
+                        Darwin.accept(listenerFD, sockaddrPtr, &clientAddrLen)
+                    }
+                }
+                if clientFD < 0 {
+                    if errno == EINTR { continue }
+                    if fulfillOnConnectionClose {
+                        fulfillOnce()
+                    }
+                    return
+                }
+                accepted += 1
+
+                DispatchQueue.global(qos: .userInitiated).async {
+                    defer {
+                        Darwin.close(clientFD)
+                        if fulfillOnConnectionClose {
+                            fulfillOnce()
+                        }
+                    }
+                    var pending = Data()
+                    var buffer = [UInt8](repeating: 0, count: 4096)
+                    while true {
+                        let count = Darwin.read(clientFD, &buffer, buffer.count)
+                        if count < 0 {
+                            if errno == EINTR { continue }
+                            return
+                        }
+                        if count == 0 { return }
+                        pending.append(buffer, count: count)
+
+                        while let newlineRange = pending.firstRange(of: Data([0x0A])) {
+                            let lineData = pending.subdata(in: 0..<newlineRange.lowerBound)
+                            pending.removeSubrange(0...newlineRange.lowerBound)
+                            guard let line = String(data: lineData, encoding: .utf8) else { continue }
+                            state.append(line)
+                            if fulfillWhen?(line) == true {
+                                fulfillOnce()
+                            }
+                            guard let responsePayload = handler(line) else { continue }
+                            let response = responsePayload + "\n"
+                            _ = response.withCString { ptr in
+                                Darwin.write(clientFD, ptr, strlen(ptr))
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        return handled
+    }
+
     func startDetachedMockServer(
         listenerFD: Int32,
         state: MockSocketServerState,

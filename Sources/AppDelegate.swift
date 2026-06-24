@@ -5640,7 +5640,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         debugFocusedTerminalKeyRepairObserverForTesting?(window, event, firstResponder)
 #endif
 
-        terminalPanel.hostedView.ensureFocus(for: workspace.id, surfaceId: panelId)
+        terminalPanel.hostedView.ensureFocus(
+            for: workspace.id,
+            surfaceId: panelId,
+            respectForeignFirstResponder: false
+        )
 
 #if DEBUG
         let after = window.firstResponder.map { String(describing: type(of: $0)) } ?? "nil"

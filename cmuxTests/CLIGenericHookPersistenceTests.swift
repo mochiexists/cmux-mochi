@@ -315,7 +315,7 @@ extension CLINotifyProcessIntegrationRegressionTests {
         ]
 
         func runAntigravityHook(_ subcommand: String, input: String) -> ProcessRunResult {
-            let serverHandled = startMockServer(listenerFD: listenerFD, state: state) { line in
+            let serverHandled = startMockServerAccepting(listenerFD: listenerFD, state: state, connectionLimit: 8) { line in
                 guard let payload = self.jsonObject(line) else {
                     return "OK"
                 }
@@ -583,7 +583,7 @@ extension CLINotifyProcessIntegrationRegressionTests {
         ]
 
         func runHermesHook(_ subcommand: String, input: String) -> ProcessRunResult {
-            let serverHandled = startMockServer(listenerFD: listenerFD, state: state) { line in
+            let serverHandled = startMockServerAccepting(listenerFD: listenerFD, state: state, connectionLimit: 8) { line in
                 guard let payload = self.jsonObject(line) else {
                     return "OK"
                 }
@@ -748,7 +748,7 @@ extension CLINotifyProcessIntegrationRegressionTests {
         ]
 
         func runHermesHook(_ subcommand: String, input: String) -> ProcessRunResult {
-            let serverHandled = startMockServer(listenerFD: listenerFD, state: state) { line in
+            let serverHandled = startMockServerAccepting(listenerFD: listenerFD, state: state, connectionLimit: 8) { line in
                 guard let payload = self.jsonObject(line) else {
                     return "OK"
                 }
@@ -1020,7 +1020,7 @@ extension CLINotifyProcessIntegrationRegressionTests {
             try? FileManager.default.removeItem(at: root)
         }
 
-        let serverHandled = startMockServer(listenerFD: listenerFD, state: state) { line in
+        let serverHandled = startMockServerAccepting(listenerFD: listenerFD, state: state, connectionLimit: 8) { line in
             guard let payload = self.jsonObject(line) else {
                 return self.malformedRequestResponse(raw: line)
             }
@@ -1097,7 +1097,7 @@ extension CLINotifyProcessIntegrationRegressionTests {
                 unlink(socketPath)
                 try? FileManager.default.removeItem(at: root)
             }
-            let serverHandled = startMockServer(listenerFD: listenerFD, state: state) { line in
+            let serverHandled = startMockServerAccepting(listenerFD: listenerFD, state: state, connectionLimit: 8) { line in
                 guard let payload = self.jsonObject(line), let id = payload["id"] as? String else {
                     return self.malformedRequestResponse(raw: line)
                 }
@@ -1163,7 +1163,7 @@ extension CLINotifyProcessIntegrationRegressionTests {
                 unlink(socketPath)
                 try? FileManager.default.removeItem(at: root)
             }
-            let serverHandled = startMockServer(listenerFD: listenerFD, state: state) { line in
+            let serverHandled = startMockServerAccepting(listenerFD: listenerFD, state: state, connectionLimit: 8) { line in
                 guard let payload = self.jsonObject(line), let id = payload["id"] as? String else {
                     return self.malformedRequestResponse(raw: line)
                 }
@@ -1220,7 +1220,7 @@ extension CLINotifyProcessIntegrationRegressionTests {
             try? FileManager.default.removeItem(at: root)
         }
 
-        let serverHandled = startMockServer(listenerFD: listenerFD, state: state) { line in
+        let serverHandled = startMockServerAccepting(listenerFD: listenerFD, state: state, connectionLimit: 8) { line in
             guard let payload = self.jsonObject(line) else {
                 return self.malformedRequestResponse(raw: line)
             }
@@ -1300,7 +1300,7 @@ extension CLINotifyProcessIntegrationRegressionTests {
         ]
 
         func runFeedHook(input: String) -> ProcessRunResult {
-            let serverHandled = startMockServer(listenerFD: listenerFD, state: state) { line in
+            let serverHandled = startMockServerAccepting(listenerFD: listenerFD, state: state, connectionLimit: 8) { line in
                 guard let payload = self.jsonObject(line) else {
                     return self.malformedRequestResponse(raw: line)
                 }
@@ -1390,7 +1390,7 @@ extension CLINotifyProcessIntegrationRegressionTests {
         ]
 
         func runGrokHook(_ subcommand: String, input: String) -> ProcessRunResult {
-            let serverHandled = startMockServer(listenerFD: listenerFD, state: state) { line in
+            let serverHandled = startMockServerAccepting(listenerFD: listenerFD, state: state, connectionLimit: 8) { line in
                 guard let payload = self.jsonObject(line) else {
                     return "OK"
                 }
@@ -1969,7 +1969,7 @@ extension CLINotifyProcessIntegrationRegressionTests {
         ]
 
         func runGrokHook(_ subcommand: String, input: String, surfaceId: String) -> ProcessRunResult {
-            let serverHandled = startMockServer(listenerFD: listenerFD, state: state) { line in
+            let serverHandled = startMockServerAccepting(listenerFD: listenerFD, state: state, connectionLimit: 8) { line in
                 guard let payload = self.jsonObject(line) else {
                     return "OK"
                 }
@@ -2144,7 +2144,7 @@ extension CLINotifyProcessIntegrationRegressionTests {
         ]
 
         func runGrokHook(_ subcommand: String, input: String) -> ProcessRunResult {
-            let serverHandled = startMockServer(listenerFD: listenerFD, state: state) { line in
+            let serverHandled = startMockServerAccepting(listenerFD: listenerFD, state: state, connectionLimit: 8) { line in
                 guard let payload = self.jsonObject(line) else {
                     return "OK"
                 }
@@ -2246,7 +2246,11 @@ extension CLINotifyProcessIntegrationRegressionTests {
         ]
 
         func runGrokHook(_ subcommand: String, input: String, stallFeedTelemetry: Bool = false) -> ProcessRunResult {
-            let serverHandled = startMockServerAllowingNoResponse(listenerFD: listenerFD, state: state) { line in
+            let serverHandled = startMockServerAllowingNoResponseAccepting(
+                listenerFD: listenerFD,
+                state: state,
+                connectionLimit: 8
+            ) { line in
                 guard let payload = self.jsonObject(line) else {
                     return "OK"
                 }
@@ -2350,7 +2354,7 @@ extension CLINotifyProcessIntegrationRegressionTests {
             input: String,
             environment: [String: String] = baseEnvironment
         ) -> ProcessRunResult {
-            let serverHandled = startMockServer(listenerFD: listenerFD, state: state) { line in
+            let serverHandled = startMockServerAccepting(listenerFD: listenerFD, state: state, connectionLimit: 8) { line in
                 guard let payload = self.jsonObject(line) else {
                     return "OK"
                 }
@@ -2532,7 +2536,7 @@ extension CLINotifyProcessIntegrationRegressionTests {
             input: String,
             environment: [String: String] = baseEnvironment
         ) -> ProcessRunResult {
-            let serverHandled = startMockServer(listenerFD: listenerFD, state: state) { line in
+            let serverHandled = startMockServerAccepting(listenerFD: listenerFD, state: state, connectionLimit: 8) { line in
                 guard let payload = self.jsonObject(line) else {
                     return "OK"
                 }
@@ -2683,7 +2687,7 @@ extension CLINotifyProcessIntegrationRegressionTests {
             "CMUX_SURFACE_ID": completingSurfaceId,
         ]
 
-        let serverHandled = startMockServer(listenerFD: listenerFD, state: state) { line in
+        let serverHandled = startMockServerAccepting(listenerFD: listenerFD, state: state, connectionLimit: 8) { line in
             guard let payload = self.jsonObject(line) else {
                 return "OK"
             }
@@ -3196,7 +3200,7 @@ extension CLINotifyProcessIntegrationRegressionTests {
             try? FileManager.default.removeItem(at: root)
         }
 
-        let serverHandled = startMockServer(listenerFD: listenerFD, state: state) { line in
+        let serverHandled = startMockServerAccepting(listenerFD: listenerFD, state: state, connectionLimit: 8) { line in
             guard let payload = self.jsonObject(line) else {
                 return "OK"
             }
@@ -3340,7 +3344,7 @@ extension CLINotifyProcessIntegrationRegressionTests {
         try JSONSerialization.data(withJSONObject: store, options: [.prettyPrinted])
             .write(to: root.appendingPathComponent("codex-hook-sessions.json"), options: .atomic)
 
-        let serverHandled = startMockServer(listenerFD: listenerFD, state: state) { line in
+        let serverHandled = startMockServerAccepting(listenerFD: listenerFD, state: state, connectionLimit: 8) { line in
             guard let payload = self.jsonObject(line) else { return "OK" }
             guard let id = payload["id"] as? String, let method = payload["method"] as? String else {
                 return self.malformedRequestResponse(id: payload["id"] as? String, raw: line)
@@ -3447,7 +3451,7 @@ extension CLINotifyProcessIntegrationRegressionTests {
             try? FileManager.default.removeItem(at: root)
         }
 
-        let serverHandled = startMockServer(listenerFD: listenerFD, state: state) { line in
+        let serverHandled = startMockServerAccepting(listenerFD: listenerFD, state: state, connectionLimit: 8) { line in
             guard let payload = self.jsonObject(line) else { return "OK" }
             guard let id = payload["id"] as? String, let method = payload["method"] as? String else {
                 return self.malformedRequestResponse(id: payload["id"] as? String, raw: line)
@@ -3542,7 +3546,7 @@ extension CLINotifyProcessIntegrationRegressionTests {
             try? FileManager.default.removeItem(at: root)
         }
 
-        let serverHandled = startMockServer(listenerFD: listenerFD, state: state) { line in
+        let serverHandled = startMockServerAccepting(listenerFD: listenerFD, state: state, connectionLimit: 8) { line in
             guard let payload = self.jsonObject(line) else { return "OK" }
             guard let id = payload["id"] as? String, let method = payload["method"] as? String else {
                 return self.malformedRequestResponse(id: payload["id"] as? String, raw: line)
@@ -3631,7 +3635,7 @@ extension CLINotifyProcessIntegrationRegressionTests {
             try? FileManager.default.removeItem(at: root)
         }
 
-        let serverHandled = startMockServer(listenerFD: listenerFD, state: state) { line in
+        let serverHandled = startMockServerAccepting(listenerFD: listenerFD, state: state, connectionLimit: 8) { line in
             guard let payload = self.jsonObject(line) else { return "OK" }
             guard let id = payload["id"] as? String, let method = payload["method"] as? String else {
                 return self.malformedRequestResponse(id: payload["id"] as? String, raw: line)

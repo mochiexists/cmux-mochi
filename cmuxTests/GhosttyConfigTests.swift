@@ -4260,7 +4260,8 @@ final class GhosttyMouseFocusTests: XCTestCase {
         )
 
         XCTAssertTrue(paths.contains(nativeConfig.path))
-        XCTAssertFalse(GhosttyApp.shouldApplyManagedDefaultAppearance(configPaths: paths))
+        let appSupportPaths = paths.filter { $0.hasPrefix(appSupport.path) }
+        XCTAssertFalse(GhosttyApp.shouldApplyManagedDefaultAppearance(configPaths: appSupportPaths))
     }
 
     func testLoadedGhosttyConfigScanPathsSkipsNativeLegacyConfigWhenCurrentConfigIsNonEmpty() throws {
@@ -4285,7 +4286,8 @@ final class GhosttyMouseFocusTests: XCTestCase {
 
         XCTAssertTrue(paths.contains(currentConfig.path))
         XCTAssertFalse(paths.contains(legacyConfig.path))
-        XCTAssertTrue(GhosttyApp.shouldApplyManagedDefaultAppearance(configPaths: paths))
+        let appSupportPaths = paths.filter { $0.hasPrefix(appSupport.path) }
+        XCTAssertTrue(GhosttyApp.shouldApplyManagedDefaultAppearance(configPaths: appSupportPaths))
     }
 
     // MARK: shouldApplyManagedDefaultAppearance
