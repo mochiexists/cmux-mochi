@@ -1842,6 +1842,11 @@ struct SessionWorkspaceSnapshot: Codable, Sendable {
     var terminalScrollBarHidden: Bool?
     var currentDirectory: String
     var focusedPanelId: UUID?
+    /// Panel id of any tab in the pane that was zoom-maximized when the snapshot
+    /// was taken; nil when no pane was zoomed. Persisted as a panelId (not a
+    /// bonsplit PaneID) because PaneIDs are regenerated on restore. Optional with
+    /// a nil default so snapshots persisted before this field decode unchanged.
+    var zoomedPanelId: UUID? = nil
     var layout: SessionWorkspaceLayoutSnapshot
     /// `WorkspaceLayoutMode` raw value; absent in pre-canvas snapshots
     /// (treated as splits).

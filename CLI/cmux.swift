@@ -34433,6 +34433,7 @@ export default function cmuxPiSessionExtension(pi: ExtensionAPI) {
         print("  \(tagline)Added in this fork\(reset)")
         print("  \(mochi)•\(reset) Resume mode — defaults to Medium: the resume command is pre-typed, you submit it to re-open the session")
         print("  \(mochi)•\(reset) Scrollback that persists across quits and crashes")
+        print("  \(mochi)•\(reset) Pane zoom that survives relaunch")
         print("  \(mochi)•\(reset) Reveal in Finder / Copy Path on terminal, markdown & local-file tabs")
         print("  \(mochi)•\(reset) Task Manager as a tab or full-area page")
         print("  \(mochi)•\(reset) Always-on CPU / memory readout in the sidebar footer")
