@@ -47,8 +47,8 @@ require_file_contains "cmux.xcodeproj/project.pbxproj" "PRODUCT_BUNDLE_IDENTIFIE
 require_file_contains "cmux.xcodeproj/project.pbxproj" 'PRODUCT_NAME = "cmux Mochi";'
 require_file_contains "cmux.xcodeproj/project.pbxproj" 'PRODUCT_NAME = "cmux Mochi DEV";'
 require_file_contains "cmux.xcodeproj/project.pbxproj" 'SPARKLE_PUBLIC_KEY = "zuKEVdkteBH5X33sMtjNnINr5JfskPx6Yj4LxZlySfY=";'
-require_file_contains "cmux.xcodeproj/project.pbxproj" "CURRENT_PROJECT_VERSION = 102;"
-require_file_contains "cmux.xcodeproj/project.pbxproj" "MARKETING_VERSION = 0.64.157;"
+require_file_contains "cmux.xcodeproj/project.pbxproj" "CURRENT_PROJECT_VERSION = 103;"
+require_file_contains "cmux.xcodeproj/project.pbxproj" "MARKETING_VERSION = 0.64.158;"
 
 require_file_contains "Resources/Info.plist" "https://github.com/mochiexists/cmux-mochi/releases/latest/download/appcast.xml"
 require_file_contains "Resources/Info.plist" '$(SPARKLE_PUBLIC_KEY)'
