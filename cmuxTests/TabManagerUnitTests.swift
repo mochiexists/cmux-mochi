@@ -1916,6 +1916,8 @@ final class TabManagerCloseCurrentPanelTests: XCTestCase {
     func testCloseCurrentPanelClearsNotificationsForClosedSurface() {
         let appDelegate = AppDelegate.shared ?? AppDelegate()
         let manager = TabManager()
+        let workspace = manager.addWorkspace()
+        manager.selectWorkspace(workspace)
         let store = TerminalNotificationStore.shared
 
         let originalTabManager = appDelegate.tabManager
@@ -1924,6 +1926,7 @@ final class TabManagerCloseCurrentPanelTests: XCTestCase {
         store.configureNotificationDeliveryHandlerForTesting { _, _ in }
         appDelegate.tabManager = manager
         appDelegate.notificationStore = store
+        manager.confirmCloseHandler = { _, _, _ in true }
 
         defer {
             store.replaceNotificationsForTesting([])
@@ -1932,8 +1935,7 @@ final class TabManagerCloseCurrentPanelTests: XCTestCase {
             appDelegate.notificationStore = originalNotificationStore
         }
 
-        guard let workspace = manager.selectedWorkspace,
-              let initialPanelId = workspace.focusedPanelId else {
+        guard let initialPanelId = workspace.focusedPanelId else {
             XCTFail("Expected selected workspace and focused panel")
             return
         }
