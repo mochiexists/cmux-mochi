@@ -1296,7 +1296,7 @@ final class KoreanIMEMarkedTextLeakRegressionTests: XCTestCase {
 
 @MainActor
 final class AccessibilityInsertTextRegressionTests: XCTestCase {
-    func testDirectInsertTextUsesTypedInputSemantics() {
+    func testDirectInsertTextUsesTypedInputSemantics() throws {
         _ = NSApplication.shared
 
         let surface = TerminalSurface(
@@ -1338,6 +1338,10 @@ final class AccessibilityInsertTextRegressionTests: XCTestCase {
             XCTFail("Expected hosted GhosttyNSView")
             return
         }
+        try XCTSkipUnless(
+            surface.hasLiveSurface,
+            "Ghostty surface failed to initialize on this host; Metal/embedded_window unavailable."
+        )
 
         var pressedText: [String] = []
         var pressedKeycodes: [UInt32] = []
@@ -1356,7 +1360,7 @@ final class AccessibilityInsertTextRegressionTests: XCTestCase {
         XCTAssertEqual(pressedKeycodes, [36], "Trailing newline should be delivered as Return, not pasted text")
     }
 
-    func testDirectInsertTextPreservesLeadingEscapeForAutomation() {
+    func testDirectInsertTextPreservesLeadingEscapeForAutomation() throws {
         _ = NSApplication.shared
 
         let surface = TerminalSurface(
@@ -1398,6 +1402,10 @@ final class AccessibilityInsertTextRegressionTests: XCTestCase {
             XCTFail("Expected hosted GhosttyNSView")
             return
         }
+        try XCTSkipUnless(
+            surface.hasLiveSurface,
+            "Ghostty surface failed to initialize on this host; Metal/embedded_window unavailable."
+        )
 
         var pressedText: [String] = []
         var pressedKeycodes: [UInt32] = []
@@ -1416,7 +1424,7 @@ final class AccessibilityInsertTextRegressionTests: XCTestCase {
         XCTAssertEqual(pressedKeycodes, [], "Direct NSTextInputClient insertText should preserve raw ESC bytes")
     }
 
-    func testAccessibilityValueSanitizesLeadingEscapeSequence() {
+    func testAccessibilityValueSanitizesLeadingEscapeSequence() throws {
         _ = NSApplication.shared
 
         let surface = TerminalSurface(
@@ -1458,6 +1466,10 @@ final class AccessibilityInsertTextRegressionTests: XCTestCase {
             XCTFail("Expected hosted GhosttyNSView")
             return
         }
+        try XCTSkipUnless(
+            surface.hasLiveSurface,
+            "Ghostty surface failed to initialize on this host; Metal/embedded_window unavailable."
+        )
 
         var pressedText: [String] = []
         var pressedKeycodes: [UInt32] = []

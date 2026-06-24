@@ -11284,7 +11284,10 @@ extension GhosttyNSView: NSTextInputClient {
     /// execution, etc.). Programmatic callers can preserve literal ESC bytes so
     /// automation payloads remain byte-for-byte stable.
     fileprivate func sendTextToSurface(_ chars: String, preserveLiteralEscape: Bool) {
-        guard let surface = surface else { return }
+        guard let surface = ensureSurfaceReadyForInput() else {
+            requestInputRecoveryAfterSurfaceMiss(reason: "insertText.missingSurface")
+            return
+        }
 #if DEBUG
         let typingTimingStart = CmuxTypingTiming.start()
 #endif
