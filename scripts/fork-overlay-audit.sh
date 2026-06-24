@@ -55,7 +55,6 @@ require_file_contains "Resources/Info.plist" '$(SPARKLE_PUBLIC_KEY)'
 
 require_file_contains ".github/workflows/release.yml" "mochiexists/cmux-mochi"
 require_file_contains ".github/workflows/release.yml" "codes-o3"
-require_file_contains ".github/workflows/release.yml" "cmux-atlas"
 require_file_contains ".github/workflows/release.yml" "Skipping R2 stable appcast mirror: CF_R2 credentials not configured."
 require_file_contains ".github/workflows/release.yml" "build-ghostty-cli-helper"
 require_file_contains ".github/workflows/release.yml" "scripts/import-apple-developer-id-intermediates.sh build.keychain"
@@ -64,7 +63,6 @@ require_file_contains ".github/workflows/release.yml" "blacksmith-6vcpu-macos-26
 
 require_file_contains ".github/workflows/nightly.yml" "mochiexists/cmux-mochi"
 require_file_contains ".github/workflows/nightly.yml" "codes-o3"
-require_file_contains ".github/workflows/nightly.yml" "cmux-atlas"
 require_file_contains ".github/workflows/nightly.yml" "scripts/import-apple-developer-id-intermediates.sh build.keychain"
 require_file_contains ".github/workflows/nightly.yml" "blacksmith-6vcpu-macos-15"
 require_file_contains ".github/workflows/nightly.yml" "Skipping R2 nightly appcast upload: CF_R2 credentials not configured."
@@ -85,21 +83,32 @@ require_file_absent "web/app/[locale]/nightly/page.tsx" "manaflow-ai/cmux"
 require_file_contains ".github/workflows/update-homebrew.yml" "auto-trigger disabled"
 require_file_contains ".github/workflows/update-homebrew.yml" "mochiexists/cmux-mochi"
 
-require_file_contains "CLI/CLISocketSentryTelemetry.swift" "https://cf9f50c96d0e1872f0f774d70da71b1c@o4510776019910656.ingest.de.sentry.io/4511100296101968"
-require_file_contains "Sources/AppDelegate.swift" "https://cf9f50c96d0e1872f0f774d70da71b1c@o4510776019910656.ingest.de.sentry.io/4511100296101968"
+# cmux-mochi Sentry project (codes-o3/cmux-mochi, project 4511385382486096).
+require_file_contains "CLI/CLISocketSentryTelemetry.swift" "https://f1724042a52588425266851138bb2ee8@o4510776019910656.ingest.de.sentry.io/4511385382486096"
+require_file_contains "Sources/AppDelegate.swift" "https://f1724042a52588425266851138bb2ee8@o4510776019910656.ingest.de.sentry.io/4511385382486096"
+# Forbid the upstream US DSN and the wrong-project cmux-atlas DSN (4511100296101968).
 require_file_absent "CLI/CLISocketSentryTelemetry.swift" "https://ecba1ec90ecaee02a102fba931b6d2b3@o4507547940749312.ingest.us.sentry.io/4510796264636416"
 require_file_absent "Sources/AppDelegate.swift" "https://ecba1ec90ecaee02a102fba931b6d2b3@o4507547940749312.ingest.us.sentry.io/4510796264636416"
+require_file_absent "CLI/CLISocketSentryTelemetry.swift" "4511100296101968"
+require_file_absent "Sources/AppDelegate.swift" "4511100296101968"
+# Symbol upload must target the same project (else crashes don't symbolicate).
+require_file_contains ".github/workflows/release.yml" "SENTRY_PROJECT: cmux-mochi"
+require_file_contains ".github/workflows/nightly.yml" "SENTRY_PROJECT: cmux-mochi"
+require_file_absent ".github/workflows/release.yml" "SENTRY_PROJECT: cmux-atlas"
+require_file_absent ".github/workflows/nightly.yml" "SENTRY_PROJECT: cmux-atlas"
 
 require_command_output "https://github.com/mochiexists/bonsplit.git" \
   git -C "$ROOT_DIR" config --file .gitmodules --get submodule.vendor/bonsplit.url
 
 bonsplit_status="$(git -C "$ROOT_DIR" submodule status vendor/bonsplit)"
-if [[ "$bonsplit_status" != " 122b99cbf9d3bef36dc94b02032531cfd93a5849 vendor/bonsplit"* ]]; then
-  fail "vendor/bonsplit is not pinned to 122b99cbf9d3bef36dc94b02032531cfd93a5849: $bonsplit_status"
+if [[ "$bonsplit_status" != " 26beb56630075c9e7213623e367d44e858cc8a18 vendor/bonsplit"* ]]; then
+  fail "vendor/bonsplit is not pinned to 26beb56630075c9e7213623e367d44e858cc8a18: $bonsplit_status"
 fi
 
 require_file_contains "scripts/reload.sh" 'APP_NAME="cmux Mochi DEV"'
 require_file_contains "scripts/reload.sh" 'BUNDLE_ID="com.cmux-mochi.debug"'
+require_file_contains "scripts/cmux-debug-cli.sh" 'cmux Mochi DEV ${tag_slug}.app/Contents/Resources/bin/cmux'
+require_file_absent "scripts/cmux-debug-cli.sh" 'cmux DEV ${tag_slug}.app/Contents/Resources/bin/cmux'
 require_file_contains "scripts/sparkle_generate_appcast.sh" 'https://github.com/mochiexists/cmux-mochi/releases/download/$TAG/'
 require_file_contains "scripts/build-sign-upload.sh" "mochiexists/cmux-mochi"
 require_file_contains "scripts/build-sign-upload.sh" "UPDATE_HOMEBREW:-0"
