@@ -4832,7 +4832,7 @@ final class TerminalWindowPortalLifecycleTests: XCTestCase {
 
         var anchor1: NSView? = NSView(frame: NSRect(x: 20, y: 20, width: 120, height: 80))
         contentView.addSubview(anchor1!)
-        portal.bind(hostedView: hosted1, to: anchor1!, visibleInUI: true)
+        portal.bind(hostedView: hosted1, to: anchor1!, visibleInUI: false)
 
         anchor1?.removeFromSuperview()
         anchor1 = nil
@@ -4845,7 +4845,7 @@ final class TerminalWindowPortalLifecycleTests: XCTestCase {
         portal.bind(hostedView: hosted2, to: anchor2, visibleInUI: true)
 
         XCTAssertEqual(portal.debugEntryCount(), 1, "Only the live anchored hosted view should remain tracked")
-        XCTAssertEqual(portal.debugHostedSubviewCount(), 1, "Stale anchorless hosted views should be detached from hostView")
+        XCTAssertEqual(portal.debugStats().terminalSubviewCount, 1, "Stale anchorless hosted views should be detached from hostView")
     }
 
     func testDeferredSyncHidesVisibleHostedViewAfterAnchorDisappears() {
@@ -5218,7 +5218,8 @@ final class TerminalWindowPortalLifecycleTests: XCTestCase {
             "Initial hit-testing should resolve the portal-hosted terminal at its original window position"
         )
 
-        TerminalWindowPortalRegistry.scheduleExternalGeometrySynchronize(for: window)
+        drainMainQueue()
+        TerminalWindowPortalRegistry.scheduleExternalGeometrySynchronize(for: window, forceImmediate: false)
         DispatchQueue.main.async {
             shiftedContainer.frame.origin.x += 72
             contentView.layoutSubtreeIfNeeded()

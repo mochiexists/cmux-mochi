@@ -64,6 +64,13 @@ extension TerminalController {
         return nil
     }
 
+    func controlSidebarTabManagerForMutation(id: UUID) -> TabManager? {
+        if let tabManager, tabManager.tabs.contains(where: { $0.id == id }) {
+            return tabManager
+        }
+        return AppDelegate.shared?.tabManagerFor(tabId: id)
+    }
+
     /// The byte-faithful twin of the file-private `resolveSidebarMutationTab(_:)`
     /// over the coordinator's Sendable target enum.
     func controlSidebarResolveMutationTab(_ target: ControlSidebarTabTarget) -> Workspace? {

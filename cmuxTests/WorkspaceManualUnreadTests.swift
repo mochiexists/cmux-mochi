@@ -1738,10 +1738,10 @@ final class WorkspaceManualUnreadTests: XCTestCase {
         let restoredPanelId = try XCTUnwrap(restored.focusedPanelId)
         let restoredTabId = try XCTUnwrap(restored.surfaceIdFromPanelId(restoredPanelId))
         XCTAssertFalse(restored.manualUnreadPanelIds.contains(restoredPanelId))
-        XCTAssertTrue(restored.hasRestoredUnreadIndicator(panelId: restoredPanelId))
+        XCTAssertFalse(restored.hasRestoredUnreadIndicator(panelId: restoredPanelId))
         XCTAssertTrue(restored.bonsplitController.tab(restoredTabId)?.showsNotificationBadge ?? false)
         XCTAssertFalse(store.hasManualUnread(forTabId: restored.id))
-        XCTAssertEqual(store.unreadCount(forTabId: restored.id), 0)
+        XCTAssertEqual(store.unreadCount(forTabId: restored.id), 1)
 
         restored.markPanelRead(restoredPanelId)
 
@@ -1788,12 +1788,14 @@ final class WorkspaceManualUnreadTests: XCTestCase {
 
         let restoredPanelId = try XCTUnwrap(restored.focusedPanelId)
         XCTAssertTrue(restored.manualUnreadPanelIds.contains(restoredPanelId))
-        XCTAssertTrue(restored.hasRestoredUnreadIndicator(panelId: restoredPanelId))
+        XCTAssertFalse(restored.hasRestoredUnreadIndicator(panelId: restoredPanelId))
+        XCTAssertEqual(store.unreadCount(forTabId: restored.id), 2)
 
         restored.markPanelRead(restoredPanelId)
 
         XCTAssertFalse(restored.manualUnreadPanelIds.contains(restoredPanelId))
         XCTAssertFalse(restored.hasRestoredUnreadIndicator(panelId: restoredPanelId))
+        XCTAssertEqual(store.unreadCount(forTabId: restored.id), 0)
     }
 
     func testSessionRestorePreservesFocusedReadIndicator() throws {

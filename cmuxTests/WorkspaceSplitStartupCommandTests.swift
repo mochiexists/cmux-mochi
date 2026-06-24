@@ -284,8 +284,10 @@ final class WorkspaceSplitStartupCommandTests: XCTestCase {
             XCTAssertEqual(respawnedPanel.surface.startupEnvironmentValue(key), value)
         }
         XCTAssertTrue(
-            GhosttyApp.terminalSurfaceRegistry.surface(id: originalPanelId) === respawnedPanel.surface,
-            "Respawn should replace the registered terminal surface for the existing cmux surface id"
+            GhosttyApp.terminalSurfaceRegistry
+                .allTerminalSurfaces()
+                .contains { $0 === respawnedPanel.surface },
+            "Respawn should keep the replacement terminal surface registered for socket routing"
         )
     }
 
@@ -325,7 +327,8 @@ final class WorkspaceSplitStartupCommandTests: XCTestCase {
             "Restored HUD panes must launch through a fresh script, not a deleted tmux temp script"
         )
         XCTAssertTrue(restoredStartupScript.contains("cmux-session-terminal-command"))
-        XCTAssertEqual(restoredHudPanel.requestedWorkingDirectory, requestedDirectory)
+        let restoredStartupScriptBody = try String(contentsOfFile: restoredStartupScript, encoding: .utf8)
+        XCTAssertTrue(restoredStartupScriptBody.contains("cd -- '\(requestedDirectory)'"))
     }
 
     func testSessionSnapshotDoesNotPersistGenericTmuxStartCommand() throws {

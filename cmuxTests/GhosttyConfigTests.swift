@@ -2301,6 +2301,16 @@ final class BrowserNewTabNavigationSeedTests: XCTestCase {
 
 @MainActor
 final class BrowserPanelRemoteStoreTests: XCTestCase {
+    override func setUp() {
+        super.setUp()
+        BrowserProfileStore.shared.noteUsed(BrowserProfileStore.shared.builtInDefaultProfileID)
+    }
+
+    override func tearDown() {
+        BrowserProfileStore.shared.noteUsed(BrowserProfileStore.shared.builtInDefaultProfileID)
+        super.tearDown()
+    }
+
     func testRemoteWorkspacePanelsShareWorkspaceScopedWebsiteDataStore() {
         let localPanel = BrowserPanel(workspaceId: UUID(), isRemoteWorkspace: false)
         let remoteWorkspaceId = UUID()
@@ -5307,8 +5317,8 @@ final class ZshShellIntegrationHandoffTests: XCTestCase {
 
     func testBashNoGitWatchSkipsHeadTrackingAndPRClear() throws {
         let fileManager = FileManager.default
-        let root = fileManager.temporaryDirectory
-            .appendingPathComponent("cmux-bash-no-git-watch-\(UUID().uuidString)")
+        let root = URL(fileURLWithPath: "/tmp", isDirectory: true)
+            .appendingPathComponent("cmux-bash-no-git-\(UUID().uuidString.prefix(8))")
         let repoA = root.appendingPathComponent("repo-a", isDirectory: true)
         let repoB = root.appendingPathComponent("repo-b", isDirectory: true)
         let logPath = root.appendingPathComponent("send.log", isDirectory: false)
@@ -5368,8 +5378,8 @@ final class ZshShellIntegrationHandoffTests: XCTestCase {
 
     func testZshNoGitWatchSkipsHeadTrackingAndPRClear() throws {
         let fileManager = FileManager.default
-        let root = fileManager.temporaryDirectory
-            .appendingPathComponent("cmux-zsh-no-git-watch-\(UUID().uuidString)")
+        let root = URL(fileURLWithPath: "/tmp", isDirectory: true)
+            .appendingPathComponent("cmux-zsh-no-git-\(UUID().uuidString.prefix(8))")
         let repoA = root.appendingPathComponent("repo-a", isDirectory: true)
         let repoB = root.appendingPathComponent("repo-b", isDirectory: true)
         let logPath = root.appendingPathComponent("send.log", isDirectory: false)

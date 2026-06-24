@@ -7651,7 +7651,7 @@ final class Workspace: Identifiable, ObservableObject {
         let trimmedCommand = command.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedCommand.isEmpty else { return nil }
 
-        let inheritedConfig = inheritedTerminalConfig(preferredPanelId: panelId, inPane: paneId)
+        var inheritedConfig = inheritedTerminalConfig(preferredPanelId: panelId, inPane: paneId)
         let requestedWorkingDirectory = resolvedTerminalStartupWorkingDirectory(
             requestedWorkingDirectory: workingDirectory,
             sourcePanelId: panelId
@@ -7664,6 +7664,9 @@ final class Workspace: Identifiable, ObservableObject {
         let wasPinned = pinnedPanelIds.contains(panelId)
         let startCommand = tmuxStartCommand?.trimmingCharacters(in: .whitespacesAndNewlines)
         let replacementTmuxStartCommand = (startCommand?.isEmpty == false) ? startCommand : trimmedCommand
+        var commandConfig = inheritedConfig ?? CmuxSurfaceConfigTemplate()
+        commandConfig.waitAfterCommand = true
+        inheritedConfig = commandConfig
         let focusPlacement = oldPanel.surface.focusPlacement
         let launchContext = oldPanel.surface.launchContext
         // Drop env this surface inherited from its (possibly previous) workspace,
@@ -11373,14 +11376,36 @@ final class Workspace: Identifiable, ObservableObject {
 
     private func forkAgentRemoteConfigurationForNewWorkspace(fromPanelId panelId: UUID) -> WorkspaceRemoteConfiguration? {
         guard forkAgentRemoteStartupCommand(fromPanelId: panelId) != nil else { return nil }
-        let forkedSSHOptions = remoteConfiguration
-            .map { WorkspaceRemoteConfiguration.forkedAgentSSHOptions($0.sshOptions) }
-        return remoteConfiguration?.sessionSnapshot(sshOptionsOverride: forkedSSHOptions)?.workspaceConfiguration(
+        guard let remoteConfiguration else { return nil }
+        let forkedSSHOptions = WorkspaceRemoteConfiguration.forkedAgentSSHOptions(remoteConfiguration.sshOptions)
+        let forkedConfiguration = remoteConfiguration.sessionSnapshot(sshOptionsOverride: forkedSSHOptions)?.workspaceConfiguration(
             localSocketPath: TerminalController.shared.currentSocketPathForRemoteRestore(),
             allowPersistentPTYRestore: false,
             preserveSSHOptions: true,
-            agentSocketPath: remoteConfiguration?.agentSocketPath
+            agentSocketPath: remoteConfiguration.agentSocketPath
         ) ?? remoteConfiguration
+        guard forkedConfiguration.agentSocketPath != remoteConfiguration.agentSocketPath else {
+            return forkedConfiguration
+        }
+        return WorkspaceRemoteConfiguration(
+            transport: forkedConfiguration.transport,
+            destination: forkedConfiguration.destination,
+            port: forkedConfiguration.port,
+            identityFile: forkedConfiguration.identityFile,
+            sshOptions: forkedConfiguration.sshOptions,
+            localProxyPort: forkedConfiguration.localProxyPort,
+            relayPort: forkedConfiguration.relayPort,
+            relayID: forkedConfiguration.relayID,
+            relayToken: forkedConfiguration.relayToken,
+            localSocketPath: forkedConfiguration.localSocketPath,
+            terminalStartupCommand: forkedConfiguration.terminalStartupCommand,
+            foregroundAuthToken: forkedConfiguration.foregroundAuthToken,
+            agentSocketPath: remoteConfiguration.agentSocketPath,
+            daemonWebSocketEndpoint: forkedConfiguration.daemonWebSocketEndpoint,
+            preserveAfterTerminalExit: forkedConfiguration.preserveAfterTerminalExit,
+            persistentDaemonSlot: forkedConfiguration.persistentDaemonSlot,
+            skipDaemonBootstrap: forkedConfiguration.skipDaemonBootstrap
+        )
     }
 
     private static func firstNonEmptyPath(_ candidates: [String?]) -> String? {

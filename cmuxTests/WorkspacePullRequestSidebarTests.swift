@@ -1,6 +1,8 @@
 import XCTest
 import Darwin
 import CmuxFoundation
+import CmuxGit
+import CmuxSidebarGit
 
 import CmuxSidebar
 
@@ -61,6 +63,26 @@ private final class MainThreadObservationBox: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
         return storedObservedOnMainThread
+    }
+}
+
+private struct ObservingWorkspaceGitMetadataReader: WorkspaceGitMetadataReading {
+    let invocationCounter: CommandRunnerInvocationCounter
+    let threadObservation: MainThreadObservationBox
+    let delay: TimeInterval
+
+    func workspaceMetadata(for directory: String) async -> GitWorkspaceMetadata {
+        invocationCounter.increment()
+        threadObservation.recordCurrentThread()
+        Thread.sleep(forTimeInterval: delay)
+        return GitWorkspaceMetadata(
+            isRepository: true,
+            branch: "main",
+            isDirty: false,
+            indexSignature: "index-\(directory)",
+            indexContentSignature: "content-\(directory)",
+            headSignature: "head-\(directory)"
+        )
     }
 }
 
@@ -542,30 +564,14 @@ final class WorkspacePullRequestSidebarTests: XCTestCase {
     func testPullRequestRefreshRepositoryDiscoveryDoesNotBlockMainRunLoop() throws {
         let invocationCounter = CommandRunnerInvocationCounter()
         let gitThreadObservation = MainThreadObservationBox()
-        let commandDelay: TimeInterval = 0.03
-        let commandRunner = StubCommandRunner { _, executable, arguments, _ in
-            if executable == "git", arguments == ["remote", "-v"] {
-                invocationCounter.increment()
-                gitThreadObservation.recordCurrentThread()
-                Thread.sleep(forTimeInterval: commandDelay)
-                return CommandResult(
-                    stdout: "origin\tssh://example.invalid/not-github.git (fetch)\n",
-                    stderr: "",
-                    exitStatus: 0,
-                    timedOut: false,
-                    executionError: nil
-                )
-            }
-            return CommandResult(
-                stdout: "",
-                stderr: "",
-                exitStatus: 0,
-                timedOut: false,
-                executionError: nil
-            )
-        }
+        let probeDelay: TimeInterval = 0.03
+        let metadataReader = ObservingWorkspaceGitMetadataReader(
+            invocationCounter: invocationCounter,
+            threadObservation: gitThreadObservation,
+            delay: probeDelay
+        )
 
-        let manager = TabManager(commandRunner: commandRunner)
+        let manager = TabManager(workspaceGitMetadataReader: metadataReader)
         var seededPanels: [(workspaceId: UUID, panelId: UUID)] = []
         let workspaceCount = 45
         var workspaces = manager.tabs
@@ -619,12 +625,12 @@ final class WorkspacePullRequestSidebarTests: XCTestCase {
         timer.invalidate()
         XCTAssertEqual(result, .completed)
         XCTAssertGreaterThan(invocationCounter.value, 0)
-        // Deterministic regression signal: the blocking git work must have run off
+        // Deterministic regression signal: the blocking git metadata work must have run off
         // the main thread. This does not depend on wall-clock timing, so it cannot
         // flake from host scheduling noise.
         XCTAssertFalse(
             gitThreadObservation.observedOnMainThread,
-            "Pull request refresh ran its blocking git command on the main thread"
+            "Pull request refresh ran its blocking git metadata probe on the main thread"
         )
         XCTAssertLessThan(
             maxTickGap,
@@ -1084,7 +1090,7 @@ final class WorkspacePullRequestSidebarTests: XCTestCase {
         XCTAssertNil(workspace.panelGitBranches[panelId])
     }
 
-    func testGitIndexVersionFourRefreshTracksIndexSignatureChanges() throws {
+    func testGitIndexVersionFourRefreshRebaselinesChecksumOnlyChanges() throws {
         let defaults = UserDefaults.standard
         let previousWatchGitStatus = defaults.object(forKey: SidebarWorkspaceDetailDefaults.watchGitStatusKey)
         defer {
@@ -1130,9 +1136,9 @@ final class WorkspacePullRequestSidebarTests: XCTestCase {
 
         XCTAssertTrue(
             waitForCondition {
-                workspace.panelGitBranches[panelId]?.isDirty == true
+                workspace.panelGitBranches[panelId]?.isDirty == false
             },
-            "Index v4 signature changes should keep staged/index-only changes visible as dirty."
+            "Index v4 checksum-only rewrites should rebaseline when tracked content is unchanged."
         )
     }
 
@@ -1409,7 +1415,7 @@ final class WorkspacePullRequestSidebarTests: XCTestCase {
         )
     }
 
-    func testEmptyGitIndexRefreshTracksIndexSignatureChanges() throws {
+    func testEmptyGitIndexRefreshRebaselinesChecksumOnlyChanges() throws {
         let defaults = UserDefaults.standard
         let previousWatchGitStatus = defaults.object(forKey: SidebarWorkspaceDetailDefaults.watchGitStatusKey)
         defer {
@@ -1450,9 +1456,9 @@ final class WorkspacePullRequestSidebarTests: XCTestCase {
 
         XCTAssertTrue(
             waitForCondition {
-                workspace.panelGitBranches[panelId]?.isDirty == true
+                workspace.panelGitBranches[panelId]?.isDirty == false
             },
-            "Empty-index signature changes should keep staged deletes visible as dirty."
+            "Empty-index checksum-only rewrites should rebaseline as clean."
         )
     }
 
