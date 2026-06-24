@@ -2713,11 +2713,7 @@ final class Workspace: Identifiable, ObservableObject {
         case taskManager
     }
 
-    enum PanelShellActivityState: String {
-        case unknown
-        case promptIdle
-        case commandRunning
-    }
+    typealias PanelShellActivityState = CmuxWorkspaces.PanelShellActivityState
     nonisolated static func resolveCloseConfirmation(
         shellActivityState: PanelShellActivityState?,
         fallbackNeedsConfirmClose: Bool
@@ -3180,7 +3176,6 @@ final class Workspace: Identifiable, ObservableObject {
                 isDirty: browserPanel.isDirty,
                 isLoading: browserPanel.isLoading,
                 isAudioMuted: browserPanel.isMuted,
-                isAudioPlaying: browserPanel.isPlayingAudio,
                 isPinned: false
             ) {
                 bindSurface(tabId, toPanelId: browserPanel.id)
@@ -3830,11 +3825,8 @@ final class Workspace: Identifiable, ObservableObject {
     }
 
     private func syncBrowserAudioPlayingStateForPanel(_ panelId: UUID, browserPanel: BrowserPanel? = nil) {
-        guard let browserPanel = browserPanel ?? self.browserPanel(for: panelId),
-              let tabId = surfaceIdFromPanelId(panelId),
-              let tab = bonsplitController.tab(tabId),
-              tab.isAudioPlaying != browserPanel.isPlayingAudio else { return }
-        bonsplitController.updateTab(tabId, isAudioPlaying: browserPanel.isPlayingAudio)
+        // Bonsplit no longer stores playback state; BrowserPanel remains the source of truth.
+        _ = browserPanel ?? self.browserPanel(for: panelId)
     }
 
     func setPreferredBrowserProfileID(_ profileID: UUID?) {
@@ -7850,7 +7842,6 @@ final class Workspace: Identifiable, ObservableObject {
             isDirty: browserPanel.isDirty,
             isLoading: browserPanel.isLoading,
             isAudioMuted: browserPanel.isMuted,
-            isAudioPlaying: browserPanel.isPlayingAudio,
             isPinned: false
         )
         bindSurface(newTab.id, toPanelId: browserPanel.id)
@@ -7958,7 +7949,6 @@ final class Workspace: Identifiable, ObservableObject {
             isDirty: browserPanel.isDirty,
             isLoading: browserPanel.isLoading,
             isAudioMuted: browserPanel.isMuted,
-            isAudioPlaying: browserPanel.isPlayingAudio,
             isPinned: false,
             inPane: paneId
         ) else {
@@ -8279,7 +8269,7 @@ final class Workspace: Identifiable, ObservableObject {
             return nil
         }
 
-        surfaceIdToPanelId[newTabId] = taskManagerPanel.id
+        bindSurface(newTabId, toPanelId: taskManagerPanel.id)
         if let targetIndex {
             _ = bonsplitController.reorderTab(newTabId, toIndex: targetIndex)
         }
@@ -9289,7 +9279,6 @@ final class Workspace: Identifiable, ObservableObject {
             restoredUnreadPanelIndicators.removeValue(forKey: detached.panelId)
         }
         let detachedBrowserMuted = (detached.panel as? BrowserPanel)?.isMuted ?? false
-        let detachedBrowserPlayingAudio = (detached.panel as? BrowserPanel)?.isPlayingAudio ?? false
 
         guard let newTabId = bonsplitController.createTab(
             title: detached.title,
@@ -9300,7 +9289,6 @@ final class Workspace: Identifiable, ObservableObject {
             isDirty: detached.panel.isDirty,
             isLoading: detached.isLoading,
             isAudioMuted: detachedBrowserMuted,
-            isAudioPlaying: detachedBrowserPlayingAudio,
             isPinned: detached.isPinned,
             inPane: paneId
         ) else {

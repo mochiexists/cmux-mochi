@@ -1980,7 +1980,8 @@ class TabManager: ObservableObject {
         state: PanelShellActivityState
     ) {
         guard let tab = tabs.first(where: { $0.id == tabId }) else { return }
-        tab.updatePanelShellActivityState(panelId: surfaceId, state: state)
+        guard let workspaceState = Workspace.PanelShellActivityState(rawValue: state.rawValue) else { return }
+        tab.updatePanelShellActivityState(panelId: surfaceId, state: workspaceState)
         if state == .promptIdle {
             pullRequestProbing.scheduleWorkspacePullRequestRefresh(
                 workspaceId: tabId,

@@ -67,7 +67,7 @@ public struct TerminalSection: View {
             scrollSpeed,
             scrollBar,
             copyOnSelect,
-            autoResume,
+            agentResumeMode,
             hibernation,
             idleSeconds,
             maxLive,
