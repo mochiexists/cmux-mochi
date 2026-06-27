@@ -189,6 +189,17 @@ git add ghostty
 git commit -m "Update ghostty submodule"
 ```
 
+## Branching & development flow
+
+This is a fork (`origin` = `mochiexists/cmux-mochi`, `upstream` = `manaflow-ai/cmux`). Keep a single trunk:
+
+- **`main` is the trunk** and always equals the latest shipped, rebased-on-upstream fork state. The most recent release tag (`vX.Y.Z`) points at `main`. Do not let `main` drift behind what shipped.
+- **Feature work** goes on short-lived branches off `main` (`feat/…`, `fix/…`), merged back into `main`. Delete the branch after merge. Avoid long-lived parallel "rebase/unified/refresh" branches — that history was the source of past confusion and was cleaned up on 2026-06-27 (old branches archived as `archive/pre-cleanup-20260627/*` tags).
+- **Rebasing onto upstream:** rebase `main` onto an upstream **release tag**, not the raw `upstream/main` tip (a tagged base avoids inheriting upstream's in-flight flaky tests). Rebase in place on `main`, then tag the release on `main`.
+- **After every rebase, re-audit the release pipeline before tagging** — `release.yml`, `scripts/`, and `pbxproj` (`PRODUCT_NAME`, runners, bonsplit remote, timeouts, channel verifier, R2 guard) revert to upstream on rebase and must be re-applied. Don't tag-and-pray.
+- The ~1100 inherited `upstream/*`-style branches on `origin` (`cmux/*`, `manaflow/*`, `fix/*`, `task-*`, …) are mirror noise from the original clone; ignore them.
+- After switching branches, run `git submodule update --init` before building (`ghostty`, `vendor/bonsplit` pointers don't auto-update on checkout).
+
 ## Release
 
 Use the `/release` command to prepare a new release. This will:
