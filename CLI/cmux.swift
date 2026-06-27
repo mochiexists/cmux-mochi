@@ -30529,6 +30529,30 @@ export default function cmuxPiSessionExtension(pi: ExtensionAPI) {
                     env: env,
                     telemetry: telemetry
                 )
+                // Stock/upstream codex has no ThreadUnsubscribe hook, so cmux cannot
+                // stage an in-place resume paste at detach time (the Mochi-codex
+                // sessionEnd path above). Arm a native watcher on the codex pid from
+                // prompt-submit instead: when the pid exits, the app resolves the
+                // panel's CURRENT resume binding (so a `/fork` or `/side` that swapped
+                // the resumable thread under the same pid is honored), verifies a
+                // rollout exists for it, and pre-types `codex resume <id>` into the
+                // surviving shell — skipping entirely when the thread is not
+                // resumable. Arming is idempotent per panel/pid, so re-arming on every
+                // prompt-submit does not stack watchers. On Mochi codex this and the
+                // ThreadUnsubscribe path share the per-session paste dedup, so the two
+                // collapse to a single paste.
+                // Capture the resume target (session id + cwd) NOW and pass it to the
+                // watcher: by the time the codex pid dies its detach/stop has already
+                // consumed the on-disk session record, so the app cannot resolve it at
+                // exit. This is the same cwd published with the resume binding above.
+                let armCwd = hookCwd ?? mapped?.cwd
+                if let pid {
+                    let cwdArg = armCwd.map { " --cwd=\(socketQuote($0))" } ?? ""
+                    _ = try? sendV1Command(
+                        "agent.arm_codex_resume_paste --tab=\(workspaceId)\(socketPanelOption(surfaceId)) --pid=\(pid) --session=\(sessionId)\(cwdArg)",
+                        client: client
+                    )
+                }
             }
 
         case .stop:

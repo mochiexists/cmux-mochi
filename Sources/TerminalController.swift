@@ -1680,6 +1680,9 @@ class TerminalController {
         case "agent.stage_resume_paste":
             return stageAgentResumePaste(args)
 
+        case "agent.arm_codex_resume_paste":
+            return armCodexResumePaste(args)
+
         case "read_screen":
             return readScreenText(args)
 
@@ -12781,6 +12784,27 @@ class TerminalController {
     private static var recentAgentResumePasteUptime: [String: TimeInterval] = [:]
     private static let agentResumePasteCooldown: TimeInterval = 5
 
+    /// One live codex resume-paste watcher per PANEL (not per session id). Stock
+    /// codex has no ThreadUnsubscribe hook, so the codex prompt-submit hook arms a
+    /// pid watcher here. `/fork` and `/side` switch the panel's resumable thread
+    /// while the codex pid is unchanged, so a per-session watcher would stack and
+    /// double-fire at exit.
+    ///
+    /// The resume target (sessionId + cwd) is CAPTURED at arm time, not resolved at
+    /// exit: by the time the codex pid dies, its detach/stop has already consumed
+    /// the on-disk `RestorableAgentSessionIndex` record, so loading the index at
+    /// exit returns nil. Each prompt-submit re-arm REFRESHES the stored target while
+    /// keeping the single watcher, so a `/fork` or `/side` that changed the
+    /// resumable id/cwd between turns is honored. A brand-new codex pid in the same
+    /// panel replaces the watcher. Guarded by `agentResumePasteLock`.
+    private struct CodexResumePasteWatcher {
+        let source: DispatchSourceProcess
+        let pid: pid_t
+        var sessionId: String
+        var cwd: String?
+    }
+    private static var codexResumePasteWatchersByPanel: [UUID: CodexResumePasteWatcher] = [:]
+
     /// Handle `agent.stage_resume_paste --tab=<id> --panel=<id> --session=<id> [--pid=<n>]`.
     ///
     /// Codex fired a `user_requested` detach while the pane is still alive (the
@@ -13035,6 +13059,278 @@ class TerminalController {
             )
 #endif
         }
+    }
+
+    // MARK: - Codex resume paste on stock codex (no ThreadUnsubscribe hook)
+
+    /// Handle `agent.arm_codex_resume_paste --tab=<id> --panel=<id> --pid=<n>`.
+    ///
+    /// Stock/upstream codex never emits the ThreadUnsubscribe detach hook that
+    /// `agent.stage_resume_paste` relies on, so we cannot build the resume command
+    /// up front. Instead the codex prompt-submit hook arms a native watcher on the
+    /// codex pid. Unlike `stage_resume_paste`, the resume id is NOT captured now:
+    /// a `/fork` or `/side` changes the panel's resumable thread while the pid is
+    /// unchanged, so the watcher resolves the panel's CURRENT resume binding only
+    /// when the pid exits, confirms a rollout file exists for it, and otherwise
+    /// skips the paste entirely (never pre-typing a `codex resume <dead-id>`).
+    private func armCodexResumePaste(_ args: String) -> String {
+        let parsed = parseOptions(args)
+        let usage = "agent.arm_codex_resume_paste --tab=<id> --panel=<id> --pid=<n> --session=<id> [--cwd=<path>]"
+
+        let targetResolution = parseSidebarMutationTabTarget(options: parsed.options)
+        guard let target = targetResolution.target else {
+            return targetResolution.error ?? "ERROR: No tab selected"
+        }
+        let panelResolution = parseOptionalPanelIdOption(options: parsed.options, usage: usage)
+        if let error = panelResolution.error {
+            return error
+        }
+        guard let panelId = panelResolution.panelId else {
+            return "ERROR: Missing panel — usage: \(usage)"
+        }
+        guard let agentPID: pid_t = normalizedOptionValue(parsed.options["pid"]).flatMap({ Int32($0) }),
+              agentPID > 0 else {
+            return "ERROR: Missing pid — usage: \(usage)"
+        }
+        guard let tab = resolveSidebarMutationTab(target) else {
+            return "ERROR: Tab not found"
+        }
+        let workspaceId = tab.id
+
+        // Resume target captured at arm time (see CodexResumePasteWatcher). The
+        // session id is required; cwd is optional (no `cd` prefix when absent).
+        guard let resumeSessionId = normalizedOptionValue(parsed.options["session"]) else {
+            return "ERROR: Missing session — usage: \(usage)"
+        }
+        let resumeCwd = normalizedOptionValue(parsed.options["cwd"])
+
+        // If the codex pid already exited (rare arm/exit race), there is nothing to
+        // watch; resolving + pasting from here is handled by the watcher's own
+        // already-dead race guard, so just skip.
+        guard agentProcessIsAlive(agentPID) else {
+            return "OK"
+        }
+        armCodexResumePasteWatcher(
+            pid: agentPID,
+            workspaceId: workspaceId,
+            panelId: panelId,
+            sessionId: resumeSessionId,
+            cwd: resumeCwd
+        )
+        return "OK"
+    }
+
+    /// Arm (idempotently, per panel) a process-exit watcher for a codex pid,
+    /// capturing the resume target now. Re-arming for the same pid refreshes the
+    /// stored sessionId+cwd (so a `/fork`/`/side` mid-process is honored) without
+    /// stacking a second watcher; a different pid replaces the watcher.
+    private func armCodexResumePasteWatcher(
+        pid: pid_t,
+        workspaceId: UUID,
+        panelId: UUID,
+        sessionId: String,
+        cwd: String?
+    ) {
+        Self.agentResumePasteLock.lock()
+        if var existing = Self.codexResumePasteWatchersByPanel[panelId] {
+            if existing.pid == pid {
+                // Same codex process already watched: refresh the resume target so a
+                // `/fork` or `/side` that changed the resumable id/cwd between turns
+                // is honored, while keeping the single existing watcher.
+                existing.sessionId = sessionId
+                existing.cwd = cwd
+                Self.codexResumePasteWatchersByPanel[panelId] = existing
+                Self.agentResumePasteLock.unlock()
+                return
+            }
+            // A different codex pid now owns this panel: drop the stale watcher.
+            existing.source.cancel()
+            Self.codexResumePasteWatchersByPanel.removeValue(forKey: panelId)
+            Self.agentResumePasteLock.unlock()
+        } else {
+            Self.agentResumePasteLock.unlock()
+        }
+
+        let queue = DispatchQueue(label: "cmux.agent.codex-resume-paste.\(panelId.uuidString)")
+        let source = DispatchSource.makeProcessSource(
+            identifier: pid,
+            eventMask: .exit,
+            queue: queue
+        )
+        source.setEventHandler { [weak self] in
+            // Read the CURRENT stored target (it reflects the latest re-arm refresh)
+            // then drop the watcher entry.
+            Self.agentResumePasteLock.lock()
+            let stored = Self.codexResumePasteWatchersByPanel[panelId]
+            if stored?.pid == pid {
+                Self.codexResumePasteWatchersByPanel.removeValue(forKey: panelId)
+            }
+            Self.agentResumePasteLock.unlock()
+            // Reap any zombie so the shell prompt is fully back before pasting.
+            var statusValue: Int32 = 0
+            _ = waitpid(pid, &statusValue, WNOHANG)
+            let resumeSessionId = stored?.sessionId ?? sessionId
+            let resumeCwd = stored?.cwd ?? cwd
+            // Rollout check runs OFF the main actor (walks ~/.codex/sessions), then
+            // hops to main only to inject.
+            Self.resolveAndPasteCodexResumeOnExit(
+                controller: self,
+                workspaceId: workspaceId,
+                panelId: panelId,
+                sessionId: resumeSessionId,
+                cwd: resumeCwd
+            )
+        }
+        source.setCancelHandler { /* watcher released via dictionary */ }
+        Self.agentResumePasteLock.lock()
+        Self.codexResumePasteWatchersByPanel[panelId] = CodexResumePasteWatcher(
+            source: source,
+            pid: pid,
+            sessionId: sessionId,
+            cwd: cwd
+        )
+        Self.agentResumePasteLock.unlock()
+        source.resume()
+
+        // Race guard: the process may have exited between the alive-check and the
+        // source resume. If so, resolve+paste directly (the source may never deliver
+        // an exit event for an already-dead pid).
+        if !agentProcessIsAlive(pid) {
+            source.cancel()
+            Self.agentResumePasteLock.lock()
+            let stored = Self.codexResumePasteWatchersByPanel[panelId]
+            let stillWatching = stored?.pid == pid
+            if stillWatching {
+                Self.codexResumePasteWatchersByPanel.removeValue(forKey: panelId)
+            }
+            Self.agentResumePasteLock.unlock()
+            if stillWatching {
+                let resumeSessionId = stored?.sessionId ?? sessionId
+                let resumeCwd = stored?.cwd ?? cwd
+                queue.async { [weak self] in
+                    Self.resolveAndPasteCodexResumeOnExit(
+                        controller: self,
+                        workspaceId: workspaceId,
+                        panelId: panelId,
+                        sessionId: resumeSessionId,
+                        cwd: resumeCwd
+                    )
+                }
+            }
+        }
+    }
+
+    /// Off-main: verify a rollout exists for the captured session, then hop to the
+    /// main actor to inject the resume text. `nonisolated` so it can run on the
+    /// watcher's background queue (`codexRolloutExists` walks `~/.codex/sessions`).
+    nonisolated private static func resolveAndPasteCodexResumeOnExit(
+        controller: TerminalController?,
+        workspaceId: UUID,
+        panelId: UUID,
+        sessionId: String,
+        cwd: String?
+    ) {
+        let trimmedSession = sessionId.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedSession.isEmpty else { return }
+
+        // Rollout-existence guard: the `/side` (and stale ephemeral) case leaves a
+        // recorded id that `codex resume` cannot find. Never pre-type a dead id —
+        // skip the paste when no rollout file exists for the captured session.
+        guard codexRolloutExists(sessionId: trimmedSession) else {
+#if DEBUG
+            cmuxDebugLog(
+                "agent.codex_resume_paste.skip_no_rollout surface=\(panelId.uuidString.prefix(8)) session=\(trimmedSession.prefix(8))"
+            )
+#endif
+            return
+        }
+
+        Task { @MainActor in
+            controller?.performCodexResumePasteOnExit(
+                workspaceId: workspaceId,
+                panelId: panelId,
+                sessionId: trimmedSession,
+                cwd: cwd
+            )
+        }
+    }
+
+    /// Main-actor: build the resume text from the captured sessionId+cwd and inject
+    /// it, reusing the per-session staging token + cooldown so a concurrent
+    /// ThreadUnsubscribe paste (Mochi codex) for the same session collapses to one.
+    /// The text is built through the shared `SessionRestorableAgentSnapshot`
+    /// resume-command builder so it is byte-identical to the reopen/hook paste
+    /// (alias form, e.g. `cd '<cwd>' && cxy resume '<id>'`).
+    private func performCodexResumePasteOnExit(
+        workspaceId: UUID,
+        panelId: UUID,
+        sessionId: String,
+        cwd: String?
+    ) {
+        guard !sessionId.isEmpty else { return }
+        let snapshot = SessionRestorableAgentSnapshot(
+            kind: .codex,
+            sessionId: sessionId,
+            workingDirectory: cwd,
+            launchCommand: nil
+        )
+        guard let resumeText = snapshot.resumePreparedStartupInput(),
+              !resumeText.isEmpty else {
+            return
+        }
+
+        let now = ProcessInfo.processInfo.systemUptime
+        Self.agentResumePasteLock.lock()
+        let recentlyPasted = (now - (Self.recentAgentResumePasteUptime[sessionId] ?? -Double.greatestFiniteMagnitude)) < Self.agentResumePasteCooldown
+        if !recentlyPasted {
+            // Claim the staging token so performAgentResumePaste's atomic remove
+            // succeeds (and so a racing ThreadUnsubscribe paste for the same session
+            // de-dupes against the same token).
+            Self.stagedAgentResumeSessions.insert(sessionId)
+        }
+        Self.agentResumePasteLock.unlock()
+        guard !recentlyPasted else { return }
+
+        performAgentResumePaste(
+            sessionId: sessionId,
+            workspaceId: workspaceId,
+            panelId: panelId,
+            text: resumeText
+        )
+    }
+
+    /// Whether a resumable codex rollout file exists for `sessionId`. Codex names
+    /// rollouts `~/.codex/sessions/YYYY/MM/DD/rollout-<ts>-<uuid>.jsonl`, and a
+    /// session is resumable iff such a file whose name contains the id exists.
+    /// `nonisolated` so it runs on the watcher's background queue (it touches disk).
+    nonisolated static func codexRolloutExists(
+        sessionId: String,
+        homeDirectory: String = NSHomeDirectory()
+    ) -> Bool {
+        let id = sessionId.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !id.isEmpty else { return false }
+        let root = (homeDirectory as NSString).appendingPathComponent(".codex/sessions")
+        let fm = FileManager.default
+        var isDirectory: ObjCBool = false
+        guard fm.fileExists(atPath: root, isDirectory: &isDirectory), isDirectory.boolValue else {
+            return false
+        }
+        let rootURL = URL(fileURLWithPath: root)
+        guard let enumerator = fm.enumerator(
+            at: rootURL,
+            includingPropertiesForKeys: [.isRegularFileKey],
+            options: [.skipsHiddenFiles]
+        ) else {
+            return false
+        }
+        for case let url as URL in enumerator {
+            guard url.pathExtension == "jsonl" else { continue }
+            let name = url.lastPathComponent
+            if name.hasPrefix("rollout-") && name.contains(id) {
+                return true
+            }
+        }
+        return false
     }
 
     private func sidebarMetadataLine(_ entry: SidebarStatusEntry) -> String {
