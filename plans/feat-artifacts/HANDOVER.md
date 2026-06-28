@@ -32,6 +32,11 @@ Key files:
 
 ---
 
+**✅ The full loop is VALIDATED on this machine (2026-06-28):** built the tagged
+Debug app, launched it, and `cmux artifact new` opened a pane beside the focused
+surface + wrote the store/index with provenance, app stable. Commands below are
+confirmed working.
+
 ## 1. The build/test loop (USE THIS — the machine has a zig break)
 
 This Mac is on Xcode 26.5 / macOS 26, which breaks the zig 0.15.2 link of the
@@ -61,7 +66,11 @@ Grab the `App path:` line from the output for a `file://` link.
 ```bash
 CMUX_TAG=artifacts scripts/cmux-debug-cli.sh list-workspaces
 CMUX_TAG=artifacts scripts/cmux-debug-cli.sh artifact new --title "Smoke test" --kind react
+# Acceptance fixture — opens the bundled showcase (full lib allow-list):
+CMUX_TAG=artifacts scripts/cmux-debug-cli.sh artifact new --template showcase --focus true
 ```
+(The debug CLI scrubs `$CMUX_SURFACE_ID`, so the handler falls back to the
+workspace's focused surface — that's expected.)
 
 **Adding a new Swift file**: no synchronized groups — you MUST wire it into
 `cmux.xcodeproj/project.pbxproj`. Use the ruby gem (system ruby lacks it):
