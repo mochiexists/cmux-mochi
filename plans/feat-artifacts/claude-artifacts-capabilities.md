@@ -7,6 +7,13 @@ artifacts (the sandboxed runtime that renders React/HTML/SVG/etc. inline in chat
 > sandbox. It is separate from Claude's own server-side tools (web search, file system,
 > bash, connectors), which run in the conversation, not in your artifact.
 
+> **cmux scope (working doc):** cmux targets parity with this surface EXCEPT
+> **§6 "Claude API inside artifacts" — UNSUPPORTED.** The no-key Anthropic
+> Messages API depends on the claude.ai runtime proxying auth; cmux does not
+> provide it and will not shim `api.anthropic.com`. Everything else (rendering
+> formats, the pinned JS library allow-list, HTML+CDN, styling, `window.storage`,
+> constraints) is in scope. See `PLAN.md`.
+
 ---
 
 ## 1. Rendering formats

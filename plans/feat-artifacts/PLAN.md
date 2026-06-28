@@ -133,10 +133,13 @@ Host-provided APIs (we own the host, so we implement these natively):
   (e.g. `~/.config/cmux/artifacts/storage/{personal,shared}/…`). Mirror the
   documented semantics: missing-key `get` THROWS, values text/JSON < 5 MB,
   last-write-wins.
-- **Anthropic Messages API with no key** (later sub-phase) — intercept
-  `fetch("https://api.anthropic.com/v1/messages")` and route through the user's
-  cmux-managed Claude credentials, so "Claude-in-artifact" works. Capture now,
-  build after the core renderer.
+
+**Out of scope: "Claude-in-artifact" (no-key Anthropic Messages API).** The
+claude.ai runtime proxies `fetch("https://api.anthropic.com/v1/messages")`
+through its own auth; cmux does not, so artifacts that call the Anthropic API
+will not work and we do NOT shim it. (See §6 of the capabilities brief — marked
+unsupported there.) Artifacts needing an LLM should go through a cmux agent
+pane, not an in-artifact API call.
 
 Constraints to enforce/document (from the brief): no `localStorage`/
 `sessionStorage`/IndexedDB/cookies (use React state or `window.storage`); no
