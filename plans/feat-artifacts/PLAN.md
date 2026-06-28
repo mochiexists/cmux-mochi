@@ -96,18 +96,56 @@ artifact panes restore on relaunch (markdown already does this).
 
 ## 4. The React runtime (`webviews/` → `Resources/artifact-viewer/`)
 
-`webviews/` is already a Vite + React 19 project bundled into `Resources/` via
-`scripts/build-webviews-app.sh`. Add an `artifact-viewer` entry:
+**Target contract:** match the Claude-artifacts runtime surface documented in
+`plans/feat-artifacts/claude-artifacts-capabilities.md` so agent-authored
+artifacts written for claude.ai run unmodified in cmux. `webviews/` is already a
+Vite + React 19 project bundled into `Resources/` via
+`scripts/build-webviews-app.sh`; add an `artifact-viewer` entry.
 
-- Sandboxed iframe harness: React + ReactDOM + **esbuild-wasm** transform
-  (preferred over Babel-standalone: faster, smaller, native TS). Imports the
-  file's default export, mounts it.
-- **Allow-list** injected as import-map entries: lucide-react, recharts,
-  Tailwind (CDN), plus a curated few — matching Claude artifacts so
-  agent-generated artifacts "just work" with no install step.
+Harness:
+- Sandboxed iframe + React + ReactDOM + **esbuild-wasm** transform (faster /
+  smaller than Babel-standalone, native TS). Imports the file's default export,
+  mounts it; no required props.
 - Error boundary → in-pane overlay (never a white screen).
-- No dev server, no per-artifact build: save file → watcher → re-transform →
-  re-render. The hot-reload is free given the file watcher.
+- No dev server, no per-artifact build: save → watcher → re-transform →
+  re-render. Hot-reload is free given the file watcher.
+
+Module resolution (no install step, runtime-pinned) — provide via **import map →
+pinned esm.sh URLs**, vendor for offline later:
+- `react`, `react-dom` (+ hooks), `lucide-react`, `recharts`, `chart.js`,
+  `plotly`, `d3`, `three` (**pin r128** — OrbitControls/CapsuleGeometry absent),
+  `mathjs`, `lodash`, `papaparse`, `xlsx` (SheetJS), `mammoth`, `tone`,
+  `tensorflow`, and the `@/components/ui/*` shadcn set (we bundle these).
+- HTML artifacts: allow `<script src="https://cdnjs.cloudflare.com/...">`.
+- **Supply-chain:** the host-injected libs are *our* dependency, not user
+  content. Pin exact versions and add `integrity="sha384-…" crossorigin` (SRI)
+  to any CDN `<script>`, or — preferred — **vendor the allow-list into
+  `Resources/artifact-viewer/`** so the runtime is offline and tamper-evident.
+  Artifact *user code* stays sandboxed in the iframe regardless.
+
+Styling: Tailwind **core utility classes** (Play CDN or prebuilt base — no
+compiler, so arbitrary `[...]` values unreliable; doc that), `<style>` blocks,
+CSS variables, keyframes, `@import` web fonts.
+
+Host-provided APIs (we own the host, so we implement these natively):
+- **`window.storage`** — async KV persisting across sessions, `get/set/delete/list`
+  with personal + `shared` scopes. Back it with files under the store root
+  (e.g. `~/.config/cmux/artifacts/storage/{personal,shared}/…`). Mirror the
+  documented semantics: missing-key `get` THROWS, values text/JSON < 5 MB,
+  last-write-wins.
+- **Anthropic Messages API with no key** (later sub-phase) — intercept
+  `fetch("https://api.anthropic.com/v1/messages")` and route through the user's
+  cmux-managed Claude credentials, so "Claude-in-artifact" works. Capture now,
+  build after the core renderer.
+
+Constraints to enforce/document (from the brief): no `localStorage`/
+`sessionStorage`/IndexedDB/cookies (use React state or `window.storage`); no
+`<form>` in React artifacts; default export required.
+
+Other formats the brief lists already have homes in cmux — route rather than
+reimplement: `.md` → existing `MarkdownPanel` (Mermaid already supported there),
+`.svg`/`.pdf` → existing `FilePreviewPanel`. The artifacts feature owns the
+**React + HTML** live-render path; `kind` in `index.jsonl` selects the renderer.
 
 ---
 
