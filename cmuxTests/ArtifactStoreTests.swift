@@ -66,9 +66,27 @@ struct ArtifactStoreTests {
         #expect(record.origin.repoRoot == "/tmp/foo")
     }
 
-    @Test func reactKindUsesTsxExtension() {
+    @Test func kindDefaultExtensions() {
         #expect(ArtifactKind.react.fileExtension == "tsx")
+        #expect(ArtifactKind.html.fileExtension == "html")
         #expect(ArtifactKind.swiftui.fileExtension == "swift")
+    }
+
+    @Test func kindClassifiesByExtension() {
+        #expect(ArtifactKind.kind(forFileExtension: "jsx") == .react)
+        #expect(ArtifactKind.kind(forFileExtension: "TSX") == .react)
+        #expect(ArtifactKind.kind(forFileExtension: "js") == .react)
+        #expect(ArtifactKind.kind(forFileExtension: "html") == .html)
+        #expect(ArtifactKind.kind(forFileExtension: "htm") == .html)
+        #expect(ArtifactKind.kind(forFileExtension: "swift") == .swiftui)
+    }
+
+    @Test func kindReturnsNilForPanelRoutedExtensions() {
+        // .md/.svg/.pdf route to existing cmux panels, not the artifact renderer.
+        #expect(ArtifactKind.kind(forFileExtension: "md") == nil)
+        #expect(ArtifactKind.kind(forFileExtension: "svg") == nil)
+        #expect(ArtifactKind.kind(forFileExtension: "pdf") == nil)
+        #expect(ArtifactKind.kind(forFileExtension: "txt") == nil)
     }
 
     // MARK: - default root + override

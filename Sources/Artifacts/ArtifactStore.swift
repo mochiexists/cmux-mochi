@@ -1,16 +1,35 @@
 import Foundation
 
-/// What an artifact renders as. Phase 1 ships `.react`; `.swiftui` is reserved
-/// for the iOS-preview spread (see `plans/feat-artifacts/PLAN.md`).
+/// What an artifact renders as. Phase 1 ships `.react` and `.html` (the live
+/// web-render path cmux owns); `.swiftui` is reserved for the iOS-preview spread
+/// (see `plans/feat-artifacts/PLAN.md`). Other formats from the capabilities
+/// brief route to existing panels (`.md`→MarkdownPanel, `.svg`/`.pdf`→
+/// FilePreviewPanel) and are intentionally not kinds here.
 enum ArtifactKind: String, Codable, Sendable, CaseIterable {
     case react
+    case html
     case swiftui
 
-    /// File extension used for the artifact source file on disk.
+    /// Default extension for a NEW artifact source file of this kind. React new
+    /// artifacts default to `tsx` (repo TypeScript preference); the classifier
+    /// below still accepts `jsx`/`js`/`ts` so claude.ai-authored `.jsx` opens.
     var fileExtension: String {
         switch self {
         case .react: return "tsx"
+        case .html: return "html"
         case .swiftui: return "swift"
+        }
+    }
+
+    /// Classifies an existing artifact source file by extension, or `nil` for
+    /// extensions that route to other cmux panels rather than the artifact
+    /// renderer (`.md`, `.svg`, `.pdf`, …).
+    static func kind(forFileExtension rawExtension: String) -> ArtifactKind? {
+        switch rawExtension.lowercased() {
+        case "jsx", "tsx", "js", "ts": return .react
+        case "html", "htm": return .html
+        case "swift": return .swiftui
+        default: return nil
         }
     }
 }
