@@ -6236,9 +6236,24 @@ class TerminalController {
             return .err(code: "unavailable", message: "TabManager not available", data: nil)
         }
         let title = v2String(params, "title")?.trimmingCharacters(in: .whitespacesAndNewlines)
-        let kind = (v2String(params, "kind")?.lowercased())
+        var kind = (v2String(params, "kind")?.lowercased())
             .flatMap { ArtifactKind(rawValue: $0) } ?? .react
         let directionStr = v2String(params, "direction")
+
+        // Optional bundled sample/template (e.g. "showcase"). Its content + kind +
+        // title override the scaffold defaults when no explicit ones are given.
+        var sampleSource: String?
+        var sampleTitle: String?
+        if let templateName = v2String(params, "template")?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !templateName.isEmpty {
+            guard let sample = ArtifactSamples.sample(named: templateName),
+                  let source = ArtifactSamples.source(for: sample) else {
+                return .err(code: "not_found", message: "Unknown artifact template: \(templateName)", data: nil)
+            }
+            sampleSource = source
+            sampleTitle = sample.title
+            if v2String(params, "kind") == nil { kind = sample.kind }
+        }
 
         var result: V2CallResult = .err(code: "internal_error", message: "Failed to create artifact", data: nil)
         v2MainSync {
@@ -6261,7 +6276,7 @@ class TerminalController {
 
             let focus = v2FocusAllowed(requested: v2Bool(params, "focus") ?? false)
             let originCwd = ws.panelDirectories[sourceSurfaceId]
-            let resolvedTitle = (title?.isEmpty == false) ? title! : "Artifact"
+            let resolvedTitle = (title?.isEmpty == false) ? title! : (sampleTitle ?? "Artifact")
 
             // direction → split placement; default to a right-hand split.
             let split: (orientation: SplitOrientation, insertFirst: Bool)
@@ -6279,6 +6294,7 @@ class TerminalController {
                 split: split,
                 originCwd: originCwd,
                 originSurfaceId: sourceSurfaceId.uuidString,
+                source: sampleSource,
                 focus: focus
             ) else {
                 result = .err(code: "internal_error", message: "Failed to create artifact", data: nil)

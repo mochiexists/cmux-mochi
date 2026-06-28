@@ -5338,7 +5338,8 @@ struct CMUXCLI {
         var args = commandArgs
         let (titleOpt, argsAfterTitle) = parseOption(args, name: "--title")
         let (kindOpt, argsAfterKind) = parseOption(argsAfterTitle, name: "--kind")
-        let (workspaceOpt, argsAfterWorkspace) = parseOption(argsAfterKind, name: "--workspace")
+        let (templateOpt, argsAfterTemplate) = parseOption(argsAfterKind, name: "--template")
+        let (workspaceOpt, argsAfterWorkspace) = parseOption(argsAfterTemplate, name: "--workspace")
         let (windowOpt, argsAfterWindow) = parseOption(argsAfterWorkspace, name: "--window")
         let (surfaceOpt, argsAfterSurface) = parseOption(argsAfterWindow, name: "--surface")
         let (directionOpt, argsAfterDirection) = parseOption(argsAfterSurface, name: "--direction")
@@ -5361,6 +5362,9 @@ struct CMUXCLI {
         }
         if let kindOpt, !kindOpt.isEmpty {
             params["kind"] = kindOpt.lowercased()
+        }
+        if let templateOpt, !templateOpt.isEmpty {
+            params["template"] = templateOpt
         }
         let surfaceRaw = surfaceOpt ?? ProcessInfo.processInfo.environment["CMUX_SURFACE_ID"]
         if let surfaceRaw {
@@ -16304,6 +16308,7 @@ struct CMUXCLI {
             Options:
               --title <text>               Artifact title (used for the filename + heading)
               --kind <react|html>          Artifact kind (default: react)
+              --template <name>            Seed from a bundled sample (e.g. 'showcase')
               --workspace <id|ref|index>   Target workspace (default: $CMUX_WORKSPACE_ID)
               --surface <id|ref|index>     Surface to open beside (default: $CMUX_SURFACE_ID / focused)
               --window <id|ref|index>      Target window
@@ -16313,6 +16318,7 @@ struct CMUXCLI {
             Examples:
               cmux artifact new
               cmux artifact new --title "Pricing table" --kind react
+              cmux artifact new --template showcase --focus true
               cmux artifact new --direction down --focus true
             """
         default:

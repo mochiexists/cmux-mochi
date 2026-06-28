@@ -163,11 +163,14 @@ struct ArtifactStore {
     /// Scaffolds a brand-new artifact: allocates a provenance record, writes the
     /// starter source (``ArtifactScaffold``), and appends `index.jsonl`. Returns
     /// the record and the absolute path of the written file.
+    /// - Parameter source: explicit starter content (e.g. a bundled sample).
+    ///   When `nil`, the kind's ``ArtifactScaffold`` default is used.
     @discardableResult
     func createNew(
         title: String,
         kind: ArtifactKind,
         origin: ArtifactOrigin,
+        source: String? = nil,
         now: Date = Date(),
         shortID: String = String(UUID().uuidString.prefix(8)).lowercased()
     ) throws -> (record: ArtifactRecord, path: String) {
@@ -178,7 +181,7 @@ struct ArtifactStore {
             kind: kind,
             origin: origin
         )
-        let scaffold = ArtifactScaffold.source(for: kind, title: title)
+        let scaffold = source ?? ArtifactScaffold.source(for: kind, title: title)
         let path = try create(scaffold: scaffold, record: record)
         return (record, path)
     }

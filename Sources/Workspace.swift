@@ -8539,6 +8539,7 @@ final class Workspace: Identifiable, ObservableObject {
         split: (orientation: SplitOrientation, insertFirst: Bool)? = nil,
         originCwd: String?,
         originSurfaceId: String?,
+        source: String? = nil,
         focus: Bool = true
     ) -> ArtifactPanel? {
         let origin = ArtifactStore.resolveOrigin(
@@ -8547,7 +8548,7 @@ final class Workspace: Identifiable, ObservableObject {
             surfaceId: originSurfaceId
         )
         guard let created = try? ArtifactStore().createNew(
-            title: title, kind: kind, origin: origin
+            title: title, kind: kind, origin: origin, source: source
         ) else {
             return nil
         }
