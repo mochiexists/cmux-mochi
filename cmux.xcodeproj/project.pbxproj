@@ -85,6 +85,8 @@
 		A5001621 /* AppleScriptSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = A5001620 /* AppleScriptSupport.swift */; };
 		A5001A02A1B2C3D4E5F60718 /* AppWindowBackdropControllerDependencies.swift in Sources */ = {isa = PBXBuildFile; fileRef = A5001A03A1B2C3D4E5F60718 /* AppWindowBackdropControllerDependencies.swift */; };
 		A5001A00A1B2C3D4E5F60718 /* AppWindowChromeComposition.swift in Sources */ = {isa = PBXBuildFile; fileRef = A5001A01A1B2C3D4E5F60718 /* AppWindowChromeComposition.swift */; };
+		4E6FFD77B76CF89F63CA10FB /* ArtifactPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24B3C994CE2474BDB68C1B4A /* ArtifactPanel.swift */; };
+		699489D671A6C482ABEFB9CF /* ArtifactPanelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 18BBE73FD292510241FC9534 /* ArtifactPanelView.swift */; };
 		244D65FBA88256861AFF262E /* ArtifactStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = F4E4F7CBCE2DE8B0FD17E704 /* ArtifactStore.swift */; };
 		81EFF8C65678AA497BB468A4 /* ArtifactStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D0998A40FAB5A99C6B65D21 /* ArtifactStoreTests.swift */; };
 		A5001100 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A5001101 /* Assets.xcassets */; };
@@ -1234,6 +1236,8 @@
 		A5001620 /* AppleScriptSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleScriptSupport.swift; sourceTree = "<group>"; };
 		A5001A03A1B2C3D4E5F60718 /* AppWindowBackdropControllerDependencies.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Windowing/AppWindowBackdropControllerDependencies.swift; sourceTree = "<group>"; };
 		A5001A01A1B2C3D4E5F60718 /* AppWindowChromeComposition.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Windowing/AppWindowChromeComposition.swift; sourceTree = "<group>"; };
+		24B3C994CE2474BDB68C1B4A /* ArtifactPanel.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ArtifactPanel.swift; path = Artifacts/ArtifactPanel.swift; sourceTree = "<group>"; };
+		18BBE73FD292510241FC9534 /* ArtifactPanelView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ArtifactPanelView.swift; path = Artifacts/ArtifactPanelView.swift; sourceTree = "<group>"; };
 		F4E4F7CBCE2DE8B0FD17E704 /* ArtifactStore.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ArtifactStore.swift; path = Artifacts/ArtifactStore.swift; sourceTree = "<group>"; };
 		7D0998A40FAB5A99C6B65D21 /* ArtifactStoreTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ArtifactStoreTests.swift; sourceTree = "<group>"; };
 		A5001101 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
@@ -2980,6 +2984,8 @@
 				59065015952E1B5BE5E23519 /* Mobile */,
 				31B04B98376C9BA8B9E44DCB /* TerminalViewportUITestRecorder.swift */,
 				F4E4F7CBCE2DE8B0FD17E704 /* ArtifactStore.swift */,
+				24B3C994CE2474BDB68C1B4A /* ArtifactPanel.swift */,
+				18BBE73FD292510241FC9534 /* ArtifactPanelView.swift */,
 			);
 			path = Sources;
 			sourceTree = "<group>";
@@ -3851,6 +3857,8 @@
 				A5001621 /* AppleScriptSupport.swift in Sources */,
 				A5001A02A1B2C3D4E5F60718 /* AppWindowBackdropControllerDependencies.swift in Sources */,
 				A5001A00A1B2C3D4E5F60718 /* AppWindowChromeComposition.swift in Sources */,
+				4E6FFD77B76CF89F63CA10FB /* ArtifactPanel.swift in Sources */,
+				699489D671A6C482ABEFB9CF /* ArtifactPanelView.swift in Sources */,
 				244D65FBA88256861AFF262E /* ArtifactStore.swift in Sources */,
 				D9FEC58D5BACCF76459F1BBE /* AuthEnvironment.swift in Sources */,
 				C0DE35860000000000000001 /* BackgroundWorkspacePrimeCoordinator.swift in Sources */,

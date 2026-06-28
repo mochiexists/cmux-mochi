@@ -643,6 +643,9 @@ extension Workspace {
         case .taskManager:
             // Task Manager surfaces are ephemeral and intentionally not persisted.
             return nil
+        case .artifact:
+            // TODO(artifacts): persist filePath + kind so artifact panes restore.
+            return nil
         }
         return SessionPanelSnapshot(
             id: panelId,
@@ -1636,6 +1639,9 @@ extension Workspace {
             return nil
         case .taskManager:
             // Task Manager surfaces are ephemeral and intentionally not persisted.
+            return nil
+        case .artifact:
+            // TODO(artifacts): restore filePath + kind once artifacts persist.
             return nil
         }
     }
@@ -2757,6 +2763,7 @@ final class Workspace: Identifiable, ObservableObject {
         case project
         case extensionBrowser
         case taskManager
+        case artifact
     }
 
     nonisolated static func resolveCloseConfirmation(
@@ -4095,6 +4102,8 @@ final class Workspace: Identifiable, ObservableObject {
             return SurfaceKind.extensionBrowser.rawValue
         case .taskManager:
             return SurfaceKind.taskManager.rawValue
+        case .artifact:
+            return SurfaceKind.artifact.rawValue
         }
     }
 

@@ -90,6 +90,7 @@ struct WorkspaceCanvasHostView: View {
         case .project: return "folder"
         case .extensionBrowser: return "puzzlepiece.extension"
         case .taskManager: return "gauge.with.dots.needle.33percent"
+        case .artifact: return "sparkles.rectangle.stack"
         }
     }
 

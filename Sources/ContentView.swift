@@ -5550,6 +5550,8 @@ struct ContentView: View {
             return String(localized: "sidebar.extensions.browser.title", defaultValue: "Sidebar Extensions")
         case .taskManager:
             return String(localized: "commandPalette.kind.taskManager", defaultValue: "Task Manager")
+        case .artifact:
+            return String(localized: "commandPalette.kind.artifact", defaultValue: "Artifact")
         }
     }
     private func commandPaletteSurfaceKeywords(for panelType: PanelType) -> [String] {
@@ -5574,6 +5576,8 @@ struct ContentView: View {
             return ["sidebar", "extensions", "extensionkit", "browser"]
         case .taskManager:
             return ["task", "manager", "activity", "cpu", "memory", "processes"]
+        case .artifact:
+            return ["artifact", "react", "html", "ui", "prototype", "sketch", "preview"]
         }
     }
     private func commandPaletteCachedCommandsContext() -> CommandPaletteCommandsContext {
@@ -11123,6 +11127,8 @@ struct VerticalTabsSidebar: View {
         case .extensionBrowser:
             return .unknown
         case .taskManager:
+            return .unknown
+        case .artifact:
             return .unknown
         }
     }

@@ -14,6 +14,7 @@ public enum PanelType: String, Codable, Sendable {
     case project
     case extensionBrowser
     case taskManager
+    case artifact
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()
