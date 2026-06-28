@@ -5152,6 +5152,10 @@ struct CMUXCLI {
         case "markdown":
             try runMarkdownCommand(commandArgs: commandArgs, client: client, jsonOutput: jsonOutput, idFormat: idFormat)
 
+        // Artifact commands
+        case "artifact":
+            try runArtifactCommand(commandArgs: commandArgs, client: client, jsonOutput: jsonOutput, idFormat: idFormat)
+
         default:
             print(usage())
             throw CLIError(message: "Unknown command: \(command)")
@@ -5321,6 +5325,74 @@ struct CMUXCLI {
         }
     }
 
+    /// `cmux artifact new [--title <t>] [--kind react|html] [--direction <dir>]
+    /// [--surface <id>] [--workspace <id>] [--window <id>] [--focus <bool>]`
+    /// — scaffold a new artifact in the global store and open it beside the
+    /// (current or named) surface.
+    private func runArtifactCommand(
+        commandArgs: [String],
+        client: SocketClient,
+        jsonOutput: Bool,
+        idFormat: CLIIDFormat
+    ) throws {
+        var args = commandArgs
+        let (titleOpt, argsAfterTitle) = parseOption(args, name: "--title")
+        let (kindOpt, argsAfterKind) = parseOption(argsAfterTitle, name: "--kind")
+        let (workspaceOpt, argsAfterWorkspace) = parseOption(argsAfterKind, name: "--workspace")
+        let (windowOpt, argsAfterWindow) = parseOption(argsAfterWorkspace, name: "--window")
+        let (surfaceOpt, argsAfterSurface) = parseOption(argsAfterWindow, name: "--surface")
+        let (directionOpt, argsAfterDirection) = parseOption(argsAfterSurface, name: "--direction")
+        let (focusOpt, argsAfterFocus) = parseOption(argsAfterDirection, name: "--focus")
+        args = argsAfterFocus
+
+        // Only "new" is supported today; allow it explicitly or implicitly.
+        if let first = args.first, first.lowercased() == "new" {
+            args = Array(args.dropFirst())
+        }
+        if let unknown = args.first {
+            throw CLIError(
+                message: "artifact: unexpected argument '\(unknown)'. Usage: cmux artifact new [--title <t>] [--kind react|html] [--direction right|down|left|up] [--surface <id>] [--focus <true|false>]"
+            )
+        }
+
+        var params: [String: Any] = ["direction": directionOpt ?? "right"]
+        if let titleOpt, !titleOpt.isEmpty {
+            params["title"] = titleOpt
+        }
+        if let kindOpt, !kindOpt.isEmpty {
+            params["kind"] = kindOpt.lowercased()
+        }
+        let surfaceRaw = surfaceOpt ?? ProcessInfo.processInfo.environment["CMUX_SURFACE_ID"]
+        if let surfaceRaw {
+            if let surface = try normalizeSurfaceHandle(surfaceRaw, client: client) {
+                params["surface_id"] = surface
+            }
+        }
+        let workspaceRaw = workspaceOpt ?? (windowOpt == nil ? ProcessInfo.processInfo.environment["CMUX_WORKSPACE_ID"] : nil)
+        if let workspaceRaw {
+            if let workspace = try normalizeWorkspaceHandle(workspaceRaw, client: client) {
+                params["workspace_id"] = workspace
+            }
+        }
+        if let windowRaw = windowOpt {
+            if let window = try normalizeWindowHandle(windowRaw, client: client) {
+                params["window_id"] = window
+            }
+        }
+        try applyFocusOption(focusOpt, defaultValue: false, to: &params)
+
+        let payload = try client.sendV2(method: "artifact.new", params: params)
+
+        if jsonOutput {
+            print(jsonString(formatIDs(payload, mode: idFormat)))
+        } else {
+            let surfaceText = formatHandle(payload, kind: "surface", idFormat: idFormat) ?? "unknown"
+            let paneText = formatHandle(payload, kind: "pane", idFormat: idFormat) ?? "unknown"
+            let filePath = (payload["file_path"] as? String) ?? ""
+            print("OK surface=\(surfaceText) pane=\(paneText) path=\(filePath)")
+        }
+    }
+
     private func runProjectCommand(
         commandArgs: [String],
         client: SocketClient,
@@ -5463,6 +5535,7 @@ struct CMUXCLI {
         "list-status",
         "list-windows",
         "list-workspaces",
+        "artifact",
         "log",
         "login",
         "logout",
@@ -16218,6 +16291,29 @@ struct CMUXCLI {
               cmux markdown ~/project/CHANGELOG.md
               cmux markdown open ./docs/design.md --workspace 0
               cmux markdown open plan.md --direction down
+            """
+        case "artifact":
+            return """
+            Usage: cmux artifact new [options]
+
+            Scaffold a new live artifact (a Claude-artifacts-style React/HTML pane)
+            in the global store (~/.config/cmux/artifacts/) and open it beside the
+            current surface. The artifact file hot-reloads in the pane as you (or an
+            agent) edit it.
+
+            Options:
+              --title <text>               Artifact title (used for the filename + heading)
+              --kind <react|html>          Artifact kind (default: react)
+              --workspace <id|ref|index>   Target workspace (default: $CMUX_WORKSPACE_ID)
+              --surface <id|ref|index>     Surface to open beside (default: $CMUX_SURFACE_ID / focused)
+              --window <id|ref|index>      Target window
+              --direction <left|right|up|down>  Split direction (default: right)
+              --focus <true|false>         Focus the new artifact pane (default: false)
+
+            Examples:
+              cmux artifact new
+              cmux artifact new --title "Pricing table" --kind react
+              cmux artifact new --direction down --focus true
             """
         default:
             return nil
