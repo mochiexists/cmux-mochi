@@ -8429,6 +8429,140 @@ final class Workspace: Identifiable, ObservableObject {
         return markdownPanel
     }
 
+    // MARK: - Artifacts
+
+    /// Opens an existing artifact source file as a new tab in `paneId`.
+    @discardableResult
+    func newArtifactSurface(
+        inPane paneId: PaneID,
+        filePath: String,
+        kind: ArtifactKind? = nil,
+        focus: Bool? = nil,
+        targetIndex: Int? = nil
+    ) -> ArtifactPanel? {
+        let shouldFocusNewTab = focus ?? (bonsplitController.focusedPaneId == paneId)
+        let previousFocusedPanelId = focusedPanelId
+        let previousHostedView = focusedTerminalPanel?.hostedView
+
+        let artifactPanel = ArtifactPanel(workspaceId: id, filePath: filePath, kind: kind)
+        panels[artifactPanel.id] = artifactPanel
+        panelTitles[artifactPanel.id] = artifactPanel.displayTitle
+
+        guard let newTabId = bonsplitController.createTab(
+            title: artifactPanel.displayTitle,
+            icon: artifactPanel.displayIcon,
+            kind: SurfaceKind.artifact.rawValue,
+            isDirty: false,
+            isLoading: false,
+            isPinned: false,
+            inPane: paneId
+        ) else {
+            panels.removeValue(forKey: artifactPanel.id)
+            panelTitles.removeValue(forKey: artifactPanel.id)
+            return nil
+        }
+
+        bindSurface(newTabId, toPanelId: artifactPanel.id)
+        if let targetIndex {
+            _ = bonsplitController.reorderTab(newTabId, toIndex: targetIndex)
+        }
+        publishCmuxSurfaceCreated(
+            artifactPanel.id, paneId: paneId,
+            kind: SurfaceKind.artifact.rawValue, origin: "artifact_tab",
+            focused: shouldFocusNewTab
+        )
+        if shouldFocusNewTab {
+            bonsplitController.focusPane(paneId)
+            bonsplitController.selectTab(newTabId)
+            applyTabSelection(tabId: newTabId, inPane: paneId)
+        } else {
+            preserveFocusAfterNonFocusSplit(
+                preferredPanelId: previousFocusedPanelId,
+                splitPanelId: artifactPanel.id,
+                previousHostedView: previousHostedView
+            )
+        }
+        return artifactPanel
+    }
+
+    /// Splits `paneId` and renders an artifact in the new pane (the "open beside
+    /// me" primitive used by the artifact CLI / conductor skill).
+    @discardableResult
+    func splitPaneWithArtifact(
+        targetPane paneId: PaneID,
+        orientation: SplitOrientation,
+        insertFirst: Bool,
+        filePath: String,
+        kind: ArtifactKind? = nil
+    ) -> ArtifactPanel? {
+        let artifactPanel = ArtifactPanel(workspaceId: id, filePath: filePath, kind: kind)
+        panels[artifactPanel.id] = artifactPanel
+        panelTitles[artifactPanel.id] = artifactPanel.displayTitle
+
+        let newTab = Bonsplit.Tab(
+            title: artifactPanel.displayTitle,
+            icon: artifactPanel.displayIcon,
+            kind: SurfaceKind.artifact.rawValue,
+            isDirty: false,
+            isLoading: false,
+            isPinned: false
+        )
+        bindSurface(newTab.id, toPanelId: artifactPanel.id)
+
+        isProgrammaticSplit = true
+        defer { isProgrammaticSplit = false }
+        guard bonsplitController.splitPane(
+            paneId,
+            orientation: orientation,
+            withTab: newTab,
+            insertFirst: insertFirst
+        ) != nil else {
+            panels.removeValue(forKey: artifactPanel.id)
+            panelTitles.removeValue(forKey: artifactPanel.id)
+            removeSurfaceMapping(forSurfaceId: newTab.id)
+            return nil
+        }
+
+        bonsplitController.selectTab(newTab.id)
+        focusPanel(artifactPanel.id)
+        return artifactPanel
+    }
+
+    /// Scaffolds a new artifact in the global store and opens it. When `split` is
+    /// provided, splits `paneId` in that direction (the "open beside me" path);
+    /// otherwise adds a tab to `paneId`. Captures provenance from `originCwd`.
+    @discardableResult
+    func createArtifact(
+        title: String,
+        kind: ArtifactKind,
+        inPane paneId: PaneID,
+        split: (orientation: SplitOrientation, insertFirst: Bool)? = nil,
+        originCwd: String?,
+        originSurfaceId: String?,
+        focus: Bool = true
+    ) -> ArtifactPanel? {
+        let origin = ArtifactStore.resolveOrigin(
+            cwd: originCwd,
+            workspaceId: id.uuidString,
+            surfaceId: originSurfaceId
+        )
+        guard let created = try? ArtifactStore().createNew(
+            title: title, kind: kind, origin: origin
+        ) else {
+            return nil
+        }
+        if let split {
+            return splitPaneWithArtifact(
+                targetPane: paneId,
+                orientation: split.orientation,
+                insertFirst: split.insertFirst,
+                filePath: created.path,
+                kind: kind
+            )
+        }
+        return newArtifactSurface(inPane: paneId, filePath: created.path, kind: kind, focus: focus)
+    }
+
     @discardableResult
     func openOrFocusFilePreviewSurface(
         inPane paneId: PaneID,

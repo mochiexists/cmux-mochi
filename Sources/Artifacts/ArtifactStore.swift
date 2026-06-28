@@ -158,6 +158,31 @@ struct ArtifactStore {
         )
     }
 
+    // MARK: - Create
+
+    /// Scaffolds a brand-new artifact: allocates a provenance record, writes the
+    /// starter source (``ArtifactScaffold``), and appends `index.jsonl`. Returns
+    /// the record and the absolute path of the written file.
+    @discardableResult
+    func createNew(
+        title: String,
+        kind: ArtifactKind,
+        origin: ArtifactOrigin,
+        now: Date = Date(),
+        shortID: String = String(UUID().uuidString.prefix(8)).lowercased()
+    ) throws -> (record: ArtifactRecord, path: String) {
+        let record = Self.makeRecord(
+            id: shortID,
+            createdAt: now,
+            title: title,
+            kind: kind,
+            origin: origin
+        )
+        let scaffold = ArtifactScaffold.source(for: kind, title: title)
+        let path = try create(scaffold: scaffold, record: record)
+        return (record, path)
+    }
+
     // MARK: - Disk I/O
 
     /// Absolute path on disk for a record's source file.
