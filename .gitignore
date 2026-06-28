@@ -61,6 +61,9 @@ tmp-*/
 
 # Local dogfood scratch (screenshots, recordings) — never commit
 artifacts/
+# …but the Artifacts feature's Swift sources are tracked code, not scratch output.
+!Sources/Artifacts/
+!Sources/Artifacts/**
 
 # tmux verbose debug logs (tmux -v) that land in the cwd
 tmux-*.log
