@@ -1,4 +1,4 @@
-# Ghostty Fork Changes (manaflow-ai/ghostty)
+# Ghostty Fork Changes (mochiexists/ghostty)
 
 This repo uses a fork of Ghostty for local patches that aren't upstream yet.
 When we change the fork, update this document and the parent submodule SHA.
@@ -6,11 +6,19 @@ When we change the fork, update this document and the parent submodule SHA.
 ## Fork update checklist
 
 1) Make changes in `ghostty/`.
-2) Commit and push to `manaflow-ai/ghostty`.
+2) Commit and push to `mochiexists/ghostty`.
 3) Update this file with the new change summary + conflict notes.
 4) In the parent repo: `git add ghostty` and commit the submodule SHA.
 
 ## Current fork changes
+
+Pending cmux release head: `77ffb01f0` on `mochiexists/ghostty`, which closes the directory handles
+created by Ghostty screen-file exports after cmux receives the exported path.
+This fixes the `Too many open files` crash path where repeated `write_active_file`
+exports could leave temp-directory parent handles open until CoreAnimation later
+failed to open `default.metallib`. The corresponding GhosttyKit archive has not
+yet been published or pinned in `scripts/ghosttykit-checksums.txt`; publish that
+archive from `mochiexists/ghostty` before cutting a release from another machine.
 
 Current cmux pinned fork head: `05c3e2908`, which adds
 the Darwin-only `ghostty_surface_set_renderer_realized` C API (a

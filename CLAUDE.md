@@ -159,7 +159,7 @@ This makes it visible in the GitHub PR UI (Commits tab, check statuses) that the
 
 ## Ghostty submodule workflow
 
-Ghostty changes must be committed in the `ghostty` submodule and pushed to the `manaflow-ai/ghostty` fork.
+Ghostty changes must be committed in the `ghostty` submodule and pushed to the `mochiexists/ghostty` fork.
 Keep `docs/ghostty-fork.md` up to date with any fork changes and conflict notes.
 
 ```bash
