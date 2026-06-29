@@ -2,6 +2,19 @@
 
 All notable changes to cmux are documented here.
 
+## [0.64.159] - 2026-06-30
+
+cmux **Mochi** fork patch release.
+
+### Added
+- **Artifact panes.** cmux can now create and render artifact tabs for React/TSX, HTML, Markdown, Mermaid, SVG, code, and file-style artifacts, with bundled examples for a Claude artifact compatibility showcase and a live cmux workbench.
+- **Live artifact bridge.** Artifacts can use a read-only `window.cmux` bridge for snapshots, retained event replay, surface reads, and live subscriptions, enabling the bundled workbench to explain cmux events and conductor/skill additions from real app data.
+- **Artifact file actions.** Artifact tabs now support opening rendered artifacts in an external browser and saving/exporting artifact files, with file-backed tab path actions aligned across surfaces.
+
+### Fixed
+- Artifact renderer tabs now avoid the confusing macOS share menu and expose clearer artifact-specific actions.
+- Live event workbench heartbeats are named and categorized instead of appearing as anonymous uncategorized events.
+
 ## [0.64.156] - 2026-06-23
 
 cmux **Mochi** fork patch release.
