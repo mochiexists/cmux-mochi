@@ -23,6 +23,7 @@ struct ControlCommandExecutionPolicyTests {
             "feed.push", "browser.download.wait", "system.top", "system.memory",
             "workspace.remote.pty_bridge", "workspace.env", "sidebar.custom.reload",
             "sidebar.custom.open",
+            "surface.ingest", "surface.screenshot", "surface.text", "surface.read_text",
             "debug.sidebar.simulate_drag", "mobile.attach_ticket.create",
             "mobile.terminal.set_font",
             // JavaScript-evaluating browser methods block on page JS and must

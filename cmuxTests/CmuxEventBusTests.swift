@@ -92,6 +92,22 @@ final class CmuxEventBusTests: XCTestCase {
         XCTAssertNil(snapshot.subscription.next(timeout: 0.05))
     }
 
+    func testHeartbeatIsNamedAndCategorizedForArtifactConsumers() {
+        let bus = CmuxEventBus(retainedEventLimit: 8)
+        bus.publish(name: "surface.created", category: "surface", source: "test")
+        let snapshot = bus.subscribe(afterSequence: nil, names: [], categories: [])
+        defer { bus.unsubscribe(snapshot.subscription) }
+
+        let heartbeat = bus.heartbeat(subscription: snapshot.subscription)
+
+        XCTAssertEqual(heartbeat["type"] as? String, "heartbeat")
+        XCTAssertEqual(heartbeat["name"] as? String, "bridge.heartbeat")
+        XCTAssertEqual(heartbeat["category"] as? String, "bridge")
+        XCTAssertEqual(heartbeat["source"] as? String, "window.cmux")
+        XCTAssertEqual((heartbeat["seq"] as? NSNumber)?.int64Value, 1)
+        XCTAssertEqual((heartbeat["latest_seq"] as? NSNumber)?.int64Value, 1)
+    }
+
     func testSlowSubscriptionClosesWhenPendingQueueIsFull() {
         let bus = CmuxEventBus(retainedEventLimit: 8, maxPendingEventsPerSubscription: 2)
         let snapshot = bus.subscribe(afterSequence: nil, names: [], categories: [])

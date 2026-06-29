@@ -52,6 +52,24 @@ import Testing
         }
     }
 
+    @Test func testWelcomeHighlightsCurrentMochiFeatures() throws {
+        let cliPath = try bundledCLIPath()
+        let result = runProcess(
+            executablePath: cliPath,
+            arguments: ["welcome"],
+            environment: ["CMUX_CLI_SENTRY_DISABLED": "1"],
+            timeout: 5
+        )
+
+        #expect(!result.timedOut)
+        #expect(result.status == 0)
+        #expect(result.stdout.contains("Reopen last closed tab/workspace"))
+        #expect(result.stdout.contains("Artifact panes"))
+        #expect(result.stdout.contains("artifact & local-file tabs"))
+        #expect(!result.stdout.contains("Codex close-and-resume"))
+        #expect(!result.stdout.contains("needs the Mochi Codex fork"))
+    }
+
     @Test func testBundledCLIInTaggedDebugAppPrefersItsOwnSocketWithoutEnvironmentOverride() throws {
         let cliPath = try bundledCLIPath()
         let tagSlug = "cli-socket-\(UUID().uuidString.lowercased())"

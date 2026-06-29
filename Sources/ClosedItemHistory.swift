@@ -730,6 +730,8 @@ final class ClosedItemHistoryStore: ObservableObject {
             // Task Manager surfaces are ephemeral and never enter closed history,
             // but the switch must stay exhaustive.
             return String(localized: "taskManager.title", defaultValue: "Task Manager")
+        case .artifact:
+            return String(localized: "artifact.title", defaultValue: "Artifact")
         }
     }
 

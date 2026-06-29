@@ -293,12 +293,17 @@ final class CmuxEventBus: @unchecked Sendable {
     }
 
     func heartbeat(subscription: CmuxEventSubscription) -> [String: Any] {
-        [
+        let latestSequence = latestSequence
+        return [
             "type": "heartbeat",
+            "name": "bridge.heartbeat",
+            "category": "bridge",
+            "source": "window.cmux",
             "protocol": Self.protocolName,
             "version": Self.protocolVersion,
             "boot_id": bootId,
             "subscription_id": subscription.id.uuidString,
+            "seq": NSNumber(value: latestSequence),
             "latest_seq": NSNumber(value: latestSequence),
             "occurred_at": Self.isoTimestamp(Date())
         ]

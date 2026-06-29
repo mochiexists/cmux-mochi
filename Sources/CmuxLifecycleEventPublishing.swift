@@ -231,6 +231,8 @@ extension Workspace {
             return "extension_browser"
         case .taskManager:
             return "task_manager"
+        case .artifact:
+            return "artifact"
         }
     }
 }

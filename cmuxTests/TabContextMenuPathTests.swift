@@ -181,6 +181,31 @@ final class TabContextMenuPathTests: XCTestCase {
         XCTAssertEqual(pasteboard.string(forType: .string), filePath)
     }
 
+    func testArtifactTabExposesPathActionsAndCopiesFilePath() throws {
+        let workspace = Workspace()
+        let paneId = try XCTUnwrap(workspace.bonsplitController.allPaneIds.first)
+        let filePath = "/Users/test/.config/cmux/artifacts/2026/06/29/showcase.tsx"
+        let panel = try XCTUnwrap(
+            workspace.newArtifactSurface(inPane: paneId, filePath: filePath, kind: .react)
+        )
+        let tabId = try XCTUnwrap(workspace.surfaceIdFromPanelId(panel.id))
+
+        let items = workspace.bonsplitController.tabContextMenuItemsProvider?(tabId, PaneID()) ?? []
+        XCTAssertEqual(items.map(\.id), ["revealInFinder", "copyPath"])
+
+        let tab = try XCTUnwrap(workspace.bonsplitController.tab(tabId))
+        let actionPane = try XCTUnwrap(workspace.paneId(forPanelId: panel.id))
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        workspace.splitTabBar(
+            workspace.bonsplitController,
+            didRequestTabContextMenuItem: "copyPath",
+            for: tab,
+            inPane: actionPane
+        )
+        XCTAssertEqual(pasteboard.string(forType: .string), filePath)
+    }
+
     func testBonsplitPathActionsUseGenericCustomMenuItems() throws {
         let workspace = Workspace()
         let panelId = try XCTUnwrap(workspace.focusedPanelId)

@@ -44,6 +44,56 @@ nonisolated private struct RemotePTYSocketTarget {
     let workspaceTitle: String
 }
 
+nonisolated private enum V2SurfaceImageFormat: String {
+    case png
+    case jpeg
+
+    var fileExtension: String {
+        switch self {
+        case .png: return "png"
+        case .jpeg: return "jpg"
+        }
+    }
+
+    var base64Key: String {
+        switch self {
+        case .png: return "png_base64"
+        case .jpeg: return "jpeg_base64"
+        }
+    }
+
+    var mimeType: String {
+        switch self {
+        case .png: return "image/png"
+        case .jpeg: return "image/jpeg"
+        }
+    }
+}
+
+nonisolated private struct V2SurfaceImageEncoding {
+    let format: V2SurfaceImageFormat
+    let jpegQuality: Double
+    let maxDimension: Int?
+    let profile: String
+}
+
+nonisolated private struct V2EncodedSurfaceImage {
+    let data: Data
+    let format: V2SurfaceImageFormat
+    let width: Int
+    let height: Int
+    let originalWidth: Int
+    let originalHeight: Int
+    let jpegQuality: Double?
+    let maxDimension: Int?
+    let profile: String
+
+    var aspectRatio: Double {
+        guard height > 0 else { return 0 }
+        return Double(width) / Double(height)
+    }
+}
+
 nonisolated func remotePTYSessionListErrorIsUnsupportedDaemon(_ error: Error) -> Bool {
     let nsError = error as NSError
     guard nsError.domain == "cmux.remote.daemon.rpc", nsError.code == 14 else {
@@ -1046,6 +1096,9 @@ class TerminalController {
             return v2Result(id: request.id, v2FeedExitPlanReply(params: request.params))
         case "browser.download.wait":
             return v2Result(id: request.id, v2BrowserDownloadWaitOnSocketWorker(params: request.params))
+        case "surface.screenshot", "surface.text", "surface.read_text", "surface.ingest":
+            v2MainSync { self.v2RefreshKnownRefs() }
+            return v2Result(id: request.id, v2SurfaceCommandOnSocketWorker(method: request.method, params: request.params))
         case "browser.navigate", "browser.back", "browser.forward", "browser.reload",
              "browser.snapshot", "browser.eval", "browser.wait", "browser.screenshot",
              "browser.click", "browser.dblclick", "browser.hover", "browser.focus",
@@ -1855,6 +1908,14 @@ class TerminalController {
 
         // App focus (app.focus_override.set/app.simulate_active) handled by ControlCommandCoordinator.
 
+        // Artifacts
+        case "artifact.new":
+            return v2Result(id: id, self.v2ArtifactNew(params: params))
+        case "artifact.open":
+            return v2Result(id: id, self.v2ArtifactOpen(params: params))
+        case "artifact.list":
+            return v2Result(id: id, self.v2ArtifactList(params: params))
+
         // Browser
         case "browser.open_split":
             return v2Result(id: id, self.v2BrowserOpenSplit(params: params))
@@ -2065,6 +2126,9 @@ class TerminalController {
             "surface.report_shell_state",
             "surface.ports_kick",
             "surface.read_text",
+            "surface.text",
+            "surface.screenshot",
+            "surface.ingest",
             "surface.clear_history",
             "surface.trigger_flash",
             "pane.list",
@@ -2090,6 +2154,9 @@ class TerminalController {
             "app.simulate_active",
             "file.open",
             "markdown.open",
+            "artifact.new",
+            "artifact.open",
+            "artifact.list",
             "browser.open_split",
             "browser.navigate",
             "browser.back",
@@ -5388,6 +5455,106 @@ class TerminalController {
         return (workspace.focusedPanelId, nil)
     }
 
+    private struct V2SurfacePanelContext {
+        let windowId: UUID?
+        let workspaceId: UUID
+        let surfaceId: UUID
+        let surfaceType: String
+        let title: String
+        let terminalPanel: TerminalPanel?
+        let browserPanel: BrowserPanel?
+        let browserWebView: WKWebView?
+        let artifactPanel: ArtifactPanel?
+        let markdownPanel: MarkdownPanel?
+        let filePreviewPanel: FilePreviewPanel?
+    }
+
+    private func v2ResolveAnySurfaceId(
+        params: [String: Any],
+        workspace: Workspace
+    ) -> (surfaceId: UUID?, error: V2CallResult?) {
+        if let surfaceId = v2UUID(params, "surface_id") ?? v2UUID(params, "tab_id") {
+            return (surfaceId, nil)
+        }
+        if let paneId = v2UUID(params, "pane_id") {
+            guard let pane = workspace.bonsplitController.allPaneIds.first(where: { $0.id == paneId }) else {
+                return (
+                    nil,
+                    .err(code: "not_found", message: "Pane not found", data: ["pane_id": paneId.uuidString])
+                )
+            }
+            guard let selectedTab = workspace.bonsplitController.selectedTab(inPane: pane),
+                  let selectedSurface = workspace.panelIdFromSurfaceId(selectedTab.id) else {
+                return (
+                    nil,
+                    .err(code: "not_found", message: "Pane has no selected surface", data: ["pane_id": paneId.uuidString])
+                )
+            }
+            return (selectedSurface, nil)
+        }
+        return (workspace.focusedPanelId, nil)
+    }
+
+    private nonisolated func v2SurfacePanelContext(params: [String: Any]) -> (context: V2SurfacePanelContext?, error: V2CallResult?) {
+        v2MainSync {
+            guard let tabManager = v2ResolveTabManager(params: params) else {
+                return (nil, .err(code: "unavailable", message: "TabManager not available", data: nil))
+            }
+            guard let ws = v2ResolveWorkspace(params: params, tabManager: tabManager) else {
+                return (nil, .err(code: "not_found", message: "Workspace not found", data: nil))
+            }
+            let resolvedSurface = v2ResolveAnySurfaceId(params: params, workspace: ws)
+            if let error = resolvedSurface.error {
+                return (nil, error)
+            }
+            guard let surfaceId = resolvedSurface.surfaceId else {
+                return (nil, .err(code: "not_found", message: "No focused surface", data: nil))
+            }
+            guard let panel = ws.panels[surfaceId] else {
+                return (nil, .err(code: "not_found", message: "Surface not found", data: ["surface_id": surfaceId.uuidString]))
+            }
+            return (
+                V2SurfacePanelContext(
+                    windowId: v2ResolveWindowId(tabManager: tabManager),
+                    workspaceId: ws.id,
+                    surfaceId: surfaceId,
+                    surfaceType: panel.panelType.rawValue,
+                    title: panel.displayTitle,
+                    terminalPanel: panel as? TerminalPanel,
+                    browserPanel: panel as? BrowserPanel,
+                    browserWebView: (panel as? BrowserPanel)?.webView,
+                    artifactPanel: panel as? ArtifactPanel,
+                    markdownPanel: panel as? MarkdownPanel,
+                    filePreviewPanel: panel as? FilePreviewPanel
+                ),
+                nil
+            )
+        }
+    }
+
+    private nonisolated func v2SurfaceBasePayload(_ ctx: V2SurfacePanelContext) -> [String: Any] {
+        [
+            "workspace_id": ctx.workspaceId.uuidString,
+            "workspace_ref": v2Ref(kind: .workspace, uuid: ctx.workspaceId),
+            "surface_id": ctx.surfaceId.uuidString,
+            "surface_ref": v2Ref(kind: .surface, uuid: ctx.surfaceId),
+            "surface_type": ctx.surfaceType,
+            "title": ctx.title,
+            "window_id": v2OrNull(ctx.windowId?.uuidString),
+            "window_ref": v2Ref(kind: .window, uuid: ctx.windowId)
+        ]
+    }
+
+    private nonisolated func v2SurfaceBasePayloadFromPayload(_ payload: [String: Any]) -> [String: Any] {
+        var result: [String: Any] = [:]
+        for key in ["workspace_id", "workspace_ref", "surface_id", "surface_ref", "surface_type", "title", "window_id", "window_ref"] {
+            if let value = payload[key] {
+                result[key] = value
+            }
+        }
+        return result
+    }
+
     private nonisolated func v2JSONLiteral(_ value: Any) -> String {
         v2BrowserControl.jsonLiteral(value)
     }
@@ -5971,6 +6138,169 @@ class TerminalController {
         return rep.representation(using: .png, properties: [:])
     }
 
+    private nonisolated func v2SurfaceImageEncoding(params: [String: Any]) -> (encoding: V2SurfaceImageEncoding?, error: V2CallResult?) {
+        let profile = (v2String(params, "profile") ?? "lossless").lowercased()
+        let formatRaw = (v2String(params, "format") ?? v2String(params, "image_format") ?? "png").lowercased()
+        let format: V2SurfaceImageFormat
+        switch formatRaw {
+        case "png":
+            format = .png
+        case "jpg", "jpeg":
+            format = .jpeg
+        default:
+            return (nil, .err(code: "invalid_params", message: "format must be png or jpeg", data: nil))
+        }
+
+        let jpegQualityRaw = v2Double(params, "jpeg_quality") ?? v2Double(params, "quality") ?? 0.92
+        guard jpegQualityRaw.isFinite else {
+            return (nil, .err(code: "invalid_params", message: "jpeg_quality must be numeric", data: nil))
+        }
+        let jpegQuality = min(max(jpegQualityRaw, 0.1), 1.0)
+
+        let maxDimensionRaw = v2RawString(params, "max_dimension")
+            ?? v2RawString(params, "maxDimension")
+            ?? v2RawString(params, "max_image_dimension")
+        let maxDimension: Int?
+        if let maxDimensionRaw {
+            let normalized = maxDimensionRaw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            if normalized == "none" || normalized == "0" {
+                maxDimension = nil
+            } else if let parsed = Int(normalized), parsed > 0 {
+                maxDimension = parsed
+            } else {
+                return (nil, .err(code: "invalid_params", message: "max_dimension must be a positive integer or none", data: nil))
+            }
+        } else if let numericMaxDimension = v2Int(params, "max_dimension") ?? v2Int(params, "maxDimension") ?? v2Int(params, "max_image_dimension") {
+            guard numericMaxDimension > 0 else {
+                return (nil, .err(code: "invalid_params", message: "max_dimension must be greater than 0", data: nil))
+            }
+            maxDimension = numericMaxDimension
+        } else {
+            maxDimension = nil
+        }
+
+        return (
+            V2SurfaceImageEncoding(
+                format: format,
+                jpegQuality: jpegQuality,
+                maxDimension: maxDimension,
+                profile: profile
+            ),
+            nil
+        )
+    }
+
+    private nonisolated func v2Image(from cgImage: CGImage) -> NSImage {
+        NSImage(cgImage: cgImage, size: NSSize(width: cgImage.width, height: cgImage.height))
+    }
+
+    private nonisolated func v2CGImage(from image: NSImage) -> CGImage? {
+        var proposedRect = NSRect(origin: .zero, size: image.size)
+        return image.cgImage(forProposedRect: &proposedRect, context: nil, hints: nil)
+    }
+
+    private nonisolated func v2SourceCGImage(from image: NSImage) -> CGImage? {
+        if let tiff = image.tiffRepresentation,
+           let bitmap = NSBitmapImageRep(data: tiff),
+           let cgImage = bitmap.cgImage {
+            return cgImage
+        }
+        return v2CGImage(from: image)
+    }
+
+    private nonisolated func v2RasterizedBitmap(from cgImage: CGImage, maxDimension: Int?) -> (bitmap: NSBitmapImageRep?, width: Int, height: Int) {
+        let originalWidth = cgImage.width
+        let originalHeight = cgImage.height
+        let longest = max(originalWidth, originalHeight)
+        guard let maxDimension, longest > maxDimension else {
+            return (NSBitmapImageRep(cgImage: cgImage), originalWidth, originalHeight)
+        }
+
+        let scale = Double(maxDimension) / Double(longest)
+        let targetWidth = max(1, Int((Double(originalWidth) * scale).rounded()))
+        let targetHeight = max(1, Int((Double(originalHeight) * scale).rounded()))
+        guard let bitmap = NSBitmapImageRep(
+            bitmapDataPlanes: nil,
+            pixelsWide: targetWidth,
+            pixelsHigh: targetHeight,
+            bitsPerSample: 8,
+            samplesPerPixel: 4,
+            hasAlpha: true,
+            isPlanar: false,
+            colorSpaceName: .deviceRGB,
+            bytesPerRow: 0,
+            bitsPerPixel: 0
+        ) else {
+            return (nil, targetWidth, targetHeight)
+        }
+
+        NSGraphicsContext.saveGraphicsState()
+        if let context = NSGraphicsContext(bitmapImageRep: bitmap) {
+            NSGraphicsContext.current = context
+            context.imageInterpolation = .high
+            NSColor.clear.setFill()
+            let targetRect = NSRect(x: 0, y: 0, width: CGFloat(targetWidth), height: CGFloat(targetHeight))
+            targetRect.fill()
+            let image = NSImage(cgImage: cgImage, size: targetRect.size)
+            image.draw(
+                in: targetRect,
+                from: targetRect,
+                operation: .sourceOver,
+                fraction: 1
+            )
+        }
+        NSGraphicsContext.restoreGraphicsState()
+        return (bitmap, targetWidth, targetHeight)
+    }
+
+    private nonisolated func v2EncodeSurfaceImage(_ image: NSImage, encoding: V2SurfaceImageEncoding) -> V2EncodedSurfaceImage? {
+        guard let cgImage = v2SourceCGImage(from: image) else { return nil }
+        let originalWidth = cgImage.width
+        let originalHeight = cgImage.height
+        let rasterized = v2RasterizedBitmap(from: cgImage, maxDimension: encoding.maxDimension)
+        guard let bitmap = rasterized.bitmap else { return nil }
+
+        let data: Data?
+        let jpegQuality: Double?
+        switch encoding.format {
+        case .png:
+            data = bitmap.representation(using: .png, properties: [:])
+            jpegQuality = nil
+        case .jpeg:
+            data = bitmap.representation(using: .jpeg, properties: [.compressionFactor: encoding.jpegQuality])
+            jpegQuality = encoding.jpegQuality
+        }
+        guard let data else { return nil }
+
+        return V2EncodedSurfaceImage(
+            data: data,
+            format: encoding.format,
+            width: rasterized.width,
+            height: rasterized.height,
+            originalWidth: originalWidth,
+            originalHeight: originalHeight,
+            jpegQuality: jpegQuality,
+            maxDimension: encoding.maxDimension,
+            profile: encoding.profile
+        )
+    }
+
+    private nonisolated func v2PixelDimensions(from image: NSImage) -> (width: Int, height: Int) {
+        for representation in image.representations where representation.pixelsWide > 0 && representation.pixelsHigh > 0 {
+            return (width: representation.pixelsWide, height: representation.pixelsHigh)
+        }
+        return (width: Int(image.size.width), height: Int(image.size.height))
+    }
+
+    private nonisolated func v2PNGDimensions(from data: Data) -> (width: Int, height: Int)? {
+        guard let representation = NSBitmapImageRep(data: data),
+              representation.pixelsWide > 0,
+              representation.pixelsHigh > 0 else {
+            return nil
+        }
+        return (width: representation.pixelsWide, height: representation.pixelsHigh)
+    }
+
     private nonisolated func bestEffortPruneTemporaryFiles(
         in directoryURL: URL,
         keepingMostRecent maxCount: Int = 50,
@@ -5998,6 +6328,127 @@ class TerminalController {
                 try? FileManager.default.removeItem(at: entry.url)
             }
         }
+    }
+
+    private nonisolated static func conductorAuditRootURL() -> URL {
+        URL(fileURLWithPath: NSHomeDirectory(), isDirectory: true)
+            .appendingPathComponent(".config", isDirectory: true)
+            .appendingPathComponent("cmux", isDirectory: true)
+            .appendingPathComponent("conductor", isDirectory: true)
+            .appendingPathComponent("audit", isDirectory: true)
+    }
+
+    private nonisolated static func iso8601String(_ date: Date) -> String {
+        ISO8601DateFormatter().string(from: date)
+    }
+
+    private nonisolated static func auditDatePathComponents(_ date: Date) -> [String] {
+        let calendar = Calendar(identifier: .gregorian)
+        let components = calendar.dateComponents(in: TimeZone.current, from: date)
+        return [
+            String(format: "%04d", components.year ?? 1970),
+            String(format: "%02d", components.month ?? 1),
+            String(format: "%02d", components.day ?? 1)
+        ]
+    }
+
+    private nonisolated func v2MaterializeSurfaceAudit(
+        payload: [String: Any],
+        image: V2EncodedSurfaceImage?,
+        text: String?,
+        textSource: String?,
+        reason: String
+    ) -> [String: Any]? {
+        let now = Date()
+        let captureId = "capture-\(Int(now.timeIntervalSince1970 * 1000))-\(String(UUID().uuidString.prefix(8)).lowercased())"
+        var directoryURL = Self.conductorAuditRootURL()
+        for component in Self.auditDatePathComponents(now) {
+            directoryURL.appendPathComponent(component, isDirectory: true)
+        }
+        directoryURL.appendPathComponent(captureId, isDirectory: true)
+
+        do {
+            try FileManager.default.createDirectory(at: directoryURL, withIntermediateDirectories: true)
+        } catch {
+            return nil
+        }
+
+        var manifest = payload
+        manifest.removeValue(forKey: "png_base64")
+        manifest.removeValue(forKey: "jpeg_base64")
+        manifest["capture_id"] = captureId
+        manifest["captured_at"] = Self.iso8601String(now)
+        manifest["reason"] = reason
+
+        if let image {
+            let imageURL = directoryURL.appendingPathComponent("screenshot.\(image.format.fileExtension)", isDirectory: false)
+            if (try? image.data.write(to: imageURL, options: .atomic)) != nil {
+                manifest["image_path"] = imageURL.path
+                manifest["image_url"] = imageURL.absoluteString
+                manifest["image_format"] = image.format.rawValue
+                manifest["image_mime_type"] = image.format.mimeType
+                manifest["image_file_extension"] = image.format.fileExtension
+                manifest["image_byte_count"] = image.data.count
+                manifest["image_width"] = image.width
+                manifest["image_height"] = image.height
+                manifest["image_original_width"] = image.originalWidth
+                manifest["image_original_height"] = image.originalHeight
+                manifest["image_aspect_ratio"] = image.aspectRatio
+                manifest["image_profile"] = image.profile
+                if let maxDimension = image.maxDimension {
+                    manifest["image_max_dimension"] = maxDimension
+                }
+                if let jpegQuality = image.jpegQuality {
+                    manifest["image_jpeg_quality"] = jpegQuality
+                }
+            }
+        }
+
+        if let text, !text.isEmpty {
+            let textURL = directoryURL.appendingPathComponent("text.txt", isDirectory: false)
+            if let data = text.data(using: .utf8),
+               (try? data.write(to: textURL, options: .atomic)) != nil {
+                manifest["text_path"] = textURL.path
+                manifest["text_url"] = textURL.absoluteString
+                manifest["text_source"] = textSource ?? "unknown"
+                manifest["text_char_count"] = text.count
+                if var textMetadata = manifest["text"] as? [String: Any] {
+                    textMetadata["path"] = textURL.path
+                    textMetadata["url"] = textURL.absoluteString
+                    if let textSource {
+                        textMetadata["source"] = textSource
+                    } else if textMetadata["source"] == nil {
+                        textMetadata["source"] = "unknown"
+                    }
+                    textMetadata["character_count"] = text.count
+                    manifest["text"] = textMetadata
+                }
+            }
+        }
+
+        let manifestURL = directoryURL.appendingPathComponent("manifest.json", isDirectory: false)
+        if let manifestData = try? JSONSerialization.data(withJSONObject: manifest, options: [.prettyPrinted, .sortedKeys]) {
+            try? manifestData.write(to: manifestURL, options: .atomic)
+            manifest["manifest_path"] = manifestURL.path
+            manifest["manifest_url"] = manifestURL.absoluteString
+        }
+
+        let indexURL = directoryURL.deletingLastPathComponent().appendingPathComponent("index.jsonl", isDirectory: false)
+        if let lineData = try? JSONSerialization.data(withJSONObject: manifest, options: [.sortedKeys]) {
+            if FileManager.default.fileExists(atPath: indexURL.path),
+                let handle = try? FileHandle(forWritingTo: indexURL) {
+                defer { try? handle.close() }
+                _ = try? handle.seekToEnd()
+                handle.write(lineData)
+                handle.write(Data([0x0A]))
+            } else {
+                var data = lineData
+                data.append(0x0A)
+                try? data.write(to: indexURL, options: .atomic)
+            }
+        }
+
+        return manifest
     }
 
     // MARK: - Markdown
@@ -6220,6 +6671,254 @@ class TerminalController {
             ])
         }
         return result
+    }
+
+    /// `artifact.new` — scaffold a new artifact in the global store and open it
+    /// in a split beside the source surface (the conductor "open beside me"
+    /// path). Params: `title?`, `kind?` (react/html/svg/mermaid/code/file),
+    /// `direction?`
+    /// (right/down/left/up), `surface_id?`, `focus?`.
+    private func v2ArtifactNew(params: [String: Any]) -> V2CallResult {
+        guard let tabManager = v2ResolveTabManager(params: params) else {
+            return .err(code: "unavailable", message: "TabManager not available", data: nil)
+        }
+        let title = v2String(params, "title")?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let kindRaw = v2String(params, "kind")?.lowercased()
+        var kind: ArtifactKind = .react
+        if let kindRaw {
+            guard let parsedKind = ArtifactKind(rawValue: kindRaw) else {
+                return .err(code: "invalid_params", message: "Unsupported artifact kind: \(kindRaw)", data: nil)
+            }
+            kind = parsedKind
+        }
+        let directionStr = v2String(params, "direction")
+
+        // Optional bundled sample/template (e.g. "showcase"). Its content + kind +
+        // title override the scaffold defaults when no explicit ones are given.
+        var sampleSource: String?
+        var sampleTitle: String?
+        if let templateName = v2String(params, "template")?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !templateName.isEmpty {
+            guard let sample = ArtifactSamples.sample(named: templateName),
+                  let source = ArtifactSamples.source(for: sample) else {
+                return .err(code: "not_found", message: "Unknown artifact template: \(templateName)", data: nil)
+            }
+            sampleSource = source
+            sampleTitle = sample.title
+            if kindRaw == nil { kind = sample.kind }
+        }
+
+        var result: V2CallResult = .err(code: "internal_error", message: "Failed to create artifact", data: nil)
+        v2MainSync {
+            guard let ws = v2ResolveWorkspace(params: params, tabManager: tabManager) else {
+                result = .err(code: "not_found", message: "Workspace not found", data: nil)
+                return
+            }
+            v2MaybeFocusWindow(for: tabManager)
+            v2MaybeSelectWorkspace(tabManager, workspace: ws)
+
+            let sourceSurfaceId = v2UUID(params, "surface_id") ?? ws.focusedPanelId
+            guard let sourceSurfaceId, ws.panels[sourceSurfaceId] != nil else {
+                result = .err(code: "not_found", message: "No source surface to open beside", data: nil)
+                return
+            }
+            guard let sourcePane = ws.paneId(forPanelId: sourceSurfaceId) else {
+                result = .err(code: "not_found", message: "Source pane not found", data: nil)
+                return
+            }
+
+            let focus = v2FocusAllowed(requested: v2Bool(params, "focus") ?? false)
+            let originCwd = ws.panelDirectories[sourceSurfaceId]
+            let resolvedTitle = (title?.isEmpty == false) ? title! : (sampleTitle ?? "Artifact")
+
+            // direction → split placement; default to a right-hand split.
+            let split: (orientation: SplitOrientation, insertFirst: Bool)
+            if let directionStr, let direction = parseSplitDirection(directionStr) {
+                split = (direction.isHorizontal ? .horizontal : .vertical,
+                         direction == .left || direction == .up)
+            } else {
+                split = (.horizontal, false)
+            }
+
+            guard let panel = ws.createArtifact(
+                title: resolvedTitle,
+                kind: kind,
+                inPane: sourcePane,
+                split: split,
+                originCwd: originCwd,
+                originSurfaceId: sourceSurfaceId.uuidString,
+                source: sampleSource,
+                focus: focus
+            ) else {
+                result = .err(code: "internal_error", message: "Failed to create artifact", data: nil)
+                return
+            }
+
+            let targetPaneUUID = ws.paneId(forPanelId: panel.id)?.id
+            let windowId = v2ResolveWindowId(tabManager: tabManager)
+            result = .ok([
+                "window_id": v2OrNull(windowId?.uuidString),
+                "window_ref": v2Ref(kind: .window, uuid: windowId),
+                "workspace_id": ws.id.uuidString,
+                "workspace_ref": v2Ref(kind: .workspace, uuid: ws.id),
+                "surface_id": panel.id.uuidString,
+                "surface_ref": v2Ref(kind: .surface, uuid: panel.id),
+                "pane_id": v2OrNull(targetPaneUUID?.uuidString),
+                "pane_ref": v2Ref(kind: .pane, uuid: targetPaneUUID),
+                "file_path": panel.filePath,
+                "kind": panel.kind.rawValue
+            ])
+        }
+        return result
+    }
+
+    /// `artifact.open` — open an existing artifact by id, store-relative path,
+    /// absolute path, or filename. Params: `target` (or `id`/`path`), `kind?`,
+    /// `direction?`, `surface_id?`, `focus?`.
+    private func v2ArtifactOpen(params: [String: Any]) -> V2CallResult {
+        let target = v2String(params, "target")
+            ?? v2String(params, "id")
+            ?? v2String(params, "path")
+        guard let target else {
+            return .err(code: "invalid_params", message: "artifact.open requires target, id, or path", data: nil)
+        }
+
+        let explicitKindRaw = v2String(params, "kind")?.lowercased()
+        let explicitKind: ArtifactKind?
+        if let explicitKindRaw {
+            guard let parsedKind = ArtifactKind(rawValue: explicitKindRaw) else {
+                return .err(code: "invalid_params", message: "Unsupported artifact kind: \(explicitKindRaw)", data: nil)
+            }
+            explicitKind = parsedKind
+        } else {
+            explicitKind = nil
+        }
+        let store = ArtifactStore()
+        guard let resolved = store.resolve(identifier: target, explicitKind: explicitKind) else {
+            return .err(code: "not_found", message: "Artifact not found or unsupported kind: \(target)", data: nil)
+        }
+        guard FileManager.default.fileExists(atPath: resolved.path) else {
+            return .err(code: "not_found", message: "Artifact file does not exist: \(resolved.path)", data: nil)
+        }
+
+        guard let tabManager = v2ResolveTabManager(params: params) else {
+            return .err(code: "unavailable", message: "TabManager not available", data: nil)
+        }
+
+        let directionStr = v2String(params, "direction")
+        var result: V2CallResult = .err(code: "internal_error", message: "Failed to open artifact", data: nil)
+        v2MainSync {
+            guard let ws = v2ResolveWorkspace(params: params, tabManager: tabManager) else {
+                result = .err(code: "not_found", message: "Workspace not found", data: nil)
+                return
+            }
+            v2MaybeFocusWindow(for: tabManager)
+            v2MaybeSelectWorkspace(tabManager, workspace: ws)
+
+            let sourceSurfaceId = v2UUID(params, "surface_id") ?? ws.focusedPanelId
+            guard let sourceSurfaceId, ws.panels[sourceSurfaceId] != nil else {
+                result = .err(code: "not_found", message: "No source surface to open beside", data: nil)
+                return
+            }
+            guard let sourcePane = ws.paneId(forPanelId: sourceSurfaceId) else {
+                result = .err(code: "not_found", message: "Source pane not found", data: nil)
+                return
+            }
+
+            let focus = v2FocusAllowed(requested: v2Bool(params, "focus") ?? false)
+            let split: (orientation: SplitOrientation, insertFirst: Bool)
+            if let directionStr, let direction = parseSplitDirection(directionStr) {
+                split = (direction.isHorizontal ? .horizontal : .vertical,
+                         direction == .left || direction == .up)
+            } else {
+                split = (.horizontal, false)
+            }
+
+            let panel: ArtifactPanel?
+            if directionStr == nil,
+               let targetPane = ws.preferredRightSideTargetPane(fromPanelId: sourceSurfaceId) {
+                panel = ws.openOrFocusArtifactSurface(
+                    inPane: targetPane,
+                    filePath: resolved.path,
+                    kind: resolved.kind,
+                    focus: focus
+                )
+            } else {
+                panel = ws.splitPaneWithArtifact(
+                    targetPane: sourcePane,
+                    orientation: split.orientation,
+                    insertFirst: split.insertFirst,
+                    filePath: resolved.path,
+                    kind: resolved.kind,
+                    focus: focus
+                )
+            }
+
+            guard let panel else {
+                result = .err(code: "internal_error", message: "Failed to open artifact", data: nil)
+                return
+            }
+
+            let targetPaneUUID = ws.paneId(forPanelId: panel.id)?.id
+            let windowId = v2ResolveWindowId(tabManager: tabManager)
+            var payload: [String: Any] = [
+                "window_id": v2OrNull(windowId?.uuidString),
+                "window_ref": v2Ref(kind: .window, uuid: windowId),
+                "workspace_id": ws.id.uuidString,
+                "workspace_ref": v2Ref(kind: .workspace, uuid: ws.id),
+                "surface_id": panel.id.uuidString,
+                "surface_ref": v2Ref(kind: .surface, uuid: panel.id),
+                "pane_id": v2OrNull(targetPaneUUID?.uuidString),
+                "pane_ref": v2Ref(kind: .pane, uuid: targetPaneUUID),
+                "file_path": panel.filePath,
+                "kind": panel.kind.rawValue
+            ]
+            if let record = resolved.record {
+                payload["artifact"] = v2ArtifactRecordPayload(record, store: store)
+            }
+            result = .ok(payload)
+        }
+        return result
+    }
+
+    /// `artifact.list` — read the global artifact index. Params: `repo?`,
+    /// `limit?`. Newest records are returned first.
+    private func v2ArtifactList(params: [String: Any]) -> V2CallResult {
+        let limit = v2Int(params, "limit")
+        if let limit, limit < 0 {
+            return .err(code: "invalid_params", message: "limit must be >= 0", data: nil)
+        }
+
+        let store = ArtifactStore()
+        let repoRaw = v2String(params, "repo") ?? v2String(params, "repo_root")
+        let repoRoot = repoRaw.map { raw in
+                let expanded = (raw as NSString).expandingTildeInPath
+                return ArtifactStore.gitRepoRoot(for: expanded) ?? ArtifactStore.normalizedPath(expanded)
+            }
+        let records = store.listRecords(repoRoot: repoRoot, limit: limit)
+        return .ok([
+            "root_path": store.rootPath,
+            "count": records.count,
+            "records": records.map { v2ArtifactRecordPayload($0, store: store) }
+        ])
+    }
+
+    private func v2ArtifactRecordPayload(_ record: ArtifactRecord, store: ArtifactStore) -> [String: Any] {
+        [
+            "id": record.id,
+            "created_at": record.createdAt,
+            "title": record.title,
+            "kind": record.kind.rawValue,
+            "relative_path": record.file,
+            "file_path": store.absolutePath(for: record),
+            "file_exists": FileManager.default.fileExists(atPath: store.absolutePath(for: record)),
+            "origin": [
+                "cwd": v2OrNull(record.origin.cwd),
+                "repo_root": v2OrNull(record.origin.repoRoot),
+                "workspace_id": v2OrNull(record.origin.workspaceId),
+                "surface_id": v2OrNull(record.origin.surfaceId)
+            ]
+        ]
     }
 
     private func v2IsDiffViewerURL(_ url: URL?) -> Bool {
@@ -7482,6 +8181,509 @@ class TerminalController {
         }
 
         return .ok(result)
+    }
+
+    private nonisolated func v2SurfaceCommandOnSocketWorker(method: String, params: [String: Any]) -> V2CallResult {
+        switch method {
+        case "surface.screenshot":
+            return v2SurfaceScreenshot(params: params)
+        case "surface.ingest":
+            return v2SurfaceIngest(params: params)
+        case "surface.text", "surface.read_text":
+            return v2SurfaceText(params: params)
+        default:
+            return .err(code: "invalid_dispatch", message: "Unhandled socket-worker surface method \(method)", data: nil)
+        }
+    }
+
+    private nonisolated func v2AttachEncodedSurfaceImage(
+        _ image: V2EncodedSurfaceImage,
+        to result: inout [String: Any],
+        includeBase64: Bool
+    ) {
+        if includeBase64 {
+            result[image.format.base64Key] = image.data.base64EncodedString()
+        }
+        result["format"] = image.format.rawValue
+        result["mime_type"] = image.format.mimeType
+        result["file_extension"] = image.format.fileExtension
+        result["byte_count"] = image.data.count
+        result["width"] = image.width
+        result["height"] = image.height
+        result["original_width"] = image.originalWidth
+        result["original_height"] = image.originalHeight
+        result["aspect_ratio"] = image.aspectRatio
+        result["profile"] = image.profile
+        if let maxDimension = image.maxDimension {
+            result["max_dimension"] = maxDimension
+        }
+        if let jpegQuality = image.jpegQuality {
+            result["jpeg_quality"] = jpegQuality
+        }
+        var compression: [String: Any] = [
+            "format": image.format.rawValue,
+            "lossless": image.format == .png,
+            "resized": image.width != image.originalWidth || image.height != image.originalHeight
+        ]
+        if let jpegQuality = image.jpegQuality {
+            compression["jpeg_quality"] = jpegQuality
+        }
+        if let maxDimension = image.maxDimension {
+            compression["max_dimension"] = maxDimension
+        }
+        result["compression"] = compression
+    }
+
+    private nonisolated func v2EncodedSurfaceImage(from payload: [String: Any]) -> V2EncodedSurfaceImage? {
+        let formatRaw = (payload["format"] as? String)?.lowercased() ?? "png"
+        let format: V2SurfaceImageFormat
+        switch formatRaw {
+        case "png":
+            format = .png
+        case "jpg", "jpeg":
+            format = .jpeg
+        default:
+            return nil
+        }
+        let base64 = payload[format.base64Key] as? String
+            ?? payload["png_base64"] as? String
+            ?? payload["jpeg_base64"] as? String
+        guard let base64,
+              let data = Data(base64Encoded: base64),
+              let width = payload["width"] as? Int,
+              let height = payload["height"] as? Int else {
+            return nil
+        }
+        return V2EncodedSurfaceImage(
+            data: data,
+            format: format,
+            width: width,
+            height: height,
+            originalWidth: payload["original_width"] as? Int ?? width,
+            originalHeight: payload["original_height"] as? Int ?? height,
+            jpegQuality: payload["jpeg_quality"] as? Double,
+            maxDimension: payload["max_dimension"] as? Int,
+            profile: payload["profile"] as? String ?? "unknown"
+        )
+    }
+
+    private nonisolated func v2SurfaceIngestPromptBlock(
+        surfacePayload: [String: Any],
+        screenshotPayload: [String: Any]?,
+        textPayload: [String: Any]?
+    ) -> String {
+        let surfaceRef = surfacePayload["surface_ref"] as? String ?? surfacePayload["surface_id"] as? String ?? "unknown"
+        let surfaceType = surfacePayload["surface_type"] as? String ?? "unknown"
+        var lines: [String] = []
+        lines.append("cmux surface ingest")
+        lines.append("surface: \(surfaceRef) (\(surfaceType))")
+        if let title = surfacePayload["title"] as? String, !title.isEmpty {
+            lines.append("title: \(title)")
+        }
+        if let screenshotPayload {
+            let format = screenshotPayload["format"] as? String ?? "png"
+            let width = screenshotPayload["width"] as? Int ?? 0
+            let height = screenshotPayload["height"] as? Int ?? 0
+            let ratio = screenshotPayload["aspect_ratio"] as? Double ?? 0
+            let bytes = screenshotPayload["byte_count"] as? Int ?? 0
+            lines.append("image: \(format), \(width)x\(height) px, aspect_ratio=\(String(format: "%.4f", ratio)), bytes=\(bytes)")
+            if let imagePath = screenshotPayload["path"] as? String {
+                lines.append("image_path: \(imagePath)")
+            }
+        }
+        if let textPayload {
+            let source = textPayload["source"] as? String ?? "unknown"
+            let text = textPayload["text"] as? String ?? ""
+            lines.append("text: \(text.count) chars from \(source)")
+            if let textPath = textPayload["text_path"] as? String {
+                lines.append("text_path: \(textPath)")
+            }
+        }
+        if screenshotPayload != nil {
+            lines.append("Use extracted text first. Use the image for layout, visual state, and OCR only where text extraction is incomplete.")
+        } else {
+            lines.append("Use extracted text as the surface snapshot. No image was captured for this ingest.")
+        }
+        return lines.joined(separator: "\n")
+    }
+
+    private nonisolated func v2SurfaceScreenshot(params: [String: Any]) -> V2CallResult {
+        let encodingResult = v2SurfaceImageEncoding(params: params)
+        if let error = encodingResult.error {
+            return error
+        }
+        guard let encoding = encodingResult.encoding else {
+            return .err(code: "internal_error", message: "Image encoding setup failed", data: nil)
+        }
+
+        let resolved = v2SurfacePanelContext(params: params)
+        if let error = resolved.error {
+            return error
+        }
+        guard let ctx = resolved.context else {
+            return .err(code: "internal_error", message: "Surface operation failed", data: nil)
+        }
+
+        let capturedImage: NSImage?
+        if let terminalPanel = ctx.terminalPanel {
+            capturedImage = v2MainSync {
+                var cgImage = terminalPanel.hostedView.debugCopyIOSurfaceCGImage()
+                if cgImage == nil {
+                    terminalPanel.surface.forceRefresh(reason: "terminalController.surfaceScreenshotRetry")
+                    cgImage = terminalPanel.hostedView.debugCopyIOSurfaceCGImage()
+                }
+                guard let cgImage else { return nil }
+                return self.v2Image(from: cgImage)
+            }
+        } else if let browserPanel = ctx.browserPanel {
+            let snapshotResult: NSImage?? = v2AwaitCallback(timeout: 15.0) { finish in
+                v2MainSync {
+                    browserPanel.captureAutomationVisibleViewportSnapshot { result in
+                        switch result {
+                        case .success(let image):
+                            finish(image)
+                        case .failure:
+                            finish(nil)
+                        }
+                    }
+                }
+            }
+            guard let snapshotResult else {
+                return .err(code: "timeout", message: "Timed out waiting for snapshot", data: nil)
+            }
+            guard let snapshotImage = snapshotResult else {
+                return .err(code: "internal_error", message: "Failed to capture snapshot", data: nil)
+            }
+            capturedImage = snapshotImage
+        } else if let artifactPanel = ctx.artifactPanel {
+            let snapshotResult: NSImage?? = v2AwaitCallback(timeout: 15.0) { finish in
+                v2MainSync {
+                    artifactPanel.rendererSession.captureVisibleSnapshot { result in
+                        switch result {
+                        case .success(let image):
+                            finish(image)
+                        case .failure:
+                            finish(nil)
+                        }
+                    }
+                }
+            }
+            guard let snapshotResult else {
+                return .err(code: "timeout", message: "Timed out waiting for snapshot", data: nil)
+            }
+            guard let snapshotImage = snapshotResult else {
+                return .err(code: "internal_error", message: "Failed to capture snapshot", data: nil)
+            }
+            capturedImage = snapshotImage
+        } else {
+            return .err(
+                code: "not_supported",
+                message: "Surface type does not support screenshots yet",
+                data: ["surface_id": ctx.surfaceId.uuidString, "surface_type": ctx.surfaceType]
+            )
+        }
+
+        guard let capturedImage,
+              let encodedImage = v2EncodeSurfaceImage(capturedImage, encoding: encoding) else {
+            return .err(code: "internal_error", message: "Failed to encode snapshot", data: nil)
+        }
+
+        var result = v2SurfaceBasePayload(ctx)
+        v2AttachEncodedSurfaceImage(encodedImage, to: &result, includeBase64: v2Bool(params, "include_base64") ?? true)
+
+        let screenshotsDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("cmux-surface-screenshots", isDirectory: true)
+        if (try? FileManager.default.createDirectory(at: screenshotsDirectory, withIntermediateDirectories: true)) != nil {
+            bestEffortPruneTemporaryFiles(in: screenshotsDirectory)
+            let timestampMs = Int(Date().timeIntervalSince1970 * 1000)
+            let shortSurfaceId = String(ctx.surfaceId.uuidString.prefix(8))
+            let shortRandomId = String(UUID().uuidString.prefix(8))
+            let safeType = ctx.surfaceType.replacingOccurrences(of: "/", with: "-")
+            let filename = "\(safeType)-\(shortSurfaceId)-\(timestampMs)-\(shortRandomId).\(encodedImage.format.fileExtension)"
+            let imageURL = screenshotsDirectory.appendingPathComponent(filename, isDirectory: false)
+            if (try? encodedImage.data.write(to: imageURL, options: .atomic)) != nil {
+                result["path"] = imageURL.path
+                result["url"] = imageURL.absoluteString
+            }
+        }
+
+        if v2Bool(params, "audit") == true,
+           let audit = v2MaterializeSurfaceAudit(
+               payload: result,
+               image: encodedImage,
+               text: nil,
+               textSource: nil,
+               reason: v2String(params, "audit_reason") ?? "surface.screenshot"
+           ) {
+            result["audit"] = audit
+        }
+
+        return .ok(result)
+    }
+
+    private nonisolated func v2SurfaceIngest(params: [String: Any]) -> V2CallResult {
+        let includeText = v2Bool(params, "include_text") ?? true
+        let includeScreenshot = v2Bool(params, "include_screenshot") ?? true
+        let includeBase64 = v2Bool(params, "include_base64") ?? false
+        let auditEnabled = v2Bool(params, "audit") ?? true
+
+        var textPayload: [String: Any]?
+        var textError: [String: Any]?
+        if includeText {
+            var textParams = params
+            if textParams["lines"] == nil && textParams["line_limit"] == nil {
+                textParams["lines"] = 200
+            }
+            if textParams["scrollback"] == nil {
+                textParams["scrollback"] = true
+            }
+            switch v2SurfaceText(params: textParams) {
+            case .ok(let payload):
+                textPayload = payload as? [String: Any]
+            case .err(let code, let message, let data):
+                textError = ["code": code, "message": message, "data": data ?? NSNull()]
+            }
+        }
+
+        var screenshotPayload: [String: Any]?
+        var screenshotError: [String: Any]?
+        var encodedImage: V2EncodedSurfaceImage?
+        if includeScreenshot {
+            var screenshotParams = params
+            if screenshotParams["profile"] == nil {
+                screenshotParams["profile"] = "llm"
+            }
+            if screenshotParams["format"] == nil && screenshotParams["image_format"] == nil {
+                screenshotParams["format"] = "png"
+            }
+            if screenshotParams["max_dimension"] == nil &&
+                screenshotParams["maxDimension"] == nil &&
+                screenshotParams["max_image_dimension"] == nil {
+                screenshotParams["max_dimension"] = 2048
+            }
+            screenshotParams["include_base64"] = true
+            screenshotParams["audit"] = false
+            switch v2SurfaceScreenshot(params: screenshotParams) {
+            case .ok(let payload):
+                if let dict = payload as? [String: Any] {
+                    screenshotPayload = dict
+                    encodedImage = v2EncodedSurfaceImage(from: dict)
+                }
+            case .err(let code, let message, let data):
+                screenshotError = ["code": code, "message": message, "data": data ?? NSNull()]
+            }
+        }
+
+        guard textPayload != nil || screenshotPayload != nil else {
+            var errorData: [String: Any] = [:]
+            if let textError {
+                errorData["text_error"] = textError
+            }
+            if let screenshotError {
+                errorData["screenshot_error"] = screenshotError
+            }
+            return .err(
+                code: "not_supported",
+                message: "Surface does not support text or screenshot ingest",
+                data: errorData
+            )
+        }
+
+        let basePayload = screenshotPayload ?? textPayload ?? [:]
+        var result = v2SurfaceBasePayloadFromPayload(basePayload)
+
+        var sanitizedScreenshotPayload = screenshotPayload
+        if includeBase64 == false {
+            sanitizedScreenshotPayload?.removeValue(forKey: "png_base64")
+            sanitizedScreenshotPayload?.removeValue(forKey: "jpeg_base64")
+        }
+
+        var sanitizedTextPayload = textPayload
+        if sanitizedTextPayload != nil {
+            sanitizedTextPayload?.removeValue(forKey: "base64")
+        }
+
+        let textValue = textPayload?["text"] as? String
+        let textSource = textPayload?["source"] as? String
+
+        if auditEnabled {
+            var auditPayload = result
+            if let sanitizedScreenshotPayload {
+                auditPayload["screenshot"] = sanitizedScreenshotPayload
+            }
+            if let sanitizedTextPayload {
+                var textMetadata = sanitizedTextPayload
+                textMetadata.removeValue(forKey: "text")
+                auditPayload["text"] = textMetadata
+            }
+            if let audit = v2MaterializeSurfaceAudit(
+                payload: auditPayload,
+                image: encodedImage,
+                text: textValue,
+                textSource: textSource,
+                reason: v2String(params, "audit_reason") ?? "surface.ingest"
+            ) {
+                result["audit"] = audit
+                if let imagePath = audit["image_path"] as? String {
+                    sanitizedScreenshotPayload?["path"] = imagePath
+                    sanitizedScreenshotPayload?["url"] = URL(fileURLWithPath: imagePath).absoluteString
+                }
+                if let textPath = audit["text_path"] as? String {
+                    sanitizedTextPayload?["text_path"] = textPath
+                    sanitizedTextPayload?["text_url"] = URL(fileURLWithPath: textPath).absoluteString
+                }
+            }
+        }
+
+        if let sanitizedTextPayload {
+            result["text"] = sanitizedTextPayload
+        }
+        if let sanitizedScreenshotPayload {
+            result["screenshot"] = sanitizedScreenshotPayload
+        }
+        if let textError {
+            result["text_error"] = textError
+        }
+        if let screenshotError {
+            result["screenshot_error"] = screenshotError
+        }
+        result["prompt"] = v2SurfaceIngestPromptBlock(
+            surfacePayload: result,
+            screenshotPayload: sanitizedScreenshotPayload,
+            textPayload: sanitizedTextPayload
+        )
+        result["llm_guidance"] = [
+            "prefer_text": true,
+            "use_image_for": ["layout", "visual_state", "ocr_gaps"],
+            "default_profile": "llm",
+            "default_max_dimension": 2048
+        ]
+        return .ok(result)
+    }
+
+    private nonisolated func v2SurfaceText(params: [String: Any]) -> V2CallResult {
+        let includeScrollback = v2Bool(params, "scrollback") ?? false
+        let lineLimit = v2Int(params, "lines") ?? v2Int(params, "line_limit")
+        if let lineLimit, lineLimit <= 0 {
+            return .err(code: "invalid_params", message: "lines must be greater than 0", data: nil)
+        }
+        let textMode = (v2String(params, "mode") ?? v2String(params, "text_mode") ?? "source").lowercased()
+
+        let resolved = v2SurfacePanelContext(params: params)
+        if let error = resolved.error {
+            return error
+        }
+        guard let ctx = resolved.context else {
+            return .err(code: "internal_error", message: "Surface operation failed", data: nil)
+        }
+
+        let text: String
+        let source: String
+        if let terminalPanel = ctx.terminalPanel {
+            let snapshot = v2MainSync {
+                readTerminalTextRawSnapshot(terminalPanel: terminalPanel, includeScrollback: includeScrollback || lineLimit != nil)
+            }
+            guard let snapshot else {
+                return .err(code: "internal_error", message: "Failed to read terminal text", data: nil)
+            }
+            switch Self.terminalTextPayload(
+                from: snapshot,
+                includeScrollback: includeScrollback || lineLimit != nil,
+                lineLimit: lineLimit
+            ) {
+            case .success(let payload):
+                text = payload.text
+                source = includeScrollback || lineLimit != nil ? "terminal_scrollback" : "terminal_viewport"
+            case .failure(let error):
+                return .err(code: "internal_error", message: error.message, data: nil)
+            }
+        } else if ctx.browserPanel != nil, let browserWebView = ctx.browserWebView {
+            let selector = v2String(params, "selector")
+            let script: String
+            if let selector {
+                let selectorLiteral = v2JSONLiteral(selector)
+                script = """
+                (() => {
+                  const el = document.querySelector(\(selectorLiteral));
+                  if (!el) return { ok: false, error: 'not_found' };
+                  return { ok: true, value: String(el.innerText || el.textContent || '') };
+                })()
+                """
+            } else {
+                script = """
+                (() => ({ ok: true, value: String((document.body && (document.body.innerText || document.body.textContent)) || (document.documentElement && document.documentElement.textContent) || '') }))()
+                """
+            }
+            switch v2RunJavaScript(browserWebView, script: script, timeout: 5.0, world: .page) {
+            case .failure(let message):
+                return .err(code: "js_error", message: message, data: nil)
+            case .success(let value):
+                guard let dict = value as? [String: Any],
+                      let ok = dict["ok"] as? Bool,
+                      ok else {
+                    return .err(code: "not_found", message: "Element not found", data: ["selector": selector ?? ""])
+                }
+                text = dict["value"] as? String ?? ""
+                source = selector == nil ? "browser_document" : "browser_selector"
+            }
+        } else if let artifactPanel = ctx.artifactPanel {
+            if textMode == "rendered" {
+                let renderedResult: String?? = v2AwaitCallback(timeout: 5.0) { finish in
+                    v2MainSync {
+                        artifactPanel.rendererSession.renderedText { result in
+                            switch result {
+                            case .success(let text):
+                                finish(text)
+                            case .failure:
+                                finish(nil)
+                            }
+                        }
+                    }
+                }
+                guard let renderedResult else {
+                    return .err(code: "timeout", message: "Timed out waiting for rendered text", data: nil)
+                }
+                guard let renderedText = renderedResult else {
+                    return .err(code: "internal_error", message: "Failed to read rendered text", data: nil)
+                }
+                text = renderedText
+                source = "artifact_rendered"
+            } else {
+                text = v2MainSync { artifactPanel.source }
+                source = "artifact_source"
+            }
+        } else if let markdownPanel = ctx.markdownPanel {
+            text = v2MainSync { markdownPanel.textContent.isEmpty ? markdownPanel.content : markdownPanel.textContent }
+            source = "markdown_source"
+        } else if let filePreviewPanel = ctx.filePreviewPanel {
+            text = v2MainSync {
+                if !filePreviewPanel.textContent.isEmpty {
+                    return filePreviewPanel.textContent
+                }
+                return Self.readUTF8ishFile(path: filePreviewPanel.filePath) ?? ""
+            }
+            source = "file_preview_source"
+        } else {
+            return .err(
+                code: "not_supported",
+                message: "Surface type does not support text ingest yet",
+                data: ["surface_id": ctx.surfaceId.uuidString, "surface_type": ctx.surfaceType]
+            )
+        }
+
+        let limited = lineLimit.map { Self.tailTerminalLines(text, maxLines: $0) } ?? text
+        var result = v2SurfaceBasePayload(ctx)
+        result["text"] = limited
+        result["base64"] = limited.data(using: .utf8)?.base64EncodedString() ?? ""
+        result["source"] = source
+        result["scrollback"] = ctx.terminalPanel != nil && (includeScrollback || lineLimit != nil)
+        return .ok(result)
+    }
+
+    nonisolated private static func readUTF8ishFile(path: String) -> String? {
+        guard let data = try? Data(contentsOf: URL(fileURLWithPath: path)) else { return nil }
+        return String(data: data, encoding: .utf8)
+            ?? String(data: data, encoding: .isoLatin1)
     }
 
     private nonisolated func v2BrowserGetText(params: [String: Any]) -> V2CallResult {
