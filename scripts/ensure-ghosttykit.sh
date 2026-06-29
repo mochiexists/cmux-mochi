@@ -58,12 +58,6 @@ if [[ ! -d "$PROJECT_DIR/ghostty" ]]; then
   exit 1
 fi
 
-if ! command -v zig >/dev/null 2>&1; then
-  echo "Error: zig is not installed." >&2
-  echo "Install via: brew install zig" >&2
-  exit 1
-fi
-
 if [[ ! -f "$PROJECT_DIR/ghostty/include/ghostty.h" ]]; then
   echo "error: ghostty/include/ghostty.h is missing. Run ./scripts/setup.sh first." >&2
   exit 1
@@ -108,6 +102,7 @@ LEGACY_LOCAL_SHA_STAMP="$LOCAL_XCFRAMEWORK/.ghostty_sha"
 LOCK_DIR="$CACHE_ROOT/$GHOSTTY_KEY.lock"
 GHOSTTYKIT_CHECKSUMS_FILE="${CMUX_GHOSTTYKIT_CHECKSUMS_FILE:-$SCRIPT_DIR/ghosttykit-checksums.txt}"
 GHOSTTYKIT_ARCHIVE_VALIDATOR="${CMUX_GHOSTTYKIT_ARCHIVE_VALIDATOR:-$SCRIPT_DIR/validate-xcframework-archive.py}"
+SKIP_ZIG_BUILD="${CMUX_SKIP_ZIG_BUILD:-0}"
 
 mkdir -p "$CACHE_ROOT"
 
@@ -218,7 +213,20 @@ else
     echo "==> Seeding cache from existing local GhosttyKit.xcframework (build key matches)"
   elif try_fetch_prebuilt_xcframework; then
     echo "==> Seeding cache from prebuilt GhosttyKit.xcframework"
+  elif [[ "$SKIP_ZIG_BUILD" == "1" && -d "$LOCAL_XCFRAMEWORK" ]]; then
+    echo "==> Reusing existing local GhosttyKit.xcframework (CMUX_SKIP_ZIG_BUILD=1; build key mismatch)" >&2
+    CACHE_XCFRAMEWORK="$LOCAL_XCFRAMEWORK"
   else
+    if [[ "$SKIP_ZIG_BUILD" == "1" ]]; then
+      echo "error: GhosttyKit.xcframework is missing and CMUX_SKIP_ZIG_BUILD=1 forbids rebuilding it." >&2
+      echo "Run ./scripts/setup.sh or unset CMUX_SKIP_ZIG_BUILD to build GhosttyKit." >&2
+      exit 1
+    fi
+    if ! command -v zig >/dev/null 2>&1; then
+      echo "Error: zig is not installed." >&2
+      echo "Install via: brew install zig" >&2
+      exit 1
+    fi
     echo "==> Building GhosttyKit.xcframework (this may take a few minutes)..."
     (
       cd ghostty
@@ -233,13 +241,15 @@ else
     exit 1
   fi
 
-  TMP_DIR="$(mktemp -d "$CACHE_ROOT/.ghosttykit-tmp.XXXXXX")"
-  mkdir -p "$CACHE_DIR"
-  cp -R "$LOCAL_XCFRAMEWORK" "$TMP_DIR/GhosttyKit.xcframework"
-  rm -rf "$CACHE_XCFRAMEWORK"
-  mv "$TMP_DIR/GhosttyKit.xcframework" "$CACHE_XCFRAMEWORK"
-  rmdir "$TMP_DIR"
-  echo "==> Cached GhosttyKit.xcframework at $CACHE_XCFRAMEWORK"
+  if [[ "$CACHE_XCFRAMEWORK" != "$LOCAL_XCFRAMEWORK" ]]; then
+    TMP_DIR="$(mktemp -d "$CACHE_ROOT/.ghosttykit-tmp.XXXXXX")"
+    mkdir -p "$CACHE_DIR"
+    cp -R "$LOCAL_XCFRAMEWORK" "$TMP_DIR/GhosttyKit.xcframework"
+    rm -rf "$CACHE_XCFRAMEWORK"
+    mv "$TMP_DIR/GhosttyKit.xcframework" "$CACHE_XCFRAMEWORK"
+    rmdir "$TMP_DIR"
+    echo "==> Cached GhosttyKit.xcframework at $CACHE_XCFRAMEWORK"
+  fi
 fi
 
 MACOS_ARCHIVE="$CACHE_XCFRAMEWORK/macos-arm64_x86_64/libghostty.a"

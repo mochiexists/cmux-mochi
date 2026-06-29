@@ -8493,8 +8493,11 @@ final class Workspace: Identifiable, ObservableObject {
         orientation: SplitOrientation,
         insertFirst: Bool,
         filePath: String,
-        kind: ArtifactKind? = nil
+        kind: ArtifactKind? = nil,
+        focus: Bool = true
     ) -> ArtifactPanel? {
+        let previousFocusedPanelId = focusedPanelId
+        let previousHostedView = focusedTerminalPanel?.hostedView
         let artifactPanel = ArtifactPanel(workspaceId: id, filePath: filePath, kind: kind)
         panels[artifactPanel.id] = artifactPanel
         panelTitles[artifactPanel.id] = artifactPanel.displayTitle
@@ -8511,20 +8514,32 @@ final class Workspace: Identifiable, ObservableObject {
 
         isProgrammaticSplit = true
         defer { isProgrammaticSplit = false }
-        guard bonsplitController.splitPane(
+        guard let newPaneId = bonsplitController.splitPane(
             paneId,
             orientation: orientation,
             withTab: newTab,
             insertFirst: insertFirst
-        ) != nil else {
+        ) else {
             panels.removeValue(forKey: artifactPanel.id)
             panelTitles.removeValue(forKey: artifactPanel.id)
             removeSurfaceMapping(forSurfaceId: newTab.id)
             return nil
         }
 
-        bonsplitController.selectTab(newTab.id)
-        focusPanel(artifactPanel.id)
+        publishCmuxSplitCreated(newPaneId, sourcePaneId: paneId, orientation: orientation, surfaceId: artifactPanel.id, kind: SurfaceKind.artifact.rawValue, origin: "artifact_split", focused: focus)
+        if focus {
+            suppressReparentFocusUntilLayoutFollowUp(
+                previousHostedView,
+                reason: "workspace.artifactSplitReparent"
+            )
+            focusPanel(artifactPanel.id)
+        } else {
+            preserveFocusAfterNonFocusSplit(
+                preferredPanelId: previousFocusedPanelId,
+                splitPanelId: artifactPanel.id,
+                previousHostedView: previousHostedView
+            )
+        }
         return artifactPanel
     }
 
@@ -8558,10 +8573,32 @@ final class Workspace: Identifiable, ObservableObject {
                 orientation: split.orientation,
                 insertFirst: split.insertFirst,
                 filePath: created.path,
-                kind: kind
+                kind: kind,
+                focus: focus
             )
         }
         return newArtifactSurface(inPane: paneId, filePath: created.path, kind: kind, focus: focus)
+    }
+
+    @discardableResult
+    func openOrFocusArtifactSurface(
+        inPane paneId: PaneID,
+        filePath: String,
+        kind: ArtifactKind? = nil,
+        focus: Bool = true
+    ) -> ArtifactPanel? {
+        let canonical = (filePath as NSString).resolvingSymlinksInPath
+        for (existingId, panel) in panels {
+            guard let artifactPanel = panel as? ArtifactPanel else { continue }
+            if (artifactPanel.filePath as NSString).resolvingSymlinksInPath == canonical {
+                if focus {
+                    focusPanel(existingId)
+                }
+                return artifactPanel
+            }
+        }
+
+        return newArtifactSurface(inPane: paneId, filePath: filePath, kind: kind, focus: focus)
     }
 
     @discardableResult
@@ -11686,12 +11723,11 @@ extension Workspace: BonsplitDelegate {
     /// reading the backing panel, then delegating to the pure resolver.
     private func tabContextActionTarget(tabId: TabID) -> (path: String, isFile: Bool)? {
         let panel = panelIdFromSurfaceId(tabId).flatMap { panels[$0] }
-        // Any file-backed panel (markdown, file preview, …) conforms to
-        // FilePreviewTextEditingPanel and exposes its file via `filePath`, so
-        // every such tab gets Reveal in Finder / Copy Path without enumerating
-        // concrete panel types here.
+        // Any file-backed panel (markdown, file preview, artifact, …) exposes
+        // `filePath`, so every such tab gets Reveal in Finder / Copy Path
+        // without enumerating concrete panel types here.
         return Self.tabContextActionTarget(
-            filePath: (panel as? FilePreviewTextEditingPanel)?.filePath,
+            filePath: (panel as? FileBackedPanel)?.filePath,
             browserURL: (panel as? BrowserPanel)?.currentURL,
             directory: directoryForTabContextAction(tabId: tabId)
         )

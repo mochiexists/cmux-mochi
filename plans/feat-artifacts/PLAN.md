@@ -4,7 +4,9 @@ A Claude-artifacts-style pane for cmux: a window that live-renders a throwaway
 React/TSX UI, with every artifact archived to a single **global** store (Codex
 session-history style) and recallable via a conductor-aware skill.
 
-Status: DRAFT for review. No code written yet.
+Status: IN PROGRESS. The core React/HTML artifact renderer exists; compatibility
+work is expanding it toward Claude artifact formats while keeping Markdown on
+the existing MarkdownPanel path.
 
 ---
 
@@ -145,10 +147,31 @@ Constraints to enforce/document (from the brief): no `localStorage`/
 `sessionStorage`/IndexedDB/cookies (use React state or `window.storage`); no
 `<form>` in React artifacts; default export required.
 
-Other formats the brief lists already have homes in cmux — route rather than
-reimplement: `.md` → existing `MarkdownPanel` (Mermaid already supported there),
-`.svg`/`.pdf` → existing `FilePreviewPanel`. The artifacts feature owns the
-**React + HTML** live-render path; `kind` in `index.jsonl` selects the renderer.
+Current compatibility routing:
+- `.tsx`/`.jsx`/`.ts`/`.js` → React artifact runtime.
+- `.html`/`.htm` → HTML iframe runtime.
+- `.svg` → SVG runtime wrapper in the artifact shell.
+- `.mermaid`/`.mmd` → Mermaid runtime wrapper in the artifact shell.
+- Plain code/text extensions → readable, syntax-highlighted code artifact pane
+  with plain monospace fallback if the highlighter cannot load.
+- `.pdf`/`.docx`/`.xlsx`/`.pptx` and similar generated document files → file
+  artifact pane with Open File and Save to Downloads actions; they are not
+  compiled or rendered as React.
+- `.md` stays on the existing `MarkdownPanel` path rather than being duplicated
+  as an artifact kind.
+
+Implemented compatibility storage/history:
+- `window.storage` is available inside React/HTML/SVG/Mermaid artifact iframes
+  as async `get`, `set`, `delete`, and `list`, backed by
+  `~/.config/cmux/artifacts/storage/{personal,shared}/`.
+- Artifact source changes are snapshotted into
+  `~/.config/cmux/artifacts/versions/` with an append-only revision index. The
+  live source file remains mutable, but the previous contents are retained for
+  history/recovery.
+
+TODOs intentionally left out of this compatibility pass:
+- `window.claude` / in-artifact LLM calls. Keep unsupported for now; add only
+  after a separate auth/runtime design.
 
 ---
 

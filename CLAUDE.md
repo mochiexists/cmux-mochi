@@ -134,6 +134,7 @@ This makes it visible in the GitHub PR UI (Commits tab, check statuses) that the
 ## Shared behavior policy
 
 - When a behavior is exposed through multiple entrypoints (keyboard shortcut, command palette, context menu, CLI, settings, debug menu), implement one shared action/model path and verify every entrypoint that should invoke it. Do not patch one surface while leaving the others with duplicated logic.
+- Any new file-backed pane or surface must expose tab context-menu actions for Reveal in Finder and Copy Path through the shared file-backed panel path, and include behavior coverage for those actions.
 - For optimistic UI or CLI updates, keep one mutation path, record pending state with a request id or previous snapshot, reconcile from the authoritative result, and handle failure with an explicit rollback or error state. Do not let each entrypoint maintain its own optimistic copy.
 - When a user says tests missed a bug, add or adjust behavior-level coverage around the exact repro path before claiming the fix is complete.
 

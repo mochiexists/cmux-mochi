@@ -5325,7 +5325,7 @@ struct CMUXCLI {
         }
     }
 
-    /// `cmux artifact new [--title <t>] [--kind react|html] [--direction <dir>]
+    /// `cmux artifact new [--title <t>] [--kind react|html|svg|mermaid|code] [--direction <dir>]
     /// [--surface <id>] [--workspace <id>] [--window <id>] [--focus <bool>]`
     /// — scaffold a new artifact in the global store and open it beside the
     /// (current or named) surface.
@@ -5339,20 +5339,123 @@ struct CMUXCLI {
         let (titleOpt, argsAfterTitle) = parseOption(args, name: "--title")
         let (kindOpt, argsAfterKind) = parseOption(argsAfterTitle, name: "--kind")
         let (templateOpt, argsAfterTemplate) = parseOption(argsAfterKind, name: "--template")
-        let (workspaceOpt, argsAfterWorkspace) = parseOption(argsAfterTemplate, name: "--workspace")
+        let (repoOpt, argsAfterRepo) = parseOption(argsAfterTemplate, name: "--repo")
+        let (limitOpt, argsAfterLimit) = parseOption(argsAfterRepo, name: "--limit")
+        let (workspaceOpt, argsAfterWorkspace) = parseOption(argsAfterLimit, name: "--workspace")
         let (windowOpt, argsAfterWindow) = parseOption(argsAfterWorkspace, name: "--window")
         let (surfaceOpt, argsAfterSurface) = parseOption(argsAfterWindow, name: "--surface")
         let (directionOpt, argsAfterDirection) = parseOption(argsAfterSurface, name: "--direction")
         let (focusOpt, argsAfterFocus) = parseOption(argsAfterDirection, name: "--focus")
         args = argsAfterFocus
 
-        // Only "new" is supported today; allow it explicitly or implicitly.
-        if let first = args.first, first.lowercased() == "new" {
+        let subcommand: String
+        if let first = args.first {
+            let lower = first.lowercased()
+            if ["new", "open", "list"].contains(lower) {
+                subcommand = lower
+                args = Array(args.dropFirst())
+            } else if first.hasPrefix("-") {
+                throw CLIError(message: "artifact: unknown flag '\(first)'. Usage: cmux artifact <new|open|list> [options]")
+            } else {
+                subcommand = "open"
+            }
+        } else {
+            subcommand = "new"
+        }
+
+        if subcommand == "list" {
+            if let unknown = args.first {
+                throw CLIError(message: "artifact list: unexpected argument '\(unknown)'. Usage: cmux artifact list [--repo <path>] [--limit N]")
+            }
+            var params: [String: Any] = [:]
+            if let repoOpt, !repoOpt.isEmpty {
+                let expanded = (repoOpt as NSString).expandingTildeInPath
+                params["repo"] = FileManager.default.fileExists(atPath: expanded) ? resolvePath(repoOpt) : expanded
+            }
+            if let limitOpt, !limitOpt.isEmpty {
+                guard let limit = Int(limitOpt), limit >= 0 else {
+                    throw CLIError(message: "artifact list: --limit must be a non-negative integer")
+                }
+                params["limit"] = limit
+            }
+            let payload = try client.sendV2(method: "artifact.list", params: params)
+            if jsonOutput {
+                print(jsonString(formatIDs(payload, mode: idFormat)))
+            } else {
+                let records = payload["records"] as? [[String: Any]] ?? []
+                if records.isEmpty {
+                    print("No artifacts")
+                } else {
+                    for record in records {
+                        let id = record["id"] as? String ?? ""
+                        let kind = record["kind"] as? String ?? ""
+                        let createdAt = record["created_at"] as? String ?? ""
+                        let title = record["title"] as? String ?? ""
+                        let path = record["file_path"] as? String ?? ""
+                        print("\(id)\t\(kind)\t\(createdAt)\t\(title)\t\(path)")
+                    }
+                }
+            }
+            return
+        }
+
+        if subcommand == "open" {
+            guard let rawTarget = args.first, !rawTarget.isEmpty else {
+                throw CLIError(message: "artifact open requires an id or path. Usage: cmux artifact open <id|path> [options]")
+            }
+            let trailing = Array(args.dropFirst())
+            if let extra = trailing.first {
+                throw CLIError(message: "artifact open: unexpected argument '\(extra)'. Usage: cmux artifact open <id|path> [options]")
+            }
+
+            var params: [String: Any] = ["direction": directionOpt ?? "right"]
+            let expandedTarget = (rawTarget as NSString).expandingTildeInPath
+            let absoluteTarget = resolvePath(rawTarget)
+            if FileManager.default.fileExists(atPath: expandedTarget) || FileManager.default.fileExists(atPath: absoluteTarget) {
+                params["path"] = absoluteTarget
+            } else {
+                params["target"] = rawTarget
+            }
+            if let kindOpt, !kindOpt.isEmpty {
+                params["kind"] = kindOpt.lowercased()
+            }
+            let surfaceRaw = surfaceOpt ?? ProcessInfo.processInfo.environment["CMUX_SURFACE_ID"]
+            if let surfaceRaw {
+                if let surface = try normalizeSurfaceHandle(surfaceRaw, client: client) {
+                    params["surface_id"] = surface
+                }
+            }
+            let workspaceRaw = workspaceOpt ?? (windowOpt == nil ? ProcessInfo.processInfo.environment["CMUX_WORKSPACE_ID"] : nil)
+            if let workspaceRaw {
+                if let workspace = try normalizeWorkspaceHandle(workspaceRaw, client: client) {
+                    params["workspace_id"] = workspace
+                }
+            }
+            if let windowRaw = windowOpt {
+                if let window = try normalizeWindowHandle(windowRaw, client: client) {
+                    params["window_id"] = window
+                }
+            }
+            try applyFocusOption(focusOpt, defaultValue: false, to: &params)
+
+            let payload = try client.sendV2(method: "artifact.open", params: params)
+            if jsonOutput {
+                print(jsonString(formatIDs(payload, mode: idFormat)))
+            } else {
+                let surfaceText = formatHandle(payload, kind: "surface", idFormat: idFormat) ?? "unknown"
+                let paneText = formatHandle(payload, kind: "pane", idFormat: idFormat) ?? "unknown"
+                let filePath = (payload["file_path"] as? String) ?? ""
+                print("OK surface=\(surfaceText) pane=\(paneText) path=\(filePath)")
+            }
+            return
+        }
+
+        if subcommand == "new", let first = args.first, first.lowercased() == "new" {
             args = Array(args.dropFirst())
         }
         if let unknown = args.first {
             throw CLIError(
-                message: "artifact: unexpected argument '\(unknown)'. Usage: cmux artifact new [--title <t>] [--kind react|html] [--direction right|down|left|up] [--surface <id>] [--focus <true|false>]"
+                message: "artifact new: unexpected argument '\(unknown)'. Usage: cmux artifact new [--title <t>] [--kind react|html|svg|mermaid|code] [--direction right|down|left|up] [--surface <id>] [--focus <true|false>]"
             )
         }
 
@@ -6576,9 +6679,33 @@ struct CMUXCLI {
         windowOverride: String?
     ) throws {
         guard let subcommand = commandArgs.first?.lowercased() else {
-            throw CLIError(message: "surface requires a subcommand. Try: cmux surface resume show --json")
+            throw CLIError(message: "surface requires a subcommand. Try: cmux surface screenshot --json")
         }
         switch subcommand {
+        case "screenshot", "snapshot":
+            try runSurfaceScreenshotCommand(
+                commandArgs: Array(commandArgs.dropFirst()),
+                client: client,
+                jsonOutput: jsonOutput,
+                idFormat: idFormat,
+                windowOverride: windowOverride
+            )
+        case "text", "read-text", "read_text":
+            try runSurfaceTextCommand(
+                commandArgs: Array(commandArgs.dropFirst()),
+                client: client,
+                jsonOutput: jsonOutput,
+                idFormat: idFormat,
+                windowOverride: windowOverride
+            )
+        case "ingest", "capture":
+            try runSurfaceIngestCommand(
+                commandArgs: Array(commandArgs.dropFirst()),
+                client: client,
+                jsonOutput: jsonOutput,
+                idFormat: idFormat,
+                windowOverride: windowOverride
+            )
         case "resume":
             try runSurfaceResumeCommand(
                 commandArgs: Array(commandArgs.dropFirst()),
@@ -6589,6 +6716,218 @@ struct CMUXCLI {
             )
         default:
             throw CLIError(message: "Unsupported surface subcommand: \(subcommand)")
+        }
+    }
+
+    private func surfaceCommandTargetParams(
+        _ commandArgs: [String],
+        client: SocketClient,
+        windowOverride: String?
+    ) throws -> [String: Any] {
+        var params: [String: Any] = [:]
+        let windowRaw = optionValue(commandArgs, name: "--window") ?? windowOverride
+        let workspaceRaw = optionValue(commandArgs, name: "--workspace")
+            ?? optionValue(commandArgs, name: "--tab")
+        let paneRaw = optionValue(commandArgs, name: "--pane")
+        let surfaceRaw = optionValue(commandArgs, name: "--surface")
+            ?? optionValue(commandArgs, name: "--panel")
+            ?? optionValue(commandArgs, name: "--tab-id")
+            ?? ProcessInfo.processInfo.environment["CMUX_SURFACE_ID"]
+
+        let winId = try normalizeWindowHandle(windowRaw, client: client)
+        if let winId { params["window_id"] = winId }
+        let wsId = try normalizeWorkspaceHandle(workspaceRaw, client: client, windowHandle: winId)
+        if let wsId { params["workspace_id"] = wsId }
+        let paneId = try normalizePaneHandle(paneRaw, client: client, workspaceHandle: wsId, windowHandle: winId)
+        if let paneId { params["pane_id"] = paneId }
+        let sfId = try normalizeSurfaceHandle(surfaceRaw, client: client, workspaceHandle: wsId, windowHandle: winId)
+        if let sfId { params["surface_id"] = sfId }
+        return params
+    }
+
+    private func applySurfaceImageOptions(_ commandArgs: [String], to params: inout [String: Any]) throws {
+        if let format = optionValue(commandArgs, name: "--format") ?? optionValue(commandArgs, name: "--image-format") {
+            let normalized = format.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            guard ["png", "jpg", "jpeg"].contains(normalized) else {
+                throw CLIError(message: "--format must be png or jpeg")
+            }
+            params["format"] = normalized
+        }
+        if let quality = optionValue(commandArgs, name: "--jpeg-quality") ?? optionValue(commandArgs, name: "--quality") {
+            guard let value = Double(quality), value.isFinite else {
+                throw CLIError(message: "--jpeg-quality must be numeric")
+            }
+            params["jpeg_quality"] = value
+        }
+        if let maxDimension = optionValue(commandArgs, name: "--max-dimension") ?? optionValue(commandArgs, name: "--max-image-dimension") {
+            let normalized = maxDimension.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            if normalized == "none" || normalized == "0" {
+                params["max_dimension"] = "none"
+            } else if let value = Int(normalized), value > 0 {
+                params["max_dimension"] = value
+            } else {
+                throw CLIError(message: "--max-dimension must be a positive integer or none")
+            }
+        }
+        if let profile = optionValue(commandArgs, name: "--profile") {
+            params["profile"] = profile
+        }
+        if hasFlag(commandArgs, name: "--include-base64") {
+            params["include_base64"] = true
+        }
+        if hasFlag(commandArgs, name: "--audit") {
+            params["audit"] = true
+        }
+        if hasFlag(commandArgs, name: "--no-audit") {
+            params["audit"] = false
+        }
+        if let auditReason = optionValue(commandArgs, name: "--audit-reason") {
+            params["audit_reason"] = auditReason
+        }
+    }
+
+    private func runSurfaceScreenshotCommand(
+        commandArgs: [String],
+        client: SocketClient,
+        jsonOutput: Bool,
+        idFormat: CLIIDFormat,
+        windowOverride: String?
+    ) throws {
+        var params = try surfaceCommandTargetParams(commandArgs, client: client, windowOverride: windowOverride)
+        try applySurfaceImageOptions(commandArgs, to: &params)
+        let (outPathOpt, _) = parseOption(commandArgs, name: "--out")
+        var payload = try client.sendV2(method: "surface.screenshot", params: params)
+        let includeBase64 = hasFlag(commandArgs, name: "--include-base64")
+
+        func hasText(_ value: String?) -> Bool {
+            guard let value else { return false }
+            return !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
+
+        func writeScreenshot(to destinationURL: URL) throws {
+            if let sourcePath = payload["path"] as? String, hasText(sourcePath) {
+                let sourceURL = URL(fileURLWithPath: sourcePath).standardizedFileURL
+                if sourceURL.path != destinationURL.path {
+                    try FileManager.default.createDirectory(
+                        at: destinationURL.deletingLastPathComponent(),
+                        withIntermediateDirectories: true
+                    )
+                    try? FileManager.default.removeItem(at: destinationURL)
+                    try FileManager.default.copyItem(at: sourceURL, to: destinationURL)
+                }
+                return
+            }
+            let format = (payload["format"] as? String)?.lowercased()
+            let base64Key = format == "jpeg" || format == "jpg" ? "jpeg_base64" : "png_base64"
+            guard let b64 = payload[base64Key] as? String ?? payload["png_base64"] as? String ?? payload["jpeg_base64"] as? String,
+                  let data = Data(base64Encoded: b64) else {
+                throw CLIError(message: "surface screenshot missing image data")
+            }
+            try FileManager.default.createDirectory(
+                at: destinationURL.deletingLastPathComponent(),
+                withIntermediateDirectories: true
+            )
+            try data.write(to: destinationURL, options: .atomic)
+        }
+
+        if let outPathOpt {
+            let outputURL = URL(fileURLWithPath: resolvePath(outPathOpt)).standardizedFileURL
+            try writeScreenshot(to: outputURL)
+            payload["path"] = outputURL.path
+            payload["url"] = outputURL.absoluteString
+        }
+
+        if jsonOutput {
+            var formatted = formatIDs(payload, mode: idFormat) as? [String: Any] ?? payload
+            if includeBase64 == false && (hasText(formatted["path"] as? String) || hasText(formatted["url"] as? String)) {
+                formatted.removeValue(forKey: "png_base64")
+                formatted.removeValue(forKey: "jpeg_base64")
+            }
+            print(jsonString(formatted))
+            return
+        }
+
+        if let outPathOpt {
+            print("OK \(outPathOpt)")
+        } else if let path = payload["path"] as? String, hasText(path) {
+            print("OK \(path)")
+        } else if let url = payload["url"] as? String, hasText(url) {
+            print("OK \(url)")
+        } else {
+            print("OK")
+        }
+    }
+
+    private func runSurfaceIngestCommand(
+        commandArgs: [String],
+        client: SocketClient,
+        jsonOutput: Bool,
+        idFormat: CLIIDFormat,
+        windowOverride: String?
+    ) throws {
+        var params = try surfaceCommandTargetParams(commandArgs, client: client, windowOverride: windowOverride)
+        try applySurfaceImageOptions(commandArgs, to: &params)
+        if hasFlag(commandArgs, name: "--no-text") {
+            params["include_text"] = false
+        }
+        if hasFlag(commandArgs, name: "--no-screenshot") {
+            params["include_screenshot"] = false
+        }
+        if hasFlag(commandArgs, name: "--scrollback") {
+            params["scrollback"] = true
+        }
+        if let lines = optionValue(commandArgs, name: "--lines") ?? optionValue(commandArgs, name: "--line-limit") {
+            guard let value = Int(lines), value > 0 else {
+                throw CLIError(message: "--lines must be a positive integer")
+            }
+            params["lines"] = value
+        }
+        if let selector = optionValue(commandArgs, name: "--selector") {
+            params["selector"] = selector
+        }
+        if let mode = optionValue(commandArgs, name: "--mode") ?? optionValue(commandArgs, name: "--text-mode") {
+            params["mode"] = mode
+        }
+
+        let payload = try client.sendV2(method: "surface.ingest", params: params)
+        if jsonOutput {
+            print(jsonString(formatIDs(payload, mode: idFormat)))
+        } else {
+            print((payload["prompt"] as? String) ?? jsonString(formatIDs(payload, mode: idFormat)))
+        }
+    }
+
+    private func runSurfaceTextCommand(
+        commandArgs: [String],
+        client: SocketClient,
+        jsonOutput: Bool,
+        idFormat: CLIIDFormat,
+        windowOverride: String?
+    ) throws {
+        var params = try surfaceCommandTargetParams(commandArgs, client: client, windowOverride: windowOverride)
+        if hasFlag(commandArgs, name: "--scrollback") {
+            params["scrollback"] = true
+        }
+        if let lines = optionValue(commandArgs, name: "--lines") ?? optionValue(commandArgs, name: "--line-limit") {
+            guard let value = Int(lines), value > 0 else {
+                throw CLIError(message: "--lines must be a positive integer")
+            }
+            params["lines"] = value
+        }
+        if let selector = optionValue(commandArgs, name: "--selector") {
+            params["selector"] = selector
+        }
+        if let mode = optionValue(commandArgs, name: "--mode") ?? optionValue(commandArgs, name: "--text-mode") {
+            params["mode"] = mode
+        }
+
+        let payload = try client.sendV2(method: "surface.text", params: params)
+        if jsonOutput {
+            print(jsonString(formatIDs(payload, mode: idFormat)))
+        } else if hasFlag(commandArgs, name: "--base64") {
+            print((payload["base64"] as? String) ?? "")
+        } else {
+            print((payload["text"] as? String) ?? "")
         }
     }
 
@@ -15477,19 +15816,35 @@ struct CMUXCLI {
             """
         case "surface", "surface-resume":
             return """
-            Usage: cmux surface resume set [flags] -- <argv...>
+            Usage: cmux surface ingest [--json] [flags]
+                   cmux surface screenshot [--out <path>] [--json] [flags]
+                   cmux surface text [--json] [--base64] [flags]
+                   cmux surface resume set [flags] -- <argv...>
                    cmux surface resume set [flags] --shell <command>
                    cmux surface resume show [--json] [flags]
                    cmux surface resume get [--json] [flags]
                    cmux surface resume clear [flags]
 
-            Attach restart command metadata to a terminal surface.
-            Public CLI bindings are stored for inspection and manual restore.
+            Inspect or capture a surface, or attach restart metadata to a terminal surface.
 
             Flags:
               --workspace <id|ref|index>   Workspace context (default: $CMUX_WORKSPACE_ID)
               --surface <id|ref|index>     Surface context (default: $CMUX_SURFACE_ID)
               --window <id|ref|index>      Window context for workspace and surface refs/indexes
+              --pane <id|ref|index>         Pane context; defaults to the pane's selected surface
+              --out <path>                  Screenshot output path
+              --lines <n>                   Limit text output to the last n lines
+              --scrollback                  Include terminal scrollback for text output
+              --selector <css>              Browser text selector
+              --mode <source|rendered>      Artifact text mode (default: source)
+              --format <png|jpeg>           Screenshot encoding format
+              --jpeg-quality <0.1-1.0>      JPEG quality when --format jpeg
+              --max-dimension <n|none>      Downscale longest image side before encoding
+              --profile <name>              Capture profile label (ingest defaults to llm)
+              --include-base64              Keep image bytes in JSON output
+              --audit / --no-audit          Write or skip conductor audit files
+              --no-text                     Ingest screenshot only
+              --no-screenshot               Ingest text only
               --cwd <path>             Working directory for restore (default: $PWD)
               --name <name>            Display name for the binding
               --kind <kind>            Binding kind, for example agent or tmux
@@ -15498,6 +15853,10 @@ struct CMUXCLI {
               --source <source>        Binding source label
 
             Examples:
+              cmux surface ingest --surface surface:2 --json
+              cmux surface screenshot --surface surface:2 --out /tmp/pane.png
+              cmux surface screenshot --surface surface:2 --format jpeg --jpeg-quality 0.9 --max-dimension 2048
+              cmux surface text --surface surface:2 --lines 200
               cmux surface resume set --kind tmux --shell "tmux attach -t work"
               cmux surface resume set --kind opencode --checkpoint ses_123 -- opencode --session ses_123
               cmux surface resume show --json
@@ -16299,16 +16658,22 @@ struct CMUXCLI {
         case "artifact":
             return """
             Usage: cmux artifact new [options]
+                   cmux artifact open <id|path> [options]
+                   cmux artifact list [options]
 
-            Scaffold a new live artifact (a Claude-artifacts-style React/HTML pane)
+            Scaffold a new live artifact (a Claude-artifacts-style rendered pane)
             in the global store (~/.config/cmux/artifacts/) and open it beside the
             current surface. The artifact file hot-reloads in the pane as you (or an
-            agent) edit it.
+            agent) edit it. Existing artifacts can be reopened by short id,
+            store-relative path, absolute path, or filename.
 
             Options:
               --title <text>               Artifact title (used for the filename + heading)
-              --kind <react|html>          Artifact kind (default: react)
-              --template <name>            Seed from a bundled sample (e.g. 'showcase')
+              --kind <react|html|svg|mermaid|code|file>
+                                            Artifact kind (default: react)
+              --template <name>            Seed from a bundled sample (e.g. 'showcase', 'live-events')
+              --repo <path>                Filter list to artifacts from a repo
+              --limit N                    Limit list results
               --workspace <id|ref|index>   Target workspace (default: $CMUX_WORKSPACE_ID)
               --surface <id|ref|index>     Surface to open beside (default: $CMUX_SURFACE_ID / focused)
               --window <id|ref|index>      Target window
@@ -16318,8 +16683,13 @@ struct CMUXCLI {
             Examples:
               cmux artifact new
               cmux artifact new --title "Pricing table" --kind react
+              cmux artifact new --title "Flow" --kind mermaid
               cmux artifact new --template showcase --focus true
-              cmux artifact new --direction down --focus true
+              cmux artifact new --template live-events --focus true
+              cmux artifact open ./diagram.svg --focus true
+              cmux artifact open ./report.pdf --focus true
+              cmux artifact open f6b2ef0a --focus true
+              cmux artifact list --repo . --limit 10
             """
         default:
             return nil
@@ -34495,6 +34865,7 @@ export default function cmuxPiSessionExtension(pi: ExtensionAPI) {
 
           \(bold)\u{2318}N\(reset)\(subdued)                  New workspace\(reset)
           \(bold)\u{2318}T\(reset)\(subdued)                  New tab\(reset)
+          \(bold)\u{2318}\u{21E7}T\(reset)\(subdued)                 Reopen last closed tab/workspace\(reset)
           \(bold)\u{2318}P\(reset)\(subdued)                  Go to workspace\(reset)
           \(bold)\u{2318}B\(reset)\(subdued)                  Toggle Left Sidebar\(reset)
           \(bold)\u{2318}\u{2325}B\(reset)\(subdued)                 Toggle Right Sidebar\(reset)
@@ -34524,7 +34895,7 @@ export default function cmuxPiSessionExtension(pi: ExtensionAPI) {
         print()
         print("  \(mochi) /\\_/\\\(reset)     \(bold)This is the Mochi fork of cmux\(reset)")
         print("  \(mochi)( ^.^ )\(reset)    \(subdued)https://github.com/mochiexists/cmux-mochi (please leave a star ⭐)\(reset)")
-        print("  \(mochi) > ^ <\(reset)     \(tagline)quality-of-life touches for agent-driven work\(reset)")
+        print("  \(mochi) > ^ <\(reset)     \(tagline)practical upgrades for agent-driven workflows\(reset)")
         print()
         print("  \(tagline)Spawn agents fast — yolo aliases, baked into every cmux shell\(reset)")
         print("  \(bold)cxy\(reset)\(subdued)                 codex  --yolo\(reset)")
@@ -34536,14 +34907,14 @@ export default function cmuxPiSessionExtension(pi: ExtensionAPI) {
         print("  \(mochi)•\(reset) Resume mode — defaults to Medium: the resume command is pre-typed, you submit it to re-open the session")
         print("  \(mochi)•\(reset) Scrollback that persists across quits and crashes")
         print("  \(mochi)•\(reset) Pane zoom that survives relaunch")
-        print("  \(mochi)•\(reset) Reveal in Finder / Copy Path on terminal, markdown & local-file tabs")
+        print("  \(mochi)•\(reset) Reveal in Finder / Copy Path on terminal, markdown, artifact & local-file tabs")
+        print("  \(mochi)•\(reset) Artifact panes — cmux artifact new/open/list for React, HTML, SVG, Mermaid, code, and file artifacts")
         print("  \(mochi)•\(reset) Task Manager as a tab or full-area page")
         print("  \(mochi)•\(reset) Always-on CPU / memory readout in the sidebar footer")
         print("  \(mochi)•\(reset) Sidebar spring-load — drag a session onto a workspace to switch")
         print("  \(mochi)•\(reset) One-click \"Open in External Browser\" toggle")
         print("  \(mochi)•\(reset) Copy / Show IDs with workspace, pane, surface, agent session, and resume command details")
         print("  \(mochi)•\(reset) cmux Mochi Conductor skill for driving visible Codex/Claude worker panes")
-        print("  \(mochi)•\(reset) Codex close-and-resume (needs the Mochi Codex fork)")
         print()
 
         print("  \(subdued)Run \(reset)\(bold)cmux --help\(reset)\(subdued) for all commands.\(reset)")
@@ -34908,6 +35279,9 @@ export default function cmuxPiSessionExtension(pi: ExtensionAPI) {
           split-off --surface <id|ref|index> <left|right|up|down> [--workspace <id|ref|index>] [--window <id|ref|index>] [--focus <true|false>]
           reorder-surface --surface <id|ref|index> (--index <n> | --before <id|ref|index> | --after <id|ref|index>) [--workspace <id|ref|index>] [--window <id|ref|index>] [--focus <true|false>]
           tab-action --action <name> [--tab <id|ref|index>] [--surface <id|ref|index>] [--workspace <id|ref|index>] [--window <id|ref|index>] [--title <text>] [--url <url>] [--focus <true|false>]
+          surface ingest [--workspace <id|ref|index>] [--surface <id|ref|index>] [--pane <id|ref|index>] [--window <id|ref|index>] [--lines <n>] [--format <png|jpeg>] [--max-dimension <n|none>] [--audit|--no-audit] [--json]
+          surface screenshot [--workspace <id|ref|index>] [--surface <id|ref|index>] [--pane <id|ref|index>] [--window <id|ref|index>] [--out <path>] [--format <png|jpeg>] [--max-dimension <n|none>] [--json]
+          surface text [--workspace <id|ref|index>] [--surface <id|ref|index>] [--pane <id|ref|index>] [--window <id|ref|index>] [--lines <n>] [--scrollback] [--selector <css>] [--mode <source|rendered>] [--json]
           surface resume <set|show|get|clear> [--workspace <id|ref|index>] [--surface <id|ref|index>] [--window <id|ref|index>]
           rename-tab [--workspace <id|ref|index>] [--tab <id|ref|index>] [--surface <id|ref|index>] [--window <id|ref|index>] <title>
           drag-surface-to-split --surface <id|ref|index> <left|right|up|down> [--workspace <id|ref|index>] [--window <id|ref|index>] [--focus <true|false>]

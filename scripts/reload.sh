@@ -1094,18 +1094,15 @@ if [[ "$LAUNCH" -eq 1 ]]; then
   LAUNCH_CMD=()
   LAUNCH_RETRY_CMD=()
   if [[ -n "${TAG_SLUG:-}" ]]; then
-    # Launch tagged apps directly so LaunchServices cannot reuse a stale
-    # LSEnvironment for the tag's bundle id.
-    APP_EXECUTABLE="$APP_PATH/Contents/MacOS/${BASE_APP_NAME}"
-    if [[ ! -x "$APP_EXECUTABLE" ]]; then
-      echo "error: tagged app executable not found: $APP_EXECUTABLE" >&2
-      exit 1
-    fi
+    # Launch tagged apps through LaunchServices. Directly exec'ing the .app
+    # binary can leave a transient socket behind and then exit; open -n keeps
+    # the app in the normal macOS application lifecycle while the freshly
+    # written Info.plist and explicit environment carry the tag/socket identity.
     TAG_LAUNCH_LOG="/tmp/cmux-launch-${TAG_SLUG}.out"
     if [[ -n "${CMUX_SOCKET_PATH_VALUE:-}" ]]; then
-      nohup "${OPEN_CLEAN_ENV[@]}" "${TAG_LAUNCH_ENV[@]}" CMUX_SOCKET_PATH="$CMUX_SOCKET_PATH_VALUE" CMUXD_UNIX_PATH="$CMUXD_SOCKET" "$APP_EXECUTABLE" >"$TAG_LAUNCH_LOG" 2>&1 &
+      LAUNCH_CMD=("${OPEN_CLEAN_ENV[@]}" "${TAG_LAUNCH_ENV[@]}" CMUX_SOCKET_PATH="$CMUX_SOCKET_PATH_VALUE" CMUXD_UNIX_PATH="$CMUXD_SOCKET" open -n -g "$APP_PATH" --args --cmux-disable-bundle-icon-persistence)
     else
-      nohup "${OPEN_CLEAN_ENV[@]}" "${TAG_LAUNCH_ENV[@]}" "$APP_EXECUTABLE" >"$TAG_LAUNCH_LOG" 2>&1 &
+      LAUNCH_CMD=("${OPEN_CLEAN_ENV[@]}" "${TAG_LAUNCH_ENV[@]}" open -n -g "$APP_PATH" --args --cmux-disable-bundle-icon-persistence)
     fi
   else
     echo "/tmp/cmux-debug.sock" > /tmp/cmux-last-socket-path || true
@@ -1155,7 +1152,8 @@ if [[ "$LAUNCH" -eq 1 ]]; then
   if [[ -n "${TAG_SLUG:-}" && -n "${CMUX_SOCKET_PATH_VALUE:-}" ]]; then
     SOCKET_READY=0
     for _ in {1..80}; do
-      if [[ -S "$CMUX_SOCKET_PATH_VALUE" ]]; then
+      if [[ -S "$CMUX_SOCKET_PATH_VALUE" ]] &&
+          CMUX_SOCKET_PATH="$CMUX_SOCKET_PATH_VALUE" "$CLI_PATH" ping >/dev/null 2>&1; then
         SOCKET_READY=1
         break
       fi

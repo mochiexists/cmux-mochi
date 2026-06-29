@@ -104,7 +104,7 @@ fi
 
 TAG_ID="$(sanitize_bundle "$TAG")"
 TAG_SLUG="$(sanitize_path "$TAG")"
-APP="$HOME/Library/Developer/Xcode/DerivedData/cmux-${TAG_SLUG}/Build/Products/Debug/cmux DEV ${TAG}.app"
+APP="$HOME/Library/Developer/Xcode/DerivedData/cmux-${TAG_SLUG}/Build/Products/Debug/cmux Mochi DEV ${TAG}.app"
 BID="com.cmux-mochi.debug.${TAG_ID}"
 SOCK="/tmp/cmux-debug-${TAG_SLUG}.sock"
 DSOCK="$HOME/Library/Application Support/cmux/cmuxd-dev-${TAG_SLUG}.sock"
@@ -117,7 +117,7 @@ fi
 
 /usr/bin/osascript -e "tell application id \"${BID}\" to quit" >/dev/null 2>&1 || true
 sleep 0.5
-pkill -f "cmux DEV ${TAG}.app/Contents/MacOS/cmux DEV" || true
+pkill -f "cmux Mochi DEV ${TAG}.app/Contents/MacOS/cmux Mochi DEV" || true
 rm -f "$SOCK" "$DSOCK"
 sleep 0.5
 
@@ -161,7 +161,7 @@ if [[ -n "$SHELL_LOG" ]]; then
   OPEN_ENV+=("GHOSTTY_ZSH_INTEGRATION_LOG=${SHELL_LOG}")
 fi
 
-"${OPEN_ENV[@]}" open -g "$APP"
+"${OPEN_ENV[@]}" open -g "$APP" --args --cmux-disable-bundle-icon-persistence
 
 if [[ "$WAIT_SOCKET" != "0" ]]; then
   deadline=$((SECONDS + WAIT_SOCKET))

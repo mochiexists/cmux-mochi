@@ -134,7 +134,7 @@ Environment:
 | `select-workspace` | Select a workspace. |
 | `rename-workspace`, `rename-window` | Rename a workspace. `rename-window` is a compatibility alias. |
 | `current-workspace` | Print current workspace information. |
-| `read-screen` | Read terminal text from a surface. |
+| `read-screen` | Read text from the selected surface. Terminal surfaces support scrollback. |
 | `send` | Send text to a terminal surface. |
 | `send-key` | Send one key to a terminal surface. |
 | `send-panel` | Send text to a panel/surface. |
@@ -169,6 +169,7 @@ Environment:
 | `focus-webview` | Legacy alias for `browser focus-webview`. |
 | `is-webview-focused` | Legacy alias for `browser is-webview-focused`. |
 | `markdown` | Open a markdown file in a formatted viewer panel with live reload. |
+| `artifact` | Create, open, and list Claude-style artifact panes. `artifact new` scaffolds React/HTML/SVG/Mermaid/code artifacts in `~/.config/cmux/artifacts/`; `artifact open <id\|path>` opens indexed artifacts or compatible existing files. Code artifacts render read-only with syntax highlighting. Generated document files such as PDF/DOCX/XLSX/PPTX open as file artifacts with Open File and Save to Downloads actions. Artifact iframe storage persists under the artifact store; source revisions are snapshotted for history. Markdown remains under `cmux markdown`. |
 | `vm-pty-attach` | Internal VM PTY attach command. |
 | `vm-ssh-attach` | Hidden compatibility alias for older VM workspaces. |
 | `vm-pty-connect` | Internal helper that connects to a VM PTY from a config file. |
@@ -320,6 +321,14 @@ Browser subcommands:
 | `browser dialog` | Accept or dismiss dialogs. |
 | `browser download` | Wait for or save downloads. |
 | `browser profiles` | List, add, rename, clear, or delete cmux browser profiles. `clear` refuses to wipe active profiles unless `--force` is passed. |
+
+surface commands:
+
+| Command | Contract |
+| --- | --- |
+| `surface ingest` | Capture an LLM-ready bundle for a supported surface. Returns extracted text, screenshot metadata, a short prompt block, and by default writes an audit directory under `~/.config/cmux/conductor/audit/YYYY/MM/DD/`. Defaults to PNG, `profile=llm`, and `max_dimension=2048`; pass `--format jpeg`, `--jpeg-quality`, `--max-dimension none`, `--no-audit`, `--no-text`, or `--no-screenshot` to override. |
+| `surface screenshot` | Save a screenshot of a supported surface without using the system screen recorder path. Emits format, byte count, width, height, original dimensions, aspect ratio, and compression metadata. Supports `--format png|jpeg`, `--jpeg-quality`, `--max-dimension`, `--profile`, `--include-base64`, and optional audit writing. |
+| `surface text` | Read text from a surface. Terminals return viewport/scrollback text, browsers return DOM text, and file-backed panes return source text. |
 | `browser import` | Open the browser import wizard. In detected coding-agent environments, defaults to non-interactive cookie import; pass `--interactive` to force the wizard. Non-interactive import supports `--from`, `--profile`, `--all-profiles`, `--to-profile`, `--create-profile`, and `--domain`. |
 | `browser cookies` | Get, set, or clear cookies. |
 | `browser storage` | Get, set, or clear local/session storage. |
@@ -472,6 +481,8 @@ the expected text without connecting to a cmux socket.
 - `cmux welcome --help` -> `Usage: cmux welcome`
 - `cmux welcome` -> `Toggle Left Sidebar`
 - `cmux welcome` -> `Toggle Right Sidebar`
+- `cmux welcome` -> `Reopen last closed tab/workspace`
+- `cmux welcome` -> `Artifact panes`
 - `cmux shortcuts --help` -> `Usage: cmux shortcuts`
 - `cmux disable-browser --help` -> `Usage: cmux disable-browser [--json]`
 - `cmux enable-browser --help` -> `Usage: cmux enable-browser [--json]`

@@ -9,6 +9,14 @@ enum ArtifactScaffold {
             return reactSource(title: title)
         case .html:
             return htmlSource(title: title)
+        case .svg:
+            return svgSource(title: title)
+        case .mermaid:
+            return mermaidSource(title: title)
+        case .code:
+            return codeSource(title: title)
+        case .file:
+            return ""
         case .swiftui:
             return swiftUISource(title: title)
         }
@@ -50,6 +58,35 @@ enum ArtifactScaffold {
             <p>Edit this file — the pane hot-reloads on save.</p>
           </body>
         </html>
+        """
+    }
+
+    private static func svgSource(title: String) -> String {
+        let safeTitle = escapedForHTML(title)
+        return """
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 360" role="img" aria-label="\(safeTitle)">
+          <rect width="720" height="360" rx="24" fill="#0b1020"/>
+          <circle cx="214" cy="180" r="88" fill="#5eead4" opacity="0.85"/>
+          <circle cx="294" cy="180" r="88" fill="#60a5fa" opacity="0.75"/>
+          <text x="360" y="194" text-anchor="middle" fill="white" font-family="system-ui" font-size="36" font-weight="700">\(safeTitle)</text>
+        </svg>
+        """
+    }
+
+    private static func mermaidSource(title: String) -> String {
+        let safeTitle = title.replacingOccurrences(of: "\n", with: " ")
+        return """
+        flowchart LR
+          A["\(safeTitle)"] --> B["Edit this file"]
+          B --> C["The pane hot-reloads"]
+        """
+    }
+
+    private static func codeSource(title: String) -> String {
+        let safeTitle = title.replacingOccurrences(of: "\n", with: " ")
+        return """
+        // \(safeTitle)
+        // Edit this file and the artifact pane hot-reloads on save.
         """
     }
 

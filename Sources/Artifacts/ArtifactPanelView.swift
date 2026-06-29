@@ -3,9 +3,6 @@ import SwiftUI
 
 /// SwiftUI host for an ``ArtifactPanel``.
 ///
-/// Phase A renders the artifact source as plain text plus a status banner; the
-/// live WKWebView runtime (esbuild-wasm + the pinned library allow-list) lands
-/// in Phase B (see `plans/feat-artifacts/PLAN.md`).
 struct ArtifactPanelView: View {
     @ObservedObject var panel: ArtifactPanel
     let isFocused: Bool
@@ -21,7 +18,7 @@ struct ArtifactPanelView: View {
             if panel.isFileUnavailable {
                 unavailableView
             } else {
-                sourcePreview
+                artifactContentView
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -36,35 +33,70 @@ struct ArtifactPanelView: View {
         .onTapGesture { onRequestPanelFocus() }
     }
 
-    private var sourcePreview: some View {
+    private var artifactContentView: some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 6) {
-                Image(systemName: "sparkles.rectangle.stack")
-                Text(String(
-                    localized: "artifact.placeholder.banner",
-                    defaultValue: "Live artifact rendering arrives next — showing source for now."
-                ))
-                .font(.system(size: 11))
-                Spacer()
-                Text(panel.kind.rawValue.uppercased())
-                    .font(.system(size: 10, weight: .semibold))
+            PanelFilePathHeader(
+                iconSystemName: panel.displayIcon ?? "sparkles.rectangle.stack",
+                filePath: panel.filePath,
+                foregroundColor: appearance.foregroundColor
+            ) {
+                Text(panel.kind.displayName.uppercased())
+                    .cmuxFont(size: 10, weight: .semibold)
                     .foregroundStyle(.secondary)
+                PanelHeaderIconButton(
+                    systemName: panel.openExternallyIcon,
+                    label: panel.openExternallyLabel,
+                    isDisabled: !panel.canOpenRenderedPreviewExternally,
+                    action: { panel.openRenderedPreviewExternally() }
+                )
+                PanelHeaderIconButton(
+                    systemName: "square.and.arrow.down",
+                    label: String(
+                        localized: "artifact.saveToDownloads",
+                        defaultValue: "Save to Downloads"
+                    ),
+                    isDisabled: !panel.canSaveToDownloads,
+                    action: { panel.saveToDownloads() }
+                )
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .foregroundStyle(.secondary)
-            .background(Color(nsColor: .windowBackgroundColor))
 
             Divider()
 
-            ScrollView([.horizontal, .vertical]) {
-                Text(panel.source.isEmpty ? " " : panel.source)
-                    .font(.system(size: 12, design: .monospaced))
-                    .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(12)
+            if panel.kind.rendersInWebView {
+                ArtifactWebRenderer(
+                    source: panel.source,
+                    kind: panel.kind,
+                    backgroundColor: appearance.contentBackgroundColor,
+                    panelId: panel.id,
+                    workspaceId: panel.workspaceId,
+                    filePath: panel.filePath,
+                    session: panel.rendererSession,
+                    onRequestPanelFocus: onRequestPanelFocus
+                )
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                fileArtifactView
             }
         }
+    }
+
+    private var fileArtifactView: some View {
+        VStack(spacing: 12) {
+            Image(systemName: "doc")
+                .font(.system(size: 32))
+                .foregroundStyle(.secondary)
+            Text(String(localized: "artifact.fileReady", defaultValue: "This artifact is saved as a file."))
+                .foregroundStyle(.primary)
+            Text(String(
+                localized: "artifact.fileReady.detail",
+                defaultValue: "Open it with the system app or save a copy to Downloads."
+            ))
+            .foregroundStyle(.secondary)
+            .multilineTextAlignment(.center)
+        }
+        .padding(24)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color(nsColor: appearance.contentBackgroundColor))
     }
 
     private var unavailableView: some View {

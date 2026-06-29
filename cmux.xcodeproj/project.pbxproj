@@ -86,12 +86,20 @@
 		A5001A02A1B2C3D4E5F60718 /* AppWindowBackdropControllerDependencies.swift in Sources */ = {isa = PBXBuildFile; fileRef = A5001A03A1B2C3D4E5F60718 /* AppWindowBackdropControllerDependencies.swift */; };
 		A5001A00A1B2C3D4E5F60718 /* AppWindowChromeComposition.swift in Sources */ = {isa = PBXBuildFile; fileRef = A5001A01A1B2C3D4E5F60718 /* AppWindowChromeComposition.swift */; };
 		513A578370D0865BDA907866 /* artifact-samples in Resources */ = {isa = PBXBuildFile; fileRef = 6B810018C32C96A7E2AD7FCD /* artifact-samples */; };
+		C64DE9DE7384A5D550A81C43 /* artifact-viewer in Resources */ = {isa = PBXBuildFile; fileRef = 84BEFCD4105FD173DCC31AD8 /* artifact-viewer */; };
+		A4F770020000000000000001 /* ArtifactExternalPreview.swift in Sources */ = {isa = PBXBuildFile; fileRef = A4F770010000000000000001 /* ArtifactExternalPreview.swift */; };
 		4E6FFD77B76CF89F63CA10FB /* ArtifactPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24B3C994CE2474BDB68C1B4A /* ArtifactPanel.swift */; };
 		699489D671A6C482ABEFB9CF /* ArtifactPanelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 18BBE73FD292510241FC9534 /* ArtifactPanelView.swift */; };
+		FEC9FB4A54E9C93DDA39CF44 /* ArtifactRendererSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB3EEB8FE6F58AA363832B01 /* ArtifactRendererSession.swift */; };
+		A4F771020000000000000001 /* ArtifactRuntimeCmuxBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = A4F771010000000000000001 /* ArtifactRuntimeCmuxBridge.swift */; };
 		74ACD7CBA333B959A70DAD2B /* ArtifactSamples.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5CF96BF2D5323E08C7184035 /* ArtifactSamples.swift */; };
 		F6D329A4DC3327450161A6C2 /* ArtifactScaffold.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B4B962B57D28DD2867D7988 /* ArtifactScaffold.swift */; };
 		244D65FBA88256861AFF262E /* ArtifactStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = F4E4F7CBCE2DE8B0FD17E704 /* ArtifactStore.swift */; };
 		81EFF8C65678AA497BB468A4 /* ArtifactStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D0998A40FAB5A99C6B65D21 /* ArtifactStoreTests.swift */; };
+		E3A6B01DED9322422B0E8A75 /* ArtifactViewerAssets.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D105BFA01DD0E2EE8965513 /* ArtifactViewerAssets.swift */; };
+		2050A547163B83298BCFD61D /* ArtifactWebRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 63D81672CA5F899CD00C5805 /* ArtifactWebRenderer.swift */; };
+		554225C95033A834C1E1261E /* ArtifactWebRendererCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 004281F3D99B3584554BC7B4 /* ArtifactWebRendererCoordinator.swift */; };
+		78E7789AFB77F1A738183652 /* ArtifactWebView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3FB9373E7D61D459B4E7A0E3 /* ArtifactWebView.swift */; };
 		A5001100 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A5001101 /* Assets.xcassets */; };
 		D9FEC58D5BACCF76459F1BBE /* AuthEnvironment.swift in Sources */ = {isa = PBXBuildFile; fileRef = 43430FA5929121E2EAAB3091 /* AuthEnvironment.swift */; };
 		A47E00010000000000000001 /* AuthEnvironmentTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A47E00010000000000000002 /* AuthEnvironmentTests.swift */; };
@@ -1240,12 +1248,20 @@
 		A5001A03A1B2C3D4E5F60718 /* AppWindowBackdropControllerDependencies.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Windowing/AppWindowBackdropControllerDependencies.swift; sourceTree = "<group>"; };
 		A5001A01A1B2C3D4E5F60718 /* AppWindowChromeComposition.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Windowing/AppWindowChromeComposition.swift; sourceTree = "<group>"; };
 		6B810018C32C96A7E2AD7FCD /* artifact-samples */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = folder; path = "artifact-samples"; sourceTree = "<group>"; };
+		84BEFCD4105FD173DCC31AD8 /* artifact-viewer */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = folder; path = "artifact-viewer"; sourceTree = "<group>"; };
+		A4F770010000000000000001 /* ArtifactExternalPreview.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ArtifactExternalPreview.swift; path = Artifacts/ArtifactExternalPreview.swift; sourceTree = "<group>"; };
 		24B3C994CE2474BDB68C1B4A /* ArtifactPanel.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ArtifactPanel.swift; path = Artifacts/ArtifactPanel.swift; sourceTree = "<group>"; };
 		18BBE73FD292510241FC9534 /* ArtifactPanelView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ArtifactPanelView.swift; path = Artifacts/ArtifactPanelView.swift; sourceTree = "<group>"; };
+		DB3EEB8FE6F58AA363832B01 /* ArtifactRendererSession.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ArtifactRendererSession.swift; path = Artifacts/ArtifactRendererSession.swift; sourceTree = "<group>"; };
+		A4F771010000000000000001 /* ArtifactRuntimeCmuxBridge.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ArtifactRuntimeCmuxBridge.swift; path = Artifacts/ArtifactRuntimeCmuxBridge.swift; sourceTree = "<group>"; };
 		5CF96BF2D5323E08C7184035 /* ArtifactSamples.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ArtifactSamples.swift; path = Artifacts/ArtifactSamples.swift; sourceTree = "<group>"; };
 		8B4B962B57D28DD2867D7988 /* ArtifactScaffold.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ArtifactScaffold.swift; path = Artifacts/ArtifactScaffold.swift; sourceTree = "<group>"; };
 		F4E4F7CBCE2DE8B0FD17E704 /* ArtifactStore.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ArtifactStore.swift; path = Artifacts/ArtifactStore.swift; sourceTree = "<group>"; };
 		7D0998A40FAB5A99C6B65D21 /* ArtifactStoreTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ArtifactStoreTests.swift; sourceTree = "<group>"; };
+		8D105BFA01DD0E2EE8965513 /* ArtifactViewerAssets.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ArtifactViewerAssets.swift; path = Artifacts/ArtifactViewerAssets.swift; sourceTree = "<group>"; };
+		63D81672CA5F899CD00C5805 /* ArtifactWebRenderer.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ArtifactWebRenderer.swift; path = Artifacts/ArtifactWebRenderer.swift; sourceTree = "<group>"; };
+		004281F3D99B3584554BC7B4 /* ArtifactWebRendererCoordinator.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ArtifactWebRendererCoordinator.swift; path = Artifacts/ArtifactWebRendererCoordinator.swift; sourceTree = "<group>"; };
+		3FB9373E7D61D459B4E7A0E3 /* ArtifactWebView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ArtifactWebView.swift; path = Artifacts/ArtifactWebView.swift; sourceTree = "<group>"; };
 		A5001101 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		43430FA5929121E2EAAB3091 /* AuthEnvironment.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AuthEnvironment.swift; sourceTree = "<group>"; };
 		A47E00010000000000000002 /* AuthEnvironmentTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthEnvironmentTests.swift; sourceTree = "<group>"; };
@@ -2297,6 +2313,7 @@
 				A9E010000000000000000007 /* agent-session-solid */,
 				A5001622 /* cmux.sdef */,
 				6B810018C32C96A7E2AD7FCD /* artifact-samples */,
+				84BEFCD4105FD173DCC31AD8 /* artifact-viewer */,
 			);
 			path = Resources;
 			sourceTree = "<group>";
@@ -2991,10 +3008,17 @@
 				59065015952E1B5BE5E23519 /* Mobile */,
 				31B04B98376C9BA8B9E44DCB /* TerminalViewportUITestRecorder.swift */,
 				F4E4F7CBCE2DE8B0FD17E704 /* ArtifactStore.swift */,
+				A4F770010000000000000001 /* ArtifactExternalPreview.swift */,
 				24B3C994CE2474BDB68C1B4A /* ArtifactPanel.swift */,
 				18BBE73FD292510241FC9534 /* ArtifactPanelView.swift */,
 				8B4B962B57D28DD2867D7988 /* ArtifactScaffold.swift */,
 				5CF96BF2D5323E08C7184035 /* ArtifactSamples.swift */,
+				DB3EEB8FE6F58AA363832B01 /* ArtifactRendererSession.swift */,
+				A4F771010000000000000001 /* ArtifactRuntimeCmuxBridge.swift */,
+				8D105BFA01DD0E2EE8965513 /* ArtifactViewerAssets.swift */,
+				63D81672CA5F899CD00C5805 /* ArtifactWebRenderer.swift */,
+				004281F3D99B3584554BC7B4 /* ArtifactWebRendererCoordinator.swift */,
+				3FB9373E7D61D459B4E7A0E3 /* ArtifactWebView.swift */,
 			);
 			path = Sources;
 			sourceTree = "<group>";
@@ -3666,6 +3690,7 @@
 				A9E020000000000000000006 /* agent-session-react in Resources */,
 				A9E020000000000000000007 /* agent-session-solid in Resources */,
 				513A578370D0865BDA907866 /* artifact-samples in Resources */,
+				C64DE9DE7384A5D550A81C43 /* artifact-viewer in Resources */,
 				A5001100 /* Assets.xcassets in Resources */,
 				A5001623 /* cmux.sdef in Resources */,
 				FEED0A00000000000000F007 /* feed-tui in Resources */,
@@ -3867,11 +3892,18 @@
 				A5001621 /* AppleScriptSupport.swift in Sources */,
 				A5001A02A1B2C3D4E5F60718 /* AppWindowBackdropControllerDependencies.swift in Sources */,
 				A5001A00A1B2C3D4E5F60718 /* AppWindowChromeComposition.swift in Sources */,
+				A4F770020000000000000001 /* ArtifactExternalPreview.swift in Sources */,
 				4E6FFD77B76CF89F63CA10FB /* ArtifactPanel.swift in Sources */,
 				699489D671A6C482ABEFB9CF /* ArtifactPanelView.swift in Sources */,
+				FEC9FB4A54E9C93DDA39CF44 /* ArtifactRendererSession.swift in Sources */,
+				A4F771020000000000000001 /* ArtifactRuntimeCmuxBridge.swift in Sources */,
 				74ACD7CBA333B959A70DAD2B /* ArtifactSamples.swift in Sources */,
 				F6D329A4DC3327450161A6C2 /* ArtifactScaffold.swift in Sources */,
 				244D65FBA88256861AFF262E /* ArtifactStore.swift in Sources */,
+				E3A6B01DED9322422B0E8A75 /* ArtifactViewerAssets.swift in Sources */,
+				2050A547163B83298BCFD61D /* ArtifactWebRenderer.swift in Sources */,
+				554225C95033A834C1E1261E /* ArtifactWebRendererCoordinator.swift in Sources */,
+				78E7789AFB77F1A738183652 /* ArtifactWebView.swift in Sources */,
 				D9FEC58D5BACCF76459F1BBE /* AuthEnvironment.swift in Sources */,
 				C0DE35860000000000000001 /* BackgroundWorkspacePrimeCoordinator.swift in Sources */,
 				A50012F1 /* Backport.swift in Sources */,
