@@ -65,7 +65,7 @@ SIGN_HASH="${SIGN_HASH:-33FD69D8D96F40228978FFA0F36771AA007DF335}"
 # notarytool keychain profile created via `xcrun notarytool store-credentials`.
 NOTARY_PROFILE="${NOTARY_PROFILE:-cmux-mochi-notary}"
 ENTITLEMENTS="cmux.entitlements"
-APP_PATH="build/Build/Products/Release/cmux.app"
+APP_PATH="build/Build/Products/Release/cmux Mochi.app"
 GHOSTTYKIT_CRASH_REPORT_SUBDIR="cmux/crash"
 
 # --- Pre-flight ---
