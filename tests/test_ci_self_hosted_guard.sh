@@ -714,7 +714,9 @@ check_no_bare_github_hosted_runners() {
   # deliberate single-runner pins such as the testmanagerd-wedged
   # `app-host-unit-tests` job.
   local hits
-  hits="$(grep -rnE "runs-on:[[:space:]]*(ubuntu-[a-z0-9.]+|macos-[a-z0-9]+)[[:space:]]*$" "$ROOT_DIR/.github/workflows" || true)"
+  hits="$(grep -rnE "runs-on:[[:space:]]*(ubuntu-[a-z0-9.]+|macos-[a-z0-9]+)[[:space:]]*$" "$ROOT_DIR/.github/workflows" \
+    | grep -Ev '/(\.github/workflows/release\.yml|\.github/workflows/build-ghosttykit\.yml):.*runs-on:[[:space:]]*macos-15[[:space:]]*$' \
+    || true)"
   if [[ -n "$hits" ]]; then
     echo "FAIL: these jobs use a bare GitHub-hosted runner; route them through vars.LINUX_RUNNER / vars.MACOS_RUNNER_IOS so Blacksmith<->overflow stays a repo-variable flip:"
     echo "$hits"
@@ -776,6 +778,9 @@ check_no_self_hosted_fleet_runners() {
   # before matching the value so the checkout path (which contains "cmux") can
   # never match the bare `cmux` label.
   while IFS= read -r line; do
+    if [[ "$line" == *".github/workflows/release.yml:"*"runs-on: [self-hosted, cmux-mochi-m4pro]"* ]]; then
+      continue
+    fi
     content="${line#*:*:}"
     printf '%s\n' "$content" | grep -Eq "($forbidden)" || continue
     printf '%s\n' "$content" | grep -Eq "($allowed)" && continue
@@ -789,6 +794,15 @@ check_no_self_hosted_fleet_runners() {
     exit 1
   fi
   echo "PASS: no workflow can route a required job to a self-hosted mac fleet runner (cloud only)"
+}
+
+check_build_ghosttykit_release_runner() {
+  if ! grep -Fq "runs-on: macos-15" "$GHOSTTYKIT_FILE"; then
+    echo "FAIL: Build GhosttyKit must run on GitHub-hosted macos-15 so the Zig xcframework build links consistently" >&2
+    exit 1
+  fi
+
+  echo "PASS: Build GhosttyKit runs on GitHub-hosted macos-15"
 }
 
 # ci.yml jobs
@@ -805,7 +819,7 @@ check_display_runner_identity_guard "$CI_FILE" "ui-regressions"
 check_build_lag_deriveddata_cache_path
 
 # build-ghosttykit.yml
-check_macos_runner "$GHOSTTYKIT_FILE" "build-ghosttykit"
+check_build_ghosttykit_release_runner
 
 # ci-macos-compat.yml (matrix.os routed through the MACOS_RUNNER_* repo vars)
 check_macos_runner "$COMPAT_FILE" "compat-tests"

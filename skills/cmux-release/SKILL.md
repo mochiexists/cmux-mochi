@@ -38,7 +38,7 @@ Manual release steps if not using the command:
 ./scripts/release-pretag-guard.sh
 git tag vX.Y.Z
 git push origin vX.Y.Z
-gh run watch --repo manaflow-ai/cmux
+gh run watch --repo mochiexists/cmux-mochi
 ```
 
 ## Notes
@@ -48,6 +48,9 @@ gh run watch --repo manaflow-ai/cmux
 - README download button points to `releases/latest/download/cmux-macos.dmg`.
 - Bump the minor version for updates unless explicitly asked otherwise.
 - Update `CHANGELOG.md`; docs changelog is rendered from it.
+- Mochi release runner split: GhosttyKit and the Ghostty CLI helper run on GitHub-hosted `macos-15`; app build/sign/notarize runs on the self-hosted GitHub Actions runner `cmux-mochi-m4pro`.
+- GhosttyKit archives are published to and downloaded from `mochiexists/ghostty`.
+- Never reuse or move an already-pushed release tag. If workflow/source changes are needed after a failed tag run, bump and cut the next tag.
 
 ## Detailed reference
 

@@ -66,6 +66,7 @@ import Testing
         #expect(result.stdout.contains("Reopen last closed tab/workspace"))
         #expect(result.stdout.contains("Artifact panes"))
         #expect(result.stdout.contains("artifact & local-file tabs"))
+        #expect(result.stdout.contains("Passkeys/WebAuthn are temporarily disabled"))
         #expect(!result.stdout.contains("Codex close-and-resume"))
         #expect(!result.stdout.contains("needs the Mochi Codex fork"))
     }

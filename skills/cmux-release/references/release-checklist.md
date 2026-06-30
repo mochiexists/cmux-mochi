@@ -44,8 +44,15 @@ Manual tag flow:
 ```bash
 git tag vX.Y.Z
 git push origin vX.Y.Z
-gh run watch --repo manaflow-ai/cmux
+gh run watch --repo mochiexists/cmux-mochi
 ```
+
+Mochi release runner split:
+
+- `Build GhosttyKit` and `build-ghostty-cli-helper` run on GitHub-hosted `macos-15`.
+- `build-sign-notarize` runs on the self-hosted GitHub Actions runner `cmux-mochi-m4pro`.
+- GhosttyKit archives are published to and downloaded from `mochiexists/ghostty`.
+- Do not reuse or force-move a pushed release tag. If the workflow/source needs a fix after a failed tag run, bump and cut the next tag.
 
 ## Release asset
 

@@ -39,16 +39,16 @@ require_command_output() {
 
 echo "Auditing cmux Mochi fork overlay..."
 
-require_file_contains "cmux.xcodeproj/project.pbxproj" "PRODUCT_BUNDLE_IDENTIFIER = com.cmux-mochi;"
-require_file_contains "cmux.xcodeproj/project.pbxproj" "PRODUCT_BUNDLE_IDENTIFIER = com.cmux-mochi.debug;"
-require_file_contains "cmux.xcodeproj/project.pbxproj" "PRODUCT_BUNDLE_IDENTIFIER = com.cmux-mochi.tests;"
-require_file_contains "cmux.xcodeproj/project.pbxproj" "PRODUCT_BUNDLE_IDENTIFIER = com.cmux-mochi.uitests;"
-require_file_contains "cmux.xcodeproj/project.pbxproj" "PRODUCT_BUNDLE_IDENTIFIER = com.cmux-mochi.docktileplugin;"
+require_file_contains "cmux.xcodeproj/project.pbxproj" 'PRODUCT_BUNDLE_IDENTIFIER = "com.cmux-mochi";'
+require_file_contains "cmux.xcodeproj/project.pbxproj" 'PRODUCT_BUNDLE_IDENTIFIER = "com.cmux-mochi.debug";'
+require_file_contains "cmux.xcodeproj/project.pbxproj" 'PRODUCT_BUNDLE_IDENTIFIER = "com.cmux-mochi.tests";'
+require_file_contains "cmux.xcodeproj/project.pbxproj" 'PRODUCT_BUNDLE_IDENTIFIER = "com.cmux-mochi.uitests";'
+require_file_contains "cmux.xcodeproj/project.pbxproj" 'PRODUCT_BUNDLE_IDENTIFIER = "com.cmux-mochi.docktileplugin";'
 require_file_contains "cmux.xcodeproj/project.pbxproj" 'PRODUCT_NAME = "cmux Mochi";'
 require_file_contains "cmux.xcodeproj/project.pbxproj" 'PRODUCT_NAME = "cmux Mochi DEV";'
 require_file_contains "cmux.xcodeproj/project.pbxproj" 'SPARKLE_PUBLIC_KEY = "zuKEVdkteBH5X33sMtjNnINr5JfskPx6Yj4LxZlySfY=";'
-require_file_contains "cmux.xcodeproj/project.pbxproj" "CURRENT_PROJECT_VERSION = 103;"
-require_file_contains "cmux.xcodeproj/project.pbxproj" "MARKETING_VERSION = 0.64.158;"
+require_file_contains "cmux.xcodeproj/project.pbxproj" "CURRENT_PROJECT_VERSION = "
+require_file_contains "cmux.xcodeproj/project.pbxproj" "MARKETING_VERSION = "
 
 require_file_contains "Resources/Info.plist" "https://github.com/mochiexists/cmux-mochi/releases/latest/download/appcast.xml"
 require_file_contains "Resources/Info.plist" '$(SPARKLE_PUBLIC_KEY)'
@@ -58,8 +58,11 @@ require_file_contains ".github/workflows/release.yml" "codes-o3"
 require_file_contains ".github/workflows/release.yml" "Skipping R2 stable appcast mirror: CF_R2 credentials not configured."
 require_file_contains ".github/workflows/release.yml" "build-ghostty-cli-helper"
 require_file_contains ".github/workflows/release.yml" "scripts/import-apple-developer-id-intermediates.sh build.keychain"
-require_file_contains ".github/workflows/release.yml" "blacksmith-6vcpu-macos-15"
-require_file_contains ".github/workflows/release.yml" "blacksmith-6vcpu-macos-26"
+require_file_contains ".github/workflows/release.yml" "runs-on: macos-15"
+require_file_contains ".github/workflows/release.yml" "runs-on: [self-hosted, cmux-mochi-m4pro]"
+require_file_absent ".github/workflows/release.yml" "blacksmith-"
+require_file_contains ".github/workflows/build-ghosttykit.yml" "mochiexists/ghostty"
+require_file_contains "scripts/download-prebuilt-ghosttykit.sh" "mochiexists/ghostty"
 
 require_file_contains ".github/workflows/nightly.yml" "mochiexists/cmux-mochi"
 require_file_contains ".github/workflows/nightly.yml" "codes-o3"
@@ -101,8 +104,8 @@ require_command_output "https://github.com/mochiexists/bonsplit.git" \
   git -C "$ROOT_DIR" config --file .gitmodules --get submodule.vendor/bonsplit.url
 
 bonsplit_status="$(git -C "$ROOT_DIR" submodule status vendor/bonsplit)"
-if [[ "$bonsplit_status" != " 26beb56630075c9e7213623e367d44e858cc8a18 vendor/bonsplit"* ]]; then
-  fail "vendor/bonsplit is not pinned to 26beb56630075c9e7213623e367d44e858cc8a18: $bonsplit_status"
+if [[ "$bonsplit_status" != " e0b043de49ef4157d55afa744144454e226d7320 vendor/bonsplit"* ]]; then
+  fail "vendor/bonsplit is not pinned to e0b043de49ef4157d55afa744144454e226d7320: $bonsplit_status"
 fi
 
 require_file_contains "scripts/reload.sh" 'APP_NAME="cmux Mochi DEV"'

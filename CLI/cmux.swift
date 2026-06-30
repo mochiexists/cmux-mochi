@@ -34909,6 +34909,7 @@ export default function cmuxPiSessionExtension(pi: ExtensionAPI) {
         print("  \(mochi)•\(reset) Pane zoom that survives relaunch")
         print("  \(mochi)•\(reset) Reveal in Finder / Copy Path on terminal, markdown, artifact & local-file tabs")
         print("  \(mochi)•\(reset) Artifact panes — cmux artifact new/open/list for React, HTML, SVG, Mermaid, code, and file artifacts")
+        print("  \(mochi)•\(reset) Passkeys/WebAuthn are temporarily disabled in current Developer ID builds")
         print("  \(mochi)•\(reset) Task Manager as a tab or full-area page")
         print("  \(mochi)•\(reset) Always-on CPU / memory readout in the sidebar footer")
         print("  \(mochi)•\(reset) Sidebar spring-load — drag a session onto a workspace to switch")
