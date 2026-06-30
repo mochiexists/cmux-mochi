@@ -793,6 +793,10 @@ check_no_self_hosted_fleet_runners() {
     echo "$hits"
     exit 1
   fi
+  if grep -Eq "runner\.name|hostname=|runner\.hostname" "$ROOT_DIR/.github/workflows/release.yml"; then
+    echo "FAIL: release.yml must not print or compare concrete self-hosted runner host names in this public repo."
+    exit 1
+  fi
   echo "PASS: no workflow can route a required job to a self-hosted mac fleet runner (cloud only)"
 }
 

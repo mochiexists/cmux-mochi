@@ -30692,6 +30692,10 @@ export default function cmuxPiSessionExtension(pi: ExtensionAPI) {
             let terminalPromptTurnIds = Set((mapped?.terminalPromptTurnIds ?? []).compactMap { normalizedHookValue($0) })
             let incomingCodexTurnIsTerminal = def.name == "codex" &&
                 (incomingTurnId.map { terminalPromptTurnIds.contains($0) } ?? false)
+            let codexPromptTranscriptPath = def.name == "codex"
+                ? (normalizedHookValue(transcriptPathForStore) ?? findCodexTranscriptPath(sessionId: sessionId, env: env))
+                : nil
+            let codexPromptHasResumeAnchor = def.name != "codex" || codexPromptTranscriptPath != nil
             func codexPromptTurnWentTerminal() -> Bool {
                 def.name == "codex"
                     && ((try? store.codexPromptTurnIsTerminal(sessionId: sessionId, turnId: input.turnId)) == true)
@@ -30796,8 +30800,7 @@ export default function cmuxPiSessionExtension(pi: ExtensionAPI) {
                let incomingTurnId,
                let activeTurnId = activePromptTurnId,
                activeTurnId != incomingTurnId,
-               let transcriptPath = normalizedHookValue(transcriptPathForStore)
-                   ?? findCodexTranscriptPath(sessionId: sessionId, env: env) {
+               let transcriptPath = codexPromptTranscriptPath {
                 let activeTurnIds = activePromptTurnStack.isEmpty ? [activeTurnId] : activePromptTurnStack
                 terminalActivePromptTurnIds = codexTranscriptTerminalTurnIds(
                     path: transcriptPath,
@@ -30807,6 +30810,19 @@ export default function cmuxPiSessionExtension(pi: ExtensionAPI) {
             } else {
                 terminalActivePromptTurnIds = []
                 previousActivePromptTurnIsTerminal = false
+            }
+            if !codexPromptHasResumeAnchor {
+                _ = try? store.consume(
+                    sessionId: sessionId,
+                    workspaceId: workspaceId,
+                    surfaceId: surfaceId,
+                    turnId: nil
+                )
+                sendAgentFeedTelemetryUnlessSuppressed(workspaceId: workspaceId)
+                telemetry.breadcrumb("\(def.name)-hook.prompt-submit.no-resume-anchor")
+                didSendFeedTelemetry = true
+                print("{}")
+                return
             }
             let nestedPromptSubmit: Bool
             if !sessionId.isEmpty {

@@ -648,6 +648,17 @@ extension CMUXCLI {
         // Codex also had older top-level codex-hook/feed-hook commands.
         // Other generic agents can have stale `cmux hooks ...` files from
         // earlier integration attempts, and setup should be able to prune them.
+        if def.name == "codex" {
+            let legacyCodexMarkers = [
+                "cmux codex-hook ",
+                "cmux feed-hook --source codex",
+                "cmux hooks codex ",
+                "cmux hooks feed --source codex",
+            ]
+            if legacyCodexMarkers.contains(where: { command.contains($0) }) {
+                return true
+            }
+        }
         return legacyCmuxCommandTokenLists(from: command, for: def).contains { tokens in
             isLegacyCmuxOwnedHookTokens(tokens, for: def)
         }

@@ -408,6 +408,65 @@ def test_codex_session_start_defers_resume_binding_until_first_turn(cli_path: st
             subprocess.run(["/bin/kill", str(pid)], check=False)
 
 
+def test_codex_prompt_submit_without_rollout_does_not_become_restorable(cli_path: str, root: Path) -> None:
+    """A failed `codex resume <missing-id>` can still emit hook events. Without
+    either a transcript_path or a discoverable rollout file, cmux must not
+    publish or retain a restorable resume binding for that unsaved id."""
+    socket_path = root / "cmux-resume-missing-rollout.sock"
+    state_dir = root / "hook-state-missing-rollout"
+    codex_home = root / "codex-home-missing-rollout"
+    state_dir.mkdir()
+    (codex_home / "sessions").mkdir(parents=True)
+
+    session_id = f"codex-missing-rollout-session-{os.getpid()}"
+    env = os.environ.copy()
+    env["CMUX_SOCKET_PATH"] = str(socket_path)
+    env["CMUX_SURFACE_ID"] = FAKE_SURFACE_ID
+    env["CMUX_WORKSPACE_ID"] = FAKE_WORKSPACE_ID
+    env["CMUX_AGENT_HOOK_STATE_DIR"] = str(state_dir)
+    env["CODEX_HOME"] = str(codex_home)
+    payload = {
+        "session_id": session_id,
+        "cwd": str(root),
+    }
+
+    def run_hook(subcommand: str) -> None:
+        result = subprocess.run(
+            [cli_path, "--socket", str(socket_path), "hooks", "codex", subcommand],
+            input=json.dumps(payload),
+            capture_output=True,
+            text=True,
+            check=False,
+            env=env,
+            timeout=10,
+        )
+        if result.returncode != 0:
+            raise AssertionError(
+                f"hooks codex {subcommand} failed exit={result.returncode}\n"
+                f"stdout={result.stdout}\nstderr={result.stderr}"
+            )
+
+    try:
+        with FakeCmuxSocket(socket_path, None) as sock:
+            run_hook("session-start")
+            run_hook("prompt-submit")
+            methods = [f.get("method") for f in sock.frames]
+            assert "surface.resume.set" not in methods, (
+                "codex prompt-submit without a transcript/rollout must not "
+                f"publish a resume binding; methods={methods}"
+            )
+
+        store_path = state_dir / "codex-hook-sessions.json"
+        state = json.loads(store_path.read_text(encoding="utf-8"))
+        assert session_id not in state.get("sessions", {}), (
+            "codex prompt-submit without a transcript/rollout must remove the "
+            f"unsaved session record; state={state!r}"
+        )
+    finally:
+        for pid in monitor_pids_for_session(session_id):
+            subprocess.run(["/bin/kill", str(pid)], check=False)
+
+
 def test_codex_prompt_submit_starts_monitor_when_lease_write_fails(cli_path: str, root: Path) -> None:
     socket_path = root / "cmux-monitor-lease-failure.sock"
     transcript_path = root / "codex-session-lease-failure.jsonl"
@@ -1078,12 +1137,28 @@ def test_install_collapses_consecutive_codex_hook_positions(cli_path: str, root:
 def test_install_replaces_legacy_codex_hook_commands(cli_path: str, root: Path) -> None:
     codex_home = root / "codex-home-legacy-hooks"
     codex_home.mkdir()
+    legacy_shell_prompt_submit = (
+        'if [ -n "$CMUX_SURFACE_ID" ] && [ "$CMUX_CODEX_HOOKS_DISABLED" != "1" ] '
+        '&& command -v cmux >/dev/null 2>&1; then out="$(cmux hooks codex prompt-submit 2>/dev/null)" '
+        '&& [ -n "$out" ] && printf \'%s\\n\' "$out" || echo \'{}\'; else echo \'{}\'; fi'
+    )
+    legacy_shell_feed = (
+        'if [ -n "$CMUX_SURFACE_ID" ] && [ "$CMUX_CODEX_HOOKS_DISABLED" != "1" ] '
+        '&& command -v cmux >/dev/null 2>&1; then out="$(cmux hooks feed --source codex --event PermissionRequest 2>/dev/null)" '
+        '&& [ -n "$out" ] && printf \'%s\\n\' "$out" || echo \'{}\'; else echo \'{}\'; fi'
+    )
     (codex_home / "hooks.json").write_text(
         json.dumps(
             {
                 "hooks": {
                     "Stop": [
                         {"hooks": [{"type": "command", "command": "cmux codex-hook stop"}]},
+                    ],
+                    "UserPromptSubmit": [
+                        {"hooks": [{"type": "command", "command": legacy_shell_prompt_submit}]},
+                    ],
+                    "PermissionRequest": [
+                        {"hooks": [{"type": "command", "command": legacy_shell_feed}]},
                     ],
                     "PreToolUse": [
                         {
@@ -1119,10 +1194,23 @@ def test_install_replaces_legacy_codex_hook_commands(cli_path: str, root: Path) 
 
     hooks = json.loads((codex_home / "hooks.json").read_text(encoding="utf-8"))
     commands = codex_hook_commands(hooks)
-    if any("cmux codex-hook" in command or "cmux feed-hook --source" in command for command in commands):
+    if any(
+        "cmux codex-hook" in command
+        or "cmux feed-hook --source" in command
+        or "cmux hooks codex " in command
+        or "cmux hooks feed --source codex" in command
+        for command in commands
+    ):
         raise AssertionError(f"legacy cmux hook commands were not removed: {commands!r}")
     if cmux_codex_hook_command("stop") not in commands:
         raise AssertionError(f"current Stop hook was not installed: {commands!r}")
+    if not any(
+        "CMUX_BUNDLED_CLI_PATH" in command and "hooks codex prompt-submit" in command
+        for command in commands
+    ):
+        raise AssertionError(f"current UserPromptSubmit hook was not installed: {commands!r}")
+    if cmux_codex_feed_command("PermissionRequest") not in commands:
+        raise AssertionError(f"current PermissionRequest feed hook was not installed: {commands!r}")
     if cmux_codex_feed_command("PreToolUse") not in commands:
         raise AssertionError(f"current PreToolUse feed hook was not installed: {commands!r}")
 
@@ -2624,6 +2712,7 @@ def main() -> int:
             test_codex_stop_reaps_transcript_monitor(cli_path, root)
             test_codex_stop_without_turn_keeps_session_wide_monitor(cli_path, root)
             test_codex_session_start_defers_resume_binding_until_first_turn(cli_path, root)
+            test_codex_prompt_submit_without_rollout_does_not_become_restorable(cli_path, root)
             test_codex_prompt_submit_starts_monitor_when_lease_write_fails(cli_path, root)
             test_codex_monitor_exits_when_workspace_has_no_surfaces(cli_path, root)
             test_codex_monitor_survives_transient_owner_rpc_timeout(cli_path, root)

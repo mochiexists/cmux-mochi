@@ -204,7 +204,7 @@ This is a fork (`origin` = `mochiexists/cmux-mochi`, `upstream` = `manaflow-ai/c
 ## Release
 
 Use the `/release` command to prepare a new release. This will:
-1. Determine the new version (bumps minor by default)
+1. Determine the new version (bumps patch by default for this Mochi fork)
 2. Gather commits since the last tag and update the changelog
 3. Update `CHANGELOG.md` (the docs changelog page at `web/app/docs/changelog/page.tsx` reads from it)
 4. Run `./scripts/bump-version.sh` to update both versions
@@ -213,13 +213,18 @@ Use the `/release` command to prepare a new release. This will:
 Version bumping:
 
 ```bash
-./scripts/bump-version.sh          # bump minor (0.15.0 → 0.16.0)
-./scripts/bump-version.sh patch    # bump patch (0.15.0 → 0.15.1)
+./scripts/bump-version.sh          # bump patch (0.64.161 → 0.64.162)
+./scripts/bump-version.sh patch    # bump patch explicitly
+./scripts/bump-version.sh minor    # deliberate upstream-base jump only
 ./scripts/bump-version.sh major    # bump major (0.15.0 → 1.0.0)
 ./scripts/bump-version.sh 1.0.0    # set specific version
 ```
 
-This updates both `MARKETING_VERSION` and `CURRENT_PROJECT_VERSION` (build number). The build number is auto-incremented and is required for Sparkle auto-update to work.
+This is a public Mochi fork. Between major upstream rebases, keep shipping fork
+patch releases as `0.64.162`, `0.64.163`, etc. Use `minor` or an explicit
+version only when intentionally realigning to a larger upstream release base.
+
+This updates both `MARKETING_VERSION` and `CURRENT_PROJECT_VERSION` (build number). The build number is auto-incremented and is required for Sparkle auto-update to work. The script also uses the latest published appcast as the version/build baseline so stale local checkouts do not go backwards.
 
 Before creating a release tag, run:
 
@@ -241,9 +246,12 @@ gh run watch --repo mochiexists/cmux-mochi
 Notes:
 - Requires GitHub secrets: `APPLE_CERTIFICATE_BASE64`, `APPLE_CERTIFICATE_PASSWORD`,
   `APPLE_SIGNING_IDENTITY`, `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID`.
+- Public docs and workflow logs must not include concrete self-hosted runner host
+  names. Refer to the signing lane by public label/role only.
 - The release asset is `cmux-macos.dmg` attached to the tag.
 - README download button points to `releases/latest/download/cmux-macos.dmg`.
-- Versioning: bump the minor version for updates unless explicitly asked otherwise.
+- Versioning: bump patch by default for fork releases unless explicitly doing an
+  upstream-base jump.
 - Changelog: update `CHANGELOG.md`; docs changelog is rendered from it.
 
 ## Skills

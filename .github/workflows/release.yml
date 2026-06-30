@@ -33,13 +33,11 @@ jobs:
             find "$ws/.git/modules" -type f -name "*.lock" -delete 2>/dev/null || true
           fi
 
-      - name: Print runner identity
+      - name: Print runner class
         shell: bash
         run: |
-          echo "runner.name=${{ runner.name }}"
           echo "runner.os=${{ runner.os }}"
           echo "runner.arch=${{ runner.arch }}"
-          echo "hostname=$(hostname)"
           sw_vers
           uname -m
 
@@ -104,8 +102,9 @@ jobs:
     # macOS 15 above because Zig 0.15.2 cannot link it on macOS 26.
     # Import the Apple Developer ID intermediate chain into the build keychain
     # below so signing does not depend on mutable runner login-keychain state.
-    # Self-hosted M4 GitHub Actions runner only. No Blacksmith/Warp fallback:
+    # Self-hosted Mochi signing runner only. No Blacksmith/Warp fallback:
     # this lane needs the local macOS 26/Xcode 26 setup and Apple notary profile.
+    # Keep concrete runner host names out of this public workflow and its logs.
     runs-on: [self-hosted, cmux-mochi-m4pro]
     # Notarization wait times vary on Apple's side; v0.64.14 finished at 19m16s
     # and v0.64.15 attempt 1 was killed by a 20-minute budget mid-notarization.
@@ -123,18 +122,16 @@ jobs:
             find "$ws/.git/modules" -type f -name "*.lock" -delete 2>/dev/null || true
           fi
 
-      - name: Print and guard runner identity
+      - name: Print and guard runner class
         shell: bash
         run: |
           set -euo pipefail
-          echo "runner.name=${{ runner.name }}"
           echo "runner.os=${{ runner.os }}"
           echo "runner.arch=${{ runner.arch }}"
-          echo "hostname=$(hostname)"
           sw_vers
           uname -m
-          if [[ "${{ runner.name }}" != "s-mbp2-cmux-mochi" ]]; then
-            echo "::error::Release signing must run on runner.name=s-mbp2-cmux-mochi"
+          if [[ "${{ runner.os }}" != "macOS" || "${{ runner.arch }}" != "ARM64" ]]; then
+            echo "::error::Release signing must run on the macOS ARM64 Mochi signing runner label"
             exit 1
           fi
 

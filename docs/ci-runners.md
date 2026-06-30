@@ -4,12 +4,12 @@ The Mochi fork does **not** use Blacksmith. Release automation has one explicit
 split:
 
 - GhosttyKit and the release Ghostty CLI helper run on GitHub-hosted `macos-15`.
-- The signed/notarized app release runs on the self-hosted GitHub Actions runner
-  `cmux-mochi-m4pro` through `runs-on: [self-hosted, cmux-mochi-m4pro]`.
+- The signed/notarized app release runs on the self-hosted GitHub Actions
+  signing-runner label through `runs-on: [self-hosted, cmux-mochi-m4pro]`.
 
 This is intentional. Zig 0.15.2 currently links the Ghostty helper/GhosttyKit
 reliably on macOS 15, while the app release must compile against the macOS 26
-SDK and use the M4 machine's signing/notary setup.
+SDK and use the signing runner's notary setup.
 
 Most non-release CI jobs still pick runners from repository variables so they
 can be redirected without a workflow edit. Do not infer release routing from
@@ -19,7 +19,7 @@ those generic CI variables.
 | ------------------- | ---------------------------------------------------------- | --------------------------- | -------------------------------- |
 | `LINUX_RUNNER`      | Linux CI jobs                                              | repo variable               | workflow-specific                |
 | `MACOS_RUNNER_15`   | generic macOS 15 CI lanes                                  | `macos-15`                  | workflow-specific                |
-| `MACOS_RUNNER_26`   | generic macOS 26 CI lanes                                  | `cmux-mochi-m4pro` where needed | workflow-specific            |
+| `MACOS_RUNNER_26`   | generic macOS 26 CI lanes                                  | repo variable where needed      | workflow-specific            |
 | `MACOS_RUNNER_26_RELEASE` | CI release-build validation, not the real tag release | repo variable               | workflow-specific                |
 | `MACOS_RUNNER_IOS`  | iOS simulator tests + TestFlight upload                    | repo variable               | workflow-specific                |
 
@@ -69,3 +69,5 @@ two explicit release exceptions:
 
 Those exceptions are intentional and should stay narrow. Do not add other
 self-hosted labels to required CI without updating this document and the guard.
+Do not put concrete self-hosted runner host names in public docs, workflows, or
+logs.

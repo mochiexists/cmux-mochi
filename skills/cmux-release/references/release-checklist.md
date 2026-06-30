@@ -16,7 +16,7 @@ Prefer the `/release` command. It should handle:
 
 ## Version policy
 
-Use a minor bump by default. Use patch or major only when explicitly requested or clearly justified by the release scope.
+This is a public Mochi fork. Use a patch bump by default for ordinary fork releases, so releases continue as `0.64.162`, `0.64.163`, etc. Use `minor`, `major`, or an explicit version only when intentionally realigning to a larger upstream release base.
 
 The version bump script updates both:
 
@@ -24,6 +24,8 @@ The version bump script updates both:
 - `CURRENT_PROJECT_VERSION`
 
 The build number must increase for Sparkle auto-update. If `release-pretag-guard.sh` fails because the build number is not monotonic, run the bump script, commit the build-number bump, and retry the guard.
+
+The version bump script uses the latest published appcast as the version/build baseline so stale local checkouts do not go backwards.
 
 ## Changelog
 
@@ -50,7 +52,8 @@ gh run watch --repo mochiexists/cmux-mochi
 Mochi release runner split:
 
 - `Build GhosttyKit` and `build-ghostty-cli-helper` run on GitHub-hosted `macos-15`.
-- `build-sign-notarize` runs on the self-hosted GitHub Actions runner `cmux-mochi-m4pro`.
+- `build-sign-notarize` runs on the self-hosted GitHub Actions signing runner label.
+- Do not put concrete self-hosted runner host names in public docs, workflows, or logs.
 - GhosttyKit archives are published to and downloaded from `mochiexists/ghostty`.
 - Do not reuse or force-move a pushed release tag. If the workflow/source needs a fix after a failed tag run, bump and cut the next tag.
 

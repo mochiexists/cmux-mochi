@@ -2,6 +2,15 @@
 
 All notable changes to cmux are documented here.
 
+## [0.64.162] - 2026-06-30
+
+cmux **Mochi** fork hotfix release.
+
+### Fixed
+- Fixed Codex hook resume state so a failed `codex resume <missing-id>` no longer becomes a restorable cmux session or preloads the failed session's working directory.
+- Cleaned up legacy Codex hook installation so reinstalling hooks removes stale bare `cmux hooks ...` wrappers and keeps only the bundled-CLI-aware hook commands.
+- Hardened the Mochi fork release flow so patch releases are the default and version/build bumps use the latest published appcast as the baseline.
+
 ## [0.64.161] - 2026-06-30
 
 cmux **Mochi** fork hotfix release.
