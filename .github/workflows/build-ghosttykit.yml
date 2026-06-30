@@ -119,6 +119,14 @@ jobs:
           COPYFILE_DISABLE=1 tar czf GhosttyKit.xcframework.tar.gz GhosttyKit.xcframework
           python3 scripts/validate-xcframework-archive.py GhosttyKit.xcframework.tar.gz
 
+      - name: Upload xcframework workflow artifact
+        if: steps.check-release.outputs.exists == 'false'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ghosttykit-xcframework-${{ steps.ghostty-sha.outputs.sha }}
+          path: GhosttyKit.xcframework.tar.gz
+          if-no-files-found: error
+
       - name: Upload xcframework release
         if: steps.check-release.outputs.exists == 'false'
         env:
@@ -126,8 +134,8 @@ jobs:
         run: |
           set -euo pipefail
           if [ -z "${GH_TOKEN:-}" ]; then
-            echo "GHOSTTY_RELEASE_TOKEN not available (fork PR), skipping upload"
-            exit 0
+            echo "::error::GHOSTTY_RELEASE_TOKEN is required to publish mochiexists/ghostty release assets"
+            exit 1
           fi
           TAG="xcframework-${{ steps.ghostty-sha.outputs.sha }}-${GHOSTTYKIT_BUILD_FLAVOR}"
           gh release create "$TAG" \
