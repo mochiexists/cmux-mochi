@@ -64,7 +64,7 @@ TAG="$1"
 SIGN_HASH="${SIGN_HASH:-33FD69D8D96F40228978FFA0F36771AA007DF335}"
 # notarytool keychain profile created via `xcrun notarytool store-credentials`.
 NOTARY_PROFILE="${NOTARY_PROFILE:-cmux-mochi-notary}"
-ENTITLEMENTS="cmux.entitlements"
+ENTITLEMENTS="cmux.release.entitlements"
 APP_PATH="build/Build/Products/Release/cmux Mochi.app"
 GHOSTTYKIT_CRASH_REPORT_SUBDIR="cmux/crash"
 
@@ -125,21 +125,9 @@ APP_PLIST="$APP_PATH/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c "Add :SUFeedURL string https://github.com/mochiexists/cmux-mochi/releases/latest/download/appcast.xml" "$APP_PLIST"
 echo "Sparkle keys injected"
 
-# cmux is a non-sandboxed app. Sparkle's sandbox-only XPC services make the
-# installer handoff wait for an agent connection that never arrives.
-./scripts/remove-sparkle-sandbox-xpc-services.sh "$APP_PATH"
-
 # --- Codesign ---
 echo "Codesigning..."
-CLI_PATH="$APP_PATH/Contents/Resources/bin/cmux"
-if [ -f "$CLI_PATH" ]; then
-  /usr/bin/codesign --force --options runtime --timestamp --sign "$SIGN_HASH" --entitlements "$ENTITLEMENTS" "$CLI_PATH"
-fi
-if [ -f "$HELPER_PATH" ]; then
-  /usr/bin/codesign --force --options runtime --timestamp --sign "$SIGN_HASH" --entitlements "$ENTITLEMENTS" "$HELPER_PATH"
-fi
-/usr/bin/codesign --force --options runtime --timestamp --sign "$SIGN_HASH" --entitlements "$ENTITLEMENTS" --deep "$APP_PATH"
-/usr/bin/codesign --verify --deep --strict --verbose=2 "$APP_PATH"
+./scripts/sign-cmux-bundle.sh "$APP_PATH" "$ENTITLEMENTS" "$SIGN_HASH"
 echo "Codesign verified"
 
 # --- Notarize app ---
