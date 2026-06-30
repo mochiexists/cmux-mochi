@@ -18,7 +18,7 @@ import Foundation
 /// lets us tell "untouched since our write" apart from "user-modified".
 struct CmuxSkillsBundleInstaller {
     /// Per-run summary of what the sync changed.
-    struct SyncOutcome: Equatable {
+    struct SyncOutcome: Equatable, Sendable {
         var installed: [String] = []
         var updated: [String] = []
         /// Skills we previously wrote and the user has since hand-edited. We

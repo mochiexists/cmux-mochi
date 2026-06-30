@@ -6200,46 +6200,48 @@ extension BrowserPanel {
 #endif
             return
         }
-        guard let app = AppDelegate.shared else {
+        MainActor.assumeIsolated {
+            guard let app = AppDelegate.shared else {
 #if DEBUG
-            cmuxDebugLog("browser.newTab.open.abort panel=\(id.uuidString.prefix(5)) reason=missingAppDelegate")
+                cmuxDebugLog("browser.newTab.open.abort panel=\(id.uuidString.prefix(5)) reason=missingAppDelegate")
 #endif
-            return
+                return
+            }
+            guard let workspace = app.workspaceContainingPanel(
+                panelId: id,
+                preferredWorkspaceId: workspaceId
+            )?.workspace else {
+#if DEBUG
+                cmuxDebugLog("browser.newTab.open.abort panel=\(id.uuidString.prefix(5)) reason=workspaceMissing")
+#endif
+                return
+            }
+            guard let paneId = workspace.paneId(forPanelId: id) else {
+#if DEBUG
+                cmuxDebugLog("browser.newTab.open.abort panel=\(id.uuidString.prefix(5)) reason=paneMissing")
+#endif
+                return
+            }
+            guard let _ = workspace.newBrowserSurface(
+                inPane: paneId,
+                url: seed.url,
+                initialRequest: seed.initialRequest,
+                focus: true,
+                preferredProfileID: profileID,
+                bypassInsecureHTTPHostOnce: seed.bypassInsecureHTTPHostOnce
+            ) else {
+#if DEBUG
+                cmuxDebugLog("browser.newTab.open.abort panel=\(id.uuidString.prefix(5)) reason=newPanelFailed")
+#endif
+                return
+            }
+#if DEBUG
+            cmuxDebugLog(
+                "browser.newTab.open.done panel=\(id.uuidString.prefix(5)) " +
+                "workspace=\(workspace.id.uuidString.prefix(5)) pane=\(paneId.id.uuidString.prefix(5))"
+            )
+#endif
         }
-        guard let workspace = app.workspaceContainingPanel(
-            panelId: id,
-            preferredWorkspaceId: workspaceId
-        )?.workspace else {
-#if DEBUG
-            cmuxDebugLog("browser.newTab.open.abort panel=\(id.uuidString.prefix(5)) reason=workspaceMissing")
-#endif
-            return
-        }
-        guard let paneId = workspace.paneId(forPanelId: id) else {
-#if DEBUG
-            cmuxDebugLog("browser.newTab.open.abort panel=\(id.uuidString.prefix(5)) reason=paneMissing")
-#endif
-            return
-        }
-        guard let _ = workspace.newBrowserSurface(
-            inPane: paneId,
-            url: seed.url,
-            initialRequest: seed.initialRequest,
-            focus: true,
-            preferredProfileID: profileID,
-            bypassInsecureHTTPHostOnce: seed.bypassInsecureHTTPHostOnce
-        ) else {
-#if DEBUG
-            cmuxDebugLog("browser.newTab.open.abort panel=\(id.uuidString.prefix(5)) reason=newPanelFailed")
-#endif
-            return
-        }
-#if DEBUG
-        cmuxDebugLog(
-            "browser.newTab.open.done panel=\(id.uuidString.prefix(5)) " +
-            "workspace=\(workspace.id.uuidString.prefix(5)) pane=\(paneId.id.uuidString.prefix(5))"
-        )
-#endif
     }
 
     var currentURLForTabDuplication: URL? {

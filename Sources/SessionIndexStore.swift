@@ -539,16 +539,14 @@ final class SessionIndexStore: ObservableObject {
         isLoading = true
         directorySnapshotGeneration += 1
         invalidateDirectorySnapshots()
-        loadTask = Task.detached(priority: .userInitiated) { [weak self] in
+        loadTask = Task(priority: .userInitiated) { [weak self] in
             let scanned = await Self.scanAll()
-            await MainActor.run {
-                guard let self else { return }
-                if Task.isCancelled { return }
-                self.entries = scanned
-                self.isLoading = false
-                self.backfillAgentOrderFromEntries()
-                self.backfillDirectoryOrderFromEntries()
-            }
+            guard let self else { return }
+            if Task.isCancelled { return }
+            self.entries = scanned
+            self.isLoading = false
+            self.backfillAgentOrderFromEntries()
+            self.backfillDirectoryOrderFromEntries()
         }
     }
 
@@ -668,7 +666,7 @@ final class SessionIndexStore: ObservableObject {
     /// Hard cap on candidate files inspected per call to keep deep-page searches bounded.
     nonisolated static let searchMaxFiles = 1500
 
-    private static func scanAll() async -> [SessionEntry] {
+    nonisolated private static func scanAll() async -> [SessionEntry] {
         // Initial scan errors are silently ignored — UI just shows the cached
         // entries we did get. Errors get surfaced when the user actively
         // searches via the popover.

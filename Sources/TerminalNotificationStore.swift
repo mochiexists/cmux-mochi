@@ -2,7 +2,7 @@ import CmuxFoundation
 import AppKit
 import Foundation
 import os
-import UserNotifications
+@preconcurrency import UserNotifications
 import Bonsplit
 import CmuxSettings
 
@@ -641,11 +641,13 @@ final class TerminalNotificationStore: ObservableObject {
     func refreshAuthorizationStatus() {
         center.getNotificationSettings { [weak self] settings in
             DispatchQueue.main.async {
-                guard let self else { return }
-                self.authorizationState = Self.authorizationState(from: settings.authorizationStatus)
-                self.logAuthorization(
-                    "refresh status=\(Self.authorizationStatusLabel(settings.authorizationStatus)) mapped=\(self.authorizationState.statusLabel)"
-                )
+                MainActor.assumeIsolated {
+                    guard let self else { return }
+                    self.authorizationState = Self.authorizationState(from: settings.authorizationStatus)
+                    self.logAuthorization(
+                        "refresh status=\(Self.authorizationStatusLabel(settings.authorizationStatus)) mapped=\(self.authorizationState.statusLabel)"
+                    )
+                }
             }
         }
     }
@@ -682,6 +684,9 @@ final class TerminalNotificationStore: ObservableObject {
             content.body = "Desktop notifications are enabled."
             content.sound = NotificationSoundSettings.sound()
             content.categoryIdentifier = Self.categoryIdentifier
+            let commandTitle = content.title
+            let commandSubtitle = content.subtitle
+            let commandBody = content.body
 
             let request = UNNotificationRequest(
                 identifier: "cmux.settings.test.\(UUID().uuidString)",
@@ -698,9 +703,9 @@ final class TerminalNotificationStore: ObservableObject {
                 } else {
                     self.logAuthorization("settings test schedule succeeded")
                     NotificationSoundSettings.runCustomCommand(
-                        title: content.title,
-                        subtitle: content.subtitle,
-                        body: content.body
+                        title: commandTitle,
+                        subtitle: commandSubtitle,
+                        body: commandBody
                     )
                 }
             }
@@ -1861,39 +1866,41 @@ final class TerminalNotificationStore: ObservableObject {
         logAuthorization("ensure start origin=\(origin.rawValue)")
         center.getNotificationSettings { [weak self] settings in
             DispatchQueue.main.async {
-                guard let self else {
-                    completion(false, .unknown)
-                    return
-                }
+                MainActor.assumeIsolated {
+                    guard let self else {
+                        completion(false, .unknown)
+                        return
+                    }
 
-                self.authorizationState = Self.authorizationState(from: settings.authorizationStatus)
-                self.logAuthorization(
-                    "ensure status origin=\(origin.rawValue) status=\(Self.authorizationStatusLabel(settings.authorizationStatus)) mapped=\(self.authorizationState.statusLabel) appActive=\(AppFocusState.isAppActive())"
-                )
-                switch settings.authorizationStatus {
-                case .authorized, .provisional, .ephemeral:
-                    completion(true, self.authorizationState)
-                case .denied:
-                    if origin != .notificationDelivery {
-                        self.logAuthorization("ensure denied origin=\(origin.rawValue) prompting_settings")
-                        self.promptToEnableNotifications()
+                    self.authorizationState = Self.authorizationState(from: settings.authorizationStatus)
+                    self.logAuthorization(
+                        "ensure status origin=\(origin.rawValue) status=\(Self.authorizationStatusLabel(settings.authorizationStatus)) mapped=\(self.authorizationState.statusLabel) appActive=\(AppFocusState.isAppActive())"
+                    )
+                    switch settings.authorizationStatus {
+                    case .authorized, .provisional, .ephemeral:
+                        completion(true, self.authorizationState)
+                    case .denied:
+                        if origin != .notificationDelivery {
+                            self.logAuthorization("ensure denied origin=\(origin.rawValue) prompting_settings")
+                            self.promptToEnableNotifications()
+                        }
+                        completion(false, .denied)
+                    case .notDetermined:
+                        if Self.shouldDeferAutomaticAuthorizationRequest(
+                            origin: origin,
+                            status: settings.authorizationStatus,
+                            isAppActive: AppFocusState.isAppActive()
+                        ) {
+                            self.logAuthorization("ensure deferred origin=\(origin.rawValue)")
+                            self.hasDeferredAuthorizationRequest = true
+                            completion(false, .notDetermined)
+                        } else {
+                            self.requestAuthorizationIfNeeded(origin: origin, completion)
+                        }
+                    @unknown default:
+                        self.logAuthorization("ensure unknown status origin=\(origin.rawValue)")
+                        completion(false, .unknown)
                     }
-                    completion(false, .denied)
-                case .notDetermined:
-                    if Self.shouldDeferAutomaticAuthorizationRequest(
-                        origin: origin,
-                        status: settings.authorizationStatus,
-                        isAppActive: AppFocusState.isAppActive()
-                    ) {
-                        self.logAuthorization("ensure deferred origin=\(origin.rawValue)")
-                        self.hasDeferredAuthorizationRequest = true
-                        completion(false, .notDetermined)
-                    } else {
-                        self.requestAuthorizationIfNeeded(origin: origin, completion)
-                    }
-                @unknown default:
-                    self.logAuthorization("ensure unknown status origin=\(origin.rawValue)")
-                    completion(false, .unknown)
                 }
             }
         }
@@ -1923,22 +1930,24 @@ final class TerminalNotificationStore: ObservableObject {
         )
         center.requestAuthorization(options: [.alert, .sound]) { granted, error in
             DispatchQueue.main.async {
-                if granted {
-                    self.authorizationState = .authorized
-                } else {
-                    self.refreshAuthorizationStatus()
+                MainActor.assumeIsolated {
+                    if granted {
+                        self.authorizationState = .authorized
+                    } else {
+                        self.refreshAuthorizationStatus()
+                    }
+                    self.logAuthorization(
+                        "request callback origin=\(origin.rawValue) granted=\(granted) error=\(error?.localizedDescription ?? "nil") mapped=\(self.authorizationState.statusLabel)"
+                    )
+                    // A non-grant without an error is the user answering the
+                    // prompt with a live denial, even while authorizationState is
+                    // still refreshing. A request error is not a user decision,
+                    // so it reports .unknown and the fallback sound stays on
+                    // (fail-open).
+                    let effectiveState: NotificationAuthorizationState =
+                        granted ? .authorized : (error == nil ? .denied : .unknown)
+                    completion(granted, effectiveState)
                 }
-                self.logAuthorization(
-                    "request callback origin=\(origin.rawValue) granted=\(granted) error=\(error?.localizedDescription ?? "nil") mapped=\(self.authorizationState.statusLabel)"
-                )
-                // A non-grant without an error is the user answering the
-                // prompt with a live denial, even while authorizationState is
-                // still refreshing. A request error is not a user decision,
-                // so it reports .unknown and the fallback sound stays on
-                // (fail-open).
-                let effectiveState: NotificationAuthorizationState =
-                    granted ? .authorized : (error == nil ? .denied : .unknown)
-                completion(granted, effectiveState)
             }
         }
     }
