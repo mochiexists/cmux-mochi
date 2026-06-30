@@ -153,8 +153,16 @@ echo "App notarized"
 
 # --- Create and notarize DMG ---
 echo "Creating DMG..."
-rm -f cmux-macos.dmg
-create-dmg --codesign "$SIGN_HASH" cmux-macos.dmg "$APP_PATH"
+rm -f cmux-macos.dmg cmux*.dmg
+create-dmg --no-code-sign "$APP_PATH" ./
+CREATED_DMG="$(find . -maxdepth 1 -name 'cmux*.dmg' | head -n 1)"
+if [ -z "$CREATED_DMG" ]; then
+  echo "Failed to locate created DMG for $APP_PATH" >&2
+  exit 1
+fi
+mv "$CREATED_DMG" cmux-macos.dmg
+/usr/bin/codesign --force --timestamp --sign "$SIGN_HASH" cmux-macos.dmg
+/usr/bin/codesign --verify --verbose=2 cmux-macos.dmg
 echo "Notarizing DMG..."
 xcrun notarytool submit cmux-macos.dmg --keychain-profile "$NOTARY_PROFILE" --wait
 xcrun stapler staple cmux-macos.dmg
