@@ -2,6 +2,16 @@
 
 All notable changes to cmux are documented here.
 
+## [0.64.161] - 2026-06-30
+
+cmux **Mochi** fork hotfix release.
+
+### Fixed
+- Fixed the signed release update path after `0.64.160` by pinning the missing GhosttyKit archive and checksum for the current Ghostty submodule.
+- Hardened the release workflow so app signing/notarization runs only on the Mochi M4 self-hosted runner, while GhosttyKit and the Ghostty CLI helper build on GitHub-hosted macOS 15 where Zig can link them.
+- Made the GhosttyKit builder preserve its tarball as a workflow artifact and fail clearly if the cross-repo release token is unavailable, instead of silently skipping publication.
+- Added a welcome-screen note that Passkeys/WebAuthn are temporarily disabled in current Developer ID builds.
+
 ## [0.64.160] - 2026-06-30
 
 cmux **Mochi** fork hotfix release.
