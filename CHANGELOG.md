@@ -2,6 +2,14 @@
 
 All notable changes to cmux are documented here.
 
+## [0.64.160] - 2026-06-30
+
+cmux **Mochi** fork hotfix release.
+
+### Fixed
+- Fixed the macOS release signing path so the app no longer ships with the restricted `com.apple.developer.web-browser.public-key-credential` entitlement. This entitlement caused macOS AMFI to reject the signed app at launch with `Launchd job spawn failed` / POSIX 163 after updating.
+- Aligned the local M4 release script with the CI inside-out signing helper and release entitlements, so future local releases use the same entitlement guard as GitHub Actions.
+
 ## [0.64.159] - 2026-06-30
 
 cmux **Mochi** fork patch release.
