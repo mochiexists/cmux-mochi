@@ -2,6 +2,18 @@
 
 All notable changes to cmux are documented here.
 
+## [0.64.163] - 2026-07-02
+
+cmux **Mochi** fork patch release.
+
+### Added
+- Added an experimental Claude Code in VS Code browser flow: cmux can start a per-workspace VS Code `serve-web` instance, seed the installed Claude Code extension when available, and open the Claude Code view in a browser pane with VS Code chrome minimized.
+- Added workspace Privacy Frost from the sidebar context menu, redacting sensitive workspace rows and preventing normal click/focus routing until the workspace is unfrosted.
+- Added file-aware tab actions that copy the backing file directly, with extension-specific labels such as "Copy .pdf File" where cmux knows the file type.
+
+### Changed
+- Reordered the Mochi welcome feature list chronologically and moved the temporary Passkeys/WebAuthn Developer ID limitation into a separated italic note.
+
 ## [0.64.162] - 2026-06-30
 
 cmux **Mochi** fork hotfix release.
