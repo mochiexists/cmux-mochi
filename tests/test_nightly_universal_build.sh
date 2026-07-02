@@ -38,6 +38,16 @@ if ! grep -Fq "vars.MACOS_RUNNER_15 || 'blacksmith-6vcpu-macos-15'" "$WORKFLOW_F
 fi
 
 if ! awk '
+  /^  build-sign-notarize-nightly:/ { in_job=1; next }
+  in_job && /^  [^[:space:]#][^:]*:/ { in_job=0 }
+  in_job && /timeout-minutes:/ { timeout=$2 }
+  END { exit !(timeout >= 75) }
+' "$WORKFLOW_FILE"; then
+  echo "FAIL: nightly build/sign/notarize timeout must allow universal Release build plus Apple notarization"
+  exit 1
+fi
+
+if ! awk '
   /^      - name: Build universal nightly app and Ghostty CLI helper \(Release\)/ { in_universal=1; next }
   in_universal && /^      - name:/ { in_universal=0 }
   in_universal && /\.\/scripts\/build-release-universal\.sh/ { saw_build_script=1 }
