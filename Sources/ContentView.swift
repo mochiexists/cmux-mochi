@@ -13944,6 +13944,7 @@ struct TabItemView: View, Equatable {
         .background { rowHeightProbe }
         .contentShape(Rectangle())
         .opacity(isBeingDragged ? 0.6 : 1)
+        .disabled(isPrivacyBlurred)
     }
 
     @ViewBuilder
