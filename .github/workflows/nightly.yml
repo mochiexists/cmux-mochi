@@ -38,7 +38,10 @@ env:
 
 jobs:
   decide:
-    runs-on: ${{ vars.LINUX_RUNNER || 'blacksmith-4vcpu-ubuntu-2404' }}
+    # This is a tiny GitHub API decision job with no secrets or build output.
+    # Keep it on GitHub-hosted Linux so ad-hoc release smoke runs never block
+    # behind a missing third-party Linux runner label.
+    runs-on: ubuntu-24.04
     outputs:
       should_build: ${{ steps.decide.outputs.should_build }}
       head_sha: ${{ steps.decide.outputs.head_sha }}

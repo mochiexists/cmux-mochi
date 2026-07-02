@@ -716,6 +716,7 @@ check_no_bare_github_hosted_runners() {
   local hits
   hits="$(grep -rnE "runs-on:[[:space:]]*(ubuntu-[a-z0-9.]+|macos-[a-z0-9]+)[[:space:]]*$" "$ROOT_DIR/.github/workflows" \
     | grep -Ev '/(\.github/workflows/release\.yml|\.github/workflows/build-ghosttykit\.yml):.*runs-on:[[:space:]]*macos-15[[:space:]]*$' \
+    | grep -Ev '/\.github/workflows/nightly\.yml:.*runs-on:[[:space:]]*ubuntu-24\.04[[:space:]]*$' \
     || true)"
   if [[ -n "$hits" ]]; then
     echo "FAIL: these jobs use a bare GitHub-hosted runner; route them through vars.LINUX_RUNNER / vars.MACOS_RUNNER_IOS so Blacksmith<->overflow stays a repo-variable flip:"

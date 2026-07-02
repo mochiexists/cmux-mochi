@@ -6,6 +6,9 @@ split:
 - GhosttyKit and the release Ghostty CLI helper run on GitHub-hosted `macos-15`.
 - The signed/notarized app release runs on the self-hosted GitHub Actions
   signing-runner label through `runs-on: [self-hosted, cmux-mochi-m4pro]`.
+- The manual nightly `decide` job runs on GitHub-hosted `ubuntu-24.04`; it only
+  computes whether to build and must not depend on a third-party Linux runner
+  before reaching the signing-runner smoke path.
 
 This is intentional. Zig 0.15.2 currently links the Ghostty helper/GhosttyKit
 reliably on macOS 15, while the app release must compile against the macOS 26
@@ -62,10 +65,11 @@ new tag.
 
 `tests/test_ci_self_hosted_guard.sh` keeps generic CI lanes from accidentally
 landing on ambiguous self-hosted labels or bare GitHub-hosted runners. It has
-two explicit release exceptions:
+three explicit release exceptions:
 
 - `.github/workflows/build-ghosttykit.yml` may pin `runs-on: macos-15`.
 - `.github/workflows/release.yml` may pin `runs-on: [self-hosted, cmux-mochi-m4pro]`.
+- `.github/workflows/nightly.yml` may pin the tiny `decide` job to `ubuntu-24.04`.
 
 Those exceptions are intentional and should stay narrow. Do not add other
 self-hosted labels to required CI without updating this document and the guard.
