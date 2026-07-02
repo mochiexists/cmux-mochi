@@ -47,6 +47,8 @@ schedule — every lane is tag- or dispatch-triggered.
   ONLY build that proves a release will compile — Debug/CI-default builds do not. Run it (via
   `scripts/build-release-universal.sh` once Phase 1 lands) before tagging.
 
+Operational playbook: `docs/release-process.md`.
+
 ## Submodules — all re-pointed at mochiexists forks
 
 `.gitmodules`: `ghostty`, `vendor/bonsplit` (the window-pane/split engine), and
