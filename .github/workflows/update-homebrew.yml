@@ -21,8 +21,11 @@ jobs:
     runs-on: ${{ vars.LINUX_RUNNER || 'blacksmith-4vcpu-ubuntu-2404' }}
     # Only run if the release workflow succeeded (or manual trigger)
     if: >-
-      github.event_name == 'workflow_dispatch' ||
-      github.event.workflow_run.conclusion == 'success'
+      github.repository == 'manaflow-ai/cmux' &&
+      (
+        github.event_name == 'workflow_dispatch' ||
+        github.event.workflow_run.conclusion == 'success'
+      )
     steps:
       - name: Get version
         id: version

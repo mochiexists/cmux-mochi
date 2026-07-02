@@ -85,6 +85,12 @@ require_file_absent "web/app/[locale]/nightly/page.tsx" "manaflow-ai/cmux"
 
 require_file_contains ".github/workflows/update-homebrew.yml" "auto-trigger disabled"
 require_file_contains ".github/workflows/update-homebrew.yml" "mochiexists/cmux-mochi"
+require_file_contains ".github/workflows/update-homebrew.yml" "github.repository == 'manaflow-ai/cmux'"
+require_file_contains ".github/workflows/presence.yml" "github.repository == 'manaflow-ai/cmux'"
+require_file_contains ".github/workflows/cloud-vm-migrate.yml" "github.repository == 'manaflow-ai/cmux'"
+require_file_contains ".github/workflows/cloud-vm-smoke.yml" "github.repository == 'manaflow-ai/cmux'"
+require_file_contains ".github/workflows/test-depot.yml" "github.repository == 'manaflow-ai/cmux'"
+require_file_contains "FORK.md" "com.cmux-mochi"
 
 # cmux-mochi Sentry project (codes-o3/cmux-mochi, project 4511385382486096).
 require_file_contains "CLI/CLISocketSentryTelemetry.swift" "https://f1724042a52588425266851138bb2ee8@o4510776019910656.ingest.de.sentry.io/4511385382486096"
