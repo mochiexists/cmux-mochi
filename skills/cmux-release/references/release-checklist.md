@@ -27,6 +27,11 @@ The build number must increase for Sparkle auto-update. If `release-pretag-guard
 
 The version bump script uses the latest published appcast as the version/build baseline so stale local checkouts do not go backwards.
 
+`release-pretag-guard.sh` also runs the fork overlay audit and requires a completed successful
+`ci.yml` run on the exact local `HEAD`. Pass `--build` when you want the guard to also run the
+local universal Release build. Pass `--skip-ci-check` only for deliberate offline/local release
+preparation; it still runs the local checks and prints a warning.
+
 ## Changelog
 
 Update `CHANGELOG.md`. The docs changelog page at `web/app/docs/changelog/page.tsx` renders from it, so do not update a separate docs changelog source.

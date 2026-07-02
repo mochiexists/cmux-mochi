@@ -33,7 +33,13 @@ Before creating a release tag, run:
 ./scripts/release-pretag-guard.sh
 ```
 
-If it fails, run `./scripts/bump-version.sh`, commit the build-number bump, then retry tagging.
+The guard checks Sparkle build monotonicity, the fork overlay audit, and a completed successful
+`ci.yml` run on the exact local `HEAD`. Use `./scripts/release-pretag-guard.sh --build` to also
+run the local universal Release build. Use `--skip-ci-check` only for deliberate offline/local
+release preparation; it prints a warning and still runs the local checks.
+
+If it fails on build monotonicity, run `./scripts/bump-version.sh`, commit the build-number bump,
+then retry tagging. If it fails on the CI check, run CI for the exact commit before tagging.
 
 Manual release steps if not using the command:
 

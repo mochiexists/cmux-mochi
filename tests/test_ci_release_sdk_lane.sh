@@ -4,6 +4,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 CI_FILE="$ROOT_DIR/.github/workflows/ci.yml"
 RELEASE_FILE="$ROOT_DIR/.github/workflows/release.yml"
+BUILD_SCRIPT="$ROOT_DIR/scripts/build-release-universal.sh"
 
 # nightly.yml is intentionally not covered here. It has its own helper-build
 # model and guards via test_ci_nightly_xcode_selection.sh plus
@@ -54,8 +55,8 @@ require_job_contains \
   "CI release-build must compile the app on macOS 26 using the release-specific runner variable"
 
 for workflow in "$CI_FILE" "$RELEASE_FILE"; do
-  if ! grep -Fq "CMUX_SKIP_ZIG_BUILD=1 xcodebuild" "$workflow"; then
-    echo "FAIL: $(basename "$workflow") must skip the in-build Zig helper on macOS 26" >&2
+  if ! grep -Fq "./scripts/build-release-universal.sh" "$workflow"; then
+    echo "FAIL: $(basename "$workflow") must call scripts/build-release-universal.sh for the app build" >&2
     exit 1
   fi
 
@@ -71,6 +72,19 @@ for workflow in "$CI_FILE" "$RELEASE_FILE"; do
 
   if ! grep -Fq '[[ "$SDK_VERSION" == 26.* ]]' "$workflow"; then
     echo "FAIL: $(basename "$workflow") must verify the app binary was built with a macOS 26 SDK" >&2
+    exit 1
+  fi
+done
+
+for needle in \
+  "CMUX_SKIP_ZIG_BUILD=1" \
+  "-jobs 1" \
+  "SWIFT_COMPILATION_MODE=singlefile" \
+  'ARCHS="arm64 x86_64"' \
+  "CODE_SIGNING_ALLOWED=NO"
+do
+  if ! grep -Fq -- "$needle" "$BUILD_SCRIPT"; then
+    echo "FAIL: build-release-universal.sh must preserve release build flag: $needle" >&2
     exit 1
   fi
 done

@@ -5,17 +5,26 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 WORKFLOW_FILE="$ROOT_DIR/.github/workflows/nightly.yml"
 
+if grep -Eq '^  push:' "$WORKFLOW_FILE"; then
+  echo "FAIL: nightly workflow must be ad-hoc only; push trigger should stay disabled"
+  exit 1
+fi
+
+if ! grep -Fq 'workflow_dispatch:' "$WORKFLOW_FILE"; then
+  echo "FAIL: nightly workflow must keep a manual workflow_dispatch trigger"
+  exit 1
+fi
+
 if ! awk '
   /^      - name: Build universal nightly app and Ghostty CLI helper \(Release\)/ { in_universal=1; next }
   in_universal && /^      - name:/ { in_universal=0 }
-  in_universal && /-destination '\''generic\/platform=macOS'\''/ { saw_universal_destination=1 }
-  in_universal && /ARCHS="arm64 x86_64"/ { saw_universal_archs=1 }
-  in_universal && /ONLY_ACTIVE_ARCH=NO/ { saw_universal_only_active_arch=1 }
+  in_universal && /\.\/scripts\/build-release-universal\.sh/ { saw_build_script=1 }
+  in_universal && /--appicon AppIcon-Nightly/ { saw_appicon=1 }
   END {
-    exit !(saw_universal_destination && saw_universal_archs && saw_universal_only_active_arch)
+    exit !(saw_build_script && saw_appicon)
   }
 ' "$WORKFLOW_FILE"; then
-  echo "FAIL: nightly workflow must build the nightly app as universal arm64+x86_64"
+  echo "FAIL: nightly workflow must use the shared universal release build script with the nightly icon"
   exit 1
 fi
 
@@ -36,25 +45,38 @@ fi
 if ! awk '
   /^      - name: Inject universal Ghostty CLI helper/ { in_inject=1; next }
   in_inject && /^      - name:/ { in_inject=0 }
+  in_inject && /APP_DIR="build-universal\/Build\/Products\/Release\/cmux Mochi\.app"/ { saw_mochi_app=1 }
   in_inject && /install -m 755 \/tmp\/cmux-ghostty-helper-universal "\$DEST"/ { saw_install=1 }
-  END { exit !saw_install }
+  END { exit !(saw_mochi_app && saw_install) }
 ' "$WORKFLOW_FILE"; then
-  echo "FAIL: nightly workflow must inject the verified universal Ghostty helper into the app"
+  echo "FAIL: nightly workflow must inject the verified universal Ghostty helper into the built Mochi app"
   exit 1
 fi
 
 if ! awk '
   /^      - name: Verify nightly binary architectures/ { in_verify=1; next }
   in_verify && /^      - name:/ { in_verify=0 }
+  in_verify && /cmux Mochi\.app\/Contents\/MacOS\/cmux Mochi/ { saw_mochi_binary=1 }
   in_verify && /lipo -archs "\$APP_BINARY"/ { saw_app=1 }
   in_verify && /lipo -archs "\$CLI_BINARY"/ { saw_cli=1 }
   in_verify && /lipo -archs "\$HELPER_BINARY"/ { saw_helper=1 }
   in_verify && /\[\[ "\$APP_ARCHS" == \*arm64\* && "\$APP_ARCHS" == \*x86_64\* \]\]/ { saw_app_assert=1 }
   in_verify && /\[\[ "\$CLI_ARCHS" == \*arm64\* && "\$CLI_ARCHS" == \*x86_64\* \]\]/ { saw_cli_assert=1 }
   in_verify && /\[\[ "\$HELPER_ARCHS" == \*arm64\* && "\$HELPER_ARCHS" == \*x86_64\* \]\]/ { saw_helper_assert=1 }
-  END { exit !(saw_app && saw_cli && saw_helper && saw_app_assert && saw_cli_assert && saw_helper_assert) }
+  END { exit !(saw_mochi_binary && saw_app && saw_cli && saw_helper && saw_app_assert && saw_cli_assert && saw_helper_assert) }
 ' "$WORKFLOW_FILE"; then
-  echo "FAIL: nightly workflow must verify universal app, CLI, and helper slices with lipo"
+  echo "FAIL: nightly workflow must verify universal app, CLI, and helper slices from the built Mochi app with lipo"
+  exit 1
+fi
+
+if ! awk '
+  /^      - name: Inject nightly identities and metadata/ { in_inject=1; next }
+  in_inject && /^      - name:/ { in_inject=0 }
+  in_inject && /cmux Mochi\.app\/Contents\/Info\.plist/ { saw_mochi_plist=1 }
+  in_inject && /mv "\$app_dir\/cmux Mochi\.app" "\$app_dir\/cmux NIGHTLY\.app"/ { saw_rename=1 }
+  END { exit !(saw_mochi_plist && saw_rename) }
+' "$WORKFLOW_FILE"; then
+  echo "FAIL: nightly identity injection must mutate and rename the built Mochi app into the NIGHTLY app"
   exit 1
 fi
 
