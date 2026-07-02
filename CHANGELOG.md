@@ -2,7 +2,7 @@
 
 All notable changes to cmux are documented here.
 
-## [0.64.163] - 2026-07-02
+## [0.64.164] - 2026-07-02
 
 cmux **Mochi** fork patch release.
 
@@ -13,6 +13,9 @@ cmux **Mochi** fork patch release.
 
 ### Changed
 - Reordered the Mochi welcome feature list chronologically and moved the temporary Passkeys/WebAuthn Developer ID limitation into a separated italic note.
+
+### Fixed
+- Reduced peak memory in the universal macOS release build so the self-hosted release runner can finish the signed release artifact instead of failing during Swift compilation.
 
 ## [0.64.162] - 2026-06-30
 
