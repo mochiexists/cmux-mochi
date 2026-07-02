@@ -56830,6 +56830,52 @@
         }
       }
     },
+    "command.openFolderInVSCodeClaude.subtitle": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Claude Code in VS Code"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "VS Code の Claude Code"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "VS Code의 Claude Code"
+          }
+        }
+      }
+    },
+    "command.openFolderInVSCodeClaude.title": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open Folder in Claude Code (VS Code)…"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "フォルダを Claude Code で開く（VS Code）…"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Claude Code에서 폴더 열기 (VS Code)…"
+          }
+        }
+      }
+    },
     "command.openGhosttySettings.subtitle": {
       "extractionState": "manual",
       "localizations": {
@@ -77711,6 +77757,75 @@
         }
       }
     },
+    "menu.file.openFolderInVSCodeClaude": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open Folder in Claude Code (VS Code)…"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "フォルダを Claude Code で開く（VS Code）…"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Claude Code에서 폴더 열기 (VS Code)…"
+          }
+        }
+      }
+    },
+    "menu.file.openFolderInVSCodeClaude.panelPrompt": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open in Claude Code"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Claude Code で開く"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Claude Code에서 열기"
+          }
+        }
+      }
+    },
+    "menu.file.openFolderInVSCodeClaude.panelTitle": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open Folder in Claude Code (VS Code)"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "フォルダを Claude Code で開く（VS Code）"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Claude Code에서 폴더 열기 (VS Code)"
+          }
+        }
+      }
+    },
     "historyPane.clearClosed": {
       "extractionState": "manual",
       "localizations": {
@@ -85748,6 +85863,125 @@
           "stringUnit": {
             "state": "translated",
             "value": "Відкрити поточну теку в VS Code (вбудований)"
+          }
+        }
+      }
+    },
+    "menu.openInVSCodeClaude": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open Current Directory in Claude Code (VS Code)"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "現在のディレクトリを Claude Code で開く（VS Code）"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在 Claude Code（VS Code）中打开当前目录"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在 Claude Code（VS Code）中開啟目前目錄"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "현재 디렉토리를 Claude Code에서 열기 (VS Code)"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aktuelles Verzeichnis in Claude Code (VS Code) öffnen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Abrir directorio actual en Claude Code (VS Code)"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ouvrir le répertoire courant dans Claude Code (VS Code)"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apri la directory corrente in Claude Code (VS Code)"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Åbn nuværende mappe i Claude Code (VS Code)"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Otwórz bieżący katalog w Claude Code (VS Code)"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Открыть текущий каталог в Claude Code (VS Code)"
+          }
+        },
+        "bs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Otvori trenutni direktorij u Claude Code (VS Code)"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "فتح الدليل الحالي في Claude Code (VS Code)"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Åpne gjeldende katalog i Claude Code (VS Code)"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Abrir Diretório Atual no Claude Code (VS Code)"
+          }
+        },
+        "th": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "เปิดไดเรกทอรีปัจจุบันใน Claude Code (VS Code)"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Geçerli Dizini Claude Code'da Aç (VS Code)"
+          }
+        },
+        "uk": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Відкрити поточну теку в Claude Code (VS Code)"
           }
         }
       }
@@ -210335,6 +210569,142 @@
           "stringUnit": {
             "state": "translated",
             "value": "更新: %@"
+          }
+        }
+      }
+    },
+    "contextMenu.blurWorkspace": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Blur Workspace"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ワークスペースをぼかす"
+          }
+        }
+      }
+    },
+    "contextMenu.blurWorkspaces": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Blur Workspaces"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ワークスペースをぼかす"
+          }
+        }
+      }
+    },
+    "contextMenu.unblurWorkspace": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unblur Workspace"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ワークスペースのぼかしを解除"
+          }
+        }
+      }
+    },
+    "contextMenu.unblurWorkspaces": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unblur Workspaces"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ワークスペースのぼかしを解除"
+          }
+        }
+      }
+    },
+    "file.contextMenu.copyFile": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Copy File"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ファイルをコピー"
+          }
+        }
+      }
+    },
+    "file.contextMenu.copyFileWithExtension": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Copy .%@ File"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": ".%@ファイルをコピー"
+          }
+        }
+      }
+    },
+    "sidebar.workspace.privacyBlurred": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Private Workspace"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "プライベートワークスペース"
+          }
+        }
+      }
+    },
+    "sidebar.workspace.privacyBlurred.accessibilityHint": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Right-click for workspace actions."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "右クリックしてワークスペース操作を表示します。"
           }
         }
       }

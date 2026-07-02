@@ -166,6 +166,16 @@ enum FileExternalOpenAction {
         pasteboard.clearContents()
         pasteboard.setString(path, forType: .string)
     }
+
+    /// Copy a file URL to the general pasteboard so Finder and other apps can
+    /// paste the file object, with the path string as a fallback flavor.
+    static func copyFile(fileURL: URL) {
+        let standardizedURL = fileURL.standardizedFileURL
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.writeObjects([standardizedURL as NSURL])
+        pasteboard.setString(standardizedURL.path, forType: .string)
+    }
 }
 
 enum FileExternalOpenText {
@@ -184,6 +194,15 @@ enum FileExternalOpenText {
 
     static var revealInFinder: String {
         String(localized: "fileExplorer.contextMenu.revealInFinder", defaultValue: "Reveal in Finder")
+    }
+
+    static func copyFileLabel(fileURL: URL) -> String {
+        let pathExtension = fileURL.pathExtension.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !pathExtension.isEmpty else {
+            return String(localized: "file.contextMenu.copyFile", defaultValue: "Copy File")
+        }
+        let format = String(localized: "file.contextMenu.copyFileWithExtension", defaultValue: "Copy .%@ File")
+        return String(format: format, locale: .current, pathExtension.lowercased())
     }
 }
 

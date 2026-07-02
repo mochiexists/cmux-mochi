@@ -2778,6 +2778,8 @@ final class TerminalDirectoryOpenTargetAvailabilityTests: XCTestCase {
 
         let availableTargets = TerminalDirectoryOpenTarget.availableTargets(in: env)
         XCTAssertTrue(availableTargets.contains(.vscode))
+        XCTAssertTrue(availableTargets.contains(.vscodeClaudeInline))
+        XCTAssertTrue(availableTargets.contains(.vscodeInline))
         XCTAssertTrue(availableTargets.contains(.finder))
         XCTAssertTrue(availableTargets.contains(.terminal))
         XCTAssertTrue(availableTargets.contains(.zed))
@@ -2803,6 +2805,7 @@ final class TerminalDirectoryOpenTargetAvailabilityTests: XCTestCase {
     func testVSCodeInlineRequiresCodeTunnelExecutable() {
         let env = environment(existingPaths: ["/Applications/Visual Studio Code.app"])
         XCTAssertTrue(TerminalDirectoryOpenTarget.vscode.isAvailable(in: env))
+        XCTAssertFalse(TerminalDirectoryOpenTarget.vscodeClaudeInline.isAvailable(in: env))
         XCTAssertFalse(TerminalDirectoryOpenTarget.vscodeInline.isAvailable(in: env))
     }
 
@@ -2830,6 +2833,7 @@ final class TerminalDirectoryOpenTargetAvailabilityTests: XCTestCase {
 
         let availableTargets = TerminalDirectoryOpenTarget.availableTargets(in: env)
         XCTAssertTrue(availableTargets.contains(.vscode))
+        XCTAssertTrue(availableTargets.contains(.vscodeClaudeInline))
         XCTAssertTrue(availableTargets.contains(.vscodeInline))
     }
 

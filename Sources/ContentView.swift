@@ -6423,6 +6423,25 @@ struct ContentView: View {
         )
         contributions.append(
             CommandPaletteCommandContribution(
+                commandId: "palette.openFolderInVSCodeClaude",
+                title: constant(
+                    String(
+                        localized: "command.openFolderInVSCodeClaude.title",
+                        defaultValue: "Open Folder in Claude Code (VS Code)…"
+                    )
+                ),
+                subtitle: constant(
+                    String(
+                        localized: "command.openFolderInVSCodeClaude.subtitle",
+                        defaultValue: "Claude Code in VS Code"
+                    )
+                ),
+                keywords: ["open", "folder", "directory", "project", "vs", "code", "inline", "editor", "browser", "claude", "anthropic", "agent"],
+                when: { _ in TerminalDirectoryOpenTarget.vscodeClaudeInline.isAvailable() }
+            )
+        )
+        contributions.append(
+            CommandPaletteCommandContribution(
                 commandId: "palette.reopenPreviousSession",
                 title: constant(String(localized: "command.reopenPreviousSession.title", defaultValue: "Restore Previous App Launch")),
                 subtitle: constant(String(localized: "command.reopenPreviousSession.subtitle", defaultValue: "History")),
@@ -7626,6 +7645,11 @@ struct ContentView: View {
         registry.register(commandId: "palette.openFolderInVSCodeInline") {
             DispatchQueue.main.async {
                 AppDelegate.shared?.showOpenFolderInInlineVSCodePanel(tabManager: tabManager)
+            }
+        }
+        registry.register(commandId: "palette.openFolderInVSCodeClaude") {
+            DispatchQueue.main.async {
+                AppDelegate.shared?.showOpenFolderInVSCodeClaudePanel(tabManager: tabManager)
             }
         }
         registry.register(commandId: "palette.reopenPreviousSession") {
@@ -9482,6 +9506,8 @@ struct ContentView: View {
             return true
         case .vscodeInline:
             return openFocusedDirectoryInInlineVSCode(directoryURL)
+        case .vscodeClaudeInline:
+            return openFocusedDirectoryInVSCodeClaude(directoryURL)
         default:
             guard let applicationURL = target.applicationURL() else { return false }
             let configuration = NSWorkspace.OpenConfiguration()
@@ -9494,20 +9520,30 @@ struct ContentView: View {
         AppDelegate.shared?.openDirectoryInInlineVSCode(directoryURL, tabManager: tabManager) ?? false
     }
 
+    private func openFocusedDirectoryInVSCodeClaude(_ directoryURL: URL) -> Bool {
+        AppDelegate.shared?.openDirectoryInVSCodeClaude(directoryURL, tabManager: tabManager) ?? false
+    }
+
     private func stopInlineVSCodeServeWeb() {
-        VSCodeServeWebController.shared.stop()
+        guard let workspaceID = tabManager.selectedWorkspace?.id else { return }
+        VSCodeServeWebWorkspaceRegistry.shared.stop(workspaceID: workspaceID)
     }
 
     private func restartInlineVSCodeServeWeb() -> Bool {
         guard let vscodeApplicationURL = TerminalDirectoryOpenTarget.vscodeInline.applicationURL() else {
             return false
         }
-        VSCodeServeWebController.shared.restart(vscodeApplicationURL: vscodeApplicationURL) { serveWebURL in
+        guard let workspaceID = tabManager.selectedWorkspace?.id else {
+            return false
+        }
+        return VSCodeServeWebWorkspaceRegistry.shared.restart(
+            forWorkspaceID: workspaceID,
+            vscodeApplicationURL: vscodeApplicationURL
+        ) { serveWebURL in
             if serveWebURL == nil {
                 NSSound.beep()
             }
         }
-        return true
     }
 
     private func focusedTerminalDirectoryURL() -> URL? {
@@ -12195,6 +12231,7 @@ struct VerticalTabsSidebar: View {
             tabManager: tabManager,
             notificationStore: notificationStore,
             tab: tab,
+            isPrivacyBlurredSnapshot: tab.isPrivacyBlurred,
             index: index,
             workspaceShortcutDigit: WorkspaceShortcutMapper.digitForWorkspace(
                 at: index,
@@ -13009,6 +13046,7 @@ struct SidebarWorkspaceSnapshotBuilder {
         let title: String
         let customDescription: String?
         let isPinned: Bool
+        let isPrivacyBlurred: Bool
         let customColorHex: String?
         let remoteWorkspaceSidebarText: String?
         let remoteConnectionStatusText: String
@@ -13062,6 +13100,7 @@ struct TabItemView: View, Equatable {
         lhs.workspaceGroupMenuSnapshot == rhs.workspaceGroupMenuSnapshot &&
         lhs.isBeingDragged == rhs.isBeingDragged &&
         lhs.topDropIndicatorVisible == rhs.topDropIndicatorVisible &&
+        lhs.isPrivacyBlurredSnapshot == rhs.isPrivacyBlurredSnapshot &&
         lhs.settings == rhs.settings
     }
 
@@ -13081,6 +13120,7 @@ struct TabItemView: View, Equatable {
     // working while dropping those per-label modifier bodies.
     @Environment(\.cmuxGlobalFontMagnificationPercent) private var globalFontMagnificationPercent
     let tab: Tab
+    let isPrivacyBlurredSnapshot: Bool
     let index: Int
     let workspaceShortcutDigit: Int?
     let workspaceShortcutModifierSymbol: String
@@ -13185,6 +13225,10 @@ struct TabItemView: View, Equatable {
 
     private var isActive: Bool {
         observedIsActive ?? (tabManager.selectedTabId == tab.id)
+    }
+
+    private var isPrivacyBlurred: Bool {
+        workspaceSnapshot.isPrivacyBlurred
     }
 
     private var sidebarSelectionColorHex: String? {
@@ -13469,6 +13513,8 @@ struct TabItemView: View, Equatable {
 
     var body: some View {
         let workspaceSnapshot = self.workspaceSnapshot
+        let isPrivacyBlurred = self.isPrivacyBlurred
+        let privacyBlurredTitle = String(localized: "sidebar.workspace.privacyBlurred", defaultValue: "Private Workspace")
         let closeWorkspaceTooltip = String(localized: "sidebar.closeWorkspace.tooltip", defaultValue: "Close Workspace")
         let protectedWorkspaceTooltip = String(
             localized: "sidebar.pinnedWorkspaceProtected.tooltip",
@@ -13477,7 +13523,9 @@ struct TabItemView: View, Equatable {
         let closeButtonTooltip = workspaceSnapshot.isPinned
             ? protectedWorkspaceTooltip
             : KeyboardShortcutSettings.Action.closeWorkspace.tooltip(closeWorkspaceTooltip)
-        let accessibilityHintText = String(localized: "sidebar.workspace.accessibilityHint", defaultValue: "Activate to focus this workspace. Drag to reorder, or use Move Up and Move Down actions.")
+        let accessibilityHintText = isPrivacyBlurred
+            ? String(localized: "sidebar.workspace.privacyBlurred.accessibilityHint", defaultValue: "Right-click for workspace actions.")
+            : String(localized: "sidebar.workspace.accessibilityHint", defaultValue: "Activate to focus this workspace. Drag to reorder, or use Move Up and Move Down actions.")
         let moveUpActionText = String(localized: "sidebar.workspace.moveUpAction", defaultValue: "Move Up")
         let moveDownActionText = String(localized: "sidebar.workspace.moveDownAction", defaultValue: "Move Down")
         let latestNotificationSubtitle = latestNotificationText
@@ -13489,7 +13537,7 @@ struct TabItemView: View, Equatable {
         let effectiveSubtitle = latestNotificationSubtitle ?? conversationMessageSubtitle
         let detailVisibility = visibleAuxiliaryDetails
         let titleLineLimit = settings.wrapsWorkspaceTitles ? Self.maxWrappedTitleLines : 1
-        let displayedTitle = workspaceSnapshot.title.sidebarBoundedDisplayString(
+        let displayedTitle = (isPrivacyBlurred ? privacyBlurredTitle : workspaceSnapshot.title).sidebarBoundedDisplayString(
             maxDisplayedLines: titleLineLimit,
             maxDisplayedCharacters: Self.maxDisplayedTitleCharacters
         )
@@ -13502,7 +13550,7 @@ struct TabItemView: View, Equatable {
 
         VStack(alignment: .leading, spacing: 4) {
             HStack(alignment: .top, spacing: 8) {
-                if unreadCount > 0 {
+                if !isPrivacyBlurred, unreadCount > 0 {
                     ZStack {
                         Circle()
                             .fill(activeUnreadBadgeFillColor)
@@ -13513,7 +13561,7 @@ struct TabItemView: View, Equatable {
                     .frame(width: scaledUnreadBadgeSize, height: scaledUnreadBadgeSize)
                 }
 
-                if workspaceSnapshot.isPinned {
+                if !isPrivacyBlurred, workspaceSnapshot.isPinned {
                     Image(systemName: "pin.fill")
                         .font(magnifiedFont(scaledFontSize(9), weight: .semibold))
                         .foregroundColor(activeSecondaryColor(0.8))
@@ -13524,7 +13572,7 @@ struct TabItemView: View, Equatable {
                 // background browser pane is surfaced on its workspace row,
                 // styled like the pin indicator. Audio is the must-have signal;
                 // mic/camera follow the macOS orange/green convention.
-                if workspaceSnapshot.mediaActivity.isPlayingAudio {
+                if !isPrivacyBlurred, workspaceSnapshot.mediaActivity.isPlayingAudio {
                     let audioPlayingTooltip = String(
                         localized: "sidebar.mediaActivity.audio.tooltip",
                         defaultValue: "Playing audio"
@@ -13536,7 +13584,7 @@ struct TabItemView: View, Equatable {
                         .accessibilityLabel(audioPlayingTooltip)
                 }
 
-                if workspaceSnapshot.mediaActivity.isUsingMicrophone {
+                if !isPrivacyBlurred, workspaceSnapshot.mediaActivity.isUsingMicrophone {
                     let microphoneInUseTooltip = String(
                         localized: "sidebar.mediaActivity.microphone.tooltip",
                         defaultValue: "Microphone in use"
@@ -13548,7 +13596,7 @@ struct TabItemView: View, Equatable {
                         .accessibilityLabel(microphoneInUseTooltip)
                 }
 
-                if workspaceSnapshot.mediaActivity.isUsingCamera {
+                if !isPrivacyBlurred, workspaceSnapshot.mediaActivity.isUsingCamera {
                     let cameraInUseTooltip = String(
                         localized: "sidebar.mediaActivity.camera.tooltip",
                         defaultValue: "Camera in use"
@@ -13574,7 +13622,7 @@ struct TabItemView: View, Equatable {
                 // before this corner instead of flowing under the hover x. Its
                 // visibility toggles via opacity so hover never re-lays-out the
                 // row. (Matches the group-header plus-button pattern.)
-                if canCloseWorkspace {
+                if canCloseWorkspace && !isPrivacyBlurred {
                     Button(action: {
                         #if DEBUG
                         cmuxDebugLog("sidebar.close workspace=\(tab.id.uuidString.prefix(5)) method=button")
@@ -13595,7 +13643,7 @@ struct TabItemView: View, Equatable {
                 }
             }
 
-            if let description = workspaceSnapshot.customDescription {
+            if !isPrivacyBlurred, let description = workspaceSnapshot.customDescription {
                 SidebarWorkspaceDescriptionText(
                     markdown: description,
                     isActive: usesInvertedActiveForeground,
@@ -13604,7 +13652,7 @@ struct TabItemView: View, Equatable {
                 )
             }
 
-            if let subtitle = effectiveSubtitle {
+            if !isPrivacyBlurred, let subtitle = effectiveSubtitle {
                 Text(subtitle)
                     .font(magnifiedFont(scaledFontSize(10)))
                     .foregroundColor(activeSecondaryColor(0.8))
@@ -13613,9 +13661,11 @@ struct TabItemView: View, Equatable {
                     .multilineTextAlignment(.leading)
             }
 
-            remoteWorkspaceSection
+            if !isPrivacyBlurred {
+                remoteWorkspaceSection
+            }
 
-            if detailVisibility.showsMetadata {
+            if !isPrivacyBlurred, detailVisibility.showsMetadata {
                 let metadataEntries = workspaceSnapshot.metadataEntries
                 let metadataBlocks = workspaceSnapshot.metadataBlocks
                 if !metadataEntries.isEmpty {
@@ -13642,7 +13692,7 @@ struct TabItemView: View, Equatable {
                 }
             }
 
-            if detailVisibility.showsLog, let latestLog = workspaceSnapshot.latestLog {
+            if !isPrivacyBlurred, detailVisibility.showsLog, let latestLog = workspaceSnapshot.latestLog {
                 HStack(spacing: 4) {
                     Image(systemName: logLevelIcon(latestLog.level))
                         .font(magnifiedFont(scaledFontSize(8)))
@@ -13656,7 +13706,7 @@ struct TabItemView: View, Equatable {
                 .transition(.opacity)
             }
 
-            if detailVisibility.showsProgress, let progress = workspaceSnapshot.progress {
+            if !isPrivacyBlurred, detailVisibility.showsProgress, let progress = workspaceSnapshot.progress {
                 VStack(alignment: .leading, spacing: 2) {
                     GeometryReader { geo in
                         ZStack(alignment: .leading) {
@@ -13680,7 +13730,7 @@ struct TabItemView: View, Equatable {
             }
 
             // Branch + directory row
-            if detailVisibility.showsBranchDirectory {
+            if !isPrivacyBlurred, detailVisibility.showsBranchDirectory {
                 if sidebarBranchVerticalLayout {
                     if !workspaceSnapshot.branchDirectoryLines.isEmpty {
                         HStack(alignment: .top, spacing: 3) {
@@ -13777,7 +13827,7 @@ struct TabItemView: View, Equatable {
             }
 
             // Pull request rows
-            if detailVisibility.showsPullRequests, !workspaceSnapshot.pullRequestRows.isEmpty {
+            if !isPrivacyBlurred, detailVisibility.showsPullRequests, !workspaceSnapshot.pullRequestRows.isEmpty {
                 VStack(alignment: .leading, spacing: 1) {
                     ForEach(workspaceSnapshot.pullRequestRows) { pullRequest in
                         let pullRequestNumber = String(pullRequest.number)
@@ -13809,7 +13859,7 @@ struct TabItemView: View, Equatable {
             }
 
             // Ports row
-            if detailVisibility.showsPorts, !workspaceSnapshot.listeningPorts.isEmpty {
+            if !isPrivacyBlurred, detailVisibility.showsPorts, !workspaceSnapshot.listeningPorts.isEmpty {
                 HStack(spacing: 4) {
                     ForEach(workspaceSnapshot.listeningPorts, id: \.self) { port in
                         let portLabel = SidebarPortDisplayText.label(for: port)
@@ -13869,10 +13919,26 @@ struct TabItemView: View, Equatable {
         .contentShape(Rectangle())
         .opacity(isBeingDragged ? 0.6 : 1)
         .overlay {
+            if isPrivacyBlurred {
+                HStack(spacing: 6) {
+                    Image(systemName: "eye.slash.fill")
+                        .font(magnifiedFont(scaledFontSize(11), weight: .semibold))
+                    Text(privacyBlurredTitle)
+                        .font(magnifiedFont(scaledFontSize(11), weight: .semibold))
+                }
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(.thinMaterial, in: Capsule())
+                .allowsHitTesting(false)
+            }
+        }
+        .overlay {
             SidebarWorkspaceRowHoverTracker(rowInteractionState: $rowInteractionState)
         }
         .overlay {
             MiddleClickCapture {
+                guard !isPrivacyBlurred else { return }
                 #if DEBUG
                 cmuxDebugLog("sidebar.close workspace=\(tab.id.uuidString.prefix(5)) method=middleClick")
                 #endif
@@ -13954,7 +14020,7 @@ struct TabItemView: View, Equatable {
         .onTapGesture {
             updateSelection()
         }
-        .safeHelp(workspaceSnapshot.title)
+        .safeHelp(isPrivacyBlurred ? privacyBlurredTitle : workspaceSnapshot.title)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(Text(accessibilityTitle))
         .accessibilityHint(Text(accessibilityHintText))
@@ -14060,6 +14126,19 @@ struct TabItemView: View, Equatable {
             multi: String(localized: "contextMenu.markWorkspacesUnread", defaultValue: "Mark Workspaces as Unread"),
             single: String(localized: "contextMenu.markWorkspaceUnread", defaultValue: "Mark Workspace as Unread"),
             isMulti: isMulti)
+        let targetWorkspaces = targetIds.compactMap { workspaceId in
+            tabManager.tabs.first(where: { $0.id == workspaceId })
+        }
+        let shouldPrivacyBlur = targetWorkspaces.contains(where: { !$0.isPrivacyBlurred })
+        let privacyBlurLabel = shouldPrivacyBlur
+            ? contextMenuLabel(
+                multi: String(localized: "contextMenu.blurWorkspaces", defaultValue: "Blur Workspaces"),
+                single: String(localized: "contextMenu.blurWorkspace", defaultValue: "Blur Workspace"),
+                isMulti: isMulti)
+            : contextMenuLabel(
+                multi: String(localized: "contextMenu.unblurWorkspaces", defaultValue: "Unblur Workspaces"),
+                single: String(localized: "contextMenu.unblurWorkspace", defaultValue: "Unblur Workspace"),
+                isMulti: isMulti)
         let clearLatestNotificationLabel = contextMenuLabel(
             multi: String(localized: "contextMenu.clearLatestNotifications", defaultValue: "Clear Latest Notifications"),
             single: String(localized: "contextMenu.clearLatestNotification", defaultValue: "Clear Latest Notification"),
@@ -14089,6 +14168,12 @@ struct TabItemView: View, Equatable {
         .disabled(contextMenuPinState == nil)
 
         workspaceGroupContextMenuSection(targetIds: targetIds, isMulti: isMulti)
+
+        Button(privacyBlurLabel) {
+            tabManager.setWorkspacePrivacyBlurred(targetIds, isBlurred: shouldPrivacyBlur)
+            refreshWorkspaceSnapshot(force: true)
+        }
+        .disabled(targetIds.isEmpty)
 
         if let key = renameWorkspaceShortcut.keyEquivalent {
             Button(String(localized: "contextMenu.renameWorkspace", defaultValue: "Rename Workspace…")) {
@@ -14341,7 +14426,10 @@ struct TabItemView: View, Equatable {
     }
 
     private var accessibilityTitle: String {
-        String(localized: "accessibility.workspacePosition", defaultValue: "\(workspaceSnapshot.title), workspace \(index + 1) of \(accessibilityWorkspaceCount)")
+        let title = isPrivacyBlurred
+            ? String(localized: "sidebar.workspace.privacyBlurred", defaultValue: "Private Workspace")
+            : workspaceSnapshot.title
+        return String(localized: "accessibility.workspacePosition", defaultValue: "\(title), workspace \(index + 1) of \(accessibilityWorkspaceCount)")
     }
 
     private func moveBy(_ delta: Int) {
@@ -14355,6 +14443,7 @@ struct TabItemView: View, Equatable {
     }
 
     private func updateSelection() {
+        guard !isPrivacyBlurred else { return }
         let modifiers = NSEvent.modifierFlags
         let isCommand = modifiers.contains(.command)
         let isShift = modifiers.contains(.shift)
@@ -14395,6 +14484,9 @@ struct TabItemView: View, Equatable {
                 uniqueKeysWithValues: tabManager.workspaceGroups.map { ($0.id, $0.anchorWorkspaceId) }
             )
             let rangeIds = tabManager.tabs[lower...upper].compactMap { tab -> UUID? in
+                if tab.isPrivacyBlurred {
+                    return nil
+                }
                 if let gid = tab.groupId,
                    collapsedGroupIds.contains(gid),
                    anchorIdsByGroup[gid] != tab.id {
@@ -14608,6 +14700,7 @@ struct TabItemView: View, Equatable {
             title: tab.title,
             customDescription: settings.showsWorkspaceDescription ? sidebarVisibleCustomDescription : nil,
             isPinned: tab.isPinned,
+            isPrivacyBlurred: tab.isPrivacyBlurred,
             customColorHex: tab.customColor,
             remoteWorkspaceSidebarText: remoteWorkspaceSidebarText,
             remoteConnectionStatusText: remoteConnectionStatusText,

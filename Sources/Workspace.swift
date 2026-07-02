@@ -135,6 +135,7 @@ extension Workspace {
             customDescription: customDescription,
             customColor: customColor,
             isPinned: isPinned,
+            isPrivacyBlurred: isPrivacyBlurred,
             groupId: groupId,
             isManuallyUnread: isWorkspaceManuallyUnread,
             hasUnreadIndicator: hasWorkspaceUnreadIndicator,
@@ -225,6 +226,7 @@ extension Workspace {
         setCustomDescription(snapshot.customDescription)
         setCustomColor(snapshot.customColor)
         isPinned = snapshot.isPinned
+        isPrivacyBlurred = snapshot.isPrivacyBlurred ?? false
         groupId = snapshot.groupId
 
         // Status entries and agent PIDs are ephemeral runtime state tied to running
@@ -568,6 +570,7 @@ extension Workspace {
                 developerToolsVisible: browserPanel.isDeveloperToolsVisible(),
                 isMuted: browserPanel.isMuted,
                 omnibarVisible: browserPanel.isOmnibarVisible,
+                contentMode: browserPanel.sessionSnapshotContentMode,
                 backHistoryURLStrings: historySnapshot.backHistoryURLStrings,
                 forwardHistoryURLStrings: historySnapshot.forwardHistoryURLStrings,
                 transparentBackground: browserPanel.sessionSnapshotTransparentBackground,
@@ -1570,6 +1573,7 @@ extension Workspace {
                 focus: false,
                 preferredProfileID: snapshot.browser?.profileID,
                 creationPolicy: .restoration,
+                contentMode: snapshot.browser?.contentMode ?? .normal,
                 transparentBackground: snapshot.browser?.transparentBackground ?? false
             ) else {
                 return nil
@@ -2301,6 +2305,9 @@ final class Workspace: Identifiable, ObservableObject {
     @Published var customTitleSource: CustomTitleSource?
     @Published var customDescription: String?
     @Published var isPinned: Bool = false
+    // TODO: Promote this presentation-only flag into a lock coordinator with
+    // auth-backed unlock policy before adding password-protected sessions.
+    @Published var isPrivacyBlurred: Bool = false
     /// Identifier of the WorkspaceGroup this workspace belongs to, or nil if ungrouped.
     /// The group entity itself lives in `TabManager.workspaceGroups`.
     @Published var groupId: UUID?
@@ -7843,6 +7850,7 @@ final class Workspace: Identifiable, ObservableObject {
         focus: Bool = true,
         creationPolicy: BrowserPanelCreationPolicy = .userInitiated,
         omnibarVisible: Bool = true,
+        contentMode: BrowserPanelContentMode = .normal,
         transparentBackground: Bool = false,
         bypassRemoteProxy: Bool = false,
         initialDividerPosition: CGFloat? = nil
@@ -7882,6 +7890,7 @@ final class Workspace: Identifiable, ObservableObject {
             renderInitialNavigation: browserEnabled || creationPolicy != .restoration,
             preloadInitialNavigationInBackground: creationPolicy.preloadsInitialNavigationInBackground,
             omnibarVisible: omnibarVisible,
+            contentMode: contentMode,
             transparentBackground: transparentBackground,
             proxyEndpoint: remoteProxyEndpoint,
             bypassRemoteProxy: bypassRemoteProxy,
@@ -7958,6 +7967,7 @@ final class Workspace: Identifiable, ObservableObject {
         bypassInsecureHTTPHostOnce: String? = nil,
         creationPolicy: BrowserPanelCreationPolicy = .userInitiated,
         omnibarVisible: Bool = true,
+        contentMode: BrowserPanelContentMode = .normal,
         transparentBackground: Bool = false,
         bypassRemoteProxy: Bool = false
     ) -> BrowserPanel? {
@@ -7991,6 +8001,7 @@ final class Workspace: Identifiable, ObservableObject {
             preloadInitialNavigationInBackground: creationPolicy.preloadsInitialNavigationInBackground,
             bypassInsecureHTTPHostOnce: bypassInsecureHTTPHostOnce,
             omnibarVisible: omnibarVisible,
+            contentMode: contentMode,
             transparentBackground: transparentBackground,
             proxyEndpoint: remoteProxyEndpoint,
             bypassRemoteProxy: bypassRemoteProxy,
@@ -11088,6 +11099,7 @@ final class Workspace: Identifiable, ObservableObject {
             focus: focus,
             preferredProfileID: browser.profileID,
             omnibarVisible: browser.isOmnibarVisible,
+            contentMode: browser.contentMode,
             bypassRemoteProxy: browser.bypassesRemoteWorkspaceProxyForTabDuplication
         ) else { return nil }
         newPanel.setMuted(browser.isMuted)

@@ -38,6 +38,7 @@ extension TabManager: FocusHistoryHosting {
     }
 
     func selectWorkspace(_ workspaceId: UUID) {
+        guard canSelectWorkspace(id: workspaceId) else { return }
         if selectedTabId != workspaceId {
             selectedTabId = workspaceId
         }

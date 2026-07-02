@@ -12836,6 +12836,21 @@ struct CMUXCLI {
             (value as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
         }
 
+        func normalizedBrowserContentMode(_ raw: String) throws -> String {
+            let normalized = raw
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .lowercased()
+                .replacingOccurrences(of: "_", with: "-")
+            switch normalized {
+            case "normal":
+                return "normal"
+            case "vscode-claude-code", "vscode-claude", "claude-code", "claude":
+                return "vscode_claude_code"
+            default:
+                throw CLIError(message: "--content-mode must be one of: normal, vscode-claude-code")
+            }
+        }
+
         func browserProfileLine(_ raw: Any) -> String? {
             guard let profile = raw as? [String: Any],
                   let name = stringPayloadValue(profile["name"]),
@@ -13118,7 +13133,8 @@ struct CMUXCLI {
             // Parse routing flags before URL assembly so they never leak into the URL string.
             let (workspaceOpt, argsAfterWorkspace) = parseOption(subArgs, name: "--workspace")
             let (windowOpt, argsAfterWindow) = parseOption(argsAfterWorkspace, name: "--window")
-            let (focusOpt, urlArgs) = parseOption(argsAfterWindow, name: "--focus")
+            let (focusOpt, argsAfterFocus) = parseOption(argsAfterWindow, name: "--focus")
+            let (contentModeOpt, urlArgs) = parseOption(argsAfterFocus, name: "--content-mode")
             // Reject unrecognized flags instead of folding them into the URL, where they
             // would silently produce an unparseable URL (blank page) or a search query.
             if let strayFlag = urlArgs.first(where: { $0.hasPrefix("--") }) {
@@ -13138,6 +13154,9 @@ struct CMUXCLI {
             }()
 
             if surfaceRaw != nil, subcommand == "open" {
+                if contentModeOpt != nil {
+                    throw CLIError(message: "browser <surface> open does not support --content-mode")
+                }
                 // Treat `browser <surface> open <url>` as navigate for agent-browser ergonomics.
                 let sid = try requireSurface()
                 guard !url.isEmpty else {
@@ -13163,6 +13182,12 @@ struct CMUXCLI {
             }
             if respectExternalOpenRules {
                 params["respect_external_open_rules"] = true
+            }
+            if let contentModeOpt {
+                let contentMode = try normalizedBrowserContentMode(contentModeOpt)
+                if contentMode != "normal" {
+                    params["content_mode"] = contentMode
+                }
             }
             if let windowRaw = windowOpt {
                 if let window = try normalizeWindowHandle(windowRaw, client: client) {
@@ -16556,9 +16581,10 @@ struct CMUXCLI {
             `open`/`open-split`/`new`/`identify` can run without an explicit surface.
 
             Subcommands:
-              open|open-split|new [url] [--workspace <id|ref|index>] [--window <id|ref|index>] [--focus <true|false>]
+              open|open-split|new [url] [--workspace <id|ref|index>] [--window <id|ref|index>] [--focus <true|false>] [--content-mode <normal|vscode-claude-code>]
                 open/open-split/new default to $CMUX_WORKSPACE_ID when --workspace is omitted and --window is not set
                 --focus defaults to false
+                --content-mode vscode-claude-code extracts the VS Code Claude Code tab in a browser pane
               disable | enable | status
               goto|navigate <url> [--snapshot-after]
               back|forward|reload [--snapshot-after]
@@ -34841,6 +34867,7 @@ export default function cmuxPiSessionExtension(pi: ExtensionAPI) {
     private func printWelcome() {
         let reset = "\u{001B}[0m"
         let bold = "\u{001B}[1m"
+        let italic = "\u{001B}[3m"
         func trueColor(_ red: Int, _ green: Int, _ blue: Int) -> String {
             "\u{001B}[38;2;\(red);\(green);\(blue)m"
         }
@@ -34924,14 +34951,16 @@ export default function cmuxPiSessionExtension(pi: ExtensionAPI) {
         print("  \(mochi)•\(reset) Scrollback that persists across quits and crashes")
         print("  \(mochi)•\(reset) Pane zoom that survives relaunch")
         print("  \(mochi)•\(reset) Reveal in Finder / Copy Path on terminal, markdown, artifact & local-file tabs")
-        print("  \(mochi)•\(reset) Artifact panes — cmux artifact new/open/list for React, HTML, SVG, Mermaid, code, and file artifacts")
-        print("  \(mochi)•\(reset) Passkeys/WebAuthn are temporarily disabled in current Developer ID builds")
         print("  \(mochi)•\(reset) Task Manager as a tab or full-area page")
         print("  \(mochi)•\(reset) Always-on CPU / memory readout in the sidebar footer")
         print("  \(mochi)•\(reset) Sidebar spring-load — drag a session onto a workspace to switch")
         print("  \(mochi)•\(reset) One-click \"Open in External Browser\" toggle")
         print("  \(mochi)•\(reset) Copy / Show IDs with workspace, pane, surface, agent session, and resume command details")
         print("  \(mochi)•\(reset) cmux Mochi Conductor skill for driving visible Codex/Claude worker panes")
+        print("  \(mochi)•\(reset) Artifact panes — cmux artifact new/open/list for React, HTML, SVG, Mermaid, code, and file artifacts")
+        print()
+        print("  \(subdued)\(String(repeating: "\u{2500}", count: 58))\(reset)")
+        print("  \(italic)\(subdued)Passkeys/WebAuthn are temporarily disabled in current Developer ID builds.\(reset)")
         print()
 
         print("  \(subdued)Run \(reset)\(bold)cmux --help\(reset)\(subdued) for all commands.\(reset)")
@@ -35367,8 +35396,8 @@ export default function cmuxPiSessionExtension(pi: ExtensionAPI) {
 
           browser [--surface <id|ref|index> | <surface>] <subcommand> ...
           browser disable | enable | status
-          browser open [url] [--focus <true|false>] (create browser split in caller's workspace; if surface supplied, behaves like navigate)
-          browser open-split [url]
+          browser open [url] [--focus <true|false>] [--content-mode <normal|vscode-claude-code>] (create browser split in caller's workspace; if surface supplied, behaves like navigate)
+          browser open-split [url] [--content-mode <normal|vscode-claude-code>]
           browser goto|navigate <url> [--snapshot-after]
           browser back|forward|reload [--snapshot-after]
           browser react-grab toggle [--surface <id>] [--return-to <terminal-surface>]

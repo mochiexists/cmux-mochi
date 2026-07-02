@@ -793,6 +793,136 @@ final class TabManagerChildExitCloseTests: XCTestCase {
 
 
 @MainActor
+final class TabManagerWorkspacePrivacyTests: XCTestCase {
+    func testPrivacyBlurredWorkspaceCannotBeSelected() {
+        let manager = TabManager()
+        let first = manager.tabs[0]
+        let second = manager.addWorkspace(select: false)
+
+        manager.setWorkspacePrivacyBlurred([second.id], isBlurred: true)
+        manager.selectWorkspace(second)
+
+        XCTAssertEqual(manager.selectedTabId, first.id)
+    }
+
+    func testBlurringSelectedWorkspaceSelectsNextVisibleWorkspace() {
+        let manager = TabManager()
+        let first = manager.tabs[0]
+        let second = manager.addWorkspace()
+
+        XCTAssertEqual(manager.selectedTabId, second.id)
+
+        manager.setWorkspacePrivacyBlurred([second.id], isBlurred: true)
+
+        XCTAssertEqual(manager.selectedTabId, first.id)
+    }
+
+    func testBlurringOnlyWorkspaceClearsSelection() {
+        let manager = TabManager()
+        let onlyWorkspace = manager.tabs[0]
+
+        manager.setWorkspacePrivacyBlurred([onlyWorkspace.id], isBlurred: true)
+
+        XCTAssertNil(manager.selectedTabId)
+    }
+
+    func testUnblurredWorkspaceCanBeSelectedAgain() {
+        let manager = TabManager()
+        let first = manager.tabs[0]
+        let second = manager.addWorkspace(select: false)
+
+        manager.setWorkspacePrivacyBlurred([second.id], isBlurred: true)
+        manager.selectWorkspace(second)
+        XCTAssertEqual(manager.selectedTabId, first.id)
+
+        manager.setWorkspacePrivacyBlurred([second.id], isBlurred: false)
+        manager.selectWorkspace(second)
+
+        XCTAssertEqual(manager.selectedTabId, second.id)
+    }
+
+    func testCloseWorkspaceFallbackSkipsPrivacyBlurredWorkspace() {
+        let manager = TabManager()
+        let first = manager.tabs[0]
+        let second = manager.addWorkspace()
+        let third = manager.addWorkspace(select: false)
+
+        manager.setWorkspacePrivacyBlurred([third.id], isBlurred: true)
+        manager.closeWorkspace(second, recordHistory: false)
+
+        XCTAssertEqual(manager.selectedTabId, first.id)
+    }
+
+    func testDetachWorkspaceFallbackSkipsPrivacyBlurredWorkspace() {
+        let manager = TabManager()
+        let first = manager.tabs[0]
+        let second = manager.addWorkspace()
+        let third = manager.addWorkspace(select: false)
+
+        manager.setWorkspacePrivacyBlurred([third.id], isBlurred: true)
+        _ = manager.detachWorkspace(tabId: second.id)
+
+        XCTAssertEqual(manager.selectedTabId, first.id)
+    }
+
+    func testAttachWorkspaceDoesNotSelectPrivacyBlurredWorkspace() throws {
+        let source = TabManager()
+        let moving = source.addWorkspace()
+        source.setWorkspacePrivacyBlurred([moving.id], isBlurred: true)
+        let detached = source.detachWorkspace(tabId: moving.id)
+
+        let destination = TabManager()
+        let visible = destination.tabs[0]
+        destination.attachWorkspace(try XCTUnwrap(detached), select: true)
+
+        XCTAssertEqual(destination.selectedTabId, visible.id)
+    }
+
+    func testWorkspaceCyclingSkipsPrivacyBlurredWorkspace() {
+        let manager = TabManager()
+        let first = manager.tabs[0]
+        let second = manager.addWorkspace(select: false)
+        let third = manager.addWorkspace(select: false)
+
+        manager.setWorkspacePrivacyBlurred([second.id], isBlurred: true)
+        manager.selectWorkspace(first)
+        manager.selectNextTab()
+        XCTAssertEqual(manager.selectedTabId, third.id)
+
+        manager.selectPreviousTab()
+        XCTAssertEqual(manager.selectedTabId, first.id)
+    }
+
+    func testFocusHistorySelectionSkipsPrivacyBlurredWorkspace() {
+        let manager = TabManager()
+        let first = manager.tabs[0]
+        let second = manager.addWorkspace(select: false)
+
+        manager.setWorkspacePrivacyBlurred([second.id], isBlurred: true)
+        manager.selectWorkspace(second.id)
+
+        XCTAssertEqual(manager.selectedTabId, first.id)
+    }
+
+    func testPrivacyBlurredWorkspacePersistsThroughSessionSnapshot() {
+        let manager = TabManager()
+        _ = manager.tabs[0]
+        let second = manager.addWorkspace(select: false)
+
+        manager.setWorkspacePrivacyBlurred([second.id], isBlurred: true)
+        let snapshot = manager.sessionSnapshot(includeScrollback: false)
+
+        XCTAssertEqual(snapshot.workspaces.map { $0.isPrivacyBlurred ?? false }, [false, true])
+
+        let restored = TabManager()
+        restored.restoreSessionSnapshot(snapshot)
+
+        XCTAssertEqual(restored.tabs.map(\.isPrivacyBlurred), [false, true])
+    }
+}
+
+
+@MainActor
 final class TabManagerWorkspaceOwnershipTests: XCTestCase {
     func testCloseWorkspaceIgnoresWorkspaceNotOwnedByManager() {
         let manager = TabManager()

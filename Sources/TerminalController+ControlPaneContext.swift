@@ -112,6 +112,9 @@ extension TerminalController: ControlPaneContext {
         guard let ws = resolveWorkspace(routing: routing, tabManager: tabManager) else {
             return .workspaceNotFound
         }
+        guard tabManager.canSelectWorkspace(ws) else {
+            return .workspaceNotFound
+        }
         guard let paneId = ws.bonsplitController.allPaneIds.first(where: { $0.id == paneID }) else {
             return .paneNotFound(paneID)
         }

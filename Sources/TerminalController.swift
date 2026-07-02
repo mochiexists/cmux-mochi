@@ -6515,6 +6515,31 @@ class TerminalController {
         return result
     }
 
+    private func v2BrowserContentMode(params: [String: Any]) -> (mode: BrowserPanelContentMode, error: V2CallResult?) {
+        guard let raw = v2String(params, "content_mode") else {
+            return (.normal, nil)
+        }
+        let normalized = raw
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+            .replacingOccurrences(of: "_", with: "-")
+        switch normalized {
+        case "normal":
+            return (.normal, nil)
+        case "vscode-claude-code", "vscode-claude", "claude-code", "claude":
+            return (.vscodeClaudeCode, nil)
+        default:
+            return (
+                .normal,
+                .err(
+                    code: "invalid_params",
+                    message: "content_mode must be one of: normal, vscode_claude_code",
+                    data: ["content_mode": raw]
+                )
+            )
+        }
+    }
+
     private func v2BrowserOpenSplit(params: [String: Any]) -> V2CallResult {
         guard let tabManager = v2ResolveTabManager(params: params) else {
             return .err(code: "unavailable", message: "TabManager not available", data: nil)
@@ -6547,6 +6572,11 @@ class TerminalController {
         } else {
             url = nil
         }
+        let contentModeResolution = v2BrowserContentMode(params: params)
+        if let error = contentModeResolution.error {
+            return error
+        }
+        let contentMode = contentModeResolution.mode
         let respectExternalOpenRules = v2Bool(params, "respect_external_open_rules") ?? false
 
         if BrowserAvailabilitySettings.isDisabled() {
@@ -6623,6 +6653,7 @@ class TerminalController {
                     selectWhenNotFocused: true,
                     creationPolicy: .automationPreload,
                     omnibarVisible: omnibarVisible,
+                    contentMode: contentMode,
                     transparentBackground: transparentBackground,
                     bypassRemoteProxy: bypassRemoteProxy
                 )
@@ -6636,6 +6667,7 @@ class TerminalController {
                     focus: focus,
                     creationPolicy: .automationPreload,
                     omnibarVisible: omnibarVisible,
+                    contentMode: contentMode,
                     transparentBackground: transparentBackground,
                     bypassRemoteProxy: bypassRemoteProxy
                 )
@@ -6667,7 +6699,8 @@ class TerminalController {
                 "placement_strategy": placementStrategy,
                 "show_omnibar": createdPanel?.isOmnibarVisible ?? omnibarVisible,
                 "transparent_background": transparentBackground,
-                "bypass_remote_proxy": bypassRemoteProxy
+                "bypass_remote_proxy": bypassRemoteProxy,
+                "content_mode": contentMode.rawValue
             ])
         }
         return result
@@ -13397,13 +13430,14 @@ class TerminalController {
             if let uuid = UUID(uuidString: arg) {
                 if let tab = tabManager.tabs.first(where: { $0.id == uuid }) {
                     tabManager.selectTab(tab)
-                    success = true
+                    success = tabManager.selectedTabId == tab.id
                 }
             }
             // Try as index
             else if let index = Int(arg), index >= 0, index < tabManager.tabs.count {
+                let targetId = tabManager.tabs[index].id
                 tabManager.selectTab(at: index)
-                success = true
+                success = tabManager.selectedTabId == targetId
             }
         }
         return success ? "OK" : "ERROR: Tab not found"

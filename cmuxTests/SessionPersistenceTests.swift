@@ -499,6 +499,7 @@ final class SessionPersistenceTests: XCTestCase {
             developerToolsVisible: true,
             isMuted: true,
             omnibarVisible: false,
+            contentMode: .vscodeClaudeCode,
             backHistoryURLStrings: [
                 "https://example.com/a",
                 "https://example.com/b"
@@ -514,6 +515,7 @@ final class SessionPersistenceTests: XCTestCase {
         XCTAssertEqual(decoded.profileID, source.profileID)
         XCTAssertEqual(decoded.isMuted, source.isMuted)
         XCTAssertEqual(decoded.omnibarVisible, false)
+        XCTAssertEqual(decoded.contentMode, .vscodeClaudeCode)
         XCTAssertEqual(decoded.backHistoryURLStrings, source.backHistoryURLStrings)
         XCTAssertEqual(decoded.forwardHistoryURLStrings, source.forwardHistoryURLStrings)
     }
@@ -533,6 +535,7 @@ final class SessionPersistenceTests: XCTestCase {
         XCTAssertNil(decoded.profileID)
         XCTAssertFalse(decoded.isMuted)
         XCTAssertNil(decoded.omnibarVisible)
+        XCTAssertNil(decoded.contentMode)
         XCTAssertNil(decoded.backHistoryURLStrings)
         XCTAssertNil(decoded.forwardHistoryURLStrings)
     }

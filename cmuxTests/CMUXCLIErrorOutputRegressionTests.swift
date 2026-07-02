@@ -67,6 +67,12 @@ import Testing
         #expect(result.stdout.contains("Artifact panes"))
         #expect(result.stdout.contains("artifact & local-file tabs"))
         #expect(result.stdout.contains("Passkeys/WebAuthn are temporarily disabled"))
+        #expect(result.stdout.contains("\u{001B}[3m"))
+        let conductorIndex = try #require(result.stdout.range(of: "cmux Mochi Conductor")?.lowerBound)
+        let artifactsIndex = try #require(result.stdout.range(of: "Artifact panes")?.lowerBound)
+        let passkeysIndex = try #require(result.stdout.range(of: "Passkeys/WebAuthn")?.lowerBound)
+        #expect(conductorIndex < artifactsIndex)
+        #expect(artifactsIndex < passkeysIndex)
         #expect(!result.stdout.contains("Codex close-and-resume"))
         #expect(!result.stdout.contains("needs the Mochi Codex fork"))
     }

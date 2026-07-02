@@ -180,6 +180,9 @@ extension TerminalController: ControlSurfaceContext {
         guard let ws = resolveSurfaceWorkspace(routing: routing, tabManager: tabManager) else {
             return .workspaceNotFound
         }
+        guard tabManager.canSelectWorkspace(ws) else {
+            return .workspaceNotFound
+        }
         if let windowId = v2ResolveWindowId(tabManager: tabManager) {
             _ = AppDelegate.shared?.focusMainWindow(windowId: windowId)
             setActiveTabManager(tabManager)

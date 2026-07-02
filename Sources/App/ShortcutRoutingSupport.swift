@@ -740,7 +740,7 @@ func shouldRouteBrowserFindCommandEquivalentThroughWebContentFirst(
 func shouldRouteInlineVSCodeCommandPaletteShortcutThroughWebContentFirst(
     _ event: NSEvent,
     pageURL: URL?,
-    inlineVSCodeURLMatcher: (URL?) -> Bool = { VSCodeServeWebController.shared.isServeWebURL($0) },
+    inlineVSCodeURLMatcher: (URL?) -> Bool = { VSCodeServeWebWorkspaceRegistry.shared.isServeWebURL($0) },
     shortcutForAction: (KeyboardShortcutSettings.Action) -> StoredShortcut = KeyboardShortcutSettings.shortcut(for:)
 ) -> Bool {
     guard inlineVSCodeURLMatcher(pageURL) else { return false }

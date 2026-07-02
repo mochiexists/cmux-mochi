@@ -195,6 +195,10 @@ struct PanelFilePathHeader<TrailingContent: View>: View {
     let foregroundColor: NSColor
     @ViewBuilder let trailingContent: () -> TrailingContent
 
+    private var fileURL: URL {
+        URL(fileURLWithPath: filePath).standardizedFileURL
+    }
+
     var body: some View {
         HStack(spacing: 8) {
             Image(systemName: iconSystemName)
@@ -212,6 +216,15 @@ struct PanelFilePathHeader<TrailingContent: View>: View {
         .padding(.horizontal, 12)
         .frame(height: 30)
         .background(Color.clear)
+        .contentShape(Rectangle())
+        .contextMenu {
+            Button(FileExternalOpenText.copyFileLabel(fileURL: fileURL)) {
+                FileExternalOpenAction.copyFile(fileURL: fileURL)
+            }
+            Button(String(localized: "contextMenu.copyPath", defaultValue: "Copy Path")) {
+                FileExternalOpenAction.copyPath(fileURL.path)
+            }
+        }
     }
 }
 

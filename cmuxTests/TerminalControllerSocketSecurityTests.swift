@@ -1,5 +1,6 @@
 import AppKit
 import CmuxCore
+import CmuxControlSocket
 import Darwin
 import Foundation
 import Testing
@@ -137,6 +138,21 @@ final class TerminalControllerSocketSecurityTests {
         teardownBlocks.append(block)
     }
 
+    private func routing(
+        workspaceID: UUID? = nil,
+        surfaceID: UUID? = nil,
+        paneID: UUID? = nil
+    ) -> ControlRoutingSelectors {
+        ControlRoutingSelectors(
+            hasWindowIDParam: false,
+            windowID: nil,
+            groupID: nil,
+            workspaceID: workspaceID,
+            surfaceID: surfaceID,
+            paneID: paneID
+        )
+    }
+
     @Test func testAgentResumePasteSessionMatchAcceptsSameSessionIgnoringWhitespace() {
         XCTAssertTrue(
             TerminalController.agentResumePasteSessionMatches(
@@ -212,6 +228,50 @@ final class TerminalControllerSocketSecurityTests {
         XCTAssertEqual(wrongAuthThenPing.count, 2)
         XCTAssertTrue(wrongAuthThenPing[0].hasPrefix("ERROR:"))
         XCTAssertTrue(wrongAuthThenPing[1].hasPrefix("ERROR:"))
+    }
+
+    @Test func testV2ControlFocusRoutesRejectPrivacyBlurredWorkspace() throws {
+        let socketPath = makeSocketPath("privacy-routes")
+        let tabManager = TabManager()
+        let visibleWorkspace = tabManager.tabs[0]
+        let privateWorkspace = tabManager.addWorkspace(select: false)
+        let privatePaneId = try XCTUnwrap(privateWorkspace.bonsplitController.allPaneIds.first?.id)
+        let privateSurfaceId = try XCTUnwrap(privateWorkspace.panels.keys.first)
+
+        TerminalController.shared.start(
+            tabManager: tabManager,
+            socketPath: socketPath,
+            accessMode: .cmuxOnly
+        )
+
+        tabManager.setWorkspacePrivacyBlurred([privateWorkspace.id], isBlurred: true)
+
+        XCTAssertEqual(
+            TerminalController.shared.controlSelectWorkspace(
+                routing: routing(workspaceID: privateWorkspace.id),
+                workspaceID: privateWorkspace.id
+            ),
+            .notFound
+        )
+        XCTAssertEqual(tabManager.selectedTabId, visibleWorkspace.id)
+
+        XCTAssertEqual(
+            TerminalController.shared.controlPaneFocus(
+                routing: routing(workspaceID: privateWorkspace.id),
+                paneID: privatePaneId
+            ),
+            .workspaceNotFound
+        )
+        XCTAssertEqual(tabManager.selectedTabId, visibleWorkspace.id)
+
+        XCTAssertEqual(
+            TerminalController.shared.controlSurfaceFocus(
+                routing: routing(workspaceID: privateWorkspace.id),
+                surfaceID: privateSurfaceId
+            ),
+            .workspaceNotFound
+        )
+        XCTAssertEqual(tabManager.selectedTabId, visibleWorkspace.id)
     }
 
     @Test func testSocketCommandPolicyDistinguishesFocusIntent() throws {
@@ -1254,6 +1314,60 @@ final class TerminalControllerSocketSecurityTests {
         XCTAssertEqual(response["ok"] as? Bool, false, "Unexpected JSON-RPC response: \(response)")
         let error = try XCTUnwrap(response["error"] as? [String: Any], "Unexpected JSON-RPC response: \(response)")
         XCTAssertEqual(error["code"] as? String, "browser_disabled")
+    }
+
+    @Test func testBrowserOpenSplitAppliesVSCodeClaudeContentMode() throws {
+        let defaults = UserDefaults.standard
+        let previousBrowserDisabled = defaults.object(forKey: BrowserAvailabilitySettings.disabledKey)
+        BrowserAvailabilitySettings.setDisabled(false)
+        defer {
+            if let previousBrowserDisabled {
+                defaults.set(previousBrowserDisabled, forKey: BrowserAvailabilitySettings.disabledKey)
+            } else {
+                defaults.removeObject(forKey: BrowserAvailabilitySettings.disabledKey)
+            }
+            TerminalController.shared.setActiveTabManager(nil)
+        }
+
+        let manager = TabManager()
+        let workspace = try XCTUnwrap(manager.selectedWorkspace)
+        let pane = try XCTUnwrap(workspace.bonsplitController.allPaneIds.first)
+        let sourcePanel = try XCTUnwrap(workspace.newTerminalSurface(inPane: pane, focus: true))
+        TerminalController.shared.setActiveTabManager(manager)
+
+        let response = try handleV2Request(
+            method: "browser.open_split",
+            params: [
+                "surface_id": sourcePanel.id.uuidString,
+                "url": "http://127.0.0.1:8780/?folder=/tmp/cmux-claude",
+                "content_mode": "vscode_claude_code"
+            ]
+        )
+
+        XCTAssertEqual(response["ok"] as? Bool, true, "Unexpected JSON-RPC response: \(response)")
+        let result = try XCTUnwrap(response["result"] as? [String: Any], "Unexpected JSON-RPC response: \(response)")
+        XCTAssertEqual(result["content_mode"] as? String, "vscode_claude_code")
+        let surfaceIDString = try XCTUnwrap(result["surface_id"] as? String)
+        let surfaceID = try XCTUnwrap(UUID(uuidString: surfaceIDString))
+        let browserPanel = try XCTUnwrap(workspace.panels[surfaceID] as? BrowserPanel)
+        XCTAssertEqual(browserPanel.contentMode, .vscodeClaudeCode)
+        XCTAssertEqual(browserPanel.isOmnibarVisible, false)
+    }
+
+    @Test func testBrowserOpenSplitRejectsInvalidContentMode() throws {
+        defer {
+            TerminalController.shared.setActiveTabManager(nil)
+        }
+
+        TerminalController.shared.setActiveTabManager(TabManager())
+        let response = try handleV2Request(
+            method: "browser.open_split",
+            params: ["content_mode": "sideways"]
+        )
+
+        XCTAssertEqual(response["ok"] as? Bool, false, "Unexpected JSON-RPC response: \(response)")
+        let error = try XCTUnwrap(response["error"] as? [String: Any], "Unexpected JSON-RPC response: \(response)")
+        XCTAssertEqual(error["code"] as? String, "invalid_params")
     }
 
     @Test func testLegacyCloseSurfaceCommandRecordsRecentlyClosedHistory() throws {
