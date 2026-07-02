@@ -14016,6 +14016,22 @@ class TerminalController {
     /// `agentResumePasteLock`.
     private static var recentAgentResumePasteUptime: [String: TimeInterval] = [:]
     private static let agentResumePasteCooldown: TimeInterval = 5
+    private static let defaultAgentResumePasteSnapshotProvider: (UUID, UUID) -> SessionRestorableAgentSnapshot? = { workspaceId, panelId in
+        SharedLiveAgentIndex.shared.snapshot(workspaceId: workspaceId, panelId: panelId)
+    }
+    private static var agentResumePasteSnapshotProvider = defaultAgentResumePasteSnapshotProvider
+
+    #if DEBUG
+    static func setAgentResumePasteSnapshotProviderForTesting(
+        _ provider: @escaping (UUID, UUID) -> SessionRestorableAgentSnapshot?
+    ) {
+        agentResumePasteSnapshotProvider = provider
+    }
+
+    static func resetAgentResumePasteSnapshotProviderForTesting() {
+        agentResumePasteSnapshotProvider = defaultAgentResumePasteSnapshotProvider
+    }
+    #endif
 
     /// Handle `agent.stage_resume_paste --tab=<id> --panel=<id> --session=<id> [--pid=<n>]`.
     ///
@@ -14066,13 +14082,14 @@ class TerminalController {
             return "OK"
         }
 
-        // Build the resume command from the app's own restorable-agent index so
-        // both scenarios paste byte-identical text. resumePreparedStartupInput()
-        // returns the command WITHOUT a trailing newline (pre-typed, un-run).
-        let index = RestorableAgentSessionIndex.load()
-        guard let snapshot = index.snapshot(workspaceId: workspaceId, panelId: panelId) else {
-            // No record for this pane (e.g. index pruned). Release the guard so a
-            // later valid event can still stage.
+        // Never call RestorableAgentSessionIndex.load() here. This socket
+        // command runs on the main actor; a cold index load can scan thousands
+        // of Codex transcripts and freeze the app long enough for the hook to
+        // time out. Use the off-main shared cache and skip this opportunistic
+        // paste when the cache is cold.
+        guard let snapshot = Self.agentResumePasteSnapshotProvider(workspaceId, panelId) else {
+            // No cached record for this pane (e.g. cache still loading or index
+            // pruned). Release the guard so a later valid event can still stage.
             releaseAgentResumePasteGuard(sessionId)
             return "OK"
         }

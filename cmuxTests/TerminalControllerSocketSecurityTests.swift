@@ -116,6 +116,38 @@ private func XCTFail(
 
 @MainActor
 @Suite(.serialized)
+struct AgentResumePasteSnapshotProviderTests {
+    @Test func usesNonBlockingSnapshotProvider() throws {
+        let tabManager = TabManager()
+        let workspace = try XCTUnwrap(tabManager.tabs.first)
+        let panelId = try XCTUnwrap(workspace.panels.keys.first)
+
+        TerminalController.shared.setActiveTabManager(tabManager)
+        defer {
+            TerminalController.shared.setActiveTabManager(nil)
+            TerminalController.resetAgentResumePasteSnapshotProviderForTesting()
+        }
+
+        var requestedKeys: [(workspaceId: UUID, panelId: UUID)] = []
+        TerminalController.setAgentResumePasteSnapshotProviderForTesting { workspaceId, panelId in
+            requestedKeys.append((workspaceId: workspaceId, panelId: panelId))
+            return nil
+        }
+
+        let sessionId = "session-\(UUID().uuidString)"
+        let response = TerminalController.shared.handleSocketLine(
+            "agent.stage_resume_paste --tab=\(workspace.id.uuidString) --panel=\(panelId.uuidString) --session=\(sessionId)"
+        )
+
+        XCTAssertEqual(response, "OK")
+        XCTAssertEqual(requestedKeys.count, 1)
+        XCTAssertEqual(requestedKeys.first?.workspaceId, workspace.id)
+        XCTAssertEqual(requestedKeys.first?.panelId, panelId)
+    }
+}
+
+@MainActor
+@Suite(.serialized)
 final class TerminalControllerSocketSecurityTests {
     private var teardownBlocks: [() -> Void] = []
 
