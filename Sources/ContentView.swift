@@ -13511,7 +13511,8 @@ struct TabItemView: View, Equatable {
         )
     }
 
-    var body: some View {
+    @ViewBuilder
+    private var rowContent: some View {
         let workspaceSnapshot = self.workspaceSnapshot
         let isPrivacyBlurred = self.isPrivacyBlurred
         let privacyBlurredTitle = String(localized: "sidebar.workspace.privacyBlurred", defaultValue: "Private Workspace")
@@ -13523,11 +13524,6 @@ struct TabItemView: View, Equatable {
         let closeButtonTooltip = workspaceSnapshot.isPinned
             ? protectedWorkspaceTooltip
             : KeyboardShortcutSettings.Action.closeWorkspace.tooltip(closeWorkspaceTooltip)
-        let accessibilityHintText = isPrivacyBlurred
-            ? String(localized: "sidebar.workspace.privacyBlurred.accessibilityHint", defaultValue: "Right-click for workspace actions.")
-            : String(localized: "sidebar.workspace.accessibilityHint", defaultValue: "Activate to focus this workspace. Drag to reorder, or use Move Up and Move Down actions.")
-        let moveUpActionText = String(localized: "sidebar.workspace.moveUpAction", defaultValue: "Move Up")
-        let moveDownActionText = String(localized: "sidebar.workspace.moveDownAction", defaultValue: "Move Down")
         let latestNotificationSubtitle = latestNotificationText
         let conversationMessageSubtitle = !settings.hidesAllDetails && settings.iMessageModeEnabled
             ? workspaceSnapshot.latestConversationMessage?
@@ -13880,6 +13876,19 @@ struct TabItemView: View, Equatable {
                 .lineLimit(1)
             }
         }
+    }
+
+    var body: some View {
+        let workspaceSnapshot = self.workspaceSnapshot
+        let isPrivacyBlurred = self.isPrivacyBlurred
+        let privacyBlurredTitle = String(localized: "sidebar.workspace.privacyBlurred", defaultValue: "Private Workspace")
+        let accessibilityHintText = isPrivacyBlurred
+            ? String(localized: "sidebar.workspace.privacyBlurred.accessibilityHint", defaultValue: "Right-click for workspace actions.")
+            : String(localized: "sidebar.workspace.accessibilityHint", defaultValue: "Activate to focus this workspace. Drag to reorder, or use Move Up and Move Down actions.")
+        let moveUpActionText = String(localized: "sidebar.workspace.moveUpAction", defaultValue: "Move Up")
+        let moveDownActionText = String(localized: "sidebar.workspace.moveDownAction", defaultValue: "Move Down")
+
+        rowContent
         // No implicit .animation(value:) on agent-mutable fields: animating a
         // row-height change interpolates the LazyVStack's measured height over
         // every frame of the 0.2s curve, and with dozens of agent sessions some
