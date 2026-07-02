@@ -1,5 +1,9 @@
 # cmux agent notes
 
+Fork-internal facts and gotchas (identity values, release lanes, submodule remotes, rebase
+audit) live in `FORK.md` — read it before release, rebase, or submodule work, and keep it
+updated when fork reality changes.
+
 ## Initial setup
 
 Run the setup script to initialize submodules, build GhosttyKit, and install the pbxproj normalization pre-commit hook:
