@@ -12204,6 +12204,9 @@ struct VerticalTabsSidebar: View {
             tabIds: sidebarReorderIds
         )
         let onDragStart: () -> NSItemProvider = { [tabId = tab.id] in
+            guard !tab.isPrivacyBlurred else {
+                return NSItemProvider()
+            }
             #if DEBUG
             cmuxDebugLog("sidebar.onDrag tab=\(tabId.uuidString.prefix(5))")
             #endif
@@ -13515,7 +13518,6 @@ struct TabItemView: View, Equatable {
     private var rowContent: some View {
         let workspaceSnapshot = self.workspaceSnapshot
         let isPrivacyBlurred = self.isPrivacyBlurred
-        let privacyBlurredTitle = String(localized: "sidebar.workspace.privacyBlurred", defaultValue: "Private Workspace")
         let closeWorkspaceTooltip = String(localized: "sidebar.closeWorkspace.tooltip", defaultValue: "Close Workspace")
         let protectedWorkspaceTooltip = String(
             localized: "sidebar.pinnedWorkspaceProtected.tooltip",
@@ -13533,7 +13535,7 @@ struct TabItemView: View, Equatable {
         let effectiveSubtitle = latestNotificationSubtitle ?? conversationMessageSubtitle
         let detailVisibility = visibleAuxiliaryDetails
         let titleLineLimit = settings.wrapsWorkspaceTitles ? Self.maxWrappedTitleLines : 1
-        let displayedTitle = (isPrivacyBlurred ? privacyBlurredTitle : workspaceSnapshot.title).sidebarBoundedDisplayString(
+        let displayedTitle = workspaceSnapshot.title.sidebarBoundedDisplayString(
             maxDisplayedLines: titleLineLimit,
             maxDisplayedCharacters: Self.maxDisplayedTitleCharacters
         )
@@ -13546,7 +13548,7 @@ struct TabItemView: View, Equatable {
 
         VStack(alignment: .leading, spacing: 4) {
             HStack(alignment: .top, spacing: 8) {
-                if !isPrivacyBlurred, unreadCount > 0 {
+                if unreadCount > 0 {
                     ZStack {
                         Circle()
                             .fill(activeUnreadBadgeFillColor)
@@ -13557,7 +13559,7 @@ struct TabItemView: View, Equatable {
                     .frame(width: scaledUnreadBadgeSize, height: scaledUnreadBadgeSize)
                 }
 
-                if !isPrivacyBlurred, workspaceSnapshot.isPinned {
+                if workspaceSnapshot.isPinned {
                     Image(systemName: "pin.fill")
                         .font(magnifiedFont(scaledFontSize(9), weight: .semibold))
                         .foregroundColor(activeSecondaryColor(0.8))
@@ -13568,7 +13570,7 @@ struct TabItemView: View, Equatable {
                 // background browser pane is surfaced on its workspace row,
                 // styled like the pin indicator. Audio is the must-have signal;
                 // mic/camera follow the macOS orange/green convention.
-                if !isPrivacyBlurred, workspaceSnapshot.mediaActivity.isPlayingAudio {
+                if workspaceSnapshot.mediaActivity.isPlayingAudio {
                     let audioPlayingTooltip = String(
                         localized: "sidebar.mediaActivity.audio.tooltip",
                         defaultValue: "Playing audio"
@@ -13580,7 +13582,7 @@ struct TabItemView: View, Equatable {
                         .accessibilityLabel(audioPlayingTooltip)
                 }
 
-                if !isPrivacyBlurred, workspaceSnapshot.mediaActivity.isUsingMicrophone {
+                if workspaceSnapshot.mediaActivity.isUsingMicrophone {
                     let microphoneInUseTooltip = String(
                         localized: "sidebar.mediaActivity.microphone.tooltip",
                         defaultValue: "Microphone in use"
@@ -13592,7 +13594,7 @@ struct TabItemView: View, Equatable {
                         .accessibilityLabel(microphoneInUseTooltip)
                 }
 
-                if !isPrivacyBlurred, workspaceSnapshot.mediaActivity.isUsingCamera {
+                if workspaceSnapshot.mediaActivity.isUsingCamera {
                     let cameraInUseTooltip = String(
                         localized: "sidebar.mediaActivity.camera.tooltip",
                         defaultValue: "Camera in use"
@@ -13639,7 +13641,7 @@ struct TabItemView: View, Equatable {
                 }
             }
 
-            if !isPrivacyBlurred, let description = workspaceSnapshot.customDescription {
+            if let description = workspaceSnapshot.customDescription {
                 SidebarWorkspaceDescriptionText(
                     markdown: description,
                     isActive: usesInvertedActiveForeground,
@@ -13648,7 +13650,7 @@ struct TabItemView: View, Equatable {
                 )
             }
 
-            if !isPrivacyBlurred, let subtitle = effectiveSubtitle {
+            if let subtitle = effectiveSubtitle {
                 Text(subtitle)
                     .font(magnifiedFont(scaledFontSize(10)))
                     .foregroundColor(activeSecondaryColor(0.8))
@@ -13657,11 +13659,9 @@ struct TabItemView: View, Equatable {
                     .multilineTextAlignment(.leading)
             }
 
-            if !isPrivacyBlurred {
-                remoteWorkspaceSection
-            }
+            remoteWorkspaceSection
 
-            if !isPrivacyBlurred, detailVisibility.showsMetadata {
+            if detailVisibility.showsMetadata {
                 let metadataEntries = workspaceSnapshot.metadataEntries
                 let metadataBlocks = workspaceSnapshot.metadataBlocks
                 if !metadataEntries.isEmpty {
@@ -13688,7 +13688,7 @@ struct TabItemView: View, Equatable {
                 }
             }
 
-            if !isPrivacyBlurred, detailVisibility.showsLog, let latestLog = workspaceSnapshot.latestLog {
+            if detailVisibility.showsLog, let latestLog = workspaceSnapshot.latestLog {
                 HStack(spacing: 4) {
                     Image(systemName: logLevelIcon(latestLog.level))
                         .font(magnifiedFont(scaledFontSize(8)))
@@ -13702,7 +13702,7 @@ struct TabItemView: View, Equatable {
                 .transition(.opacity)
             }
 
-            if !isPrivacyBlurred, detailVisibility.showsProgress, let progress = workspaceSnapshot.progress {
+            if detailVisibility.showsProgress, let progress = workspaceSnapshot.progress {
                 VStack(alignment: .leading, spacing: 2) {
                     GeometryReader { geo in
                         ZStack(alignment: .leading) {
@@ -13726,7 +13726,7 @@ struct TabItemView: View, Equatable {
             }
 
             // Branch + directory row
-            if !isPrivacyBlurred, detailVisibility.showsBranchDirectory {
+            if detailVisibility.showsBranchDirectory {
                 if sidebarBranchVerticalLayout {
                     if !workspaceSnapshot.branchDirectoryLines.isEmpty {
                         HStack(alignment: .top, spacing: 3) {
@@ -13823,7 +13823,7 @@ struct TabItemView: View, Equatable {
             }
 
             // Pull request rows
-            if !isPrivacyBlurred, detailVisibility.showsPullRequests, !workspaceSnapshot.pullRequestRows.isEmpty {
+            if detailVisibility.showsPullRequests, !workspaceSnapshot.pullRequestRows.isEmpty {
                 VStack(alignment: .leading, spacing: 1) {
                     ForEach(workspaceSnapshot.pullRequestRows) { pullRequest in
                         let pullRequestNumber = String(pullRequest.number)
@@ -13855,7 +13855,7 @@ struct TabItemView: View, Equatable {
             }
 
             // Ports row
-            if !isPrivacyBlurred, detailVisibility.showsPorts, !workspaceSnapshot.listeningPorts.isEmpty {
+            if detailVisibility.showsPorts, !workspaceSnapshot.listeningPorts.isEmpty {
                 HStack(spacing: 4) {
                     ForEach(workspaceSnapshot.listeningPorts, id: \.self) { port in
                         let portLabel = SidebarPortDisplayText.label(for: port)
@@ -13949,16 +13949,17 @@ struct TabItemView: View, Equatable {
     @ViewBuilder
     private var privacyBlurOverlay: some View {
         if isPrivacyBlurred {
-            HStack(spacing: 6) {
-                Image(systemName: "eye.slash.fill")
-                    .font(magnifiedFont(scaledFontSize(11), weight: .semibold))
-                Text(workspaceRowPrivacyBlurredTitle)
-                    .font(magnifiedFont(scaledFontSize(11), weight: .semibold))
-            }
-            .foregroundStyle(.secondary)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .background(.thinMaterial, in: Capsule())
+            RoundedRectangle(cornerRadius: 6)
+                .fill(.regularMaterial)
+                .overlay {
+                    RoundedRectangle(cornerRadius: 6)
+                        .fill(activeSecondaryColor(0.10))
+                }
+                .overlay {
+                    RoundedRectangle(cornerRadius: 6)
+                        .strokeBorder(activeSecondaryColor(0.22), lineWidth: 1)
+                }
+                .padding(.horizontal, SidebarWorkspaceListMetrics.rowOuterHorizontalPadding)
             .allowsHitTesting(false)
         }
     }

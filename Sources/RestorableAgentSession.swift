@@ -1203,6 +1203,10 @@ struct RestorableAgentSessionIndex: Sendable {
             homeDirectory: homeDirectory,
             fileManager: fileManager
         )
+        let codexTranscriptLookup = CodexTranscriptLookupCache(
+            homeDirectory: homeDirectory,
+            fileManager: fileManager
+        )
         let builtInKindIDs = Set(RestorableAgentKind.allCases.map(\.rawValue))
         let hookKinds: [(kind: RestorableAgentKind, registration: CmuxVaultAgentRegistration?)] =
             RestorableAgentKind.allCases.map { (kind: $0, registration: nil) }
@@ -1245,7 +1249,8 @@ struct RestorableAgentSessionIndex: Sendable {
                           effectiveRecord,
                           kind: kind,
                           fileManager: fileManager,
-                          claudeTranscriptLookup: claudeTranscriptLookup
+                          claudeTranscriptLookup: claudeTranscriptLookup,
+                          codexTranscriptLookup: codexTranscriptLookup
                       ) else {
                     continue
                 }
@@ -1377,8 +1382,16 @@ struct RestorableAgentSessionIndex: Sendable {
         _ record: RestorableAgentHookSessionRecord,
         kind: RestorableAgentKind,
         fileManager: FileManager,
-        claudeTranscriptLookup: ClaudeTranscriptLookupCache
+        claudeTranscriptLookup: ClaudeTranscriptLookupCache,
+        codexTranscriptLookup: CodexTranscriptLookupCache
     ) -> Bool {
+        if kind == .codex {
+            return record.isRestorable != false && codexTranscriptExists(
+                for: record,
+                fileManager: fileManager,
+                lookup: codexTranscriptLookup
+            )
+        }
         guard kind == .claude else {
             return record.isRestorable != false
         }
@@ -1390,6 +1403,52 @@ struct RestorableAgentSessionIndex: Sendable {
             return true
         }
         return claudeTranscriptExists(for: record, fileManager: fileManager, lookup: claudeTranscriptLookup)
+    }
+
+    private static func codexTranscriptExists(
+        for record: RestorableAgentHookSessionRecord,
+        fileManager: FileManager,
+        lookup: CodexTranscriptLookupCache
+    ) -> Bool {
+        guard let sessionId = normalizedNonEmptyValue(record.sessionId) else {
+            return false
+        }
+        if let transcriptPath = normalizedNonEmptyValue(record.transcriptPath),
+           codexTranscript(atPath: transcriptPath, containsSessionId: sessionId, fileManager: fileManager) {
+            return true
+        }
+        return lookup.transcriptExists(for: record, sessionId: sessionId)
+    }
+
+    private static func codexTranscript(
+        atPath path: String,
+        containsSessionId sessionId: String,
+        fileManager: FileManager
+    ) -> Bool {
+        let expandedPath = (path as NSString).expandingTildeInPath
+        guard regularNonEmptyFileExists(atPath: expandedPath, fileManager: fileManager),
+              let transcriptSessionId = codexTranscriptSessionId(atPath: expandedPath) else {
+            return false
+        }
+        return transcriptSessionId == sessionId
+    }
+
+    private static func codexTranscriptSessionId(atPath path: String) -> String? {
+        guard let contents = try? String(contentsOfFile: path, encoding: .utf8) else {
+            return nil
+        }
+        for line in contents.split(separator: "\n") {
+            guard line.contains("session_meta"),
+                  let data = String(line).data(using: .utf8),
+                  let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  (object["type"] as? String) == "session_meta",
+                  let payload = object["payload"] as? [String: Any],
+                  let id = normalizedNonEmptyValue(payload["id"] as? String) else {
+                continue
+            }
+            return id
+        }
+        return nil
     }
 
     private static func resolvedClaudeWorkflowRecord(
@@ -1868,6 +1927,81 @@ struct RestorableAgentSessionIndex: Sendable {
 
         private func cacheKey(_ prefix: String, _ sessionId: String) -> String {
             prefix + "\u{0}" + sessionId
+        }
+    }
+
+    private final class CodexTranscriptLookupCache {
+        private let homeDirectory: String
+        private let fileManager: FileManager
+        private var sessionIdsByHome: [String: Set<String>] = [:]
+
+        init(homeDirectory: String, fileManager: FileManager) {
+            self.homeDirectory = homeDirectory
+            self.fileManager = fileManager
+        }
+
+        func transcriptExists(for record: RestorableAgentHookSessionRecord, sessionId: String) -> Bool {
+            let home = codexHome(for: record)
+            if let cached = sessionIdsByHome[home] {
+                return cached.contains(sessionId)
+            }
+            let sessionIds = loadSessionIds(codexHome: home)
+            sessionIdsByHome[home] = sessionIds
+            return sessionIds.contains(sessionId)
+        }
+
+        private func codexHome(for record: RestorableAgentHookSessionRecord) -> String {
+            if let configured = RestorableAgentSessionIndex.normalizedNonEmptyValue(
+                record.launchCommand?.environment?["CODEX_HOME"]
+            ) {
+                return Self.expandedPath(configured, homeDirectory: homeDirectory)
+            }
+            return (homeDirectory as NSString).appendingPathComponent(".codex")
+        }
+
+        private func loadSessionIds(codexHome: String) -> Set<String> {
+            let roots = [
+                (codexHome as NSString).appendingPathComponent("sessions"),
+                (codexHome as NSString).appendingPathComponent("archived_sessions"),
+            ]
+            var ids = Set<String>()
+            for root in roots {
+                collectSessionIds(in: root, into: &ids)
+            }
+            return ids
+        }
+
+        private func collectSessionIds(in root: String, into ids: inout Set<String>) {
+            var isDirectory: ObjCBool = false
+            guard fileManager.fileExists(atPath: root, isDirectory: &isDirectory),
+                  isDirectory.boolValue,
+                  let enumerator = fileManager.enumerator(
+                    at: URL(fileURLWithPath: root, isDirectory: true),
+                    includingPropertiesForKeys: [.isRegularFileKey],
+                    options: [.skipsHiddenFiles]
+                  ) else {
+                return
+            }
+
+            for case let fileURL as URL in enumerator {
+                guard fileURL.pathExtension == "jsonl" else { continue }
+                let values = try? fileURL.resourceValues(forKeys: [.isRegularFileKey])
+                guard values?.isRegularFile != false,
+                      let sessionId = RestorableAgentSessionIndex.codexTranscriptSessionId(atPath: fileURL.path) else {
+                    continue
+                }
+                ids.insert(sessionId)
+            }
+        }
+
+        private static func expandedPath(_ path: String, homeDirectory: String) -> String {
+            if path == "~" {
+                return homeDirectory
+            }
+            if path.hasPrefix("~/") {
+                return (homeDirectory as NSString).appendingPathComponent(String(path.dropFirst(2)))
+            }
+            return (path as NSString).expandingTildeInPath
         }
     }
 

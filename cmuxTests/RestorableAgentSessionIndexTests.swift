@@ -772,6 +772,9 @@ final class RestorableAgentSessionIndexTests: XCTestCase {
             let ws = UUID()
             let panel = UUID()
             let sid = "55555555-5555-5555-5555-555555555555"
+            if testCase.launcher == "codex" {
+                try writeCodexTranscript(root: root, sessionId: sid)
+            }
             try writeHookStore(
                 root: root,
                 storeFilename: testCase.store,
@@ -837,6 +840,80 @@ final class RestorableAgentSessionIndexTests: XCTestCase {
             XCTAssertNotNil(snapshot.resumeCommand, "\(launcher): must still resume")
             XCTAssertNil(snapshot.forkCommand, "\(launcher): has no fork support and must not emit a fork command")
         }
+    }
+
+    func testCodexHookSnapshotRequiresTranscriptSessionMeta() throws {
+        let fm = FileManager.default
+        let root = fm.temporaryDirectory
+            .appendingPathComponent("cmux-codex-restore-\(UUID().uuidString)", isDirectory: true)
+        defer { try? fm.removeItem(at: root) }
+        let dir = root.appendingPathComponent("repo", isDirectory: true)
+        try fm.createDirectory(at: dir, withIntermediateDirectories: true)
+
+        let validWorkspaceId = UUID()
+        let validPanelId = UUID()
+        let validSessionId = "11111111-2222-3333-4444-555555555555"
+        let staleWorkspaceId = UUID()
+        let stalePanelId = UUID()
+        let staleSessionId = "66666666-7777-8888-9999-aaaaaaaaaaaa"
+        let explicitWorkspaceId = UUID()
+        let explicitPanelId = UUID()
+        let explicitSessionId = "bbbbbbbb-cccc-dddd-eeee-ffffffffffff"
+        try writeCodexTranscript(root: root, sessionId: validSessionId)
+        let explicitTranscriptURL = try writeCodexTranscript(root: root, sessionId: explicitSessionId)
+
+        try writeHookStore(
+            root: root,
+            storeFilename: "codex-hook-sessions.json",
+            sessions: [
+                validSessionId: driftedAgentHookRecord(
+                    launcher: "codex",
+                    sessionId: validSessionId,
+                    workspaceId: validWorkspaceId,
+                    panelId: validPanelId,
+                    recordedCwd: dir.path,
+                    launchCwd: dir.path,
+                    updatedAt: 10
+                ),
+                staleSessionId: driftedAgentHookRecord(
+                    launcher: "codex",
+                    sessionId: staleSessionId,
+                    workspaceId: staleWorkspaceId,
+                    panelId: stalePanelId,
+                    recordedCwd: dir.path,
+                    launchCwd: dir.path,
+                    updatedAt: 20
+                ),
+                explicitSessionId: {
+                    var record = driftedAgentHookRecord(
+                        launcher: "codex",
+                        sessionId: explicitSessionId,
+                        workspaceId: explicitWorkspaceId,
+                        panelId: explicitPanelId,
+                        recordedCwd: dir.path,
+                        launchCwd: dir.path,
+                        updatedAt: 30
+                    )
+                    record["transcriptPath"] = explicitTranscriptURL.path
+                    return record
+                }(),
+            ]
+        )
+
+        let index = RestorableAgentSessionIndex.load(homeDirectory: root.path, fileManager: fm)
+        XCTAssertEqual(
+            index.snapshot(workspaceId: validWorkspaceId, panelId: validPanelId)?.sessionId,
+            validSessionId
+        )
+        XCTAssertNil(
+            index.snapshot(workspaceId: staleWorkspaceId, panelId: stalePanelId),
+            "A stale Codex hook record without a matching transcript session_meta id must not generate a broken codex resume command."
+        )
+        XCTAssertEqual(
+            index.snapshot(workspaceId: explicitWorkspaceId, panelId: explicitPanelId)?.sessionId,
+            explicitSessionId,
+            "When Codex provides transcript_path, restore eligibility should accept that exact session_meta-backed file."
+        )
     }
 
     // Spawn an agent, end it, spawn a new one on the same surface: restore must pick the NEWEST
@@ -1104,6 +1181,27 @@ final class RestorableAgentSessionIndexTests: XCTestCase {
         """.write(to: transcriptURL, atomically: true, encoding: .utf8)
     }
 
+    @discardableResult
+    private func writeCodexTranscript(root: URL, sessionId: String) throws -> URL {
+        let transcriptURL = root
+            .appendingPathComponent(".codex", isDirectory: true)
+            .appendingPathComponent("sessions", isDirectory: true)
+            .appendingPathComponent("2026", isDirectory: true)
+            .appendingPathComponent("07", isDirectory: true)
+            .appendingPathComponent("02", isDirectory: true)
+            .appendingPathComponent("rollout-\(sessionId).jsonl", isDirectory: false)
+        try FileManager.default.createDirectory(
+            at: transcriptURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try """
+        {"timestamp":"2026-07-02T00:00:00Z","type":"session_meta","payload":{"id":"\(sessionId)"}}
+        {"timestamp":"2026-07-02T00:00:01Z","type":"response_item","payload":{"type":"message"}}
+
+        """.write(to: transcriptURL, atomically: true, encoding: .utf8)
+        return transcriptURL
+    }
+
     private func writeClaudeHookStore(root: URL, sessions: [String: [String: Any]]) throws {
         try writeHookStore(root: root, storeFilename: "claude-hook-sessions.json", sessions: sessions)
     }
@@ -1128,6 +1226,7 @@ final class RestorableAgentSessionIndexTests: XCTestCase {
         let ws = UUID()
         let panel = UUID()
         let sid = "66666666-6666-6666-6666-666666666666"
+        try writeCodexTranscript(root: root, sessionId: sid)
         var record = driftedAgentHookRecord(
             launcher: "codex", sessionId: sid, workspaceId: ws, panelId: panel,
             recordedCwd: dir.path, launchCwd: dir.path, updatedAt: 10
@@ -1184,6 +1283,7 @@ final class RestorableAgentSessionIndexTests: XCTestCase {
         let ws = UUID()
         let panel = UUID()
         let sid = "77777777-7777-7777-7777-777777777777"
+        try writeCodexTranscript(root: root, sessionId: sid)
         var record = driftedAgentHookRecord(
             launcher: "codex", sessionId: sid, workspaceId: ws, panelId: panel,
             recordedCwd: dir.path, launchCwd: dir.path, updatedAt: 10
@@ -1226,6 +1326,7 @@ final class RestorableAgentSessionIndexTests: XCTestCase {
         let ws = UUID()
         let panel = UUID()
         let sid = "88888888-8888-8888-8888-888888888888"
+        try writeCodexTranscript(root: root, sessionId: sid)
         var record = driftedAgentHookRecord(
             launcher: "codex", sessionId: sid, workspaceId: ws, panelId: panel,
             recordedCwd: dir.path, launchCwd: dir.path, updatedAt: 10
