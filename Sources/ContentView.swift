@@ -13879,15 +13879,32 @@ struct TabItemView: View, Equatable {
     }
 
     var body: some View {
-        let workspaceSnapshot = self.workspaceSnapshot
-        let isPrivacyBlurred = self.isPrivacyBlurred
-        let privacyBlurredTitle = String(localized: "sidebar.workspace.privacyBlurred", defaultValue: "Private Workspace")
-        let accessibilityHintText = isPrivacyBlurred
-            ? String(localized: "sidebar.workspace.privacyBlurred.accessibilityHint", defaultValue: "Right-click for workspace actions.")
-            : String(localized: "sidebar.workspace.accessibilityHint", defaultValue: "Activate to focus this workspace. Drag to reorder, or use Move Up and Move Down actions.")
-        let moveUpActionText = String(localized: "sidebar.workspace.moveUpAction", defaultValue: "Move Up")
-        let moveDownActionText = String(localized: "sidebar.workspace.moveDownAction", defaultValue: "Move Down")
+        rowWithContextMenu
+    }
 
+    private var workspaceRowPrivacyBlurredTitle: String {
+        String(localized: "sidebar.workspace.privacyBlurred", defaultValue: "Private Workspace")
+    }
+
+    private var accessibilityHintText: String {
+        if isPrivacyBlurred {
+            return String(localized: "sidebar.workspace.privacyBlurred.accessibilityHint", defaultValue: "Right-click for workspace actions.")
+        }
+        return String(
+            localized: "sidebar.workspace.accessibilityHint",
+            defaultValue: "Activate to focus this workspace. Drag to reorder, or use Move Up and Move Down actions."
+        )
+    }
+
+    private var moveUpActionText: String {
+        String(localized: "sidebar.workspace.moveUpAction", defaultValue: "Move Up")
+    }
+
+    private var moveDownActionText: String {
+        String(localized: "sidebar.workspace.moveDownAction", defaultValue: "Move Down")
+    }
+
+    private var rowVisualChrome: some View {
         rowContent
         // No implicit .animation(value:) on agent-mutable fields: animating a
         // row-height change interpolates the LazyVStack's measured height over
@@ -13927,20 +13944,29 @@ struct TabItemView: View, Equatable {
         .background { rowHeightProbe }
         .contentShape(Rectangle())
         .opacity(isBeingDragged ? 0.6 : 1)
-        .overlay {
-            if isPrivacyBlurred {
-                HStack(spacing: 6) {
-                    Image(systemName: "eye.slash.fill")
-                        .font(magnifiedFont(scaledFontSize(11), weight: .semibold))
-                    Text(privacyBlurredTitle)
-                        .font(magnifiedFont(scaledFontSize(11), weight: .semibold))
-                }
-                .foregroundStyle(.secondary)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
-                .background(.thinMaterial, in: Capsule())
-                .allowsHitTesting(false)
+    }
+
+    @ViewBuilder
+    private var privacyBlurOverlay: some View {
+        if isPrivacyBlurred {
+            HStack(spacing: 6) {
+                Image(systemName: "eye.slash.fill")
+                    .font(magnifiedFont(scaledFontSize(11), weight: .semibold))
+                Text(workspaceRowPrivacyBlurredTitle)
+                    .font(magnifiedFont(scaledFontSize(11), weight: .semibold))
             }
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(.thinMaterial, in: Capsule())
+            .allowsHitTesting(false)
+        }
+    }
+
+    private var rowWithVisualOverlays: some View {
+        rowVisualChrome
+        .overlay {
+            privacyBlurOverlay
         }
         .overlay {
             SidebarWorkspaceRowHoverTracker(rowInteractionState: $rowInteractionState)
@@ -13961,6 +13987,10 @@ struct TabItemView: View, Equatable {
                 rowSpacing: rowSpacing
             )
         }
+    }
+
+    private var rowWithLifecycleHandlers: some View {
+        rowWithVisualOverlays
         .onAppear {
             updateObservedActiveState(tabManager.selectedTabId == tab.id)
             refreshWorkspaceSnapshot(force: true)
@@ -14017,6 +14047,10 @@ struct TabItemView: View, Equatable {
         .onChange(of: settings) { _ in
             refreshWorkspaceSnapshot(force: true)
         }
+    }
+
+    private var rowWithDragAndSelectionHandlers: some View {
+        rowWithLifecycleHandlers
         .onDrag(onDragStart)
         .internalOnlyTabDrag()
         .onDrop(of: SidebarTabDragPayload.dropContentTypes, delegate: tabDropDelegateFactory(rowHeight))
@@ -14029,7 +14063,12 @@ struct TabItemView: View, Equatable {
         .onTapGesture {
             updateSelection()
         }
-        .safeHelp(isPrivacyBlurred ? privacyBlurredTitle : workspaceSnapshot.title)
+    }
+
+    private var rowWithAccessibility: some View {
+        let workspaceSnapshot = self.workspaceSnapshot
+        return rowWithDragAndSelectionHandlers
+        .safeHelp(isPrivacyBlurred ? workspaceRowPrivacyBlurredTitle : workspaceSnapshot.title)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(Text(accessibilityTitle))
         .accessibilityHint(Text(accessibilityHintText))
@@ -14039,6 +14078,10 @@ struct TabItemView: View, Equatable {
         .accessibilityAction(named: Text(moveDownActionText)) {
             moveBy(1)
         }
+    }
+
+    private var rowWithContextMenu: some View {
+        rowWithAccessibility
         .contextMenu {
             workspaceContextMenu
                 .onAppear {
