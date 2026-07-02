@@ -781,6 +781,9 @@ check_no_self_hosted_fleet_runners() {
     if [[ "$line" == *".github/workflows/release.yml:"*"runs-on: [self-hosted, cmux-mochi-m4pro]"* ]]; then
       continue
     fi
+    if [[ "$line" == *".github/workflows/nightly.yml:"*"runs-on:"*"cmux-mochi-m4pro"* ]]; then
+      continue
+    fi
     content="${line#*:*:}"
     printf '%s\n' "$content" | grep -Eq "($forbidden)" || continue
     printf '%s\n' "$content" | grep -Eq "($allowed)" && continue

@@ -45,13 +45,14 @@ if grep -R "resolve-aws-cli.sh" "$ROOT_DIR/.github/workflows/nightly.yml" "$ROOT
   exit 1
 fi
 
-if ! grep -Fq "scripts/ci/upload-r2-object.py" "$ROOT_DIR/.github/workflows/nightly.yml"; then
-  echo "FAIL: nightly workflow must use the Python R2 uploader"
-  exit 1
-fi
-if ! grep -Fq "scripts/ci/upload-r2-object.py" "$ROOT_DIR/.github/workflows/release.yml"; then
-  echo "FAIL: release workflow must use the Python R2 uploader"
+if grep -Fq "scripts/ci/upload-r2-object.py" "$ROOT_DIR/.github/workflows/nightly.yml" "$ROOT_DIR/.github/workflows/release.yml"; then
+  echo "FAIL: release workflows must publish Sparkle appcasts through GitHub Releases, not the R2 mirror"
   exit 1
 fi
 
-echo "PASS: Python R2 uploader signs appcast uploads without awscli"
+if grep -Fq "files.cmux.com" "$ROOT_DIR/.github/workflows/nightly.yml" "$ROOT_DIR/.github/workflows/release.yml"; then
+  echo "FAIL: release workflows must not reference the old files.cmux.com appcast mirror"
+  exit 1
+fi
+
+echo "PASS: Python R2 uploader signs objects without awscli and release appcasts stay on GitHub Releases"

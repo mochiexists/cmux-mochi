@@ -16,6 +16,28 @@ if ! grep -Fq 'workflow_dispatch:' "$WORKFLOW_FILE"; then
 fi
 
 if ! awk '
+  /^      runner:/ { in_runner=1; next }
+  in_runner && /^      [^[:space:]]/ { in_runner=0 }
+  in_runner && /default: m4-signing-runner/ { saw_default=1 }
+  in_runner && /- m4-signing-runner/ { saw_m4=1 }
+  in_runner && /- hosted-macos-15/ { saw_hosted=1 }
+  END { exit !(saw_default && saw_m4 && saw_hosted) }
+' "$WORKFLOW_FILE"; then
+  echo "FAIL: nightly workflow must expose an M4-default runner toggle with a hosted macOS 15 fallback"
+  exit 1
+fi
+
+if ! grep -Fq '["self-hosted","cmux-mochi-m4pro"]' "$WORKFLOW_FILE"; then
+  echo "FAIL: nightly M4 lane must target the Mochi self-hosted signing runner label"
+  exit 1
+fi
+
+if ! grep -Fq "vars.MACOS_RUNNER_15 || 'blacksmith-6vcpu-macos-15'" "$WORKFLOW_FILE"; then
+  echo "FAIL: nightly hosted lane must keep the repo-variable macOS 15 fallback"
+  exit 1
+fi
+
+if ! awk '
   /^      - name: Build universal nightly app and Ghostty CLI helper \(Release\)/ { in_universal=1; next }
   in_universal && /^      - name:/ { in_universal=0 }
   in_universal && /\.\/scripts\/build-release-universal\.sh/ { saw_build_script=1 }
@@ -92,6 +114,16 @@ fi
 
 if ! grep -Fq './scripts/sparkle_generate_appcast.sh "$NIGHTLY_DMG_IMMUTABLE" nightly appcast.xml' "$WORKFLOW_FILE"; then
   echo "FAIL: nightly workflow must generate the unified nightly appcast"
+  exit 1
+fi
+
+if ! grep -Fq 'https://github.com/mochiexists/cmux-mochi/releases/download/nightly/appcast.xml' "$WORKFLOW_FILE"; then
+  echo "FAIL: nightly app must use the fork GitHub Release appcast as its Sparkle feed"
+  exit 1
+fi
+
+if grep -Fq 'files.cmux.com' "$WORKFLOW_FILE"; then
+  echo "FAIL: nightly workflow must not publish or point Sparkle at files.cmux.com"
   exit 1
 fi
 

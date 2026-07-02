@@ -1,5 +1,7 @@
 name: Nightly macOS build
 
+run-name: Nightly macOS build (${{ inputs.runner || 'm4-signing-runner' }}) @ ${{ github.ref_name }}
+
 on:
   # Fork (cmux Mochi): ad-hoc release model — nightly auto-build on push is
   # disabled; run manually via workflow_dispatch when wanted.
@@ -12,6 +14,14 @@ on:
         required: false
         default: false
         type: boolean
+      runner:
+        description: Mac runner lane to validate
+        required: false
+        default: m4-signing-runner
+        type: choice
+        options:
+          - m4-signing-runner
+          - hosted-macos-15
 
 concurrency:
   group: nightly-build-${{ github.ref_name }}
@@ -94,6 +104,7 @@ jobs:
                 [{data: 'build HEAD', header: true}, headSha],
                 [{data: 'nightly tag', header: true}, nightlySha ?? '(missing)'],
                 [{data: 'force build', header: true}, String(forceBuild)],
+                [{data: 'runner lane', header: true}, '${{ inputs.runner || 'm4-signing-runner' }}'],
                 [{data: 'should build', header: true}, String(shouldBuild)],
                 [{data: 'should publish', header: true}, String(isMainRef)],
               ])
@@ -102,7 +113,10 @@ jobs:
   build-sign-notarize-nightly:
     needs: decide
     if: needs.decide.outputs.should_build == 'true'
-    # Run on the macOS 15 host that carries the signing/notarization secrets.
+    # Default to the self-hosted Mochi signing runner so ad-hoc nightlies prove
+    # the same Mac signing/notarization path as stable releases. Keep an
+    # explicit hosted macOS 15 choice so we can validate the cloud fallback
+    # without editing this workflow between smoke runs.
     # Import the Apple Developer ID intermediate chain into the build keychain
     # below so signing does not depend on mutable runner login-keychain state.
     # The Swift app still selects an Xcode with the macOS 26 SDK so it adopts
@@ -110,7 +124,7 @@ jobs:
     # injected before signing, preferring a pre-26 SDK when the runner image has
     # one but falling back to the selected app Xcode when the image only ships
     # Xcode 26. The helper build remains required and lipo-verified below.
-    runs-on: ${{ vars.MACOS_RUNNER_15 || 'blacksmith-6vcpu-macos-15' }}
+    runs-on: ${{ fromJSON((inputs.runner || 'm4-signing-runner') == 'm4-signing-runner' && '["self-hosted","cmux-mochi-m4pro"]' || format('"{0}"', vars.MACOS_RUNNER_15 || 'blacksmith-6vcpu-macos-15')) }}
     timeout-minutes: 30
     steps:
       - name: Clear stale git locks (self-hosted reused workspace)
@@ -123,6 +137,28 @@ jobs:
           rm -f "$ws/.git/index.lock" 2>/dev/null || true
           if [ -d "$ws/.git/modules" ]; then
             find "$ws/.git/modules" -type f -name "*.lock" -delete 2>/dev/null || true
+          fi
+
+      - name: Print and guard runner class
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "runner.os=${{ runner.os }}"
+          echo "runner.arch=${{ runner.arch }}"
+          sw_vers
+          uname -m
+          {
+            echo "### Nightly runner"
+            echo
+            echo "- requested lane: \`${{ inputs.runner || 'm4-signing-runner' }}\`"
+            echo "- runner os: \`${{ runner.os }}\`"
+            echo "- runner arch: \`${{ runner.arch }}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [[ "${{ inputs.runner || 'm4-signing-runner' }}" == "m4-signing-runner" ]]; then
+            if [[ "${{ runner.os }}" != "macOS" || "${{ runner.arch }}" != "ARM64" ]]; then
+              echo "::error::M4 nightly lane must run on the macOS ARM64 Mochi signing runner label"
+              exit 1
+            fi
           fi
 
       - name: Checkout build ref
@@ -386,7 +422,7 @@ jobs:
           prepare_variant \
             "$APP_DIR" \
             "com.cmux-mochi.nightly" \
-            "https://files.cmux.com/nightly/appcast.xml"
+            "https://github.com/mochiexists/cmux-mochi/releases/download/nightly/appcast.xml"
 
           echo "Nightly app name: cmux NIGHTLY"
           echo "Nightly bundle ID: com.cmux-mochi.nightly"
@@ -684,32 +720,6 @@ jobs:
             remote-daemon-assets/cmuxd-remote-*
             appcast-universal.xml
           overwrite_files: true
-
-      - name: Upload nightly appcast to R2
-        if: needs.decide.outputs.should_publish == 'true' && steps.current_head_prebuild.outputs.still_current == 'true' && steps.current_head_postbuild.outputs.still_current == 'true'
-        env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.CF_R2_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.CF_R2_SECRET_ACCESS_KEY }}
-          AWS_DEFAULT_REGION: auto
-          R2_ENDPOINT: "https://${{ secrets.CF_R2_ACCOUNT_ID }}.r2.cloudflarestorage.com"
-        run: |
-          set -euo pipefail
-          if [ -z "${AWS_ACCESS_KEY_ID:-}" ] || [ -z "${AWS_SECRET_ACCESS_KEY:-}" ]; then
-            echo "Skipping R2 nightly appcast upload: CF_R2 credentials not configured."
-            exit 0
-          fi
-
-          # Upload after GitHub Release publish so the appcast never references
-          # a DMG that doesn't exist yet. R2 PutObject is atomic, so the appcast
-          # is either the old version or the new one, never missing.
-          python3 scripts/ci/upload-r2-object.py \
-            --file appcast.xml \
-            --endpoint-url "$R2_ENDPOINT" \
-            --bucket cmux-binaries \
-            --key nightly/appcast.xml \
-            --cache-control "no-cache, no-store, must-revalidate"
-
-          echo "R2 appcast upload complete: https://files.cmux.com/nightly/appcast.xml"
 
       - name: Cleanup keychain
         if: always()

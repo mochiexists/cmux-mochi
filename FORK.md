@@ -15,7 +15,7 @@ onto upstream **release tags** only (never raw `upstream/main` tip). Overlay-cle
 | App name | `cmux Mochi` | `cmux Mochi ALPHA` |
 | Bundle ID | `com.cmux-mochi` | `com.cmux-mochi.alpha` (pre-plan: `.nightly`) |
 | URL scheme | `cmux` | `cmux-alpha` (pre-plan: `cmux-nightly`) |
-| Sparkle feed | `https://github.com/mochiexists/cmux-mochi/releases/latest/download/appcast.xml` | `https://github.com/mochiexists/cmux-mochi/releases/download/alpha/appcast.xml` |
+| Sparkle feed | `https://github.com/mochiexists/cmux-mochi/releases/latest/download/appcast.xml` | `https://github.com/mochiexists/cmux-mochi/releases/download/nightly/appcast.xml` (pre-plan: `nightly`; Phase 4 renames to `alpha`) |
 | Icon | `AppIcon` | `AppIcon-Nightly` (alpha icon is a follow-up) |
 
 Signing: Team ID `599WAZ6282`, Developer ID cert `33FD69D8`, notary profile
@@ -35,9 +35,12 @@ schedule — every lane is tag- or dispatch-triggered.
 - **Stable:** commit → `./scripts/release-pretag-guard.sh` → tag `vX.Y.Z` → push →
   `release.yml` on the self-hosted runner (`[self-hosted, cmux-mochi-m4pro]`). Never reuse a
   failed tag; cut the next patch.
-- **Alpha:** `gh workflow run nightly.yml --repo mochiexists/cmux-mochi` (file keeps its
-  upstream name deliberately — renaming causes rebase conflicts). Publishes to the rolling
-  `alpha` prerelease tag.
+- **Alpha/nightly:** `gh workflow run nightly.yml --repo mochiexists/cmux-mochi -f force=true`
+  (file keeps its upstream name deliberately — renaming causes rebase conflicts). The ad-hoc
+  lane defaults to the self-hosted signing runner so it proves the same Mac signing/notarization
+  path as stable; choose `runner=hosted-macos-15` only when deliberately validating the hosted
+  fallback. Current pre-Phase-4 assets publish to the rolling `nightly` prerelease tag and bake
+  the GitHub Release appcast URL into the app.
 - **Local fallback:** `scripts/build-sign-upload.sh` (see local-release-provisioning notes);
   used to ship 0.64.155 when CI was broken.
 - The exact Release build (`-jobs 1`, `SWIFT_COMPILATION_MODE=singlefile`, universal) is the

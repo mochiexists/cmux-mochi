@@ -55,11 +55,12 @@ require_file_contains "Resources/Info.plist" '$(SPARKLE_PUBLIC_KEY)'
 
 require_file_contains ".github/workflows/release.yml" "mochiexists/cmux-mochi"
 require_file_contains ".github/workflows/release.yml" "codes-o3"
-require_file_contains ".github/workflows/release.yml" "Skipping R2 stable appcast mirror: CF_R2 credentials not configured."
+require_file_contains ".github/workflows/release.yml" "https://github.com/mochiexists/cmux-mochi/releases/latest/download/appcast.xml"
 require_file_contains ".github/workflows/release.yml" "build-ghostty-cli-helper"
 require_file_contains ".github/workflows/release.yml" "scripts/import-apple-developer-id-intermediates.sh build.keychain"
 require_file_contains ".github/workflows/release.yml" "runs-on: macos-15"
 require_file_contains ".github/workflows/release.yml" "runs-on: [self-hosted, cmux-mochi-m4pro]"
+require_file_absent ".github/workflows/release.yml" "files.cmux.com"
 require_file_absent ".github/workflows/release.yml" "blacksmith-"
 require_file_contains ".github/workflows/build-ghosttykit.yml" "mochiexists/ghostty"
 require_file_contains "scripts/download-prebuilt-ghosttykit.sh" "mochiexists/ghostty"
@@ -67,8 +68,10 @@ require_file_contains "scripts/download-prebuilt-ghosttykit.sh" "mochiexists/gho
 require_file_contains ".github/workflows/nightly.yml" "mochiexists/cmux-mochi"
 require_file_contains ".github/workflows/nightly.yml" "codes-o3"
 require_file_contains ".github/workflows/nightly.yml" "scripts/import-apple-developer-id-intermediates.sh build.keychain"
+require_file_contains ".github/workflows/nightly.yml" '["self-hosted","cmux-mochi-m4pro"]'
 require_file_contains ".github/workflows/nightly.yml" "blacksmith-6vcpu-macos-15"
-require_file_contains ".github/workflows/nightly.yml" "Skipping R2 nightly appcast upload: CF_R2 credentials not configured."
+require_file_contains ".github/workflows/nightly.yml" "https://github.com/mochiexists/cmux-mochi/releases/download/nightly/appcast.xml"
+require_file_absent ".github/workflows/nightly.yml" "files.cmux.com"
 
 require_file_contains ".github/workflows/ios-testflight.yml" "599WAZ6282.dev.cmux.app.beta"
 require_file_contains "ios/README.md" "team \`599WAZ6282\`"
