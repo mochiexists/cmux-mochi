@@ -97,7 +97,7 @@ cp -R ghostty/macos/GhosttyKit.xcframework GhosttyKit.xcframework
 # --- Build app (Release, unsigned) ---
 echo "Building app..."
 rm -rf build/
-xcodebuild -scheme cmux -configuration Release -derivedDataPath build CODE_SIGNING_ALLOWED=NO build 2>&1 | tail -5
+./scripts/build-release-universal.sh --derived-data-path build
 echo "Build succeeded"
 
 # --- Build + install the universal Ghostty CLI (theme picker) helper ---

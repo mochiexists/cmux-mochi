@@ -6,14 +6,36 @@ ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 
 for file in \
   "$ROOT_DIR/.github/workflows/build-ghosttykit.yml" \
-  "$ROOT_DIR/scripts/setup.sh" \
+  "$ROOT_DIR/scripts/ensure-ghosttykit.sh" \
   "$ROOT_DIR/scripts/build-sign-upload.sh"
 do
-  if ! grep -Fq -- '-Dxcframework-target=universal' "$file"; then
-    echo "FAIL: $file must build GhosttyKit with -Dxcframework-target=universal"
-    exit 1
-  fi
+  for flag in \
+    "-Demit-xcframework=true" \
+    "-Demit-macos-app=false" \
+    "-Dxcframework-target=universal" \
+    "-Doptimize=ReleaseFast"
+  do
+    if ! grep -Fq -- "$flag" "$file"; then
+      echo "FAIL: $file must build GhosttyKit with $flag"
+      exit 1
+    fi
+  done
 done
+
+if ! grep -Fq -- '"$SCRIPT_DIR/ensure-ghosttykit.sh"' "$ROOT_DIR/scripts/setup.sh"; then
+  echo "FAIL: setup.sh must build or fetch GhosttyKit through scripts/ensure-ghosttykit.sh"
+  exit 1
+fi
+
+if ! grep -Fq -- './scripts/build-release-universal.sh --derived-data-path build' "$ROOT_DIR/scripts/build-sign-upload.sh"; then
+  echo "FAIL: local release upload path must use scripts/build-release-universal.sh with the shared release flags"
+  exit 1
+fi
+
+if grep -Eq '^[[:space:]]*xcodebuild[[:space:]].*-configuration Release' "$ROOT_DIR/scripts/build-sign-upload.sh"; then
+  echo "FAIL: local release upload path must not use a bare Release xcodebuild invocation"
+  exit 1
+fi
 
 if ! awk '
   /\/\* Release \*\// { in_release=1; next }

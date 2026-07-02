@@ -95,7 +95,7 @@ if ! awk '
   /^      - name: Inject nightly identities and metadata/ { in_inject=1; next }
   in_inject && /^      - name:/ { in_inject=0 }
   in_inject && /cmux Mochi\.app\/Contents\/Info\.plist/ { saw_mochi_plist=1 }
-  in_inject && /mv "\$app_dir\/cmux Mochi\.app" "\$app_dir\/cmux NIGHTLY\.app"/ { saw_rename=1 }
+  in_inject && /mv "\$app_dir\/cmux Mochi\.app" "\$app_dir\/cmux Mochi NIGHTLY\.app"/ { saw_rename=1 }
   END { exit !(saw_mochi_plist && saw_rename) }
 ' "$WORKFLOW_FILE"; then
   echo "FAIL: nightly identity injection must mutate and rename the built Mochi app into the NIGHTLY app"

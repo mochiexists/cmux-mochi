@@ -401,8 +401,8 @@ jobs:
             local feed_url="$3"
             local app_plist="$app_dir/cmux Mochi.app/Contents/Info.plist"
 
-            /usr/libexec/PlistBuddy -c "Set :CFBundleName cmux NIGHTLY" "$app_plist"
-            /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName cmux NIGHTLY" "$app_plist"
+            /usr/libexec/PlistBuddy -c "Set :CFBundleName cmux Mochi NIGHTLY" "$app_plist"
+            /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName cmux Mochi NIGHTLY" "$app_plist"
             /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier ${bundle_id}" "$app_plist"
             local url_type_name
             url_type_name="$(/usr/libexec/PlistBuddy -c "Print :CFBundleURLTypes:1:CFBundleURLName" "$app_plist")"
@@ -419,7 +419,7 @@ jobs:
             /usr/libexec/PlistBuddy -c "Set :CFBundleVersion ${NIGHTLY_BUILD}" "$app_plist"
             /usr/libexec/PlistBuddy -c "Delete :CMUXCommit" "$app_plist" >/dev/null 2>&1 || true
             /usr/libexec/PlistBuddy -c "Add :CMUXCommit string ${SHORT_SHA}" "$app_plist"
-            mv "$app_dir/cmux Mochi.app" "$app_dir/cmux NIGHTLY.app"
+            mv "$app_dir/cmux Mochi.app" "$app_dir/cmux Mochi NIGHTLY.app"
           }
 
           prepare_variant \
@@ -427,7 +427,7 @@ jobs:
             "com.cmux-mochi.nightly" \
             "https://github.com/mochiexists/cmux-mochi/releases/download/nightly/appcast.xml"
 
-          echo "Nightly app name: cmux NIGHTLY"
+          echo "Nightly app name: cmux Mochi NIGHTLY"
           echo "Nightly bundle ID: com.cmux-mochi.nightly"
           echo "Nightly marketing version: ${NIGHTLY_MARKETING_VERSION}"
           echo "Nightly build number: ${NIGHTLY_BUILD}"
@@ -449,7 +449,7 @@ jobs:
             --output-dir "remote-daemon-assets" \
             --asset-suffix "$NIGHTLY_BUILD"
           MANIFEST_JSON="$(python3 -c 'import json,sys; print(json.dumps(json.load(open(sys.argv[1], encoding="utf-8")), separators=(",",":")))' "remote-daemon-assets/cmuxd-remote-manifest-${NIGHTLY_BUILD}.json")"
-          APP_PLIST="build-universal/Build/Products/Release/cmux NIGHTLY.app/Contents/Info.plist"
+          APP_PLIST="build-universal/Build/Products/Release/cmux Mochi NIGHTLY.app/Contents/Info.plist"
           if [ ! -f "$APP_PLIST" ]; then
             echo "Missing nightly app Info.plist at $APP_PLIST" >&2
             exit 1
@@ -516,7 +516,7 @@ jobs:
             exit 1
           fi
           for APP_PATH in \
-            "build-universal/Build/Products/Release/cmux NIGHTLY.app"
+            "build-universal/Build/Products/Release/cmux Mochi NIGHTLY.app"
           do
             ./scripts/sign-cmux-bundle.sh \
               "$APP_PATH" \
@@ -592,7 +592,7 @@ jobs:
           }
 
           notarize_and_package \
-            "build-universal/Build/Products/Release/cmux NIGHTLY.app" \
+            "build-universal/Build/Products/Release/cmux Mochi NIGHTLY.app" \
             "cmux-nightly-macos.dmg" \
             "$NIGHTLY_DMG_IMMUTABLE"
 
@@ -710,7 +710,7 @@ jobs:
           body: |
             Automated nightly build for `${{ needs.decide.outputs.short_sha }}`.
 
-            **cmux NIGHTLY** is published as a universal app:
+            **cmux Mochi NIGHTLY** is published as a universal app:
             - bundle ID `com.cmux-mochi.nightly`
             - feed `appcast.xml`
             - compatibility feed `appcast-universal.xml` for older universal nightlies

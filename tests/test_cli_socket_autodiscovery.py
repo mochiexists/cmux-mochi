@@ -482,13 +482,13 @@ def test_variant_last_socket_markers(cli_path: str) -> bool:
         nightly_cli = bundled_cli_for_variant(
             cli_path,
             apps,
-            "cmux NIGHTLY",
+            "cmux Mochi NIGHTLY",
             "com.cmux-mochi.nightly",
         )
         isolated_nightly_cli = bundled_cli_for_variant(
             cli_path,
             apps,
-            "cmux NIGHTLY issue3542",
+            "cmux Mochi NIGHTLY issue3542",
             "com.cmux-mochi.nightly.issue3542",
         )
         dev_agent_cli = bundled_cli_for_variant(

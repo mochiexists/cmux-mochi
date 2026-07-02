@@ -40,7 +40,7 @@ schedule — every lane is tag- or dispatch-triggered.
   lane defaults to the self-hosted signing runner so it proves the same Mac signing/notarization
   path as stable; choose `runner=hosted-macos-15` only when deliberately validating the hosted
   fallback. Current pre-Phase-4 assets publish to the rolling `nightly` prerelease tag and bake
-  the GitHub Release appcast URL into the app.
+  the GitHub Release appcast URL into the `cmux Mochi NIGHTLY` app.
 - **Local fallback:** `scripts/build-sign-upload.sh` (see local-release-provisioning notes);
   used to ship 0.64.155 when CI was broken.
 - The exact Release build (`-jobs 1`, `SWIFT_COMPILATION_MODE=singlefile`, universal) is the
