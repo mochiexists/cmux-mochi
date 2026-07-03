@@ -345,6 +345,57 @@ enum VSCodeServeWebURLBuilder {
     }
 }
 
+enum VSCodeClaudeWorkingDirectoryPolicy {
+    static func safeDirectoryURL(
+        for directoryURL: URL?,
+        homeDirectoryURL: URL = FileManager.default.homeDirectoryForCurrentUser,
+        documentsDirectoryURL: URL? = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
+    ) -> URL {
+        guard let directoryURL else {
+            return fallbackDirectoryURL(homeDirectoryURL: homeDirectoryURL, documentsDirectoryURL: documentsDirectoryURL)
+        }
+
+        let standardizedURL = directoryURL.standardizedFileURL
+        guard !isUnsafeDirectoryURL(standardizedURL, homeDirectoryURL: homeDirectoryURL) else {
+            return fallbackDirectoryURL(homeDirectoryURL: homeDirectoryURL, documentsDirectoryURL: documentsDirectoryURL)
+        }
+        return standardizedURL
+    }
+
+    static func panelSeedDirectoryURL(
+        currentDirectoryPath: String?,
+        homeDirectoryURL: URL = FileManager.default.homeDirectoryForCurrentUser,
+        documentsDirectoryURL: URL? = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
+    ) -> URL {
+        let trimmed = currentDirectoryPath?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let candidateURL = trimmed.isEmpty ? nil : URL(fileURLWithPath: trimmed, isDirectory: true)
+        return safeDirectoryURL(
+            for: candidateURL,
+            homeDirectoryURL: homeDirectoryURL,
+            documentsDirectoryURL: documentsDirectoryURL
+        )
+    }
+
+    private static func fallbackDirectoryURL(homeDirectoryURL: URL, documentsDirectoryURL: URL?) -> URL {
+        (documentsDirectoryURL ?? homeDirectoryURL.appendingPathComponent("Documents", isDirectory: true))
+            .standardizedFileURL
+    }
+
+    private static func isUnsafeDirectoryURL(_ directoryURL: URL, homeDirectoryURL: URL) -> Bool {
+        let path = canonicalDirectoryPath(directoryURL)
+        guard path != "/" else { return true }
+        return path == canonicalDirectoryPath(homeDirectoryURL)
+    }
+
+    private static func canonicalDirectoryPath(_ url: URL) -> String {
+        var path = url.standardizedFileURL.resolvingSymlinksInPath().path
+        while path.count > 1 && path.hasSuffix("/") {
+            path.removeLast()
+        }
+        return path
+    }
+}
+
 enum VSCodeServeWebProfile: Hashable {
     case standard
     case claudeCode
@@ -587,7 +638,11 @@ final class VSCodeServeWebController {
     }
 #endif
 
-    func ensureServeWebURL(vscodeApplicationURL: URL, completion: @escaping (URL?) -> Void) {
+    func ensureServeWebURL(
+        vscodeApplicationURL: URL,
+        defaultDirectoryURL: URL? = nil,
+        completion: @escaping (URL?) -> Void
+    ) {
         queue.async {
             if let process = self.serveWebProcess,
                process.isRunning,
@@ -620,6 +675,7 @@ final class VSCodeServeWebController {
                 }
                 let launchResult = self.launchServeWebProcess(
                     vscodeApplicationURL: vscodeApplicationURL,
+                    defaultDirectoryURL: defaultDirectoryURL,
                     expectedGeneration: launchGeneration
                 )
                 self.queue.async {
@@ -716,9 +772,17 @@ final class VSCodeServeWebController {
         }
     }
 
-    func restart(vscodeApplicationURL: URL, completion: @escaping (URL?) -> Void) {
+    func restart(
+        vscodeApplicationURL: URL,
+        defaultDirectoryURL: URL? = nil,
+        completion: @escaping (URL?) -> Void
+    ) {
         stop()
-        ensureServeWebURL(vscodeApplicationURL: vscodeApplicationURL, completion: completion)
+        ensureServeWebURL(
+            vscodeApplicationURL: vscodeApplicationURL,
+            defaultDirectoryURL: defaultDirectoryURL,
+            completion: completion
+        )
     }
 
     func isServeWebURL(_ candidateURL: URL?) -> Bool {
@@ -731,6 +795,7 @@ final class VSCodeServeWebController {
 
     private func launchServeWebProcess(
         vscodeApplicationURL: URL,
+        defaultDirectoryURL: URL?,
         expectedGeneration: UInt64
     ) -> (process: Process, url: URL)? {
         if let launchProcessOverride {
@@ -751,8 +816,10 @@ final class VSCodeServeWebController {
         process.arguments = Self.serveWebArguments(
             argumentsPrefix: launchConfiguration.argumentsPrefix,
             connectionTokenFileURL: connectionTokenFileURL,
+            defaultDirectoryURL: defaultDirectoryURL,
             serverDataDirectoryURL: serverDataDirectoryURL
         )
+        process.currentDirectoryURL = defaultDirectoryURL
         process.environment = launchConfiguration.environment
 
         let stdoutPipe = Pipe()
@@ -857,6 +924,7 @@ final class VSCodeServeWebController {
     private static func serveWebArguments(
         argumentsPrefix: [String],
         connectionTokenFileURL: URL,
+        defaultDirectoryURL: URL?,
         serverDataDirectoryURL: URL?
     ) -> [String] {
         var arguments = argumentsPrefix + [
@@ -865,6 +933,9 @@ final class VSCodeServeWebController {
             "--port", "0",
             "--connection-token-file", connectionTokenFileURL.path,
         ]
+        if let defaultDirectoryURL {
+            arguments.append(contentsOf: ["--default-folder", defaultDirectoryURL.path])
+        }
         if let serverDataDirectoryURL {
             arguments.append(contentsOf: ["--server-data-dir", serverDataDirectoryURL.path])
         }
@@ -875,11 +946,13 @@ final class VSCodeServeWebController {
     static func serveWebArgumentsForTesting(
         argumentsPrefix: [String] = [],
         connectionTokenFileURL: URL,
+        defaultDirectoryURL: URL? = nil,
         serverDataDirectoryURL: URL?
     ) -> [String] {
         serveWebArguments(
             argumentsPrefix: argumentsPrefix,
             connectionTokenFileURL: connectionTokenFileURL,
+            defaultDirectoryURL: defaultDirectoryURL,
             serverDataDirectoryURL: serverDataDirectoryURL
         )
     }
@@ -1195,10 +1268,15 @@ final class VSCodeServeWebWorkspaceRegistry {
         forWorkspaceID workspaceID: UUID,
         vscodeApplicationURL: URL,
         profile: VSCodeServeWebProfile = .standard,
+        defaultDirectoryURL: URL? = nil,
         completion: @escaping (URL?) -> Void
     ) {
         controller(forWorkspaceID: workspaceID, profile: profile)
-            .ensureServeWebURL(vscodeApplicationURL: vscodeApplicationURL, completion: completion)
+            .ensureServeWebURL(
+                vscodeApplicationURL: vscodeApplicationURL,
+                defaultDirectoryURL: defaultDirectoryURL,
+                completion: completion
+            )
     }
 
     func stop(workspaceID: UUID) {
@@ -1225,6 +1303,7 @@ final class VSCodeServeWebWorkspaceRegistry {
         forWorkspaceID workspaceID: UUID,
         vscodeApplicationURL: URL,
         profile: VSCodeServeWebProfile = .standard,
+        defaultDirectoryURL: URL? = nil,
         completion: @escaping (URL?) -> Void
     ) -> Bool {
         let controller = queue.sync {
@@ -1236,7 +1315,11 @@ final class VSCodeServeWebWorkspaceRegistry {
             }
             return false
         }
-        controller.restart(vscodeApplicationURL: vscodeApplicationURL, completion: completion)
+        controller.restart(
+            vscodeApplicationURL: vscodeApplicationURL,
+            defaultDirectoryURL: defaultDirectoryURL,
+            completion: completion
+        )
         return true
     }
 
