@@ -1434,10 +1434,16 @@ struct RestorableAgentSessionIndex: Sendable {
     }
 
     private static func codexTranscriptSessionId(atPath path: String) -> String? {
-        guard let contents = try? String(contentsOfFile: path, encoding: .utf8) else {
+        guard let handle = try? FileHandle(forReadingFrom: URL(fileURLWithPath: path)) else {
             return nil
         }
-        for line in contents.split(separator: "\n") {
+        defer {
+            try? handle.close()
+        }
+
+        let data = (try? handle.read(upToCount: codexTranscriptSessionMetaScanLimit)) ?? Data()
+        guard let contents = String(data: data, encoding: .utf8) else { return nil }
+        for line in contents.split(separator: "\n", maxSplits: codexTranscriptSessionMetaMaxLines) {
             guard line.contains("session_meta"),
                   let data = String(line).data(using: .utf8),
                   let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
@@ -1449,6 +1455,17 @@ struct RestorableAgentSessionIndex: Sendable {
             return id
         }
         return nil
+    }
+
+    private static let codexTranscriptSessionMetaScanLimit = 1_048_576
+    private static let codexTranscriptSessionMetaMaxLines = 256
+
+    private static func codexTranscriptSessionIdInRolloutFilename(atPath path: String) -> String? {
+        let basename = ((path as NSString).lastPathComponent as NSString).deletingPathExtension
+        guard basename.hasPrefix("rollout-") else { return nil }
+        let candidate = String(basename.suffix(36))
+        guard UUID(uuidString: candidate) != nil else { return nil }
+        return candidate
     }
 
     private static func resolvedClaudeWorkflowRecord(
@@ -1986,10 +2003,13 @@ struct RestorableAgentSessionIndex: Sendable {
             for case let fileURL as URL in enumerator {
                 guard fileURL.pathExtension == "jsonl" else { continue }
                 let values = try? fileURL.resourceValues(forKeys: [.isRegularFileKey])
-                guard values?.isRegularFile != false,
-                      let sessionId = RestorableAgentSessionIndex.codexTranscriptSessionId(atPath: fileURL.path) else {
+                guard values?.isRegularFile != false else {
                     continue
                 }
+                let sessionId = RestorableAgentSessionIndex.codexTranscriptSessionIdInRolloutFilename(
+                    atPath: fileURL.path
+                ) ?? RestorableAgentSessionIndex.codexTranscriptSessionId(atPath: fileURL.path)
+                guard let sessionId else { continue }
                 ids.insert(sessionId)
             }
         }

@@ -916,6 +916,110 @@ final class RestorableAgentSessionIndexTests: XCTestCase {
         )
     }
 
+    func testCodexExplicitTranscriptOnlyReadsSessionMetaHeader() throws {
+        let fm = FileManager.default
+        let root = fm.temporaryDirectory
+            .appendingPathComponent("cmux-codex-header-only-\(UUID().uuidString)", isDirectory: true)
+        defer { try? fm.removeItem(at: root) }
+        let dir = root.appendingPathComponent("repo", isDirectory: true)
+        try fm.createDirectory(at: dir, withIntermediateDirectories: true)
+
+        let workspaceId = UUID()
+        let panelId = UUID()
+        let sessionId = "11111111-2222-3333-4444-555555555555"
+        let transcriptURL = root
+            .appendingPathComponent("codex-transcripts", isDirectory: true)
+            .appendingPathComponent("rollout-\(sessionId).jsonl", isDirectory: false)
+        try fm.createDirectory(
+            at: transcriptURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        var transcriptData = Data(
+            """
+            {"timestamp":"2026-07-02T00:00:00Z","type":"session_meta","payload":{"id":"\(sessionId)"}}
+
+            """.utf8
+        )
+        transcriptData.append(Data(repeating: UInt8(ascii: "x"), count: 1_100_000))
+        transcriptData.append(0xff)
+        try transcriptData.write(to: transcriptURL)
+
+        try writeHookStore(
+            root: root,
+            storeFilename: "codex-hook-sessions.json",
+            sessions: [
+                sessionId: {
+                    var record = driftedAgentHookRecord(
+                        launcher: "codex",
+                        sessionId: sessionId,
+                        workspaceId: workspaceId,
+                        panelId: panelId,
+                        recordedCwd: dir.path,
+                        launchCwd: dir.path,
+                        updatedAt: 10
+                    )
+                    record["transcriptPath"] = transcriptURL.path
+                    return record
+                }(),
+            ]
+        )
+
+        let index = RestorableAgentSessionIndex.load(homeDirectory: root.path, fileManager: fm)
+        XCTAssertEqual(
+            index.snapshot(workspaceId: workspaceId, panelId: panelId)?.sessionId,
+            sessionId,
+            "Codex restore eligibility should read the session_meta header without decoding the whole transcript body."
+        )
+    }
+
+    func testCodexTranscriptLookupUsesRolloutFilenameWithoutOpeningBody() throws {
+        let fm = FileManager.default
+        let root = fm.temporaryDirectory
+            .appendingPathComponent("cmux-codex-filename-lookup-\(UUID().uuidString)", isDirectory: true)
+        defer { try? fm.removeItem(at: root) }
+        let dir = root.appendingPathComponent("repo", isDirectory: true)
+        try fm.createDirectory(at: dir, withIntermediateDirectories: true)
+
+        let workspaceId = UUID()
+        let panelId = UUID()
+        let sessionId = "11111111-2222-3333-4444-555555555555"
+        let transcriptURL = root
+            .appendingPathComponent(".codex", isDirectory: true)
+            .appendingPathComponent("sessions", isDirectory: true)
+            .appendingPathComponent("2026", isDirectory: true)
+            .appendingPathComponent("07", isDirectory: true)
+            .appendingPathComponent("02", isDirectory: true)
+            .appendingPathComponent("rollout-2026-07-02T00-00-00-\(sessionId).jsonl", isDirectory: false)
+        try fm.createDirectory(
+            at: transcriptURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try Data([0xff, 0xfe, 0xfd]).write(to: transcriptURL)
+
+        try writeHookStore(
+            root: root,
+            storeFilename: "codex-hook-sessions.json",
+            sessions: [
+                sessionId: driftedAgentHookRecord(
+                    launcher: "codex",
+                    sessionId: sessionId,
+                    workspaceId: workspaceId,
+                    panelId: panelId,
+                    recordedCwd: dir.path,
+                    launchCwd: dir.path,
+                    updatedAt: 10
+                ),
+            ]
+        )
+
+        let index = RestorableAgentSessionIndex.load(homeDirectory: root.path, fileManager: fm)
+        XCTAssertEqual(
+            index.snapshot(workspaceId: workspaceId, panelId: panelId)?.sessionId,
+            sessionId,
+            "Standard Codex rollout filenames carry the session id, so lookup should not decode every JSONL body."
+        )
+    }
+
     // Spawn an agent, end it, spawn a new one on the same surface: restore must pick the NEWEST
     // session (highest updatedAt), not the stale earlier one.
     func testReplacementRestoresNewestSessionForSurface() throws {
