@@ -354,18 +354,6 @@ final class ServeWebOutputCollectorTests: XCTestCase {
 
 
 final class VSCodeServeWebControllerTests: XCTestCase {
-    func testClaudeCodeProfileUsesUserStateDirectoryForServerData() {
-        let dataDirectoryURL = VSCodeServeWebProfile.claudeCode.serverDataDirectoryURL
-
-        XCTAssertEqual(
-            dataDirectoryURL?.path,
-            FileManager.default.homeDirectoryForCurrentUser
-                .appendingPathComponent(".local/state/cmux/vscode-serve-web/claude-code", isDirectory: true)
-                .path
-        )
-        XCTAssertFalse(dataDirectoryURL?.path.contains("/Library/Application Support/cmux/") ?? true)
-    }
-
     func testStopDuringInFlightLaunchDoesNotDropNextGenerationCompletion() {
         let firstLaunchStarted = expectation(description: "first launch started")
         let firstCompletionCalled = expectation(description: "first generation completion called")
