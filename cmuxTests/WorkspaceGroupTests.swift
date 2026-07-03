@@ -11,13 +11,17 @@ import CmuxSettings
 #endif
 
 @MainActor
-@Suite("Workspace group model")
+@Suite("Workspace group model", .serialized)
 struct WorkspaceGroupTests {
 
     private func makeTabManager() -> TabManager {
         let manager = TabManager()
+        let initialWorkspace = manager.tabs.first
         manager.addWorkspace(autoWelcomeIfNeeded: false)
         manager.addWorkspace(autoWelcomeIfNeeded: false)
+        if let initialWorkspace {
+            manager.closeWorkspace(initialWorkspace, recordHistory: false)
+        }
         return manager
     }
 
