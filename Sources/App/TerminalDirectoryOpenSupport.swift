@@ -354,9 +354,9 @@ enum VSCodeServeWebProfile: Hashable {
         case .standard:
             return nil
         case .claudeCode:
-            return Self.applicationSupportRootURL?
-                .appendingPathComponent("VSCodeServeWeb", isDirectory: true)
-                .appendingPathComponent("ClaudeCode", isDirectory: true)
+            return Self.userStateRootURL
+                .appendingPathComponent("vscode-serve-web", isDirectory: true)
+                .appendingPathComponent("claude-code", isDirectory: true)
         }
     }
 
@@ -369,14 +369,9 @@ enum VSCodeServeWebProfile: Hashable {
         }
     }
 
-    private static var applicationSupportRootURL: URL? {
-        guard let applicationSupportURL = FileManager.default.urls(
-            for: .applicationSupportDirectory,
-            in: .userDomainMask
-        ).first else {
-            return nil
-        }
-        return applicationSupportURL.appendingPathComponent("cmux", isDirectory: true)
+    private static var userStateRootURL: URL {
+        FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".local/state/cmux", isDirectory: true)
     }
 }
 
