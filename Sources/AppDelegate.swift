@@ -7749,19 +7749,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         let targetWorkspaceId = targetTabManager.selectedWorkspace?.id
             ?? targetTabManager.tabs.first?.id
             ?? targetTabManager.addWorkspace(select: true).id
+        let normalizedDirectoryURL = directoryURL.standardizedFileURL
         let serveWebProfile: VSCodeServeWebProfile = contentMode == .vscodeClaudeCode ? .claudeCode : .standard
-        let normalizedDirectoryURL: URL
-        if contentMode == .vscodeClaudeCode {
-            normalizedDirectoryURL = VSCodeClaudeWorkingDirectoryPolicy.safeDirectoryURL(for: directoryURL)
-        } else {
-            normalizedDirectoryURL = directoryURL.standardizedFileURL
-        }
 
         VSCodeServeWebWorkspaceRegistry.shared.ensureServeWebURL(
             forWorkspaceID: targetWorkspaceId,
             vscodeApplicationURL: vscodeApplicationURL,
-            profile: serveWebProfile,
-            defaultDirectoryURL: normalizedDirectoryURL
+            profile: serveWebProfile
         ) { serveWebURL in
             guard let serveWebURL,
                   let openFolderURL = VSCodeServeWebURLBuilder.openFolderURL(
@@ -7846,12 +7840,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
                 defaultValue: "Open in VS Code"
             )
         }
-        if contentMode == .vscodeClaudeCode {
-            panel.directoryURL = VSCodeClaudeWorkingDirectoryPolicy.panelSeedDirectoryURL(
-                currentDirectoryPath: targetTabManager.selectedWorkspace?.currentDirectory
-            )
-        } else if let cwd = targetTabManager.selectedWorkspace?.currentDirectory,
-                  !cwd.isEmpty {
+        if let cwd = targetTabManager.selectedWorkspace?.currentDirectory,
+           !cwd.isEmpty {
             panel.directoryURL = URL(fileURLWithPath: cwd)
         }
 

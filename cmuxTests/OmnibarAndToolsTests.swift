@@ -218,62 +218,6 @@ final class VSCodeServeWebURLBuilderTests: XCTestCase {
 }
 
 
-final class VSCodeClaudeWorkingDirectoryPolicyTests: XCTestCase {
-    func testRootFallsBackToDocumentsDirectory() {
-        let homeURL = URL(fileURLWithPath: "/Users/tester", isDirectory: true)
-        let documentsURL = URL(fileURLWithPath: "/Users/tester/Documents", isDirectory: true)
-
-        let safeURL = VSCodeClaudeWorkingDirectoryPolicy.safeDirectoryURL(
-            for: URL(fileURLWithPath: "/", isDirectory: true),
-            homeDirectoryURL: homeURL,
-            documentsDirectoryURL: documentsURL
-        )
-
-        XCTAssertEqual(safeURL.path, "/Users/tester/Documents")
-    }
-
-    func testHomeFallsBackToDocumentsDirectory() {
-        let homeURL = URL(fileURLWithPath: "/Users/tester", isDirectory: true)
-        let documentsURL = URL(fileURLWithPath: "/Users/tester/Documents", isDirectory: true)
-
-        let safeURL = VSCodeClaudeWorkingDirectoryPolicy.safeDirectoryURL(
-            for: homeURL,
-            homeDirectoryURL: homeURL,
-            documentsDirectoryURL: documentsURL
-        )
-
-        XCTAssertEqual(safeURL.path, "/Users/tester/Documents")
-    }
-
-    func testProjectDirectoryIsPreserved() {
-        let homeURL = URL(fileURLWithPath: "/Users/tester", isDirectory: true)
-        let documentsURL = URL(fileURLWithPath: "/Users/tester/Documents", isDirectory: true)
-        let projectURL = URL(fileURLWithPath: "/Users/tester/Projects/cmux", isDirectory: true)
-
-        let safeURL = VSCodeClaudeWorkingDirectoryPolicy.safeDirectoryURL(
-            for: projectURL,
-            homeDirectoryURL: homeURL,
-            documentsDirectoryURL: documentsURL
-        )
-
-        XCTAssertEqual(safeURL.path, "/Users/tester/Projects/cmux")
-    }
-
-    func testEmptyPanelSeedFallsBackToDocumentsDirectory() {
-        let homeURL = URL(fileURLWithPath: "/Users/tester", isDirectory: true)
-        let documentsURL = URL(fileURLWithPath: "/Users/tester/Documents", isDirectory: true)
-
-        let safeURL = VSCodeClaudeWorkingDirectoryPolicy.panelSeedDirectoryURL(
-            currentDirectoryPath: " ",
-            homeDirectoryURL: homeURL,
-            documentsDirectoryURL: documentsURL
-        )
-
-        XCTAssertEqual(safeURL.path, "/Users/tester/Documents")
-    }
-}
-
-
 final class VSCodeCLILaunchConfigurationBuilderTests: XCTestCase {
     func testLaunchConfigurationPrefersCachedCodeServerOverCodeTunnelWrapper() {
         let appURL = URL(fileURLWithPath: "/Applications/Visual Studio Code.app", isDirectory: true)
@@ -525,30 +469,6 @@ final class VSCodeServeWebControllerTests: XCTestCase {
                 "--port", "0",
                 "--connection-token-file", "/tmp/cmux-token",
                 "--server-data-dir", "/tmp/cmux-claude-profile",
-            ]
-        )
-    }
-
-    func testServeWebArgumentsIncludeDefaultFolderWhenProvided() {
-        let tokenFileURL = URL(fileURLWithPath: "/tmp/cmux-token")
-        let defaultDirectoryURL = URL(fileURLWithPath: "/Users/tester/Documents", isDirectory: true)
-
-        let arguments = VSCodeServeWebController.serveWebArgumentsForTesting(
-            argumentsPrefix: ["serve-web"],
-            connectionTokenFileURL: tokenFileURL,
-            defaultDirectoryURL: defaultDirectoryURL,
-            serverDataDirectoryURL: nil
-        )
-
-        XCTAssertEqual(
-            arguments,
-            [
-                "serve-web",
-                "--accept-server-license-terms",
-                "--host", "127.0.0.1",
-                "--port", "0",
-                "--connection-token-file", "/tmp/cmux-token",
-                "--default-folder", "/Users/tester/Documents",
             ]
         )
     }
