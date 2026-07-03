@@ -919,6 +919,45 @@ final class TabManagerWorkspacePrivacyTests: XCTestCase {
 
         XCTAssertEqual(restored.tabs.map(\.isPrivacyBlurred), [false, true])
     }
+
+    func testPrivacyBlurredGroupCannotBeSelected() throws {
+        let manager = TabManager()
+        let visible = manager.tabs[0]
+        let member = manager.addWorkspace(select: false)
+        let groupId = try XCTUnwrap(manager.createWorkspaceGroup(
+            name: "Private",
+            childWorkspaceIds: [member.id],
+            selectAnchor: false
+        ))
+        let group = try XCTUnwrap(manager.workspaceGroups.first { $0.id == groupId })
+
+        manager.setWorkspaceGroupPrivacyBlurred(groupId: groupId, isBlurred: true)
+        manager.selectWorkspace(group.anchorWorkspaceId)
+        manager.selectWorkspace(member)
+
+        XCTAssertEqual(manager.selectedTabId, visible.id)
+        XCTAssertFalse(manager.canSelectWorkspace(id: group.anchorWorkspaceId))
+        XCTAssertFalse(manager.canSelectWorkspace(member))
+    }
+
+    func testBlurringSelectedGroupSelectsNextVisibleWorkspace() throws {
+        let manager = TabManager()
+        let visible = manager.tabs[0]
+        let member = manager.addWorkspace(select: false)
+        let groupId = try XCTUnwrap(manager.createWorkspaceGroup(
+            name: "Private",
+            childWorkspaceIds: [member.id],
+            selectAnchor: false
+        ))
+        let group = try XCTUnwrap(manager.workspaceGroups.first { $0.id == groupId })
+
+        manager.selectWorkspace(group.anchorWorkspaceId)
+        XCTAssertEqual(manager.selectedTabId, group.anchorWorkspaceId)
+
+        manager.setWorkspaceGroupPrivacyBlurred(groupId: groupId, isBlurred: true)
+
+        XCTAssertEqual(manager.selectedTabId, visible.id)
+    }
 }
 
 

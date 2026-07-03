@@ -243,8 +243,8 @@ class TabManager: ObservableObject {
         guard let workspace = tabs.first(where: { $0.id == requestedId }) else {
             return requestedId
         }
-        guard workspace.isPrivacyBlurred else { return requestedId }
-        return tabs.first(where: { !$0.isPrivacyBlurred })?.id
+        guard isWorkspaceEffectivelyPrivacyBlurred(workspace) else { return requestedId }
+        return tabs.first(where: { !isWorkspaceEffectivelyPrivacyBlurred($0) })?.id
     }
 
     private func selectableWorkspaceId(startingAt index: Int) -> UUID? {
@@ -252,7 +252,7 @@ class TabManager: ObservableObject {
         let startIndex = max(0, min(index, tabs.count - 1))
         for offset in 0..<tabs.count {
             let candidate = tabs[(startIndex + offset) % tabs.count]
-            if !candidate.isPrivacyBlurred {
+            if !isWorkspaceEffectivelyPrivacyBlurred(candidate) {
                 return candidate.id
             }
         }
@@ -265,7 +265,7 @@ class TabManager: ObservableObject {
             let rawIndex = currentIndex + (offset * direction)
             let index = ((rawIndex % tabs.count) + tabs.count) % tabs.count
             let candidate = tabs[index]
-            if !candidate.isPrivacyBlurred {
+            if !isWorkspaceEffectivelyPrivacyBlurred(candidate) {
                 return candidate.id
             }
         }
@@ -273,7 +273,7 @@ class TabManager: ObservableObject {
     }
 
     func canSelectWorkspace(_ workspace: Workspace) -> Bool {
-        !workspace.isPrivacyBlurred
+        !isWorkspaceEffectivelyPrivacyBlurred(workspace)
     }
 
     func canSelectWorkspace(id workspaceId: UUID) -> Bool {
@@ -290,7 +290,13 @@ class TabManager: ObservableObject {
             changed = true
         }
         guard changed, let currentSelectedTabId = selectedTabId, targetIds.contains(currentSelectedTabId), isBlurred else { return }
-        selectedTabId = tabs.first(where: { !$0.isPrivacyBlurred })?.id
+        selectedTabId = tabs.first(where: { !isWorkspaceEffectivelyPrivacyBlurred($0) })?.id
+    }
+
+    func isWorkspaceEffectivelyPrivacyBlurred(_ workspace: Workspace) -> Bool {
+        if workspace.isPrivacyBlurred { return true }
+        guard let groupId = workspace.groupId else { return false }
+        return workspaceGroups.first(where: { $0.id == groupId })?.isPrivacyBlurred ?? false
     }
 
     // MARK: - WorkspacesHosting hooks (legacy @Published property observers)
@@ -1900,6 +1906,19 @@ class TabManager: ObservableObject {
 
     func setWorkspaceGroupPinned(groupId: UUID, isPinned: Bool) {
         workspaceGrouping.setWorkspaceGroupPinned(groupId: groupId, isPinned: isPinned)
+    }
+
+    func toggleWorkspaceGroupPrivacyBlurred(groupId: UUID) {
+        let isCurrentlyBlurred = workspaceGroups.first(where: { $0.id == groupId })?.isPrivacyBlurred ?? false
+        setWorkspaceGroupPrivacyBlurred(groupId: groupId, isBlurred: !isCurrentlyBlurred)
+    }
+
+    func setWorkspaceGroupPrivacyBlurred(groupId: UUID, isBlurred: Bool) {
+        let changed = workspaceGrouping.setWorkspaceGroupPrivacyBlurred(groupId: groupId, isBlurred: isBlurred)
+        guard changed, isBlurred else { return }
+        guard let currentSelectedTabId = selectedTabId,
+              tabs.contains(where: { $0.id == currentSelectedTabId && $0.groupId == groupId }) else { return }
+        selectedTabId = tabs.first(where: { !isWorkspaceEffectivelyPrivacyBlurred($0) })?.id
     }
 
     func setWorkspaceGroupColor(groupId: UUID, hex: String?) {
@@ -3697,7 +3716,7 @@ class TabManager: ObservableObject {
     }
 
     func selectLastTab() {
-        guard let lastTab = tabs.last(where: { !$0.isPrivacyBlurred }) else { return }
+        guard let lastTab = tabs.last(where: { !isWorkspaceEffectivelyPrivacyBlurred($0) }) else { return }
         selectWorkspaceId(lastTab.id, notificationDismissalContext: .explicitWorkspaceResume)
     }
 
@@ -5648,6 +5667,7 @@ extension TabManager {
             hasher.combine(group.name)
             hasher.combine(group.isCollapsed)
             hasher.combine(group.isPinned)
+            hasher.combine(group.isPrivacyBlurred)
             hasher.combine(group.anchorWorkspaceId)
             hasher.combine(group.customColor ?? "")
             hasher.combine(group.iconSymbol ?? "")
@@ -5967,6 +5987,7 @@ extension TabManager {
                         anchorWorkspaceId: group.anchorWorkspaceId,
                         anchorMemberIndex: anchorIndex,
                         isPinned: group.isPinned,
+                        isPrivacyBlurred: group.isPrivacyBlurred,
                         customColor: group.customColor,
                         iconSymbol: group.iconSymbol
                     )
@@ -6108,6 +6129,7 @@ extension TabManager {
                     name: groupSnapshot.name,
                     isCollapsed: groupSnapshot.isCollapsed,
                     isPinned: groupSnapshot.isPinned ?? false,
+                    isPrivacyBlurred: groupSnapshot.isPrivacyBlurred ?? false,
                     anchorWorkspaceId: anchorId,
                     customColor: groupSnapshot.customColor,
                     iconSymbol: groupSnapshot.iconSymbol

@@ -18,6 +18,9 @@ public struct WorkspaceGroup: Identifiable, Equatable, Sendable {
     public var isCollapsed: Bool
     /// Whether the group is pinned.
     public var isPinned: Bool
+    /// Temporary visual privacy mode for redacting the group header and its
+    /// member rows while preventing selection.
+    public var isPrivacyBlurred: Bool
     /// Identifier of the member workspace that owns this group's lifecycle.
     /// Always present and always points to a workspace in the window's tabs
     /// whose `groupId == self.id`. Closing this workspace dissolves the group.
@@ -35,6 +38,7 @@ public struct WorkspaceGroup: Identifiable, Equatable, Sendable {
         name: String,
         isCollapsed: Bool,
         isPinned: Bool,
+        isPrivacyBlurred: Bool = false,
         anchorWorkspaceId: UUID,
         customColor: String?,
         iconSymbol: String?
@@ -43,6 +47,7 @@ public struct WorkspaceGroup: Identifiable, Equatable, Sendable {
         self.name = name
         self.isCollapsed = isCollapsed
         self.isPinned = isPinned
+        self.isPrivacyBlurred = isPrivacyBlurred
         self.anchorWorkspaceId = anchorWorkspaceId
         self.customColor = customColor
         self.iconSymbol = iconSymbol

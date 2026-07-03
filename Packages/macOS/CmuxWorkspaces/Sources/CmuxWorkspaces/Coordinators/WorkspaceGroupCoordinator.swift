@@ -427,6 +427,16 @@ public final class WorkspaceGroupCoordinator<Tab: WorkspaceTabRepresenting> {
         host?.workspaceOrderDidChange(movedWorkspaceIds: memberIds)
     }
 
+    /// Sets the group's visual privacy state. The host owns focus fallback
+    /// because selection policy depends on app-side workspace privacy too.
+    @discardableResult
+    public func setWorkspaceGroupPrivacyBlurred(groupId: UUID, isBlurred: Bool) -> Bool {
+        guard let index = model.workspaceGroups.firstIndex(where: { $0.id == groupId }) else { return false }
+        guard model.workspaceGroups[index].isPrivacyBlurred != isBlurred else { return false }
+        model.workspaceGroups[index].isPrivacyBlurred = isBlurred
+        return true
+    }
+
     /// Sets the group-level color override (hex string, nil clears).
     public func setWorkspaceGroupColor(groupId: UUID, hex: String?) {
         guard let index = model.workspaceGroups.firstIndex(where: { $0.id == groupId }) else { return }

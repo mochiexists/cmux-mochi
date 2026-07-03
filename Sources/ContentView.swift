@@ -12203,8 +12203,10 @@ struct VerticalTabsSidebar: View {
             dropIndicator: dragState.dropIndicator,
             tabIds: sidebarReorderIds
         )
-        let onDragStart: () -> NSItemProvider = { [tabId = tab.id] in
-            guard !tab.isPrivacyBlurred else {
+        let isGroupPrivacyBlurred = tab.groupId.flatMap { renderContext.workspaceGroupById[$0]?.isPrivacyBlurred } ?? false
+        let isPrivacyBlurred = tab.isPrivacyBlurred || isGroupPrivacyBlurred
+        let onDragStart: () -> NSItemProvider = { [tabId = tab.id, isPrivacyBlurred] in
+            guard !isPrivacyBlurred else {
                 return NSItemProvider()
             }
             #if DEBUG
@@ -12234,7 +12236,7 @@ struct VerticalTabsSidebar: View {
             tabManager: tabManager,
             notificationStore: notificationStore,
             tab: tab,
-            isPrivacyBlurredSnapshot: tab.isPrivacyBlurred,
+            isPrivacyBlurredSnapshot: isPrivacyBlurred,
             index: index,
             workspaceShortcutDigit: WorkspaceShortcutMapper.digitForWorkspace(
                 at: index,
@@ -13216,7 +13218,8 @@ struct TabItemView: View, Equatable {
 
     private var workspaceSnapshot: SidebarWorkspaceSnapshotBuilder.Snapshot {
         if let workspaceSnapshotStorage,
-           workspaceSnapshotStorage.presentationKey == workspaceSnapshotPresentationKey {
+           workspaceSnapshotStorage.presentationKey == workspaceSnapshotPresentationKey,
+           workspaceSnapshotStorage.isPrivacyBlurred == isPrivacyBlurredSnapshot {
             return workspaceSnapshotStorage
         }
         return makeWorkspaceSnapshot()
@@ -13950,17 +13953,16 @@ struct TabItemView: View, Equatable {
     @ViewBuilder
     private var privacyBlurOverlay: some View {
         if isPrivacyBlurred {
-            RoundedRectangle(cornerRadius: 6)
-                .fill(.regularMaterial)
-                .overlay {
-                    RoundedRectangle(cornerRadius: 6)
-                        .fill(activeSecondaryColor(0.10))
-                }
-                .overlay {
-                    RoundedRectangle(cornerRadius: 6)
-                        .strokeBorder(activeSecondaryColor(0.22), lineWidth: 1)
-                }
-                .padding(.horizontal, SidebarWorkspaceListMetrics.rowOuterHorizontalPadding)
+            SidebarPrivacyFrostedSurface(
+                cornerRadius: 6,
+                tint: activeSecondaryColor(0.14),
+                stroke: activeSecondaryColor(0.24)
+            )
+            .overlay {
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .strokeBorder(Color.white.opacity(0.18), lineWidth: 0.5)
+            }
+            .padding(.horizontal, SidebarWorkspaceListMetrics.rowOuterHorizontalPadding)
             .allowsHitTesting(false)
         }
     }
@@ -14754,7 +14756,7 @@ struct TabItemView: View, Equatable {
             title: tab.title,
             customDescription: settings.showsWorkspaceDescription ? sidebarVisibleCustomDescription : nil,
             isPinned: tab.isPinned,
-            isPrivacyBlurred: tab.isPrivacyBlurred,
+            isPrivacyBlurred: isPrivacyBlurredSnapshot,
             customColorHex: tab.customColor,
             remoteWorkspaceSidebarText: remoteWorkspaceSidebarText,
             remoteConnectionStatusText: remoteConnectionStatusText,

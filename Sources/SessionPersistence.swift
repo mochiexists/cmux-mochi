@@ -1891,6 +1891,9 @@ struct SessionWorkspaceGroupSnapshot: Codable, Sendable, Equatable {
     /// member by tab order".
     var anchorMemberIndex: Int? = nil
     var isPinned: Bool? = nil
+    /// Temporary visual privacy mode for redacting a group and blocking selection.
+    /// Optional so older session manifests decode unchanged.
+    var isPrivacyBlurred: Bool? = nil
     var customColor: String? = nil
     var iconSymbol: String? = nil
 }

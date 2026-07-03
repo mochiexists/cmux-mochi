@@ -179,10 +179,14 @@ extension TerminalController: ControlWorkspaceContext {
         guard let dstTM = AppDelegate.shared?.tabManagerFor(windowId: windowID) else {
             return .windowNotFound
         }
+        guard let sourceWorkspace = srcTM.tabs.first(where: { $0.id == workspaceID }) else {
+            return .workspaceNotFound
+        }
+        let sourceAllowsFocus = !srcTM.isWorkspaceEffectivelyPrivacyBlurred(sourceWorkspace)
         guard let ws = srcTM.detachWorkspace(tabId: workspaceID) else {
             return .workspaceNotFound
         }
-        let focus = v2FocusAllowed(requested: focusRequested) && !ws.isPrivacyBlurred
+        let focus = v2FocusAllowed(requested: focusRequested) && sourceAllowsFocus && !ws.isPrivacyBlurred
         dstTM.attachWorkspace(ws, select: focus)
         if focus {
             _ = AppDelegate.shared?.focusMainWindow(windowId: windowID)

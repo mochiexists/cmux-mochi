@@ -182442,6 +182442,57 @@
         }
       }
     },
+    "workspaceGroup.contextMenu.blur": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Blur Group"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "グループをぼかす"
+          }
+        }
+      }
+    },
+    "workspaceGroup.contextMenu.unblur": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unblur Group"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "グループのぼかしを解除"
+          }
+        }
+      }
+    },
+    "workspaceGroup.privacyBlurred": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Private Group"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "プライベートグループ"
+          }
+        }
+      }
+    },
     "workspaceGroup.expand.a11y": {
       "extractionState": "manual",
       "localizations": {
