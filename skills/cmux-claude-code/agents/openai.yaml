@@ -1,0 +1,4 @@
+interface:
+  display_name: "cmux Claude Code"
+  short_description: "Open Claude Code's VS Code extension in a cmux browser pane via VS Code serve-web."
+  default_prompt: "Use this skill to launch VS Code serve-web from a real project folder, keep VS Code state outside cmux app support, install or verify anthropic.claude-code, and open the served URL in a cmux browser pane."
