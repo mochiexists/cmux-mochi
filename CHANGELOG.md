@@ -2,7 +2,7 @@
 
 All notable changes to cmux are documented here.
 
-## [0.64.168] - 2026-07-04
+## [0.64.169] - 2026-07-04
 
 cmux **Mochi** fork patch release.
 

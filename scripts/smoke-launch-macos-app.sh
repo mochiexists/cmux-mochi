@@ -130,8 +130,12 @@ fi
 for _ in $(seq 1 "$STABLE_SECONDS"); do
   sleep 1
   if ! kill -0 "$APP_PID" 2>/dev/null; then
-    if [[ "$DIRECT_EXEC" != "1" ]] && preexisting_same_named_app_is_running; then
-      echo "warning: LaunchServices smoke process exited while another $EXECUTABLE_NAME instance was already running; direct executable smoke will validate the built app" >&2
+    if preexisting_same_named_app_is_running; then
+      if [[ "$DIRECT_EXEC" == "1" ]]; then
+        echo "warning: direct executable smoke process exited while another $EXECUTABLE_NAME instance was already running; skipping liveness check for this runner state" >&2
+      else
+        echo "warning: LaunchServices smoke process exited while another $EXECUTABLE_NAME instance was already running; direct executable smoke will validate the built app when possible" >&2
+      fi
       dump_open_log
       exit 0
     fi
