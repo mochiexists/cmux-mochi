@@ -2,6 +2,20 @@
 
 All notable changes to cmux are documented here.
 
+## [0.64.167] - 2026-07-04
+
+cmux **Mochi** fork patch release.
+
+### Added
+- Added Privacy Frost support for workspace groups, so a whole group can be blurred from the sidebar while keeping the group structure visible.
+
+### Changed
+- Polished Privacy Frost workspace rows with the same frosted glass treatment as groups, using a softer neutral material and removing the extra bright row outline.
+
+### Fixed
+- Hardened the Mochi release lanes so ad-hoc nightly builds and stable release builds use the same universal Release build settings and signing path.
+- Removed the experimental in-app Claude Code VS Code serve-web integration from the stable release path after validation.
+
 ## [0.64.166] - 2026-07-02
 
 cmux **Mochi** fork patch release.

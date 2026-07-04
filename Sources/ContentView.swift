@@ -13955,13 +13955,9 @@ struct TabItemView: View, Equatable {
         if isPrivacyBlurred {
             SidebarPrivacyFrostedSurface(
                 cornerRadius: 6,
-                tint: activeSecondaryColor(0.14),
-                stroke: activeSecondaryColor(0.24)
+                tint: Color.secondary.opacity(0.10),
+                stroke: Color.secondary.opacity(0.22)
             )
-            .overlay {
-                RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .strokeBorder(Color.white.opacity(0.18), lineWidth: 0.5)
-            }
             .padding(.horizontal, SidebarWorkspaceListMetrics.rowOuterHorizontalPadding)
             .allowsHitTesting(false)
         }
