@@ -2,7 +2,7 @@
 
 All notable changes to cmux are documented here.
 
-## [0.64.167] - 2026-07-04
+## [0.64.168] - 2026-07-04
 
 cmux **Mochi** fork patch release.
 
@@ -14,6 +14,7 @@ cmux **Mochi** fork patch release.
 
 ### Fixed
 - Hardened the Mochi release lanes so ad-hoc nightly builds and stable release builds use the same universal Release build settings and signing path.
+- Hardened release smoke checks on self-hosted signing runners when an existing stable app instance is already running.
 - Removed the experimental in-app Claude Code VS Code serve-web integration from the stable release path after validation.
 
 ## [0.64.166] - 2026-07-02

@@ -21,6 +21,7 @@ STABLE_SECONDS="${CMUX_SMOKE_STABLE_SECONDS:-5}"
 OPEN_LOG="$(mktemp -t cmux-smoke-open.XXXXXX)"
 APP_PID=""
 PREEXISTING_PIDS="$(pgrep -f "$EXECUTABLE_PATH" 2>/dev/null || true)"
+PREEXISTING_EXECUTABLE_PIDS="$(pgrep -x "$EXECUTABLE_NAME" 2>/dev/null || true)"
 DEBUG_LOGS="${CMUX_SMOKE_DEBUG_LOGS:-0}"
 ALLOW_UNSUPPORTED_GUI="${CMUX_SMOKE_ALLOW_UNSUPPORTED_GUI:-0}"
 DIRECT_EXEC="${CMUX_SMOKE_DIRECT_EXEC:-0}"
@@ -72,6 +73,18 @@ open_log_indicates_unsupported_gui() {
     && grep -Fq 'Domain does not support specified action' "$OPEN_LOG"
 }
 
+preexisting_same_named_app_is_running() {
+  [[ -n "$PREEXISTING_EXECUTABLE_PIDS" ]] || return 1
+  local pid
+  while IFS= read -r pid; do
+    [[ -n "$pid" ]] || continue
+    if kill -0 "$pid" 2>/dev/null; then
+      return 0
+    fi
+  done <<<"$PREEXISTING_EXECUTABLE_PIDS"
+  return 1
+}
+
 echo "==> smoke launching $APP_PATH"
 # The Dock tile plugin can run in the Dock process, so seed the shared app
 # defaults domain before LaunchServices starts the app.
@@ -117,6 +130,11 @@ fi
 for _ in $(seq 1 "$STABLE_SECONDS"); do
   sleep 1
   if ! kill -0 "$APP_PID" 2>/dev/null; then
+    if [[ "$DIRECT_EXEC" != "1" ]] && preexisting_same_named_app_is_running; then
+      echo "warning: LaunchServices smoke process exited while another $EXECUTABLE_NAME instance was already running; direct executable smoke will validate the built app" >&2
+      dump_open_log
+      exit 0
+    fi
     echo "error: app process $APP_PID exited during ${STABLE_SECONDS}s launch smoke" >&2
     dump_open_log
     LOG_NAME="$(printf '%s' "$BUNDLE_ID" | sed -E 's/[^A-Za-z0-9._-]/-/g')"
