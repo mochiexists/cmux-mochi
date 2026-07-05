@@ -2,6 +2,13 @@
 
 All notable changes to cmux are documented here.
 
+## [0.64.170] - 2026-07-05
+
+cmux **Mochi** fork hotfix release.
+
+### Fixed
+- Made Privacy Frost blur/unblur toggles respond much faster by keeping the sidebar update on the lightweight row path and skipping hidden branch, pull request, log, progress, and port detail work while a workspace row is blurred.
+
 ## [0.64.169] - 2026-07-04
 
 cmux **Mochi** fork patch release.

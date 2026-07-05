@@ -14223,7 +14223,6 @@ struct TabItemView: View, Equatable {
 
         Button(privacyBlurLabel) {
             tabManager.setWorkspacePrivacyBlurred(targetIds, isBlurred: shouldPrivacyBlur)
-            refreshWorkspaceSnapshot(force: true)
         }
         .disabled(targetIds.isEmpty)
 
@@ -14709,6 +14708,35 @@ struct TabItemView: View, Equatable {
 
     private func makeWorkspaceSnapshot() -> SidebarWorkspaceSnapshotBuilder.Snapshot {
         let detailVisibility = visibleAuxiliaryDetails
+        if isPrivacyBlurredSnapshot {
+            return SidebarWorkspaceSnapshotBuilder.Snapshot(
+                presentationKey: workspaceSnapshotPresentationKey,
+                title: tab.title,
+                customDescription: nil,
+                isPinned: tab.isPinned,
+                isPrivacyBlurred: true,
+                customColorHex: tab.customColor,
+                remoteWorkspaceSidebarText: nil,
+                remoteConnectionStatusText: remoteConnectionStatusText,
+                remoteStateHelpText: remoteStateHelpText,
+                showsRemoteReconnectAffordance: false,
+                copyableSidebarSSHError: nil,
+                latestConversationMessage: nil,
+                metadataEntries: [],
+                metadataBlocks: [],
+                latestLog: nil,
+                progress: nil,
+                compactGitBranchSummaryText: nil,
+                compactDirectoryCandidates: [],
+                compactBranchDirectoryCandidates: [],
+                branchDirectoryLines: [],
+                branchLinesContainBranch: false,
+                pullRequestRows: [],
+                listeningPorts: [],
+                finderDirectoryPath: WorkspaceFinderDirectoryResolver.path(for: tab),
+                mediaActivity: tab.browserMediaActivity
+            )
+        }
         let orderedPanelIds: [UUID]? = (detailVisibility.showsBranchDirectory || detailVisibility.showsPullRequests)
             ? tab.sidebarOrderedPanelIds()
             : nil

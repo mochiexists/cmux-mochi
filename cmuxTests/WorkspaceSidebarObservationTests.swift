@@ -51,6 +51,44 @@ final class WorkspaceSidebarObservationTests: XCTestCase {
         )
     }
 
+    func testPrivacyBlurredChangeUsesImmediateObservationPublisher() {
+        let workspace = Workspace()
+
+        var publishCount = 0
+        let cancellable = workspace.sidebarImmediateObservationPublisher.sink {
+            publishCount += 1
+        }
+        defer { cancellable.cancel() }
+        publishCount = 0
+
+        workspace.isPrivacyBlurred = true
+
+        XCTAssertEqual(
+            publishCount,
+            1,
+            "Privacy blur changes should refresh stable row affordances immediately."
+        )
+    }
+
+    func testPrivacyBlurredChangeDoesNotUseHeavySidebarObservationPublisher() {
+        let workspace = Workspace()
+
+        var publishCount = 0
+        let cancellable = workspace.sidebarObservationPublisher.sink {
+            publishCount += 1
+        }
+        defer { cancellable.cancel() }
+        publishCount = 0
+
+        workspace.isPrivacyBlurred = true
+
+        XCTAssertEqual(
+            publishCount,
+            0,
+            "Privacy blur changes should not schedule the heavier telemetry/detail row refresh path."
+        )
+    }
+
     func testSidebarObservationPublisherIgnoresRemoteHeartbeatOnlyChanges() {
         let workspace = Workspace()
 

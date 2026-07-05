@@ -27,7 +27,6 @@ private struct SidebarObservationState: Equatable {
     let extensionSidebarProjectRootPath: String?
     let panels: SidebarPanelObservationState
     let panelDirectories: [UUID: String]
-    let isPrivacyBlurred: Bool
     let statusEntries: [String: SidebarStatusEntry]
     let metadataBlocks: [String: SidebarMetadataBlock]
     let logEntries: [SidebarLogEntry]
@@ -86,7 +85,6 @@ extension Workspace {
             panelsPublisher.map(SidebarPanelObservationState.init),
             $panelDirectories
         )
-        .combineLatest($isPrivacyBlurred)
         let metadataFields = Publishers.CombineLatest4(
             sidebarMetadata.statusEntriesPublisher,
             sidebarMetadata.metadataBlocksPublisher,
@@ -116,16 +114,14 @@ extension Workspace {
             .compactMap { [weak self] groupedFields, listeningPorts -> SidebarObservationState? in
                 guard let self else { return nil }
                 let workspaceFields = groupedFields.0
-                let workspaceValues = workspaceFields.0
                 let metadataFields = groupedFields.1
                 let gitFields = groupedFields.2
                 let remoteFields = groupedFields.3
                 return SidebarObservationState(
-                    currentDirectory: workspaceValues.0,
-                    extensionSidebarProjectRootPath: workspaceValues.1,
-                    panels: workspaceValues.2,
-                    panelDirectories: workspaceValues.3,
-                    isPrivacyBlurred: workspaceFields.1,
+                    currentDirectory: workspaceFields.0,
+                    extensionSidebarProjectRootPath: workspaceFields.1,
+                    panels: workspaceFields.2,
+                    panelDirectories: workspaceFields.3,
                     statusEntries: metadataFields.0,
                     metadataBlocks: metadataFields.1,
                     logEntries: metadataFields.2,
