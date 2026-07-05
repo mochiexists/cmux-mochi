@@ -158,6 +158,25 @@ check_e2e_runner_fallbacks() {
   echo "PASS: test-e2e.yml exposes Depot runner choices, identity guard, and duplicate-queue cancellation"
 }
 
+check_ci_main_push_cancels_stale_runs() {
+  if ! awk '
+    /^concurrency:/ { in_concurrency=1; next }
+    in_concurrency && /^jobs:/ { in_concurrency=0 }
+    in_concurrency && /cancel-in-progress:/ {
+      saw_cancel=1
+      if ($0 ~ /github\.event_name == '\''pull_request'\''/ && $0 ~ /github\.ref == '\''refs\/heads\/main'\''/) {
+        saw_main_push_cancel=1
+      }
+    }
+    END { exit !(saw_cancel && saw_main_push_cancel) }
+  ' "$CI_FILE"; then
+    echo "FAIL: ci.yml must cancel stale main-push CI runs as well as duplicate PR CI runs" >&2
+    exit 1
+  fi
+
+  echo "PASS: ci.yml cancels stale main-push CI runs"
+}
+
 check_xcode_selection() {
   if grep -R -n "ls -d /Applications/Xcode" "$ROOT_DIR/.github/workflows"; then
     echo "FAIL: workflow Xcode selection must use find/sort/tail fallback, not ls/glob ordering"
@@ -825,6 +844,7 @@ check_release_build_runner_disk_capacity
 check_display_runner_identity_guard "$CI_FILE" "tests-build-and-lag"
 check_display_runner_identity_guard "$CI_FILE" "ui-regressions"
 check_build_lag_deriveddata_cache_path
+check_ci_main_push_cancels_stale_runs
 
 # build-ghosttykit.yml
 check_build_ghosttykit_release_runner
