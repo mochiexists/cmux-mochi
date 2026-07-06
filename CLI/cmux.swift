@@ -3978,7 +3978,7 @@ struct CMUXCLI {
             let output: Any = idFormatArg == nil ? response : formatIDs(response, mode: idFormat)
             print(jsonString(output))
 
-        case "identify":
+        case "identify", "whoami":
             var params: [String: Any] = [:]
             let localWindowRaw = optionValue(commandArgs, name: "--window")
             let effectiveWindowRaw = localWindowRaw ?? windowId
@@ -4316,7 +4316,7 @@ struct CMUXCLI {
             let payload = try client.sendV2(method: "pane.create", params: params)
             printV2Payload(payload, jsonOutput: jsonOutput, idFormat: idFormat, fallbackText: v2CreationSummary(payload, idFormat: idFormat, kinds: ["surface", "pane", "workspace"]))
 
-        case "new-surface":
+        case "new-surface", "new-tab":
             let workspaceArg = workspaceFromArgsOrEnv(commandArgs, windowOverride: windowId)
             let type = optionValue(commandArgs, name: "--type")
             let paneRaw = optionValue(commandArgs, name: "--pane")
@@ -5657,6 +5657,7 @@ struct CMUXCLI {
         "new-pane",
         "new-split",
         "new-surface",
+        "new-tab",
         "new-window",
         "new-workspace",
         "next-window",
@@ -5729,6 +5730,7 @@ struct CMUXCLI {
         "vm-ssh-attach",
         "wait-for",
         "welcome",
+        "whoami",
         "workspace",
         "workspace-action",
         "workspace-group",
@@ -15065,9 +15067,10 @@ struct CMUXCLI {
               cmux omc team 3:claude "implement feature"
               cmux omc --watch
             """)
-        case "identify":
+        case "identify", "whoami":
             return """
             Usage: cmux identify [--workspace <id|ref|index>] [--surface <id|ref|index>] [--window <id|ref|index>] [--no-caller]
+                   cmux whoami [--workspace <id|ref|index>] [--surface <id|ref|index>] [--window <id|ref|index>] [--no-caller]
 
             Print server identity and caller context details.
 
@@ -15736,9 +15739,10 @@ struct CMUXCLI {
               cmux new-pane
               cmux new-pane --type browser --direction down --url https://example.com
             """
-        case "new-surface":
+        case "new-surface", "new-tab":
             return """
             Usage: cmux new-surface [flags]
+                   cmux new-tab [flags]
 
             Create a new surface (tab) in a pane.
 
@@ -15756,6 +15760,7 @@ struct CMUXCLI {
 
             Example:
               cmux new-surface
+              cmux new-tab --type agent-session --provider codex --workspace "$CMUX_WORKSPACE_ID" --focus false
               cmux new-surface --type browser --pane pane:1 --url https://example.com
               cmux new-surface --type agent-session --provider claude --renderer solid --focus true
             """
@@ -35255,6 +35260,12 @@ export default function cmuxPiSessionExtension(pi: ExtensionAPI) {
           --password takes precedence, then CMUX_SOCKET_PASSWORD env var, then password saved in Settings.
 
         Agent Help:
+          If CMUX_SURFACE_ID or CMUX_WORKSPACE_ID is set, this process is already inside cmux.
+          Start with `cmux whoami --json` (alias: `cmux identify --json`) before opening panes or routing work.
+          Most workspace/surface commands default to the caller env. Pass explicit --workspace/--surface for
+          cross-pane work, and do not rely on visually focused tabs for destructive actions.
+          To open Codex as a tab in the caller workspace, use:
+            cmux new-surface --type agent-session --provider codex --workspace "$CMUX_WORKSPACE_ID" --focus false
           To change cmux settings, run `cmux docs settings` and `cmux settings path`; to add Dock controls, run `cmux docs dock`.
           Back up any existing cmux.json file to a timestamped .bak copy before editing.
           Use printed curl commands to fetch the latest docs/schema, and prefer Ghostty config for terminal behavior Ghostty already supports.
@@ -35292,7 +35303,7 @@ export default function cmuxPiSessionExtension(pi: ExtensionAPI) {
           vm <new|ls|rm|exec|shell|ssh> [args...]    (alias: cloud)
           remotes <list|add|remove> [--route <host:port>] [--tag <tag>] [--json]    (alias: remote)
           rpc <method> [json-params]
-          identify [--workspace <id|ref|index>] [--surface <id|ref|index>] [--window <id|ref|index>] [--no-caller]
+          identify|whoami [--workspace <id|ref|index>] [--surface <id|ref|index>] [--window <id|ref|index>] [--no-caller]
           list-windows
           current-window
           new-window
@@ -35319,7 +35330,7 @@ export default function cmuxPiSessionExtension(pi: ExtensionAPI) {
           memory [--all] [--workspace <id|ref|index>] [--groups <count>]
           focus-pane --pane <id|ref|index> [--workspace <id|ref|index>] [--window <id|ref|index>]
           new-pane [--type <terminal|browser>] [--direction <left|right|up|down>] [--workspace <id|ref|index>] [--window <id|ref|index>] [--url <url>] [--focus <true|false>]
-          new-surface [--type <terminal|browser|agent-session>] [--pane <id|ref|index>] [--workspace <id|ref|index>] [--window <id|ref|index>] [--url <url>] [--provider <codex|claude|opencode>] [--renderer <react|solid>] [--focus <true|false>]
+          new-surface|new-tab [--type <terminal|browser|agent-session>] [--pane <id|ref|index>] [--workspace <id|ref|index>] [--window <id|ref|index>] [--url <url>] [--provider <codex|claude|opencode>] [--renderer <react|solid>] [--focus <true|false>]
           close-surface [--surface <id|ref|index>] [--workspace <id|ref|index>] [--window <id|ref|index>]
           move-surface --surface <id|ref|index> [--pane <id|ref|index>] [--workspace <id|ref|index>] [--window <id|ref|index>] [--before <id|ref|index>] [--after <id|ref|index>] [--index <n>] [--focus <true|false>]
           split-off --surface <id|ref|index> <left|right|up|down> [--workspace <id|ref|index>] [--window <id|ref|index>] [--focus <true|false>]

@@ -54,6 +54,22 @@ Environment:
 | `CMUX_SURFACE_ID` | Default surface context inside cmux terminals. |
 | `CMUX_TAB_ID` | Default tab context for tab commands. |
 
+### Caller Context
+
+Agents and shell processes launched inside cmux should use `cmux whoami --json`
+or `cmux identify --json` before creating panes, routing input, or closing
+anything. When `CMUX_WORKSPACE_ID` and `CMUX_SURFACE_ID` are present, named
+workspace/surface commands use them as the caller defaults unless an explicit
+`--workspace`, `--surface`, or `--window` changes the target.
+
+The visually focused workspace is not a reliable caller identity. Automation
+that acts on another pane should pass explicit handles. Destructive commands
+should never be driven through focus fallback.
+
+Raw `cmux rpc` is an escape hatch. Future socket/server implementations should
+reject unknown params, expose method schemas, and fail destructive methods when
+no explicit target resolves.
+
 ## Top-Level Commands
 
 | Command | Contract |
@@ -86,7 +102,7 @@ Environment:
 | `vm`, `cloud` | Manage cloud VMs. `cloud` is an alias for `vm`. |
 | `remotes`, `remote` | Manage remote Macs in the team device registry so they appear in the iOS app's device list. `remote` is an alias for `remotes`. |
 | `rpc` | Call a raw v2 socket method with optional JSON params. |
-| `identify` | Print server identity and caller context. |
+| `identify`, `whoami` | Print server identity and caller context. `whoami` is an alias intended for agents arriving inside cmux. |
 | `list-windows` | List windows. |
 | `current-window` | Print the selected window ID. |
 | `new-window` | Create a new window. |
@@ -115,7 +131,7 @@ Environment:
 | `top` | Print process/resource usage for cmux windows, workspaces, panes, and surfaces. |
 | `focus-pane` | Focus a pane. |
 | `new-pane` | Create a pane with terminal or browser content. |
-| `new-surface` | Create a surface inside a pane. |
+| `new-surface`, `new-tab` | Create a surface/tab inside a pane. Supports `--type agent-session --provider codex` for native Codex worker tabs. |
 | `close-surface` | Close a surface. |
 | `move-surface` | Move a surface to another pane, workspace, window, or index. |
 | `split-off` | Move a surface into a new split without changing focus by default. |
@@ -134,7 +150,7 @@ Environment:
 | `select-workspace` | Select a workspace. |
 | `rename-workspace`, `rename-window` | Rename a workspace. `rename-window` is a compatibility alias. |
 | `current-workspace` | Print current workspace information. |
-| `read-screen` | Read text from the selected surface. Terminal surfaces support scrollback. |
+| `read-screen` | Read text from the selected surface. Terminal surfaces support scrollback. Native `agent-session` surfaces need a structured agent read API instead of screenshot/WebView scraping. |
 | `send` | Send text to a terminal surface. |
 | `send-key` | Send one key to a terminal surface. |
 | `send-panel` | Send text to a panel/surface. |
@@ -359,6 +375,8 @@ Hook subcommands:
 | `hooks feed --source <agent>` | Convert agent hook events into Feed context. |
 | `hooks <agent> <event>` | Generic hook surface for `grok`, `opencode`, `pi`, `amp`, `cursor`, `gemini`, `rovodev`, `copilot`, `codebuddy`, `factory`, and `qoder`. |
 
+Agent orchestration note: use the existing terminal commands (`send`, `send-key`, `read-screen`, hooks/events) for terminal-backed agents today. Native Codex agent-session surfaces are the preferred foundation for structured commander workflows, but the external `cmux agent submit/read/events` command family is still a target design rather than a current CLI contract. See `docs/agent-orchestration.md`.
+
 Right sidebar commands:
 
 | Command | Contract |
@@ -499,6 +517,7 @@ the expected text without connecting to a cmux socket.
 - `cmux omx --help` -> `Usage: cmux omx [omx-args...]`
 - `cmux omc --help` -> `Usage: cmux omc [omc-args...]`
 - `cmux identify --help` -> `Usage: cmux identify`
+- `cmux whoami --help` -> `Usage: cmux identify`
 - `cmux list-windows --help` -> `Usage: cmux list-windows`
 - `cmux current-window --help` -> `Usage: cmux current-window`
 - `cmux new-window --help` -> `Usage: cmux new-window`
@@ -529,6 +548,7 @@ the expected text without connecting to a cmux socket.
 - `cmux focus-pane --help` -> `Usage: cmux focus-pane`
 - `cmux new-pane --help` -> `Usage: cmux new-pane`
 - `cmux new-surface --help` -> `Usage: cmux new-surface`
+- `cmux new-tab --help` -> `Usage: cmux new-surface`
 - `cmux close-surface --help` -> `Usage: cmux close-surface`
 - `cmux drag-surface-to-split --help` -> `Usage: cmux drag-surface-to-split`
 - `cmux refresh-surfaces --help` -> `Usage: cmux refresh-surfaces`
