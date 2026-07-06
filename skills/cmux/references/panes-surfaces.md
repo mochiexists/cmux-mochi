@@ -15,6 +15,7 @@ cmux list-pane-surfaces --pane pane:1
 cmux new-split right --panel pane:1
 cmux new-surface --type terminal --pane pane:1
 cmux new-surface --type browser --pane pane:1 --url https://example.com
+cmux new-surface --type agent-session --provider codex --workspace "${CMUX_WORKSPACE_ID:-}" --focus false
 ```
 
 ## Focus and Close

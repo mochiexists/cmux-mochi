@@ -4,14 +4,20 @@ Use this reference when sending prompts to a target agent and collecting the res
 
 ## Submit a Prompt
 
-Use a separate Enter command:
+For Codex TUI targets, send text and then press Enter explicitly:
 
 ```bash
 cmux send --surface "$TARGET_SURFACE" "Summarize the failing test and propose the smallest fix."
 cmux send-key --surface "$TARGET_SURFACE" enter
 ```
 
-Do not depend on a trailing newline embedded in the sent text. The reliable pattern is type first, then press Enter.
+For shell targets and some other TUIs, `--enter` can be enough:
+
+```bash
+cmux send --surface "$TARGET_SURFACE" --enter "Summarize the failing test and propose the smallest fix."
+```
+
+Do not depend on a trailing newline embedded in the sent text.
 
 ## Read the Result
 
@@ -42,11 +48,13 @@ cmux events --category agent --name agent.hook.Stop --reconnect
 
 Use the event to know that a target turn probably finished, then read the target screen to collect the visible answer. Events are coordination signals, not a substitute for reading the final output.
 
+For native Codex agent-session surfaces, prefer structured turn completion and transcript commands once `cmux agent events/read` exist. Until then, use the visible composer or fall back to a terminal Codex pane when the conductor must submit autonomously.
+
 ## Recovery
 
 If the target pane restarted or lost a pending resume prompt:
 
 - Use Show IDs / Copy IDs to find `resume_command`.
 - Send the resume command to the same surface.
-- Press Enter separately with `cmux send-key`.
+- Submit with `cmux send-key ... enter` after sending text when the target is Codex TUI.
 - Re-read the screen before sending any new task prompt.

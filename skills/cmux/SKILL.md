@@ -37,6 +37,18 @@ cmux reorder-surface --surface surface:7 --before surface:3
 cmux trigger-flash --surface surface:7
 ```
 
+If `CMUX_SURFACE_ID` or `CMUX_WORKSPACE_ID` is set, the process is already running inside cmux. Treat those env vars as the caller anchor, not the visually focused tab. `cmux identify --json` should be the first command an agent runs before opening, closing, moving, or sending to panes. Newer builds also provide `cmux whoami --json` as an alias.
+
+For cross-pane work, pass explicit `--workspace` and `--surface` values. For destructive commands such as close, move, clear, and focus, do not rely on focus fallback.
+
+To create a native Codex tab in the current workspace:
+
+```bash
+cmux new-surface --type agent-session --provider codex --workspace "${CMUX_WORKSPACE_ID:-}" --focus false
+```
+
+Use raw `cmux rpc` only when the socket method and params are already known. Prefer named CLI commands for agent workflows because raw RPC currently has less discoverable schema and weaker guardrails around wrong parameter names.
+
 ## Settings and Docs
 
 Use `cmux docs settings` before changing cmux-owned settings. It prints the docs URL, schema URL, raw GitHub resources, cmux.json paths, and reload command.

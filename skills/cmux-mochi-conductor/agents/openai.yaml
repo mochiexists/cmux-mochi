@@ -1,4 +1,4 @@
 interface:
   display_name: "cmux Mochi Conductor"
   short_description: "Drive visible Codex and Claude panes from cmux."
-  default_prompt: "Use $cmux-mochi-conductor to drive visible Codex or Claude panes in cmux, reuse sessions, and collect results without stealing focus."
+  default_prompt: "Use $cmux-mochi-conductor to choose Codex-native vs Claude terminal workflows, drive visible worker panes, reuse sessions, and collect results without stealing focus."

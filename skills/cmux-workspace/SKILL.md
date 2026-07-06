@@ -23,6 +23,8 @@ cmux identify --json
 
 Use `CMUX_WORKSPACE_ID` as the default workspace anchor and `CMUX_SURFACE_ID` as the default caller terminal/surface anchor. If those are missing, use `cmux identify --json` and be explicit that you are using the currently focused cmux context.
 
+Run `cmux identify --json` before creating panes, spawning agent tabs, routing messages, or closing anything. Newer builds also provide `cmux whoami --json` as the agent-friendly alias. A process can be inside one workspace while the user is looking at another, so caller env wins over visual focus.
+
 ## Non-Disruptive Automation
 
 The user may be visually focused on a different workspace, window, or app while an agent works in the caller workspace. Treat layout and focus as separate concerns. Never call focus-changing verbs speculatively.

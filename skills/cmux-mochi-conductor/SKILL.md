@@ -1,6 +1,6 @@
 ---
 name: cmux-mochi-conductor
-description: Drive visible Codex, Claude, or other agent panes from cmux. Use when the user asks to orchestrate another agent, route work between cmux panes, reuse or inspect agent sessions, debug copied workspace/pane/surface/session IDs, resume an agent from a pane, or run a conductor-worker flow inside cmux.
+description: Drive visible Codex, Claude, or other agent panes from cmux. Use when the user asks to orchestrate another agent, route work between panes, reuse or inspect agent sessions, choose Codex-native vs Claude pane workflows, debug copied workspace/pane/surface/session IDs, resume an agent from a pane, or run a conductor-worker flow inside cmux.
 ---
 
 # cmux Mochi Conductor
@@ -10,7 +10,10 @@ Use this skill when one agent should coordinate another visible cmux agent pane 
 ## Operating Model
 
 - Driver: the current agent/session doing the coordination.
-- Target: a visible terminal surface running Codex, Claude, or another shell/agent.
+- Target: a visible agent surface or terminal surface running Codex, Claude, or another shell/agent.
+- Prefer structured provider/session APIs over terminal keystrokes whenever cmux exposes them.
+- For Codex, prefer cmux's native `agent-session` surface because it talks to `codex app-server` directly.
+- For Claude Code, prefer the visible terminal/wrapper flow plus cmux hooks, because Claude is currently integrated through its TUI and hook stream.
 - Prefer an existing visible pane in the current workspace when it has the right context.
 - Spawn a new pane only when the user asks, task isolation requires it, or no suitable target exists.
 - Use UUIDs for cross-workspace targeting. Short refs such as `surface:3` are convenient but can become ambiguous across windows/workspaces.
@@ -23,20 +26,57 @@ cmux identify --json
 cmux tree --all --id-format both
 ```
 
-Pick a target surface, then send the prompt with two commands:
+Choose the workflow:
+
+- Codex native surface: use an existing `agent-session` surface or create one, then interact through its visible composer until cmux exposes external `agent submit/read/events` commands.
+- Claude terminal surface: use `ccy`/`cc` or an existing Claude pane; submit with `cmux send --enter` and watch hook events when available.
+- Generic terminal agent: use the terminal fallback.
+
+Create a native Codex agent surface when you need a fresh structured Codex worker:
+
+```bash
+cmux new-surface --type agent-session --provider codex --workspace "${CMUX_WORKSPACE_ID:-}" --focus false
+```
+
+Terminal fallback, for Claude and non-native agents:
+
+```bash
+cmux send --surface "$TARGET_SURFACE" --enter "Review the current diff and report only blocking issues."
+```
+
+For Codex TUI targets, prefer an explicit submit key after sending text:
 
 ```bash
 cmux send --surface "$TARGET_SURFACE" "Review the current diff and report only blocking issues."
 cmux send-key --surface "$TARGET_SURFACE" enter
 ```
 
-Read the target without stealing focus:
+Read terminal targets without stealing focus:
 
 ```bash
 cmux read-screen --surface "$TARGET_SURFACE" --scrollback --lines 200
 ```
 
 If the response is incomplete, wait briefly and read again. Do not spam repeated prompts.
+
+For detailed Codex-vs-Claude choice and the desired native command set, read `references/native-agent-workflows.md`.
+
+## Arrival Rules
+
+- If `CMUX_SURFACE_ID` or `CMUX_WORKSPACE_ID` is set, you are already inside cmux. Run `cmux identify --json` before creating or routing panes. Newer builds also provide `cmux whoami --json` as an alias.
+- Do not infer the target workspace from the visually focused tab. Use the caller env, `identify`, and `tree --all --id-format both`.
+- When the user says "this workspace" or asks for a tab beside the current session, default to `CMUX_WORKSPACE_ID` and keep `--focus false` unless they asked to switch focus.
+- Use `new-surface --type agent-session --provider codex` for a native Codex tab. Use terminal Codex/Claude panes only when the conductor must submit and read turns autonomously today.
+- Avoid raw `cmux rpc` for topology edits unless the method schema is known. A wrong raw param can fall through to focus-based defaults in older builds; named CLI commands are safer.
+
+## Demo Templates
+
+For a visible conductor/worker demo, use one of the templates instead of writing temporary relay scripts:
+
+- `templates/telephone-loop.md`
+- `templates/additive-story-loop.md`
+
+These create a ring of visible panes where each agent receives a message, acts on it according to the demo rules, and passes it to the next surface with cmux send commands.
 
 ## Target Selection
 
@@ -60,15 +100,14 @@ cmux tree --all --id-format both
 Launch the requested agent in the new surface:
 
 ```bash
-cmux send --surface "$TARGET_SURFACE" "cxy"
-cmux send-key --surface "$TARGET_SURFACE" enter
+cmux send --surface "$TARGET_SURFACE" --enter "cxy"
 ```
 
 Use `ccy` for Claude when the user wants a Claude worker. Use the project's normal launcher if the repo has a more specific alias.
 
 ## Completion and Wake-Up
 
-- Default v1 behavior: read the target screen/scrollback until the agent has produced the requested answer or returned to an idle prompt.
+- Default terminal behavior: read the target screen/scrollback until the agent has produced the requested answer or returned to an idle prompt.
 - For hook-enabled agents, prefer event-driven completion when available:
 
 ```bash
@@ -77,12 +116,14 @@ cmux events --category agent --name agent.hook.Stop --reconnect
 
 - Use events as confirmation, then collect the final visible output with `cmux read-screen`.
 - If hooks are not installed, keep the loop simple: wait, read, and stop once the answer is visible.
+- For native Codex agent surfaces, use the visible agent-session UI until cmux exposes `agent read/events`; do not scrape the WebView by screenshot.
 
 For turn patterns and event use, read `references/agent-turns.md`.
 
 ## Guardrails
 
-- Do not rely on a trailing `\n` in `cmux send` to submit. Always follow with `cmux send-key ... enter`.
+- Do not rely on a trailing `\n` in `cmux send` to submit. For Codex TUI panes, send the text and then run `cmux send-key ... enter`.
+- Do not scrape native agent-session surfaces by screenshot or DOM text as the primary integration. Add or use structured agent commands.
 - Do not focus, close, clear, or recycle target panes unless the user asked for that.
 - Do not mix up visual tab titles with session identity. Trust Show IDs / Copy IDs and the CLI topology.
 - When a session ID diverges from the expected Codex/Claude session, pause and summarize the target map before acting.
