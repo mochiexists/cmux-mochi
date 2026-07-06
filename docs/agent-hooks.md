@@ -2,6 +2,8 @@
 
 cmux uses agent hooks to show running state, Feed approvals, notifications, and to restore agent sessions after a normal app relaunch.
 
+For commander/worker flows across visible agent panes, see [Agent orchestration](agent-orchestration.md). In short: prefer native Codex agent-session surfaces for structured Codex work, and use Claude Code terminal panes plus hooks for Claude-specific work.
+
 Claude Code is handled by the cmux Claude wrapper when Claude Code integration is enabled in Settings. Other agents are installed with:
 
 ```bash
