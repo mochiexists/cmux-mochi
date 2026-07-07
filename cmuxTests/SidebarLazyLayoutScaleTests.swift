@@ -340,12 +340,17 @@ final class SidebarLazyLayoutScaleTests {
 
 /// Reproduces the #6556 anti-pattern in deliberately divergent form: a
 /// GeometryReader writes measured height back into `@State` that feeds the
-/// row's own frame, so every layout pass invalidates the next. Test fixture
-/// only — this shape is banned in real sidebar rows by
+/// row's own frame, so every layout pass invalidates the next. The growth is
+/// capped because recent AppKit builds abort test hosts that recurse window
+/// constraint updates too far before Swift Testing can record the failure.
+/// Test fixture only — this shape is banned in real sidebar rows by
 /// `scripts/check-sidebar-lazy-layout.py`.
 private struct DivergentGeometryFeedbackRowFixture: View {
+    private static let maxFeedbackWrites = 12
+
     let onBody: () -> Void
     @State private var rowHeight: CGFloat = 20
+    @State private var feedbackWrites = 0
 
     var body: some View {
         let _ = { onBody() }()
@@ -354,11 +359,19 @@ private struct DivergentGeometryFeedbackRowFixture: View {
             .background {
                 GeometryReader { proxy in
                     Color.clear
-                        .onAppear { rowHeight = proxy.size.height + 1 }
+                        .onAppear { applyFeedback(from: proxy.size.height) }
                         .onChange(of: proxy.size.height) { _, newHeight in
-                            rowHeight = newHeight + 1
+                            applyFeedback(from: newHeight)
                         }
                 }
             }
+    }
+
+    private func applyFeedback(from height: CGFloat) {
+        guard feedbackWrites < Self.maxFeedbackWrites else {
+            return
+        }
+        feedbackWrites += 1
+        rowHeight = height + 1
     }
 }
