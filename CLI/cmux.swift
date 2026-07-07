@@ -31328,6 +31328,21 @@ export default function cmuxPiSessionExtension(pi: ExtensionAPI) {
                     client: client
                 )
             }
+            // Push the post-turn lifecycle to the app, not just the local
+            // session store: without this, generic agents (codex, …) never
+            // produce agent.state.changed running→idle edges — only the
+            // Claude handler pushed per-turn lifecycle. Stale idle stops
+            // (a newer session already running on this surface) keep the
+            // suppression the visible-status path already applies.
+            if !suppressVisibleMutations, !staleIdleStopHasNewerRunningSession {
+                setAgentLifecycle(
+                    client: client,
+                    key: def.statusKey,
+                    lifecycle: lifecycleAfterStop,
+                    workspaceId: workspaceId,
+                    surfaceId: surfaceId
+                )
+            }
 
             let notificationFingerprint = notificationDedupeFingerprint(status: stopNotificationStatus)
             let shouldPublishStopNotification = def.publishesStopNotification && (!antigravityHasActiveBackgroundWork || stopNotificationStatus == .error)
