@@ -89,8 +89,32 @@ struct WorkstreamEventTests {
         #expect(event.toolInputJSON == nil)
         #expect(event.context == nil)
         #expect(event.workspaceId == nil)
+        #expect(event.surfaceId == nil)
         #expect(event.requestId == nil)
         #expect(event.ppid == nil)
+    }
+
+    @Test("surface_id decodes into surfaceId, round-trips, and stays out of extra fields")
+    func surfaceIdRoundTrip() throws {
+        let json = """
+        {
+          "session_id": "codex-abc",
+          "hook_event_name": "PostToolUse",
+          "_source": "codex",
+          "workspace_id": "11111111-1111-1111-1111-111111111111",
+          "surface_id": "9F268D77-1E51-4E68-9003-80DF8ED3BEED"
+        }
+        """.data(using: .utf8)!
+        let event = try JSONDecoder().decode(WorkstreamEvent.self, from: json)
+        #expect(event.surfaceId == "9F268D77-1E51-4E68-9003-80DF8ED3BEED")
+        // A known key must not leak into the unknown-field passthrough.
+        #expect(event.extraFieldsJSON?.contains("surface_id") != true)
+
+        let back = try JSONDecoder().decode(
+            WorkstreamEvent.self,
+            from: JSONEncoder().encode(event)
+        )
+        #expect(back.surfaceId == "9F268D77-1E51-4E68-9003-80DF8ED3BEED")
     }
 
     @Test("Codex CLI lifecycle feed events decode at the app boundary")

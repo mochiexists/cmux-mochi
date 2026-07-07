@@ -148,6 +148,34 @@ extension CmuxEventBus {
         )
     }
 
+    /// Agent lifecycle edge (`running` → `idle` etc.) for a specific surface.
+    /// This is the surface-attributed, agent-agnostic completion signal for
+    /// conductor/automation flows — unlike `notification.created` it is not
+    /// subject to notification policy, and unlike `agent.hook.Stop` it fires
+    /// for every agent integration that reports lifecycle, not just Claude.
+    func publishAgentStateChanged(
+        workspaceId: UUID,
+        surfaceId: UUID,
+        agentKey: String,
+        previousState: String?,
+        state: String
+    ) {
+        publish(
+            name: "agent.state.changed",
+            category: "agent",
+            source: "agent.lifecycle",
+            workspaceId: workspaceId.uuidString,
+            surfaceId: surfaceId.uuidString,
+            payload: [
+                "workspace_id": workspaceId.uuidString,
+                "surface_id": surfaceId.uuidString,
+                "agent_key": agentKey,
+                "previous_state": previousState ?? NSNull(),
+                "state": state
+            ]
+        )
+    }
+
     func publishPaneCreated(
         workspaceId: UUID,
         paneId: UUID,
@@ -424,6 +452,7 @@ extension CmuxEventBus {
             category: "agent",
             source: event.source,
             workspaceId: event.workspaceId,
+            surfaceId: event.surfaceId,
             payload: payload
         )
 
@@ -432,6 +461,7 @@ extension CmuxEventBus {
             category: "feed",
             source: event.source,
             workspaceId: event.workspaceId,
+            surfaceId: event.surfaceId,
             payload: payload
         )
     }
@@ -442,6 +472,7 @@ extension CmuxEventBus {
             "hook_event_name": event.hookEventName.rawValue,
             "_source": event.source,
             "workspace_id": event.workspaceId ?? NSNull(),
+            "surface_id": event.surfaceId ?? NSNull(),
             "cwd": event.cwd ?? NSNull(),
             "tool_name": event.toolName ?? NSNull(),
             "_opencode_request_id": event.requestId ?? NSNull(),
