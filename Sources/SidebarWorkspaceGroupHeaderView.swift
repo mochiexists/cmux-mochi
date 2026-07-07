@@ -432,6 +432,9 @@ struct SidebarPrivacyFrostedSurface: View {
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                     .strokeBorder(stroke, lineWidth: 1)
             }
-            .shadow(color: Color.black.opacity(0.08), radius: 5, x: 0, y: 2)
+            // No .shadow(): an offscreen shadow pass per frosted surface, stacked
+            // across every blurred row + group header in a scrolling LazyVStack,
+            // was the dominant compositing cost that made the blur feel sluggish.
+            // The stroke border alone reads cleanly without the per-frame pass.
     }
 }

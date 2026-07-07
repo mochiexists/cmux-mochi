@@ -14708,35 +14708,11 @@ struct TabItemView: View, Equatable {
 
     private func makeWorkspaceSnapshot() -> SidebarWorkspaceSnapshotBuilder.Snapshot {
         let detailVisibility = visibleAuxiliaryDetails
-        if isPrivacyBlurredSnapshot {
-            return SidebarWorkspaceSnapshotBuilder.Snapshot(
-                presentationKey: workspaceSnapshotPresentationKey,
-                title: tab.title,
-                customDescription: nil,
-                isPinned: tab.isPinned,
-                isPrivacyBlurred: true,
-                customColorHex: tab.customColor,
-                remoteWorkspaceSidebarText: nil,
-                remoteConnectionStatusText: remoteConnectionStatusText,
-                remoteStateHelpText: remoteStateHelpText,
-                showsRemoteReconnectAffordance: false,
-                copyableSidebarSSHError: nil,
-                latestConversationMessage: nil,
-                metadataEntries: [],
-                metadataBlocks: [],
-                latestLog: nil,
-                progress: nil,
-                compactGitBranchSummaryText: nil,
-                compactDirectoryCandidates: [],
-                compactBranchDirectoryCandidates: [],
-                branchDirectoryLines: [],
-                branchLinesContainBranch: false,
-                pullRequestRows: [],
-                listeningPorts: [],
-                finderDirectoryPath: WorkspaceFinderDirectoryResolver.path(for: tab),
-                mediaActivity: tab.browserMediaActivity
-            )
-        }
+        // Blurred rows build the SAME snapshot as normal rows so they keep the
+        // identical height — toggling blur must not resize/collapse the row (the
+        // previous minimal-snapshot short-circuit shrank busy rows to title-only,
+        // which is the "blur changes the tab size" regression). The frost overlay
+        // sits on top to obscure the content; height stays stable either way.
         let orderedPanelIds: [UUID]? = (detailVisibility.showsBranchDirectory || detailVisibility.showsPullRequests)
             ? tab.sidebarOrderedPanelIds()
             : nil
