@@ -33,8 +33,10 @@ FOCUSED_GATE_SELECTORS = {
 # (upstream has its own teardown-stability history: c44bf7657, 5fdf30c26).
 # Re-evaluate on every upstream rebase: drop the entry, run it once, and either
 # remove it permanently (passes / upstream rewrote it) or re-add it. A stale
-# entry that no longer matches a discovered test fails this script, so the list
-# can't silently rot.
+# entry that no longer matches a discovered test fails `--validate` (which CI
+# runs against the real repo), so the list can't silently rot. Shard runs skip
+# that freshness check because tests exercise them against fixture roots that
+# legitimately lack the quarantined selectors.
 QUARANTINED_SELECTORS = {
     "cmuxTests/AppDelegateShortcutRoutingTests/testCmdWClosesWindowWhenClosingLastSurfaceInLastWorkspace",
 }
@@ -72,7 +74,7 @@ def xctest_methods(
     ]
 
 
-def discover_selectors(root: Path) -> list[TestSelector]:
+def discover_selectors(root: Path, enforce_quarantine_freshness: bool = False) -> list[TestSelector]:
     test_root = root / "cmuxTests"
     if not test_root.is_dir():
         raise SystemExit(f"cmuxTests directory not found under {root}")
@@ -165,7 +167,7 @@ def discover_selectors(root: Path) -> list[TestSelector]:
 
     discovered_identifiers = {selector.identifier for selector in selectors}
     stale_quarantine = QUARANTINED_SELECTORS - discovered_identifiers
-    if stale_quarantine:
+    if enforce_quarantine_freshness and stale_quarantine:
         print(
             "Quarantined selectors no longer match a discovered test "
             "(remove them from QUARANTINED_SELECTORS or re-enable):",
@@ -236,7 +238,7 @@ def main() -> int:
     parser.add_argument("--validate", action="store_true")
     args = parser.parse_args()
 
-    selectors = discover_selectors(args.root)
+    selectors = discover_selectors(args.root, enforce_quarantine_freshness=args.validate)
 
     if args.validate:
         suite_selectors = sum(1 for selector in selectors if selector.identifier.count("/") == 1)
