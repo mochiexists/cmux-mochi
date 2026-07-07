@@ -47,6 +47,12 @@ To create a native Codex tab in the current workspace:
 cmux new-surface --type agent-session --provider codex --workspace "${CMUX_WORKSPACE_ID:-}" --focus false
 ```
 
+To capture one image of the whole visible workspace (all panes plus window chrome, with a per-pane rect map in the JSON payload):
+
+```bash
+cmux capture-workspace --workspace "${CMUX_WORKSPACE_ID:-}" --out /tmp/workspace.png
+```
+
 Use raw `cmux rpc` only when the socket method and params are already known. Prefer named CLI commands for agent workflows because raw RPC currently has less discoverable schema and weaker guardrails around wrong parameter names.
 
 ## Settings and Docs

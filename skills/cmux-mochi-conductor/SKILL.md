@@ -59,6 +59,14 @@ cmux read-screen --surface "$TARGET_SURFACE" --scrollback --lines 200
 
 If the response is incomplete, wait briefly and read again. Do not spam repeated prompts.
 
+For one image of the whole visible workspace (every pane plus window chrome, with a per-pane rect map in the JSON payload), use the workspace capture instead of stitching per-surface screenshots:
+
+```bash
+cmux capture-workspace --workspace "$CMUX_WORKSPACE_ID" --out /tmp/workspace.png
+```
+
+The workspace must already be selected in its window; the command never changes focus, so capture your own caller workspace or ask before selecting another one.
+
 For detailed Codex-vs-Claude choice and the desired native command set, read `references/native-agent-workflows.md`.
 
 ## Arrival Rules
@@ -67,6 +75,7 @@ For detailed Codex-vs-Claude choice and the desired native command set, read `re
 - Do not infer the target workspace from the visually focused tab. Use the caller env, `identify`, and `tree --all --id-format both`.
 - When the user says "this workspace" or asks for a tab beside the current session, default to `CMUX_WORKSPACE_ID` and keep `--focus false` unless they asked to switch focus.
 - Use `new-surface --type agent-session --provider codex` for a native Codex tab. Use terminal Codex/Claude panes only when the conductor must submit and read turns autonomously today.
+- When the user asks to run something "where I can watch it", open a visible plain terminal pane/workspace running the CLI in TUI form (`new-workspace --cwd ... --command ...`, or a terminal surface plus `send`). Never keep the run as a hidden background job in your own shell, and do not pick the native agent-session (web) view for a streaming `codex exec`-style run unless the user asked for the native view.
 - Avoid raw `cmux rpc` for topology edits unless the method schema is known. A wrong raw param can fall through to focus-based defaults in older builds; named CLI commands are safer.
 
 ## Demo Templates

@@ -151,6 +151,7 @@ no explicit target resolves.
 | `rename-workspace`, `rename-window` | Rename a workspace. `rename-window` is a compatibility alias. |
 | `current-workspace` | Print current workspace information. |
 | `read-screen` | Read text from the selected surface. Terminal surfaces support scrollback. Native `agent-session` surfaces need a structured agent read API instead of screenshot/WebView scraping. |
+| `capture-workspace`, `workspace-screenshot` | Capture one visible workspace (all panes plus window chrome) as a single image with a per-pane rect map. Never changes focus; the workspace must already be selected in its window. |
 | `send` | Send text to a terminal surface. |
 | `send-key` | Send one key to a terminal surface. |
 | `send-panel` | Send text to a panel/surface. |
@@ -564,6 +565,8 @@ the expected text without connecting to a cmux socket.
 - `cmux rename-window --help` -> `Usage: cmux rename-workspace`
 - `cmux current-workspace --help` -> `Usage: cmux current-workspace`
 - `cmux capture-pane --help` -> `Usage: cmux capture-pane`
+- `cmux capture-workspace --help` -> `Usage: cmux capture-workspace`
+- `cmux workspace-screenshot --help` -> `Usage: cmux capture-workspace`
 - `cmux resize-pane --help` -> `Usage: cmux resize-pane`
 - `cmux pipe-pane --help` -> `Usage: cmux pipe-pane`
 - `cmux wait-for --help` -> `Usage: cmux wait-for`

@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 
 @MainActor
@@ -33,6 +34,15 @@ final class AgentSessionWebRendererSession {
             isFocused: isFocused
         )
         return ownedCoordinator
+    }
+
+    /// View to composite into workspace-level captures; nil until the web renderer mounts.
+    var captureView: NSView? {
+        ownedCoordinator.webView
+    }
+
+    func captureVisibleSnapshot(completion: @escaping (Result<NSImage, Error>) -> Void) {
+        ownedCoordinator.captureVisibleSnapshot(completion: completion)
     }
 
     func focus() {

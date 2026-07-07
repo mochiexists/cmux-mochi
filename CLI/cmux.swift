@@ -4353,6 +4353,15 @@ struct CMUXCLI {
                 windowOverride: windowId
             )
 
+        case "capture-workspace", "workspace-screenshot":
+            try runWorkspaceScreenshotCommand(
+                commandArgs: commandArgs,
+                client: client,
+                jsonOutput: jsonOutput,
+                idFormat: idFormat,
+                windowOverride: windowId
+            )
+
         case "surface-resume":
             try runSurfaceResumeCommand(
                 commandArgs: commandArgs,
@@ -5588,6 +5597,7 @@ struct CMUXCLI {
         "browser-status",
         "capabilities",
         "capture-pane",
+        "capture-workspace",
         "claude-hook",
         "claude-teams",
         "clear-history",
@@ -5734,6 +5744,7 @@ struct CMUXCLI {
         "workspace",
         "workspace-action",
         "workspace-group",
+        "workspace-screenshot",
     ]
 
     /// Open a path in cmux by asking LaunchServices to deliver a directory URL to the app.
@@ -6797,8 +6808,50 @@ struct CMUXCLI {
     ) throws {
         var params = try surfaceCommandTargetParams(commandArgs, client: client, windowOverride: windowOverride)
         try applySurfaceImageOptions(commandArgs, to: &params)
+        let payload = try client.sendV2(method: "surface.screenshot", params: params)
+        try emitScreenshotPayload(
+            payload,
+            commandArgs: commandArgs,
+            jsonOutput: jsonOutput,
+            idFormat: idFormat,
+            missingImageMessage: "surface screenshot missing image data"
+        )
+    }
+
+    private func runWorkspaceScreenshotCommand(
+        commandArgs: [String],
+        client: SocketClient,
+        jsonOutput: Bool,
+        idFormat: CLIIDFormat,
+        windowOverride: String?
+    ) throws {
+        var params: [String: Any] = [:]
+        let windowRaw = optionValue(commandArgs, name: "--window") ?? windowOverride
+        let workspaceRaw = workspaceFromArgsOrEnv(commandArgs, windowOverride: windowOverride)
+        let winId = try normalizeWindowHandle(windowRaw, client: client)
+        if let winId { params["window_id"] = winId }
+        let wsId = try normalizeWorkspaceHandle(workspaceRaw, client: client, windowHandle: winId)
+        if let wsId { params["workspace_id"] = wsId }
+        try applySurfaceImageOptions(commandArgs, to: &params)
+        let payload = try client.sendV2(method: "workspace.screenshot", params: params)
+        try emitScreenshotPayload(
+            payload,
+            commandArgs: commandArgs,
+            jsonOutput: jsonOutput,
+            idFormat: idFormat,
+            missingImageMessage: "workspace screenshot missing image data"
+        )
+    }
+
+    private func emitScreenshotPayload(
+        _ payloadIn: [String: Any],
+        commandArgs: [String],
+        jsonOutput: Bool,
+        idFormat: CLIIDFormat,
+        missingImageMessage: String
+    ) throws {
+        var payload = payloadIn
         let (outPathOpt, _) = parseOption(commandArgs, name: "--out")
-        var payload = try client.sendV2(method: "surface.screenshot", params: params)
         let includeBase64 = hasFlag(commandArgs, name: "--include-base64")
 
         func hasText(_ value: String?) -> Bool {
@@ -6823,7 +6876,7 @@ struct CMUXCLI {
             let base64Key = format == "jpeg" || format == "jpg" ? "jpeg_base64" : "png_base64"
             guard let b64 = payload[base64Key] as? String ?? payload["png_base64"] as? String ?? payload["jpeg_base64"] as? String,
                   let data = Data(base64Encoded: b64) else {
-                throw CLIError(message: "surface screenshot missing image data")
+                throw CLIError(message: missingImageMessage)
             }
             try FileManager.default.createDirectory(
                 at: destinationURL.deletingLastPathComponent(),
@@ -16006,6 +16059,29 @@ struct CMUXCLI {
 
             Example:
               cmux capture-pane --workspace workspace:2 --surface surface:1 --scrollback --lines 200
+            """
+        case "capture-workspace", "workspace-screenshot":
+            return """
+            Usage: cmux capture-workspace [--workspace <id|ref|index>] [--window <id|ref|index>] [flags]
+                   cmux workspace-screenshot [--workspace <id|ref|index>] [--window <id|ref|index>] [flags]
+
+            Capture one visible workspace (all panes plus window chrome) as a single image.
+            The workspace must be the selected workspace in its window; this command never
+            changes focus. The JSON payload includes a `panes` array mapping each captured
+            pane to its rect in the image (top-left origin, original image pixels).
+
+            Flags:
+              --workspace <id|ref|index>   Workspace to capture (default: $CMUX_WORKSPACE_ID)
+              --window <id|ref|index>      Window context for workspace refs and indexes
+              --out <file>                 Write the image to a file
+              --format <png|jpeg>          Image format (default png)
+              --jpeg-quality <0.1-1.0>     JPEG quality (default 0.92)
+              --max-dimension <n|none>     Downscale so the longest side is at most n pixels
+              --include-base64             Keep base64 image data in --json output
+
+            Example:
+              cmux capture-workspace --workspace "$CMUX_WORKSPACE_ID" --out /tmp/workspace.png
+              cmux capture-workspace --json --max-dimension 1568
             """
         case "resize-pane":
             return """
@@ -35266,6 +35342,8 @@ export default function cmuxPiSessionExtension(pi: ExtensionAPI) {
           cross-pane work, and do not rely on visually focused tabs for destructive actions.
           To open Codex as a tab in the caller workspace, use:
             cmux new-surface --type agent-session --provider codex --workspace "$CMUX_WORKSPACE_ID" --focus false
+          To grab one image of the whole visible workspace (all panes + chrome) with per-pane rects, use:
+            cmux capture-workspace --workspace "$CMUX_WORKSPACE_ID" --out /tmp/workspace.png
           To change cmux settings, run `cmux docs settings` and `cmux settings path`; to add Dock controls, run `cmux docs dock`.
           Back up any existing cmux.json file to a timestamped .bak copy before editing.
           Use printed curl commands to fetch the latest docs/schema, and prefer Ghostty config for terminal behavior Ghostty already supports.
@@ -35355,6 +35433,7 @@ export default function cmuxPiSessionExtension(pi: ExtensionAPI) {
           rename-window [--workspace <id|ref|index>] [--window <id|ref|index>] <title>
           current-workspace [--window <id|ref|index>]
           read-screen [--workspace <id|ref|index>] [--surface <id|ref|index>] [--window <id|ref|index>] [--scrollback] [--lines <n>]
+          capture-workspace|workspace-screenshot [--workspace <id|ref|index>] [--window <id|ref|index>] [--out <file>] [--format <png|jpeg>] [--max-dimension <n|none>]
           send [--workspace <id|ref|index>] [--surface <id|ref|index>] [--window <id|ref|index>] <text>
           send-key [--workspace <id|ref|index>] [--surface <id|ref|index>] [--window <id|ref|index>] <key>
           send-panel --panel <id|ref|index> [--workspace <id|ref|index>] [--window <id|ref|index>] <text>

@@ -44,7 +44,7 @@ nonisolated private struct RemotePTYSocketTarget {
     let workspaceTitle: String
 }
 
-nonisolated private enum V2SurfaceImageFormat: String {
+nonisolated enum V2SurfaceImageFormat: String {
     case png
     case jpeg
 
@@ -70,14 +70,14 @@ nonisolated private enum V2SurfaceImageFormat: String {
     }
 }
 
-nonisolated private struct V2SurfaceImageEncoding {
+nonisolated struct V2SurfaceImageEncoding {
     let format: V2SurfaceImageFormat
     let jpegQuality: Double
     let maxDimension: Int?
     let profile: String
 }
 
-nonisolated private struct V2EncodedSurfaceImage {
+nonisolated struct V2EncodedSurfaceImage {
     let data: Data
     let format: V2SurfaceImageFormat
     let width: Int
@@ -1099,6 +1099,9 @@ class TerminalController {
         case "surface.screenshot", "surface.text", "surface.read_text", "surface.ingest":
             v2MainSync { self.v2RefreshKnownRefs() }
             return v2Result(id: request.id, v2SurfaceCommandOnSocketWorker(method: request.method, params: request.params))
+        case "workspace.screenshot":
+            v2MainSync { self.v2RefreshKnownRefs() }
+            return v2Result(id: request.id, v2WorkspaceScreenshot(params: request.params))
         case "browser.navigate", "browser.back", "browser.forward", "browser.reload",
              "browser.snapshot", "browser.eval", "browser.wait", "browser.screenshot",
              "browser.click", "browser.dblclick", "browser.hover", "browser.focus",
@@ -2128,6 +2131,7 @@ class TerminalController {
             "surface.read_text",
             "surface.text",
             "surface.screenshot",
+            "workspace.screenshot",
             "surface.ingest",
             "surface.clear_history",
             "surface.trigger_flash",
@@ -3152,7 +3156,10 @@ class TerminalController {
     /// Interim `Any`-shaped twin of the package's `ControlCallResult`, kept
     /// while the command bodies still build Foundation payloads. Bodies
     /// migrate onto the typed DTO in the ControlCommandCoordinator stage.
-    enum V2CallResult {
+    /// Conforms to `Error` so `.err` cases can flow through `Result`'s failure
+    /// slot (e.g. `workspaceCaptureContext` returning
+    /// `Result<WorkspaceCaptureContext, V2CallResult>`).
+    enum V2CallResult: Error {
         case ok(Any)
         case err(code: String, message: String, data: Any?)
     }
@@ -5654,7 +5661,7 @@ class TerminalController {
         return .success(outcome.0)
     }
 
-    private nonisolated func v2AwaitCallback<T>(
+    nonisolated func v2AwaitCallback<T>(
         timeout: TimeInterval,
         start: (@escaping (T) -> Void) -> Void
     ) -> T? {
@@ -6138,7 +6145,7 @@ class TerminalController {
         return rep.representation(using: .png, properties: [:])
     }
 
-    private nonisolated func v2SurfaceImageEncoding(params: [String: Any]) -> (encoding: V2SurfaceImageEncoding?, error: V2CallResult?) {
+    nonisolated func v2SurfaceImageEncoding(params: [String: Any]) -> (encoding: V2SurfaceImageEncoding?, error: V2CallResult?) {
         let profile = (v2String(params, "profile") ?? "lossless").lowercased()
         let formatRaw = (v2String(params, "format") ?? v2String(params, "image_format") ?? "png").lowercased()
         let format: V2SurfaceImageFormat
@@ -6190,7 +6197,7 @@ class TerminalController {
         )
     }
 
-    private nonisolated func v2Image(from cgImage: CGImage) -> NSImage {
+    nonisolated func v2Image(from cgImage: CGImage) -> NSImage {
         NSImage(cgImage: cgImage, size: NSSize(width: cgImage.width, height: cgImage.height))
     }
 
@@ -6253,7 +6260,7 @@ class TerminalController {
         return (bitmap, targetWidth, targetHeight)
     }
 
-    private nonisolated func v2EncodeSurfaceImage(_ image: NSImage, encoding: V2SurfaceImageEncoding) -> V2EncodedSurfaceImage? {
+    nonisolated func v2EncodeSurfaceImage(_ image: NSImage, encoding: V2SurfaceImageEncoding) -> V2EncodedSurfaceImage? {
         guard let cgImage = v2SourceCGImage(from: image) else { return nil }
         let originalWidth = cgImage.width
         let originalHeight = cgImage.height
@@ -6301,7 +6308,7 @@ class TerminalController {
         return (width: representation.pixelsWide, height: representation.pixelsHigh)
     }
 
-    private nonisolated func bestEffortPruneTemporaryFiles(
+    nonisolated func bestEffortPruneTemporaryFiles(
         in directoryURL: URL,
         keepingMostRecent maxCount: Int = 50,
         maxAge: TimeInterval = 24 * 60 * 60
@@ -8229,7 +8236,7 @@ class TerminalController {
         }
     }
 
-    private nonisolated func v2AttachEncodedSurfaceImage(
+    nonisolated func v2AttachEncodedSurfaceImage(
         _ image: V2EncodedSurfaceImage,
         to result: inout [String: Any],
         includeBase64: Bool
