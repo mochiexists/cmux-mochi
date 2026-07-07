@@ -13223,9 +13223,13 @@ struct TabItemView: View, Equatable {
     }
 
     private var workspaceSnapshot: SidebarWorkspaceSnapshotBuilder.Snapshot {
+        // The blur flag is intentionally NOT part of cache validity: toggling a
+        // workspace's Privacy Frost must not recompute the (expensive) snapshot —
+        // the frost is a pure overlay driven by `isPrivacyBlurred` below, so the
+        // toggle stays instant (matching the group-blur path) while the row keeps
+        // its full height.
         if let workspaceSnapshotStorage,
-           workspaceSnapshotStorage.presentationKey == workspaceSnapshotPresentationKey,
-           workspaceSnapshotStorage.isPrivacyBlurred == isPrivacyBlurredSnapshot {
+           workspaceSnapshotStorage.presentationKey == workspaceSnapshotPresentationKey {
             return workspaceSnapshotStorage
         }
         return makeWorkspaceSnapshot()
@@ -13240,7 +13244,10 @@ struct TabItemView: View, Equatable {
     }
 
     private var isPrivacyBlurred: Bool {
-        workspaceSnapshot.isPrivacyBlurred
+        // Read the blur flag directly (a cheap `let`), not through the cached
+        // snapshot, so blur/unblur is an instant overlay flip with no snapshot
+        // recompute. See `workspaceSnapshot`.
+        isPrivacyBlurredSnapshot
     }
 
     private var sidebarSelectionColorHex: String? {

@@ -17,6 +17,7 @@ cmux **Mochi** fork patch release.
 
 ### Fixed
 - Kept Privacy Frost blur from resizing sidebar rows: a blurred workspace row now keeps its normal height instead of collapsing, and the frosted surface no longer pays for an offscreen shadow pass.
+- Made workspace Privacy Frost blur/unblur instant again: the frost is now a pure overlay driven by a lightweight flag, so toggling it no longer recomputes the row's full sidebar snapshot (matching the already-instant group-blur path).
 - Stopped the trailing tab-bar split buttons (new terminal/browser, split) from leaking a right-click through to the tab behind them when the tab bar is full; the right-click now reaches the button's own context menu.
 
 ## [0.64.170] - 2026-07-05
