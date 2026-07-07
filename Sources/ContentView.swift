@@ -12538,13 +12538,19 @@ private struct SidebarFooterButtons: View {
                 .accessibilityIdentifier("SidebarExtensionMenuButton")
                 .background(TitlebarControlAnchorView { extensionBrowserAnchorView = $0 })
             }
-            if let updateActionsHost = AppDelegate.shared {
-                UpdatePill(model: updateViewModel, accent: cmuxAccentColor(), actions: updateActionsHost)
-            }
             Spacer(minLength: 0)
             SidebarResourceSummaryView()
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        // When an update is available, the pill sits ON TOP of the resource
+        // summary (trailing) so it stays fully readable instead of being squeezed
+        // to "Update Av…". UpdatePill renders nothing when there's no update, so
+        // the perf/memory readout shows normally the rest of the time.
+        .overlay(alignment: .trailing) {
+            if let updateActionsHost = AppDelegate.shared {
+                UpdatePill(model: updateViewModel, accent: cmuxAccentColor(), actions: updateActionsHost)
+            }
+        }
     }
 }
 
