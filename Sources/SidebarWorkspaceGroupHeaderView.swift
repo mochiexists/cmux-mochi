@@ -38,7 +38,8 @@ struct SidebarWorkspaceGroupHeaderView: View, Equatable {
             lhs.rowSpacing == rhs.rowSpacing &&
             lhs.isFirstRow == rhs.isFirstRow &&
             lhs.isBeingDragged == rhs.isBeingDragged &&
-            lhs.topDropIndicatorVisible == rhs.topDropIndicatorVisible
+            lhs.topDropIndicatorVisible == rhs.topDropIndicatorVisible &&
+            lhs.bottomDropIndicatorVisible == rhs.bottomDropIndicatorVisible
     }
 
     let groupId: UUID
@@ -69,8 +70,8 @@ struct SidebarWorkspaceGroupHeaderView: View, Equatable {
     let isFirstRow: Bool
     let isBeingDragged: Bool
     let topDropIndicatorVisible: Bool
+    let bottomDropIndicatorVisible: Bool
     let onDragStart: () -> NSItemProvider
-    let tabDropDelegateFactory: (CGFloat) -> SidebarWorkspaceGroupHeaderDropDelegate
     let onToggleCollapsed: () -> Void
     let onFocusAnchor: () -> Void
     let onTapPlus: () -> Void
@@ -89,7 +90,12 @@ struct SidebarWorkspaceGroupHeaderView: View, Equatable {
     let onOpenDocs: () -> Void
 
     @State private var rowInteractionState = SidebarWorkspaceRowInteractionState()
-    @State private var rowHeight: CGFloat = 1
+
+#if DEBUG
+    // Plain-value environment probe set only by SidebarLazyLayoutScaleTests;
+    // default no-op. See SidebarLazyContractProbe.
+    @Environment(\.sidebarLazyContractProbe) private var sidebarLazyContractProbe
+#endif
 
     private var metrics: SidebarWorkspaceGroupHeaderMetrics {
         SidebarWorkspaceGroupHeaderMetrics(fontScale: fontScale)
@@ -117,130 +123,144 @@ struct SidebarWorkspaceGroupHeaderView: View, Equatable {
         String(localized: "workspaceGroup.privacyBlurred", defaultValue: "Private Group")
     }
 
-    private var rowHeightProbe: some View {
-        GeometryReader { proxy in
-            Color.clear
-                .onAppear {
-                    rowHeight = max(proxy.size.height, 1)
+    private var plusVisible: Bool {
+        rowInteractionState.shouldShowCloseButton(
+            canCloseWorkspace: true,
+            shortcutHintModeActive: showsShortcutHint
+        ) && !isPrivacyBlurred
+    }
+
+    private var collapseToggle: some View {
+        Image(systemName: isCollapsed ? "chevron.right" : "chevron.down")
+            .cmuxFont(size: metrics.chevronFontSize, weight: .semibold)
+            .foregroundStyle(.secondary)
+            .frame(width: metrics.chevronFrame, height: metrics.chevronFrame)
+            .contentShape(Rectangle())
+            .onTapGesture { onToggleCollapsed() }
+            .accessibilityAddTraits(.isButton)
+            .accessibilityLabel(
+                Text(
+                    isCollapsed
+                        ? String(localized: "workspaceGroup.expand.a11y", defaultValue: "Expand group")
+                        : String(localized: "workspaceGroup.collapse.a11y", defaultValue: "Collapse group")
+                )
+            )
+    }
+
+    private var titleButton: some View {
+        HStack(spacing: 6) {
+            Image(systemName: displayedIconSymbol)
+                .cmuxFont(size: metrics.iconFontSize, weight: .semibold)
+                .foregroundStyle(iconColor)
+                .frame(width: metrics.iconFrame, height: metrics.iconFrame)
+                .accessibilityHidden(true)
+            Text(name)
+                .cmuxFont(size: metrics.nameFontSize, weight: .semibold)
+                .foregroundStyle(isAnchorActive ? Color.primary : Color.primary.opacity(0.9))
+                .lineLimit(1)
+                .truncationMode(.tail)
+            if anchorUnreadCount > 0 {
+                Text("\(anchorUnreadCount)")
+                    .cmuxFont(size: metrics.unreadFontSize, weight: .semibold)
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, metrics.unreadHorizontalPadding)
+                    .padding(.vertical, metrics.unreadVerticalPadding)
+                    .background(Capsule().fill(Color.accentColor))
+                    .accessibilityLabel(Text(String.localizedStringWithFormat(
+                        String(localized: "workspaceGroup.unread.a11y", defaultValue: "%lld unread"),
+                        anchorUnreadCount
+                    )))
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            guard !isPrivacyBlurred else { return }
+            onFocusAnchor()
+        }
+        .accessibilityAddTraits(.isButton)
+        .accessibilityLabel(Text(isPrivacyBlurred ? privacyBlurredTitle : name))
+        .accessibilityHint(Text(String(
+            localized: "workspaceGroup.focusAnchor.a11y",
+            defaultValue: "Focus the group's anchor workspace"
+        )))
+    }
+
+    private var plusButton: some View {
+        Button(action: onTapPlus) {
+            Image(systemName: "plus")
+                .cmuxFont(size: metrics.plusFontSize, weight: .medium)
+                .foregroundStyle(.secondary)
+                .frame(width: metrics.plusFrame, height: metrics.plusFrame)
+                .contentShape(Rectangle())
+                .opacity(plusVisible ? 1 : 0)
+        }
+        .buttonStyle(.plain)
+        .frame(width: metrics.plusFrame, height: metrics.plusFrame)
+        .allowsHitTesting(plusVisible)
+        .accessibilityHidden(!plusVisible)
+        .accessibilityLabel(Text(String(
+            localized: "workspaceGroup.newWorkspaceInGroup.a11y",
+            defaultValue: "New workspace in group"
+        )))
+        .contextMenu {
+            Button(
+                String(
+                    localized: "workspaceGroup.plus.contextMenu.newWorkspace",
+                    defaultValue: "New Workspace in Group"
+                ),
+                action: onTapPlus
+            )
+            .onAppear {
+                rowInteractionState.contextMenuDidAppear()
+            }
+            .onDisappear {
+                rowInteractionState.contextMenuDidDisappear()
+            }
+            if !cwdContextMenuItems.isEmpty {
+                Divider()
+                ForEach(cwdContextMenuItems) { item in
+                    switch item {
+                    case .separator:
+                        Divider()
+                    case .action(let action):
+                        Button(action.title) {
+                            onRunResolvedItem(action)
+                        }
+                    }
                 }
-                .onChange(of: proxy.size.height) { _, newHeight in
-                    rowHeight = max(newHeight, 1)
-                }
+            }
+            Divider()
+            Button(
+                String(
+                    localized: "workspaceGroup.plus.contextMenu.editConfig",
+                    defaultValue: "Edit Group Config..."
+                ),
+                action: onEditConfig
+            )
+            Button(
+                String(
+                    localized: "workspaceGroup.plus.contextMenu.openDocs",
+                    defaultValue: "Open Workspace Groups Docs"
+                ),
+                action: onOpenDocs
+            )
+        }
+    }
+
+    private var headerRow: some View {
+        HStack(spacing: 4) {
+            collapseToggle
+            titleButton
+            plusButton
         }
     }
 
     var body: some View {
-        HStack(spacing: 4) {
-            Image(systemName: isCollapsed ? "chevron.right" : "chevron.down")
-                .cmuxFont(size: metrics.chevronFontSize, weight: .semibold)
-                .foregroundStyle(.secondary)
-                .frame(width: metrics.chevronFrame, height: metrics.chevronFrame)
-                .contentShape(Rectangle())
-                .onTapGesture { onToggleCollapsed() }
-                .accessibilityAddTraits(.isButton)
-                .accessibilityLabel(
-                    Text(
-                        isCollapsed
-                            ? String(localized: "workspaceGroup.expand.a11y", defaultValue: "Expand group")
-                            : String(localized: "workspaceGroup.collapse.a11y", defaultValue: "Collapse group")
-                    )
-                )
-
-            HStack(spacing: 6) {
-                Image(systemName: displayedIconSymbol)
-                    .cmuxFont(size: metrics.iconFontSize, weight: .semibold)
-                    .foregroundStyle(iconColor)
-                    .frame(width: metrics.iconFrame, height: metrics.iconFrame)
-                    .accessibilityHidden(true)
-                Text(name)
-                    .cmuxFont(size: metrics.nameFontSize, weight: .semibold)
-                    .foregroundStyle(isAnchorActive ? Color.primary : Color.primary.opacity(0.9))
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-                if anchorUnreadCount > 0 {
-                    Text("\(anchorUnreadCount)")
-                        .cmuxFont(size: metrics.unreadFontSize, weight: .semibold)
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, metrics.unreadHorizontalPadding)
-                        .padding(.vertical, metrics.unreadVerticalPadding)
-                        .background(Capsule().fill(Color.accentColor))
-                        .accessibilityLabel(Text(String.localizedStringWithFormat(
-                            String(localized: "workspaceGroup.unread.a11y", defaultValue: "%lld unread"),
-                            anchorUnreadCount
-                        )))
-                }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .contentShape(Rectangle())
-            .onTapGesture {
-                guard !isPrivacyBlurred else { return }
-                onFocusAnchor()
-            }
-            .accessibilityAddTraits(.isButton)
-            .accessibilityLabel(Text(isPrivacyBlurred ? privacyBlurredTitle : name))
-            .accessibilityHint(Text(String(
-                localized: "workspaceGroup.focusAnchor.a11y",
-                defaultValue: "Focus the group's anchor workspace"
-            )))
-
-            let plusVisible = rowInteractionState.shouldShowCloseButton(
-                canCloseWorkspace: true,
-                shortcutHintModeActive: showsShortcutHint
-            ) && !isPrivacyBlurred
-            Button(action: onTapPlus) {
-                Image(systemName: "plus")
-                    .cmuxFont(size: metrics.plusFontSize, weight: .medium)
-                    .foregroundStyle(.secondary)
-                    .frame(width: metrics.plusFrame, height: metrics.plusFrame)
-                    .contentShape(Rectangle())
-                    .opacity(plusVisible ? 1 : 0)
-            }
-            .buttonStyle(.plain)
-            .frame(width: metrics.plusFrame, height: metrics.plusFrame)
-            .allowsHitTesting(plusVisible)
-            .accessibilityHidden(!plusVisible)
-            .accessibilityLabel(Text(String(
-                localized: "workspaceGroup.newWorkspaceInGroup.a11y",
-                defaultValue: "New workspace in group"
-            )))
-            .contextMenu {
-                Button(
-                    String(
-                        localized: "workspaceGroup.plus.contextMenu.newWorkspace",
-                        defaultValue: "New Workspace in Group"
-                    ),
-                    action: onTapPlus
-                )
-                if !cwdContextMenuItems.isEmpty {
-                    Divider()
-                    ForEach(cwdContextMenuItems) { item in
-                        switch item {
-                        case .separator:
-                            Divider()
-                        case .action(let action):
-                            Button(action.title) {
-                                onRunResolvedItem(action)
-                            }
-                        }
-                    }
-                }
-                Divider()
-                Button(
-                    String(
-                        localized: "workspaceGroup.plus.contextMenu.editConfig",
-                        defaultValue: "Edit Group Config..."
-                    ),
-                    action: onEditConfig
-                )
-                Button(
-                    String(
-                        localized: "workspaceGroup.plus.contextMenu.openDocs",
-                        defaultValue: "Open Workspace Groups Docs"
-                    ),
-                    action: onOpenDocs
-                )
-            }
-        }
+#if DEBUG
+        let _ = { sidebarLazyContractProbe.groupHeaderRowBody?() }()
+#endif
+        headerRow
         .padding(.vertical, 5)
         .padding(.trailing, SidebarWorkspaceListMetrics.rowContentHorizontalPadding)
         .contentShape(Rectangle())
@@ -267,8 +287,10 @@ struct SidebarWorkspaceGroupHeaderView: View, Equatable {
                 .allowsHitTesting(false)
             }
         }
-        .background { rowHeightProbe }
         .shortcutHintVisibilityAnimation(value: showsShortcutHint)
+        .onHover { hovering in
+            rowInteractionState.setPointerHovering(hovering)
+        }
         .opacity(isBeingDragged ? 0.6 : 1)
         .safeHelp(isPrivacyBlurred ? privacyBlurredTitle : name)
         .overlay(alignment: .top) {
@@ -278,12 +300,30 @@ struct SidebarWorkspaceGroupHeaderView: View, Equatable {
                 rowSpacing: rowSpacing
             )
         }
-        .overlay {
-            SidebarWorkspaceRowHoverTracker(rowInteractionState: $rowInteractionState)
+        .overlay(alignment: .bottom) {
+            SidebarWorkspaceTopDropIndicator(
+                isVisible: bottomDropIndicatorVisible,
+                isFirstRow: false,
+                rowSpacing: rowSpacing,
+                isBottomEdge: true,
+                leadingInset: metrics.groupScopedBottomDropIndicatorLeadingInset
+            )
         }
         .onDrag(onDragStart)
         .internalOnlyTabDrag()
-        .onDrop(of: SidebarTabDragPayload.dropContentTypes, delegate: tabDropDelegateFactory(rowHeight))
+        .overlay {
+            if rowInteractionState.contextMenuVisible {
+                SidebarWorkspaceRowMenuTrackingReconciler { pointerInsideRow in
+                    rowInteractionState.contextMenuTrackingDidEnd(pointerInsideRow: pointerInsideRow)
+                }
+                .onAppear {
+                    rowInteractionState.contextMenuTrackingObserverDidInstall()
+                }
+            }
+        }
+        .onDisappear {
+            rowInteractionState.setPointerHovering(false)
+        }
         .contextMenu {
             Button(
                 String(
@@ -292,6 +332,12 @@ struct SidebarWorkspaceGroupHeaderView: View, Equatable {
                 ),
                 action: onTapPlus
             )
+            .onAppear {
+                rowInteractionState.contextMenuDidAppear()
+            }
+            .onDisappear {
+                rowInteractionState.contextMenuDidDisappear()
+            }
             Divider()
             Button(
                 String(
