@@ -2,6 +2,23 @@
 
 All notable changes to cmux are documented here.
 
+## [0.64.171] - 2026-07-07
+
+cmux **Mochi** fork patch release.
+
+### Added
+- Added workspace capture: `cmux capture-workspace` (alias `workspace-screenshot`) snapshots a whole visible workspace — its panes plus the tab bar — into one image with a per-pane rect map, compositing terminal and browser/agent/artifact panes without needing Screen Recording permission. The left sidebar is excluded by default (`--sidebar include` to keep it).
+- Installed the cmux agent skills for Claude Code as well as Codex, so an agent in either runtime knows the cmux workspace and capture commands.
+
+### Changed
+- Made the cmux-workspace skill claim the screenshot/capture use-case so agents reach for `cmux capture-workspace` instead of an OS screen-recording capture.
+- Added Privacy Frost and workspace capture to the Mochi welcome feature list.
+- Sidebar footer: the "Update Available" pill now sits on top of the CPU/memory readout so it stays fully readable instead of being squeezed.
+
+### Fixed
+- Kept Privacy Frost blur from resizing sidebar rows: a blurred workspace row now keeps its normal height instead of collapsing, and the frosted surface no longer pays for an offscreen shadow pass.
+- Stopped the trailing tab-bar split buttons (new terminal/browser, split) from leaking a right-click through to the tab behind them when the tab bar is full; the right-click now reaches the button's own context menu.
+
 ## [0.64.170] - 2026-07-05
 
 cmux **Mochi** fork hotfix release.
