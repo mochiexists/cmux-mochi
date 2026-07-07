@@ -35049,6 +35049,8 @@ export default function cmuxPiSessionExtension(pi: ExtensionAPI) {
         print("  \(mochi)•\(reset) Copy / Show IDs with workspace, pane, surface, agent session, and resume command details")
         print("  \(mochi)•\(reset) cmux Mochi Conductor skill for driving visible Codex/Claude worker panes")
         print("  \(mochi)•\(reset) Artifact panes — cmux artifact new/open/list for React, HTML, SVG, Mermaid, code, and file artifacts")
+        print("  \(mochi)•\(reset) Privacy Frost — blur a sensitive workspace or a whole group from the sidebar to redact it on screen")
+        print("  \(mochi)•\(reset) Workspace capture — cmux capture-workspace snapshots a whole workspace (every pane) to one image with a per-pane rect map")
         print()
         print("  \(subdued)\(String(repeating: "\u{2500}", count: 58))\(reset)")
         print("  \(italic)\(subdued)Passkeys/WebAuthn are temporarily disabled in current Developer ID builds.\(reset)")
