@@ -1314,10 +1314,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
 #endif
         }
 
-        // Sync the bundled cmux agent skills out to ~/.codex/skills so a freshly
-        // installed app carries them with no manual skills.sh step. Hash-guarded
-        // so user-edited skills are never clobbered. Off the main thread; never
-        // under XCTest (the bundle/home dirs are not the test fixtures).
+        // Sync the bundled cmux agent skills out to ~/.codex/skills and
+        // ~/.claude/skills so a freshly installed app carries them for both agents
+        // with no manual skills.sh step. Hash-guarded so user-edited skills are
+        // never clobbered. Off the main thread; never under XCTest (the bundle/home
+        // dirs are not the test fixtures).
         if !isRunningUnderXCTest {
             syncBundledSkillsAtLaunch()
         }
@@ -8796,21 +8797,36 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         updateController.attemptUpdate()
     }
 
-    /// Sync bundled agent skills to `~/.codex/skills` off the main thread, then
-    /// post a single non-intrusive notification summarizing what changed. Skill
-    /// updates ride the app release; user-edited skills are left untouched and
-    /// surfaced so the user knows their copy is now behind the bundled one.
+    /// Sync bundled agent skills to `~/.codex/skills` AND `~/.claude/skills` off
+    /// the main thread, then post a single non-intrusive notification summarizing
+    /// what changed. Both Codex and Claude Code read skills from their own
+    /// `~/.<agent>/skills` dir, so an agent running inside a cmux pane only knows
+    /// about `cmux capture-workspace` (and the rest) if the skills are installed
+    /// for its agent. Skill updates ride the app release; user-edited skills are
+    /// left untouched and surfaced so the user knows their copy is behind ours.
     private func syncBundledSkillsAtLaunch() {
         DispatchQueue.global(qos: .utility).async {
-            let outcome: CmuxSkillsBundleInstaller.SyncOutcome
-            do {
-                outcome = try CmuxSkillsBundleInstaller().sync()
-            } catch {
-                return
+            let home = FileManager.default.homeDirectoryForCurrentUser
+            let destinations = [
+                home.appendingPathComponent(".codex/skills", isDirectory: true),
+                home.appendingPathComponent(".claude/skills", isDirectory: true),
+            ]
+            var updated: [String] = []
+            var skippedUserModified: [String] = []
+            for destination in destinations {
+                guard let outcome = try? CmuxSkillsBundleInstaller(
+                    destinationDirectoryURL: destination
+                ).sync() else { continue }
+                updated.append(contentsOf: outcome.updated)
+                skippedUserModified.append(contentsOf: outcome.skippedUserModified)
             }
-            guard !outcome.updated.isEmpty || !outcome.skippedUserModified.isEmpty else { return }
+            // Dedupe: a skill updated in both destinations should be listed once.
+            var merged = CmuxSkillsBundleInstaller.SyncOutcome()
+            merged.updated = Array(Set(updated)).sorted()
+            merged.skippedUserModified = Array(Set(skippedUserModified)).sorted()
+            guard !merged.updated.isEmpty || !merged.skippedUserModified.isEmpty else { return }
             Task { @MainActor in
-                Self.postBundledSkillsSyncNotification(outcome: outcome)
+                Self.postBundledSkillsSyncNotification(outcome: merged)
             }
         }
     }
