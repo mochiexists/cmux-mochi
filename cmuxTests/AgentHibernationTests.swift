@@ -254,6 +254,34 @@ final class AgentHibernationTests: XCTestCase {
     }
 
     @MainActor
+    func testSetAgentLifecyclePublishesSurfaceAttributedStateChangeOnce() throws {
+        CmuxEventBus.shared.resetForTesting()
+        let workspace = Workspace()
+        let panelId = try XCTUnwrap(workspace.focusedPanelId)
+
+        workspace.setAgentLifecycle(key: "codex", panelId: panelId, lifecycle: .running)
+        workspace.setAgentLifecycle(key: "codex", panelId: panelId, lifecycle: .idle)
+        // Same state again: no transition, no event.
+        workspace.setAgentLifecycle(key: "codex", panelId: panelId, lifecycle: .idle)
+
+        let snapshot = CmuxEventBus.shared.subscribe(
+            afterSequence: 0,
+            names: ["agent.state.changed"],
+            categories: []
+        )
+        defer { CmuxEventBus.shared.unsubscribe(snapshot.subscription) }
+
+        XCTAssertEqual(snapshot.replay.count, 2)
+        let idleEvent = try XCTUnwrap(snapshot.replay.last)
+        XCTAssertEqual(idleEvent["surface_id"] as? String, panelId.uuidString)
+        XCTAssertEqual(idleEvent["workspace_id"] as? String, workspace.id.uuidString)
+        let payload = try XCTUnwrap(idleEvent["payload"] as? [String: Any])
+        XCTAssertEqual(payload["agent_key"] as? String, "codex")
+        XCTAssertEqual(payload["previous_state"] as? String, "running")
+        XCTAssertEqual(payload["state"] as? String, "idle")
+    }
+
+    @MainActor
     func testClearingAgentPIDByPanelClearsLifecycleWithoutOwnedPID() throws {
         let workspace = Workspace()
         let panelId = try XCTUnwrap(workspace.focusedPanelId)

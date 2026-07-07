@@ -4787,8 +4787,20 @@ final class Workspace: Identifiable, ObservableObject {
     ) {
         let targetPanelId = panelId ?? focusedPanelId
         guard let targetPanelId, panels[targetPanelId] != nil else { return }
+        let previous = agentLifecycleStatesByPanelId[targetPanelId]?[key]
         agentLifecycleStatesByPanelId[targetPanelId, default: [:]][key] = lifecycle
         recordAgentLifecycleChange(panelId: targetPanelId)
+        // Panel teardown is covered by surface.closed, so only real
+        // transitions are published here.
+        if previous != lifecycle {
+            CmuxEventBus.shared.publishAgentStateChanged(
+                workspaceId: id,
+                surfaceId: targetPanelId,
+                agentKey: key,
+                previousState: previous?.rawValue,
+                state: lifecycle.rawValue
+            )
+        }
     }
 
     @discardableResult

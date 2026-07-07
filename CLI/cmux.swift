@@ -31928,6 +31928,7 @@ export default function cmuxPiSessionExtension(pi: ExtensionAPI) {
         subcommand: String,
         parsedInput: ClaudeHookParsedInput,
         workspaceId: String? = nil,
+        surfaceId: String? = nil,
         socketPassword: String? = nil
     ) {
         let hookEventName = Self.feedEventName(forClaudeSubcommand: subcommand)
@@ -31950,6 +31951,14 @@ export default function cmuxPiSessionExtension(pi: ExtensionAPI) {
         ]
         if let workspaceId = feedWorkspaceId(rawObject: parsedInput.object, fallback: workspaceId) {
             event["workspace_id"] = workspaceId
+        }
+        // Surface attribution: without this, agent.hook.* / feed.item.* events
+        // publish with surface_id null and conductors can't filter a worker
+        // pane's events (only notification.created carried the surface).
+        let resolvedSurfaceId = surfaceId
+            ?? ProcessInfo.processInfo.environment["CMUX_SURFACE_ID"]
+        if let resolvedSurfaceId, !resolvedSurfaceId.isEmpty {
+            event["surface_id"] = resolvedSurfaceId
         }
         if let cwd = parsedInput.cwd { event["cwd"] = cwd }
         let toolName = parsedInput.object?["tool_name"] as? String
@@ -33980,6 +33989,11 @@ export default function cmuxPiSessionExtension(pi: ExtensionAPI) {
         ]
         if let workspaceId = feedWorkspaceId(rawObject: stdinObj, fallback: env["CMUX_WORKSPACE_ID"]) {
             eventDict["workspace_id"] = workspaceId
+        }
+        // Surface attribution for agent.hook.* / feed.item.* subscribers; the
+        // guard above already required CMUX_SURFACE_ID to be present.
+        if let surfaceId = env["CMUX_SURFACE_ID"], !surfaceId.isEmpty {
+            eventDict["surface_id"] = surfaceId
         }
         let toolRequestInput = stdinObj["tool_input"] ?? stdinObj["toolInput"] ?? toolCall?["args"]
         let postToolUseResponseInput = stdinObj["tool_response"]
