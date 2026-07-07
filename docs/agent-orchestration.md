@@ -43,7 +43,7 @@ cmux send --surface "$TARGET_SURFACE" --enter "Review the current diff and repor
 cmux read-screen --surface "$TARGET_SURFACE" --scrollback --lines 200
 ```
 
-For visual state across a whole workspace, `cmux capture-workspace` returns one composited image of every visible pane plus window chrome, with a per-pane rect map in the JSON payload. It never changes focus; the workspace must already be selected in its window:
+For visual state across a whole workspace, `cmux capture-workspace` returns one composited image of every visible pane plus the tab bar, with a per-pane rect map in the JSON payload. The left sidebar is excluded by default (`--sidebar include` to keep it). It never changes focus; the workspace must already be selected in its window:
 
 ```bash
 cmux capture-workspace --workspace "$CMUX_WORKSPACE_ID" --out /tmp/workspace.png

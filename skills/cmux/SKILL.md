@@ -47,7 +47,7 @@ To create a native Codex tab in the current workspace:
 cmux new-surface --type agent-session --provider codex --workspace "${CMUX_WORKSPACE_ID:-}" --focus false
 ```
 
-To capture one image of the whole visible workspace (all panes plus window chrome, with a per-pane rect map in the JSON payload):
+To capture one image of the whole visible workspace (its panes plus the tab bar, with a per-pane rect map in the JSON payload; the left sidebar is excluded by default, `--sidebar include` to keep it):
 
 ```bash
 cmux capture-workspace --workspace "${CMUX_WORKSPACE_ID:-}" --out /tmp/workspace.png

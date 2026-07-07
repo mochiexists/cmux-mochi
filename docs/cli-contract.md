@@ -151,7 +151,7 @@ no explicit target resolves.
 | `rename-workspace`, `rename-window` | Rename a workspace. `rename-window` is a compatibility alias. |
 | `current-workspace` | Print current workspace information. |
 | `read-screen` | Read text from the selected surface. Terminal surfaces support scrollback. Native `agent-session` surfaces need a structured agent read API instead of screenshot/WebView scraping. |
-| `capture-workspace`, `workspace-screenshot` | Capture one visible workspace (all panes plus window chrome) as a single image with a per-pane rect map. Never changes focus; the workspace must already be selected in its window. |
+| `capture-workspace`, `workspace-screenshot` | Capture one visible workspace (its panes plus the tab bar) as a single image with a per-pane rect map. The left sidebar is excluded by default (`--sidebar include` to keep it). Never changes focus; the workspace must already be selected in its window. |
 | `send` | Send text to a terminal surface. |
 | `send-key` | Send one key to a terminal surface. |
 | `send-panel` | Send text to a panel/surface. |

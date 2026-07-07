@@ -83,7 +83,16 @@ extension TerminalController {
             }
         }
 
-        guard let composed = composeWorkspaceCapture(context: context),
+        // The window's left sidebar is a `.behindWindow` NSVisualEffectView, which
+        // captures dark/empty through cacheDisplay (behind-window vibrancy has no
+        // desktop to sample in an offscreen bitmap). It's also window chrome, not
+        // workspace content, so it's excluded by default; pass sidebar=include to
+        // keep the (empty) region. Crop at the leftmost pane edge — no fragile
+        // view-hierarchy walking needed.
+        let excludeSidebar = ((params["sidebar"] as? String) ?? "exclude").lowercased() != "include"
+        let sidebarInsetPoints = excludeSidebar ? workspaceCaptureSidebarInset(context: context) : 0
+
+        guard let composed = composeWorkspaceCapture(context: context, sidebarInsetPoints: sidebarInsetPoints),
               let encodedImage = v2EncodeSurfaceImage(composed, encoding: encoding) else {
             return .err(code: "internal_error", message: "Failed to compose workspace snapshot", data: nil)
         }
@@ -94,8 +103,9 @@ extension TerminalController {
             "workspace_title": context.workspaceTitle,
             "window_id": v2OrNull(context.windowId?.uuidString),
             "window_ref": v2Ref(kind: .window, uuid: context.windowId),
+            "sidebar": excludeSidebar ? "excluded" : "included",
             "pane_rect_space": "original_image_pixels_top_left",
-            "panes": workspaceCapturePanesPayload(context: context)
+            "panes": workspaceCapturePanesPayload(context: context, sidebarInsetPoints: sidebarInsetPoints)
         ]
         v2AttachEncodedSurfaceImage(encodedImage, to: &result, includeBase64: v2Bool(params, "include_base64") ?? true)
 
@@ -278,17 +288,36 @@ extension TerminalController {
         )
     }
 
-    private nonisolated func composeWorkspaceCapture(context: WorkspaceCaptureContext) -> NSImage? {
+    /// Left inset (in canvas points) to drop when excluding the sidebar. The
+    /// leftmost pane overlay's left edge approximates the sidebar's right edge,
+    /// so no view-hierarchy walk is needed. Zero when there are no pane overlays
+    /// (nothing reliable to crop against) or when the sidebar is hidden and panes
+    /// already start at x≈0.
+    private nonisolated func workspaceCaptureSidebarInset(context: WorkspaceCaptureContext) -> CGFloat {
+        guard let minX = context.overlays.map({ $0.rectInContent.minX }).min(), minX > 0 else { return 0 }
+        return min(minX, context.canvasPointSize.width)
+    }
+
+    private nonisolated func composeWorkspaceCapture(
+        context: WorkspaceCaptureContext,
+        sidebarInsetPoints: CGFloat
+    ) -> NSImage? {
         let pointSize = context.canvasPointSize
         guard pointSize.width > 0, pointSize.height > 0 else { return nil }
-        let pixelSize = workspaceCapturePixelSize(context: context)
-        let scaleX = CGFloat(pixelSize.width) / pointSize.width
-        let scaleY = CGFloat(pixelSize.height) / pointSize.height
+        let fullPixelSize = workspaceCapturePixelSize(context: context)
+        let scaleX = CGFloat(fullPixelSize.width) / pointSize.width
+        let scaleY = CGFloat(fullPixelSize.height) / pointSize.height
+
+        // Crop the sidebar off the left by shifting every draw left by insetPixels
+        // into a narrower canvas.
+        let insetPixels = max(0, min((sidebarInsetPoints * scaleX).rounded(), CGFloat(fullPixelSize.width - 1)))
+        let outWidth = max(1, fullPixelSize.width - Int(insetPixels))
+        let outHeight = fullPixelSize.height
 
         guard let bitmap = NSBitmapImageRep(
             bitmapDataPlanes: nil,
-            pixelsWide: pixelSize.width,
-            pixelsHigh: pixelSize.height,
+            pixelsWide: outWidth,
+            pixelsHigh: outHeight,
             bitsPerSample: 8,
             samplesPerPixel: 4,
             hasAlpha: true,
@@ -304,10 +333,15 @@ extension TerminalController {
         if let graphicsContext = NSGraphicsContext(bitmapImageRep: bitmap) {
             NSGraphicsContext.current = graphicsContext
             graphicsContext.imageInterpolation = .high
-            let canvasRect = NSRect(x: 0, y: 0, width: CGFloat(pixelSize.width), height: CGFloat(pixelSize.height))
+            let canvasRect = NSRect(x: 0, y: 0, width: CGFloat(outWidth), height: CGFloat(outHeight))
             NSColor.black.setFill()
             canvasRect.fill()
-            context.baseImage.draw(in: canvasRect, from: .zero, operation: .sourceOver, fraction: 1)
+            context.baseImage.draw(
+                in: NSRect(x: -insetPixels, y: 0, width: CGFloat(fullPixelSize.width), height: CGFloat(fullPixelSize.height)),
+                from: .zero,
+                operation: .sourceOver,
+                fraction: 1
+            )
             for overlay in context.overlays {
                 guard let image = overlay.image else { continue }
                 let pointRect = workspaceCaptureDrawRect(
@@ -316,7 +350,7 @@ extension TerminalController {
                     contentIsFlipped: context.contentIsFlipped
                 )
                 let pixelRect = NSRect(
-                    x: pointRect.minX * scaleX,
+                    x: pointRect.minX * scaleX - insetPixels,
                     y: pointRect.minY * scaleY,
                     width: pointRect.width * scaleX,
                     height: pointRect.height * scaleY
@@ -326,7 +360,7 @@ extension TerminalController {
         }
         NSGraphicsContext.restoreGraphicsState()
 
-        let composed = NSImage(size: NSSize(width: pixelSize.width, height: pixelSize.height))
+        let composed = NSImage(size: NSSize(width: outWidth, height: outHeight))
         composed.addRepresentation(bitmap)
         return composed
     }
@@ -342,10 +376,16 @@ extension TerminalController {
         )
     }
 
-    private nonisolated func workspaceCapturePanesPayload(context: WorkspaceCaptureContext) -> [[String: Any]] {
+    private nonisolated func workspaceCapturePanesPayload(
+        context: WorkspaceCaptureContext,
+        sidebarInsetPoints: CGFloat
+    ) -> [[String: Any]] {
         let pixelSize = workspaceCapturePixelSize(context: context)
         let scaleX = CGFloat(pixelSize.width) / max(context.canvasPointSize.width, 1)
         let scaleY = CGFloat(pixelSize.height) / max(context.canvasPointSize.height, 1)
+        // Match the crop applied in composeWorkspaceCapture so pane rects stay in
+        // the emitted image's pixel space.
+        let insetPixels = max(0, min((sidebarInsetPoints * scaleX).rounded(), CGFloat(pixelSize.width - 1)))
         return context.overlays
             .sorted { lhs, rhs in
                 let left = workspaceCaptureTopLeftRect(
@@ -370,7 +410,7 @@ extension TerminalController {
                     "title": overlay.title,
                     "captured": overlay.image != nil,
                     "rect": [
-                        "x": Int((topLeft.minX * scaleX).rounded()),
+                        "x": Int(max(0, (topLeft.minX * scaleX - insetPixels).rounded())),
                         "y": Int((topLeft.minY * scaleY).rounded()),
                         "width": Int((topLeft.width * scaleX).rounded()),
                         "height": Int((topLeft.height * scaleY).rounded())

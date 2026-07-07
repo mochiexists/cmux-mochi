@@ -6833,6 +6833,13 @@ struct CMUXCLI {
         let wsId = try normalizeWorkspaceHandle(workspaceRaw, client: client, windowHandle: winId)
         if let wsId { params["workspace_id"] = wsId }
         try applySurfaceImageOptions(commandArgs, to: &params)
+        if let sidebar = optionValue(commandArgs, name: "--sidebar") {
+            let normalized = sidebar.lowercased()
+            guard normalized == "include" || normalized == "exclude" else {
+                throw CLIError(message: "--sidebar must be include or exclude")
+            }
+            params["sidebar"] = normalized
+        }
         let payload = try client.sendV2(method: "workspace.screenshot", params: params)
         try emitScreenshotPayload(
             payload,
@@ -16065,10 +16072,12 @@ struct CMUXCLI {
             Usage: cmux capture-workspace [--workspace <id|ref|index>] [--window <id|ref|index>] [flags]
                    cmux workspace-screenshot [--workspace <id|ref|index>] [--window <id|ref|index>] [flags]
 
-            Capture one visible workspace (all panes plus window chrome) as a single image.
+            Capture one visible workspace (its panes plus the tab bar) as a single image.
             The workspace must be the selected workspace in its window; this command never
             changes focus. The JSON payload includes a `panes` array mapping each captured
-            pane to its rect in the image (top-left origin, original image pixels).
+            pane to its rect in the image (top-left origin, original image pixels). The left
+            sidebar is excluded by default (it is window chrome, not workspace content, and
+            its behind-window vibrancy captures empty); pass --sidebar include to keep it.
 
             Flags:
               --workspace <id|ref|index>   Workspace to capture (default: $CMUX_WORKSPACE_ID)
@@ -16077,6 +16086,7 @@ struct CMUXCLI {
               --format <png|jpeg>          Image format (default png)
               --jpeg-quality <0.1-1.0>     JPEG quality (default 0.92)
               --max-dimension <n|none>     Downscale so the longest side is at most n pixels
+              --sidebar <include|exclude>  Include or exclude the left sidebar (default exclude)
               --include-base64             Keep base64 image data in --json output
 
             Example:
@@ -35433,7 +35443,7 @@ export default function cmuxPiSessionExtension(pi: ExtensionAPI) {
           rename-window [--workspace <id|ref|index>] [--window <id|ref|index>] <title>
           current-workspace [--window <id|ref|index>]
           read-screen [--workspace <id|ref|index>] [--surface <id|ref|index>] [--window <id|ref|index>] [--scrollback] [--lines <n>]
-          capture-workspace|workspace-screenshot [--workspace <id|ref|index>] [--window <id|ref|index>] [--out <file>] [--format <png|jpeg>] [--max-dimension <n|none>]
+          capture-workspace|workspace-screenshot [--workspace <id|ref|index>] [--window <id|ref|index>] [--out <file>] [--format <png|jpeg>] [--max-dimension <n|none>] [--sidebar <include|exclude>]
           send [--workspace <id|ref|index>] [--surface <id|ref|index>] [--window <id|ref|index>] <text>
           send-key [--workspace <id|ref|index>] [--surface <id|ref|index>] [--window <id|ref|index>] <key>
           send-panel --panel <id|ref|index> [--workspace <id|ref|index>] [--window <id|ref|index>] <text>

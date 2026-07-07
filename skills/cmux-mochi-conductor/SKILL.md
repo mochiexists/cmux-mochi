@@ -59,7 +59,7 @@ cmux read-screen --surface "$TARGET_SURFACE" --scrollback --lines 200
 
 If the response is incomplete, wait briefly and read again. Do not spam repeated prompts.
 
-For one image of the whole visible workspace (every pane plus window chrome, with a per-pane rect map in the JSON payload), use the workspace capture instead of stitching per-surface screenshots:
+For one image of the whole visible workspace (every pane plus the tab bar, with a per-pane rect map in the JSON payload; the left sidebar is excluded by default, `--sidebar include` to keep it), use the workspace capture instead of stitching per-surface screenshots:
 
 ```bash
 cmux capture-workspace --workspace "$CMUX_WORKSPACE_ID" --out /tmp/workspace.png
