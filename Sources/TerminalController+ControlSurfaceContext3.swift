@@ -1,6 +1,7 @@
 import AppKit
 import Bonsplit
 import CmuxControlSocket
+import Darwin
 import Foundation
 
 /// The surface-domain input / read / resume / reporting witnesses, plus the
@@ -173,6 +174,10 @@ extension TerminalController {
             processExited: String(
                 localized: "socket.terminal.processExited",
                 defaultValue: "The terminal session has ended; reopen it or create a new terminal session."
+            ),
+            liveForegroundJob: String(
+                localized: "socket.terminal.liveForegroundJob",
+                defaultValue: "The target pane has a live foreground job that would receive this text on its stdin. Send to a fresh pane, or pass force to send anyway."
             )
         )
     }
@@ -208,7 +213,8 @@ extension TerminalController {
         routing: ControlRoutingSelectors,
         surfaceID: UUID?,
         hasSurfaceIDParam: Bool,
-        text: String
+        text: String,
+        force: Bool
     ) -> ControlSurfaceSendResolution {
         guard let tabManager = resolveTabManager(routing: routing) else {
             return .tabManagerUnavailable
@@ -223,6 +229,27 @@ extension TerminalController {
         }
         guard let terminalPanel = ws.terminalPanel(for: surfaceId) else {
             return .surfaceNotTerminal(surfaceId)
+        }
+        let sendGuardForegroundPID = terminalPanel.surface.foregroundProcessID()
+        let sendGuardForegroundName = sendGuardForegroundPID.flatMap(Self.sendGuardProcessName(pid:))
+        #if DEBUG
+        cmuxDebugLog(
+            "sendGuard surface=\(surfaceId.uuidString.prefix(5)) " +
+            "state=\(ws.panelShellActivityStates[surfaceId]?.rawValue ?? "nil") " +
+            "binding=\(ws.surfaceResumeBindingsByPanelId[surfaceId] != nil) " +
+            "lifecycle=\(!(ws.agentLifecycleStatesByPanelId[surfaceId] ?? [:]).isEmpty) " +
+            "fgPid=\(sendGuardForegroundPID.map(String.init) ?? "nil") " +
+            "fgName=\(sendGuardForegroundName ?? "nil") force=\(force)"
+        )
+        #endif
+        if ControlSurfaceSendGuard.blocksTextSend(
+            isCommandRunning: ws.panelShellActivityStates[surfaceId] == .commandRunning,
+            hasAgentEvidence: ws.surfaceResumeBindingsByPanelId[surfaceId] != nil
+                || !(ws.agentLifecycleStatesByPanelId[surfaceId] ?? [:]).isEmpty,
+            foregroundCommandName: sendGuardForegroundName,
+            force: force
+        ) {
+            return .liveForegroundJob(surfaceId)
         }
         let queued: Bool
         switch terminalPanel.sendInputResult(text) {
@@ -244,6 +271,24 @@ extension TerminalController {
             surfaceID: surfaceId,
             queued: queued
         )
+    }
+
+    /// The foreground process's short name for the send guard's agent-CLI
+    /// exemption, from `proc_pidinfo(PROC_PIDTBSDINFO).pbi_comm` — the same
+    /// source `CmuxTopProcessEnumeration` uses (`proc_name` is unreliable from
+    /// this process; the snapshot code only uses it as enrichment over
+    /// `pbi_comm`). Returns `nil` when unresolvable — the guard's name
+    /// exemption simply does not apply then.
+    private static func sendGuardProcessName(pid: Int) -> String? {
+        var info = proc_bsdinfo()
+        let expectedSize = MemoryLayout<proc_bsdinfo>.stride
+        let size = proc_pidinfo(pid_t(pid), PROC_PIDTBSDINFO, 0, &info, Int32(expectedSize))
+        guard size == expectedSize else { return nil }
+        let name = withUnsafeBytes(of: info.pbi_comm) { raw in
+            let end = raw.firstIndex(of: 0) ?? raw.endIndex
+            return String(decoding: raw[..<end], as: UTF8.self)
+        }.trimmingCharacters(in: .whitespacesAndNewlines)
+        return name.isEmpty ? nil : name
     }
 
     func controlSurfaceSendKey(

@@ -192,7 +192,8 @@ extension ControlCommandCoordinator {
             routing: routing,
             surfaceID: uuid(params, "surface_id"),
             hasSurfaceIDParam: params["surface_id"] != nil,
-            text: text
+            text: text,
+            force: bool(params, "force") ?? false
         ) ?? .tabManagerUnavailable
         return surfaceSendResult(resolution)
     }
@@ -259,6 +260,12 @@ extension ControlCommandCoordinator {
             return .err(
                 code: "process_exited",
                 message: strings?.processExited ?? "",
+                data: .object(["surface_id": .string(id.uuidString)])
+            )
+        case .liveForegroundJob(let id):
+            return .err(
+                code: "live_foreground_job",
+                message: strings?.liveForegroundJob ?? "",
                 data: .object(["surface_id": .string(id.uuidString)])
             )
         case .sent(let windowID, let workspaceID, let surfaceID, let queued):

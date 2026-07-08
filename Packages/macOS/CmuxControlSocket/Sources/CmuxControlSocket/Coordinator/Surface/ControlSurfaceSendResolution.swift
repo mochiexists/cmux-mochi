@@ -34,6 +34,11 @@ public enum ControlSurfaceSendResolution: Sendable, Equatable {
     /// The process has exited (legacy `process_exited`,
     /// `data: {"surface_id": …}`). Carries the surface id.
     case processExited(UUID)
+    /// `send_text` refused because the target pane has a live non-agent
+    /// foreground job that would receive the text on its stdin
+    /// (`live_foreground_job`, `data: {"surface_id": …}`). Overridable with the
+    /// `force` param. Carries the surface id.
+    case liveForegroundJob(UUID)
     /// The input was sent. Carries the echoed identity and whether it was queued.
     case sent(windowID: UUID?, workspaceID: UUID, surfaceID: UUID, queued: Bool)
 }
