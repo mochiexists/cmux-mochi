@@ -2,6 +2,22 @@
 
 All notable changes to cmux are documented here.
 
+## [0.64.172] - 2026-07-08
+
+cmux **Mochi** fork patch release.
+
+### Added
+- Added a direct "Copy File" action for file-backed tabs, alongside Reveal in Finder and Copy Path, so file-preview/code/document tabs can put the actual document on the clipboard.
+- Refreshed the CLI welcome text to cover the current Mochi fork feature set, including Conductor support for Codex and Claude panes, workspace capture, sidebar stability, Resource Monitor, and `Cmd+Shift+T` tab restore.
+
+### Changed
+- Consolidated the Task Manager mention in the welcome screen with the sidebar footer CPU/memory quick glance as "Resource Monitor".
+- Reduced Sentry noise from development, XCTest, CI, and help-command paths while keeping production telemetry enabled.
+
+### Fixed
+- Fixed cmux CLI help requests such as `cmux ping help` so they print usage locally instead of attempting socket work and reporting noisy CLI errors.
+- Hardened socket-control tests and UI regression diagnostics so the CI lanes are less sensitive to local environment leakage and transient display rendering churn.
+
 ## [0.64.171] - 2026-07-07
 
 cmux **Mochi** fork patch release.
