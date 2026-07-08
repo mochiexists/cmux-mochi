@@ -106,7 +106,7 @@ final class DisplayResolutionRegressionUITests: XCTestCase {
             }
 
             let doneMarker = readTrimmedFile(atPath: displayDonePath)
-            if doneMarker == "done" && maxMetalDrawableCount >= baselineMetalDrawableCount + 8 {
+            if doneMarker == "done" && maxPresentCount >= baselinePresentCount + 8 {
                 break
             }
             if let doneMarker, doneMarker.hasPrefix("error:") {
@@ -132,9 +132,9 @@ final class DisplayResolutionRegressionUITests: XCTestCase {
         maxDiagnosticsUpdatedAt = max(maxDiagnosticsUpdatedAt, finalStats.diagnosticsUpdatedAt)
 
         XCTAssertGreaterThanOrEqual(
-            maxMetalDrawableCount - baselineMetalDrawableCount,
+            maxPresentCount - baselinePresentCount,
             8,
-            "Expected terminal drawables to keep advancing during display churn. baseline=\(baselineStats) last=\(lastStats) final=\(finalStats) maxPresentDelta=\(maxPresentCount - baselinePresentCount)"
+            "Expected terminal presents to keep advancing during display churn. baseline=\(baselineStats) last=\(lastStats) final=\(finalStats) maxMetalDelta=\(maxMetalDrawableCount - baselineMetalDrawableCount)"
         )
         XCTAssertGreaterThan(
             maxDiagnosticsUpdatedAt,
