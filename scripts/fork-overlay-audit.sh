@@ -113,8 +113,8 @@ require_command_output "https://github.com/mochiexists/bonsplit.git" \
   git -C "$ROOT_DIR" config --file .gitmodules --get submodule.vendor/bonsplit.url
 
 bonsplit_status="$(git -C "$ROOT_DIR" submodule status vendor/bonsplit)"
-if [[ "$bonsplit_status" != " e0b043de49ef4157d55afa744144454e226d7320 vendor/bonsplit"* ]]; then
-  fail "vendor/bonsplit is not pinned to e0b043de49ef4157d55afa744144454e226d7320: $bonsplit_status"
+if [[ "$bonsplit_status" != " 09f8968c1acfb98c87d2b066309bbd4b619a88f2 vendor/bonsplit"* ]]; then
+  fail "vendor/bonsplit is not pinned to 09f8968c1acfb98c87d2b066309bbd4b619a88f2: $bonsplit_status"
 fi
 
 require_file_contains "scripts/reload.sh" 'APP_NAME="cmux Mochi DEV"'
