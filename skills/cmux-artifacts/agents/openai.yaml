@@ -1,0 +1,4 @@
+interface:
+  display_name: "cmux Artifacts"
+  short_description: "Create and edit live artifact panes in cmux."
+  default_prompt: "Use this skill to create, open, place, and verify cmux artifact panes, including right-side helper-pane reuse and artifact-to-agent follow-up placement."

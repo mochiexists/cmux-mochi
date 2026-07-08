@@ -99,14 +99,58 @@ For detailed ID handling, read `references/session-routing.md`.
 
 ## Creating a Worker Pane
 
-Create a right split in the current workspace when a fresh worker is needed:
+Before creating a worker, inspect live topology:
 
 ```bash
-cmux new-split right
+cmux identify --json
 cmux tree --all --id-format both
 ```
 
-Launch the requested agent in the new surface:
+Do not run repeated `cmux <command> --help` during normal worker placement.
+These recipes are the expected command surface; use help only when a command
+fails in a way that suggests version drift.
+
+Default placement policy:
+
+- If no right helper pane exists and the user asks for a worker "to the right",
+  create one right split.
+- If a right helper pane already exists, create a new surface/tab inside that
+  pane instead of splitting the workspace again.
+- Only create another split when the user explicitly asks for another split,
+  separate pane, or a direction relative to a specific surface.
+- For "below it", "under the artifact", or "next to that", resolve "it/that" to
+  the most recently created relevant surface when unambiguous, then split from
+  that surface.
+
+Create a right split in the current workspace when a fresh split is genuinely
+needed:
+
+```bash
+cmux new-split right --workspace "${CMUX_WORKSPACE_ID:-}" --surface "${CMUX_SURFACE_ID:-}" --focus false
+cmux tree --all --id-format both
+```
+
+Create a worker tab in an existing helper pane when reusing the right helper:
+
+```bash
+cmux new-surface --workspace "${CMUX_WORKSPACE_ID:-}" --pane "$HELPER_PANE" --type terminal --focus false
+```
+
+Create Codex below a known artifact surface:
+
+```bash
+cmux new-split down --workspace "${CMUX_WORKSPACE_ID:-}" --surface "$ARTIFACT_SURFACE" --focus false
+cmux tree --all --id-format both
+cmux send --surface "$NEW_SURFACE" --enter "codex"
+```
+
+Prefer a future high-level command when available:
+
+```bash
+cmux agent new --provider codex --below "$ARTIFACT_SURFACE" --cwd "$PWD"
+```
+
+Launch the requested terminal agent in the new surface:
 
 ```bash
 cmux send --surface "$TARGET_SURFACE" --enter "cxy"

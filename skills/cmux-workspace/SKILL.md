@@ -95,6 +95,42 @@ Use this policy:
 
 This means repeated "open it" requests should normally create tabs inside the existing right helper pane, not more splits.
 
+## Placement Intent Recipes
+
+Separate necessary live truth checks from avoidable command-discovery checks:
+
+- Necessary: `cmux identify --json`, `cmux tree --all --id-format both`,
+  `cmux list-panes --workspace ... --json`, and
+  `cmux list-pane-surfaces --workspace ... --json` before mutating layout.
+- Avoid during normal flows: repeated `cmux <command> --help`. The skills
+  should provide the common recipes; use help only when an installed cmux build
+  appears to have a different command surface.
+
+Default placement policy:
+
+- "Put it to the right" / "open it in the pane to the right": if no right helper
+  pane exists, create one right split. If a right helper pane already exists,
+  create a new surface/tab inside that pane.
+- "Another split", "separate pane", "split the workspace", or an explicit
+  direction from a specific surface: create the requested split.
+- "Below it", "under that", or "next to the artifact": resolve the pronoun to
+  the most recently created relevant surface when unambiguous, then split from
+  that surface. If more than one recent target could match, inspect `cmux tree`
+  and ask only if the topology is still ambiguous.
+
+Artifact-to-agent follow-up:
+
+```bash
+cmux identify --json
+cmux tree --all --id-format both
+cmux new-split down --workspace "${CMUX_WORKSPACE_ID:-}" --surface "$ARTIFACT_SURFACE" --focus false
+cmux tree --all --id-format both
+cmux send --surface "$NEW_SURFACE" --enter "codex"
+```
+
+Keep the created surface ID from command output or the follow-up tree read; do
+not focus panes just to discover the target.
+
 ## Hierarchy
 
 - Window: a macOS cmux window.
