@@ -21,6 +21,7 @@ final class AgentSessionWebRendererSession {
         rendererKind: AgentSessionRendererKind,
         initialProviderID: AgentSessionProviderID,
         workingDirectory: String?,
+        restoredFromSession: Bool,
         theme: AgentSessionWebTheme,
         isFocused: Bool
     ) -> AgentSessionWebRendererCoordinator {
@@ -30,6 +31,7 @@ final class AgentSessionWebRendererSession {
             rendererKind: rendererKind,
             initialProviderID: initialProviderID,
             workingDirectory: workingDirectory,
+            restoredFromSession: restoredFromSession,
             theme: theme,
             isFocused: isFocused
         )

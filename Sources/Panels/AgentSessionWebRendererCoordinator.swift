@@ -10,6 +10,7 @@ final class AgentSessionWebRendererCoordinator: NSObject, WKNavigationDelegate, 
     private var rendererKind: AgentSessionRendererKind = .react
     private var initialProviderID: AgentSessionProviderID = .codex
     private var workingDirectory: String?
+    private var restoredFromSession = false
     private var theme: AgentSessionWebTheme = .resolve(
         appearance: .fromConfig(GhosttyConfig.load())
     )
@@ -36,6 +37,7 @@ final class AgentSessionWebRendererCoordinator: NSObject, WKNavigationDelegate, 
         rendererKind: AgentSessionRendererKind,
         initialProviderID: AgentSessionProviderID,
         workingDirectory: String?,
+        restoredFromSession: Bool,
         theme: AgentSessionWebTheme,
         isFocused: Bool
     ) {
@@ -50,6 +52,7 @@ final class AgentSessionWebRendererCoordinator: NSObject, WKNavigationDelegate, 
         self.rendererKind = rendererKind
         self.initialProviderID = initialProviderID
         self.workingDirectory = workingDirectory
+        self.restoredFromSession = restoredFromSession
         isPanelFocused = isFocused
         let themeChanged = self.theme != theme
         self.theme = theme
@@ -582,7 +585,7 @@ final class AgentSessionWebRendererCoordinator: NSObject, WKNavigationDelegate, 
                     "executableName": provider.executableName,
                     "transportKind": provider.transportKind,
                     "arguments": provider.launchArguments,
-                    "autoStart": provider.shouldAutoStartSession
+                    "autoStart": provider.shouldAutoStartSession(restoredFromSession: restoredFromSession)
                 ] as [String: Any]
             }
         case "provider.select":

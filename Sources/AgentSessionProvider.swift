@@ -65,4 +65,8 @@ enum AgentSessionProviderID: String, CaseIterable, Codable, Identifiable, Sendab
             return false
         }
     }
+
+    func shouldAutoStartSession(restoredFromSession: Bool) -> Bool {
+        shouldAutoStartSession && !restoredFromSession
+    }
 }
