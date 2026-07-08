@@ -115,13 +115,13 @@ import CmuxSettings
         ]
         let path = SocketControlSettings.socketPath(
             environment: environment,
-            bundleIdentifier: "com.cmuxterm.app.debug",
+            bundleIdentifier: SocketControlSettings.baseDebugBundleIdentifier,
             isDebugBuild: true,
             currentUserID: 501,
             probeStableDefaultPathEntry: { _ in .missing }
         )
         let defaultPath = SocketControlSettings.defaultSocketPath(
-            bundleIdentifier: "com.cmuxterm.app.debug",
+            bundleIdentifier: SocketControlSettings.baseDebugBundleIdentifier,
             environment: environment,
             isDebugBuild: true,
             currentUserID: 501,
@@ -139,7 +139,7 @@ import CmuxSettings
                 "CMUX_SOCKET_PATH": "/tmp/cmux-forced.sock",
                 "XCTestConfigurationFilePath": "/tmp/Test-cmux-unit-2026.06.17.xctestconfiguration",
             ],
-            bundleIdentifier: "com.cmuxterm.app.debug",
+            bundleIdentifier: SocketControlSettings.baseDebugBundleIdentifier,
             isDebugBuild: true,
             currentUserID: 501,
             probeStableDefaultPathEntry: { _ in .missing }
@@ -152,7 +152,7 @@ import CmuxSettings
             environment: [
                 "DYLD_INSERT_LIBRARIES": "/Applications/Xcode.app/Contents/Developer/usr/lib/libXCTestSwiftSupport.dylib",
             ],
-            bundleIdentifier: "com.cmuxterm.app.debug",
+            bundleIdentifier: SocketControlSettings.baseDebugBundleIdentifier,
             isDebugBuild: true,
             currentUserID: 501,
             probeStableDefaultPathEntry: { _ in .missing }
@@ -167,7 +167,7 @@ import CmuxSettings
             environment: [
                 "XCTestConfigurationFilePath": "/tmp/first/Test-cmux-unit.xctestconfiguration",
             ],
-            bundleIdentifier: "com.cmuxterm.app.debug",
+            bundleIdentifier: SocketControlSettings.baseDebugBundleIdentifier,
             isDebugBuild: true,
             currentUserID: 501,
             probeStableDefaultPathEntry: { _ in .missing }
@@ -176,7 +176,7 @@ import CmuxSettings
             environment: [
                 "XCTestConfigurationFilePath": "/tmp/second/Test-cmux-unit.xctestconfiguration",
             ],
-            bundleIdentifier: "com.cmuxterm.app.debug",
+            bundleIdentifier: SocketControlSettings.baseDebugBundleIdentifier,
             isDebugBuild: true,
             currentUserID: 501,
             probeStableDefaultPathEntry: { _ in .missing }
@@ -192,7 +192,7 @@ import CmuxSettings
                 "CMUX_TAG": "ci-split-theme",
                 "XCTestConfigurationFilePath": "/tmp/Test-cmux-unit-2026.06.17.xctestconfiguration",
             ],
-            bundleIdentifier: "com.cmuxterm.app.debug",
+            bundleIdentifier: SocketControlSettings.baseDebugBundleIdentifier,
             isDebugBuild: true,
             currentUserID: 501,
             probeStableDefaultPathEntry: { _ in .missing }
