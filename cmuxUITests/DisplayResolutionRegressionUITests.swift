@@ -78,7 +78,9 @@ final class DisplayResolutionRegressionUITests: XCTestCase {
             return
         }
         let baselinePresentCount = baselineStats.presentCount
+        let baselineMetalDrawableCount = baselineStats.metalDrawableCount
         var maxPresentCount = baselinePresentCount
+        var maxMetalDrawableCount = baselineMetalDrawableCount
         var maxDiagnosticsUpdatedAt = baselineStats.diagnosticsUpdatedAt
         var lastStats = baselineStats
 
@@ -99,11 +101,12 @@ final class DisplayResolutionRegressionUITests: XCTestCase {
             if let stats = loadRenderStats() {
                 lastStats = stats
                 maxPresentCount = max(maxPresentCount, stats.presentCount)
+                maxMetalDrawableCount = max(maxMetalDrawableCount, stats.metalDrawableCount)
                 maxDiagnosticsUpdatedAt = max(maxDiagnosticsUpdatedAt, stats.diagnosticsUpdatedAt)
             }
 
             let doneMarker = readTrimmedFile(atPath: displayDonePath)
-            if doneMarker == "done" && maxPresentCount >= baselinePresentCount + 8 {
+            if doneMarker == "done" && maxMetalDrawableCount >= baselineMetalDrawableCount + 8 {
                 break
             }
             if let doneMarker, doneMarker.hasPrefix("error:") {
@@ -125,12 +128,13 @@ final class DisplayResolutionRegressionUITests: XCTestCase {
         }
 
         maxPresentCount = max(maxPresentCount, finalStats.presentCount)
+        maxMetalDrawableCount = max(maxMetalDrawableCount, finalStats.metalDrawableCount)
         maxDiagnosticsUpdatedAt = max(maxDiagnosticsUpdatedAt, finalStats.diagnosticsUpdatedAt)
 
         XCTAssertGreaterThanOrEqual(
-            maxPresentCount - baselinePresentCount,
+            maxMetalDrawableCount - baselineMetalDrawableCount,
             8,
-            "Expected terminal presents to keep advancing during display churn. baseline=\(baselineStats) last=\(lastStats) final=\(finalStats)"
+            "Expected terminal drawables to keep advancing during display churn. baseline=\(baselineStats) last=\(lastStats) final=\(finalStats) maxPresentDelta=\(maxPresentCount - baselinePresentCount)"
         )
         XCTAssertGreaterThan(
             maxDiagnosticsUpdatedAt,
@@ -309,7 +313,7 @@ final class DisplayResolutionRegressionUITests: XCTestCase {
         // UI test bundle is at:
         //   .../Build/Products/Debug/cmuxUITests-Runner.app/Contents/PlugIns/cmuxUITests.xctest
         // The app binary is at:
-        //   .../Build/Products/Debug/cmux DEV.app/Contents/MacOS/cmux DEV
+        //   .../Build/Products/Debug/cmux Mochi DEV.app/Contents/MacOS/cmux Mochi DEV
         let testBundle = Bundle(for: Self.self)
         let productsDir = testBundle.bundleURL
             .deletingLastPathComponent()  // -> .../Contents/PlugIns
@@ -317,8 +321,8 @@ final class DisplayResolutionRegressionUITests: XCTestCase {
             .deletingLastPathComponent()  // -> .../cmuxUITests-Runner.app
             .deletingLastPathComponent()  // -> .../Debug
         let binaryPath = productsDir
-            .appendingPathComponent("cmux DEV.app")
-            .appendingPathComponent("Contents/MacOS/cmux DEV")
+            .appendingPathComponent("cmux Mochi DEV.app")
+            .appendingPathComponent("Contents/MacOS/cmux Mochi DEV")
             .path
         if FileManager.default.fileExists(atPath: binaryPath) {
             return binaryPath
@@ -444,43 +448,6 @@ final class DisplayResolutionRegressionUITests: XCTestCase {
         ] {
             guard !path.isEmpty else { continue }
             try? FileManager.default.removeItem(atPath: path)
-        }
-    }
-
-    private struct RenderStats: CustomStringConvertible {
-        let panelId: String
-        let drawCount: Int
-        let presentCount: Int
-        let lastPresentTime: Double
-        let windowVisible: Bool
-        let appIsActive: Bool
-        let desiredFocus: Bool
-        let isFirstResponder: Bool
-        let diagnosticsUpdatedAt: Double
-
-        init?(diagnostics: [String: String]) {
-            guard diagnostics["renderStatsAvailable"] == "1",
-                  let panelId = diagnostics["renderPanelId"], !panelId.isEmpty,
-                  let drawCount = Int(diagnostics["renderDrawCount"] ?? ""),
-                  let presentCount = Int(diagnostics["renderPresentCount"] ?? ""),
-                  let lastPresentTime = Double(diagnostics["renderLastPresentTime"] ?? ""),
-                  let diagnosticsUpdatedAt = Double(diagnostics["renderDiagnosticsUpdatedAt"] ?? "") else {
-                return nil
-            }
-
-            self.panelId = panelId
-            self.drawCount = drawCount
-            self.presentCount = presentCount
-            self.lastPresentTime = lastPresentTime
-            self.windowVisible = diagnostics["renderWindowVisible"] == "1"
-            self.appIsActive = diagnostics["renderAppIsActive"] == "1"
-            self.desiredFocus = diagnostics["renderDesiredFocus"] == "1"
-            self.isFirstResponder = diagnostics["renderIsFirstResponder"] == "1"
-            self.diagnosticsUpdatedAt = diagnosticsUpdatedAt
-        }
-
-        var description: String {
-            "panel=\(panelId) draw=\(drawCount) present=\(presentCount) lastPresent=\(String(format: "%.3f", lastPresentTime)) visible=\(windowVisible) active=\(appIsActive) desiredFocus=\(desiredFocus) firstResponder=\(isFirstResponder) updatedAt=\(String(format: "%.3f", diagnosticsUpdatedAt))"
         }
     }
 

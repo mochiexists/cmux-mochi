@@ -975,23 +975,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
     private var gotoSplitUITestRecorder: DispatchSourceTimer?
     private var gotoSplitUITestObservers: [NSObjectProtocol] = []
     private var didSetupMultiWindowNotificationsUITest = false
-    private var didSetupDisplayResolutionUITestDiagnostics = false
-    private var displayResolutionUITestObservers: [NSObjectProtocol] = []
+    var didSetupDisplayResolutionUITestDiagnostics = false
+    var displayResolutionUITestObservers: [NSObjectProtocol] = []
+    var displayResolutionUITestDiagnosticsTimer: Timer?
     private var didSetupFeedSidebarUITest = false
     private var didStartFeedSidebarUITestPush = false
     private var feedSidebarUITestObservers: [NSObjectProtocol] = []
     private var didSetupPortalStatsUITestDiagnostics = false
     private var portalStatsUITestObservers: [NSObjectProtocol] = []
-    private struct UITestRenderDiagnosticsSnapshot {
-        let panelId: UUID
-        let drawCount: Int
-        let presentCount: Int
-        let lastPresentTime: Double
-        let windowVisible: Bool
-        let appIsActive: Bool
-        let desiredFocus: Bool
-        let isFirstResponder: Bool
-    }
     var debugCloseMainWindowConfirmationHandler: ((NSWindow) -> Bool)?
     /// Test seam: when set, ``openDiffViewerForFocusedWorkspace(for:)`` invokes this
     /// instead of spawning the bundled `cmux diff` CLI, so shortcut-dispatch tests can
@@ -1690,70 +1681,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         case .none:
             return ""
         }
-    }
-
-    private func appendUITestRenderDiagnosticsIfNeeded(
-        _ payload: inout [String: String],
-        environment env: [String: String]
-    ) {
-        guard env["CMUX_UI_TEST_DISPLAY_RENDER_STATS"] == "1" else { return }
-
-        guard let renderState = currentUITestRenderDiagnostics() else {
-            payload["renderStatsAvailable"] = "0"
-            payload["renderPanelId"] = ""
-            payload["renderDrawCount"] = ""
-            payload["renderPresentCount"] = ""
-            payload["renderLastPresentTime"] = ""
-            payload["renderWindowVisible"] = ""
-            payload["renderAppIsActive"] = ""
-            payload["renderDesiredFocus"] = ""
-            payload["renderIsFirstResponder"] = ""
-            payload["renderDiagnosticsUpdatedAt"] = String(format: "%.6f", ProcessInfo.processInfo.systemUptime)
-            return
-        }
-
-        payload["renderStatsAvailable"] = "1"
-        payload["renderPanelId"] = renderState.panelId.uuidString
-        payload["renderDrawCount"] = String(renderState.drawCount)
-        payload["renderPresentCount"] = String(renderState.presentCount)
-        payload["renderLastPresentTime"] = String(format: "%.6f", renderState.lastPresentTime)
-        payload["renderWindowVisible"] = renderState.windowVisible ? "1" : "0"
-        payload["renderAppIsActive"] = renderState.appIsActive ? "1" : "0"
-        payload["renderDesiredFocus"] = renderState.desiredFocus ? "1" : "0"
-        payload["renderIsFirstResponder"] = renderState.isFirstResponder ? "1" : "0"
-        payload["renderDiagnosticsUpdatedAt"] = String(format: "%.6f", ProcessInfo.processInfo.systemUptime)
-    }
-
-    private func currentUITestRenderDiagnostics() -> UITestRenderDiagnosticsSnapshot? {
-        guard let tabManager,
-              let tabId = tabManager.selectedTabId,
-              let workspace = tabManager.tabs.first(where: { $0.id == tabId }) else {
-            return nil
-        }
-
-        let terminalPanel: TerminalPanel? = {
-            if let focusedPanelId = workspace.focusedPanelId,
-               let terminalPanel = workspace.terminalPanel(for: focusedPanelId) {
-                return terminalPanel
-            }
-            if let focusedTerminalPanel = workspace.focusedTerminalPanel {
-                return focusedTerminalPanel
-            }
-            return workspace.panels.values.compactMap { $0 as? TerminalPanel }.first
-        }()
-
-        guard let terminalPanel else { return nil }
-        let stats = terminalPanel.hostedView.debugRenderStats()
-        return UITestRenderDiagnosticsSnapshot(
-            panelId: terminalPanel.id,
-            drawCount: stats.drawCount,
-            presentCount: stats.presentCount,
-            lastPresentTime: stats.lastPresentTime,
-            windowVisible: stats.windowOcclusionVisible,
-            appIsActive: stats.appIsActive,
-            desiredFocus: stats.desiredFocus,
-            isFirstResponder: stats.isFirstResponder
-        )
     }
 
     private func moveUITestWindowToTargetDisplayIfNeeded(attempt: Int = 0) {
@@ -2993,6 +2920,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
             guard let self else { return }
             let observer = center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
                 Task { @MainActor [weak self] in
+                    self?.refreshDisplayResolutionUITestTerminal(reason: stage)
                     self?.writeUITestDiagnosticsIfNeeded(stage: stage)
                 }
             }
@@ -3005,6 +2933,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         observe(NSWindow.didChangeBackingPropertiesNotification, "displayUITest.windowDidChangeBacking")
         observe(.terminalSurfaceDidBecomeReady, "displayUITest.terminalSurfaceDidBecomeReady")
         observe(.terminalPortalVisibilityDidChange, "displayUITest.terminalPortalVisibilityDidChange")
+
+        displayResolutionUITestDiagnosticsTimer?.invalidate()
+        let timer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.refreshDisplayResolutionUITestTerminal(reason: "displayUITest.poll")
+                self?.writeUITestDiagnosticsIfNeeded(stage: "displayUITest.poll")
+            }
+        }
+        timer.tolerance = 0.05
+        displayResolutionUITestDiagnosticsTimer = timer
 
         writeUITestDiagnosticsIfNeeded(stage: "displayUITest.setup")
     }
@@ -3020,7 +2958,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            self?.writeUITestDiagnosticsIfNeeded(stage: "feedSidebarUITest.terminalPortalVisibilityDidChange")
+            Task { @MainActor [weak self] in
+                self?.writeUITestDiagnosticsIfNeeded(stage: "feedSidebarUITest.terminalPortalVisibilityDidChange")
+            }
         }
         portalStatsUITestObservers.append(observer)
         writeUITestDiagnosticsIfNeeded(stage: "feedSidebarUITest.portalStats.setup")

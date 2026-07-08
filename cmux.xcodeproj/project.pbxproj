@@ -58,6 +58,7 @@
 		C4160A030000000000000001 /* AppDelegate+ClosedItemHistory.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4160A030000000000000002 /* AppDelegate+ClosedItemHistory.swift */; };
 		C3677004000000000000001 /* AppDelegate+CmuxSSHURL.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3677004000000000000002 /* AppDelegate+CmuxSSHURL.swift */; };
 		C65930010000000000000003 /* AppDelegate+CrashSessionSnapshotRemoval.swift in Sources */ = {isa = PBXBuildFile; fileRef = C65930010000000000000004 /* AppDelegate+CrashSessionSnapshotRemoval.swift */; };
+		C0DEF6D10000000000000001 /* AppDelegate+DisplayResolutionUITestDiagnostics.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DEF6D10000000000000002 /* AppDelegate+DisplayResolutionUITestDiagnostics.swift */; };
 		E3309A01 /* AppDelegate+EqualizeSplitsShortcut.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3309A02 /* AppDelegate+EqualizeSplitsShortcut.swift */; };
 		C4160A040000000000000001 /* AppDelegate+FocusHistoryContextMenu.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4160A040000000000000002 /* AppDelegate+FocusHistoryContextMenu.swift */; };
 		3865A0063865A0063865A006 /* AppDelegate+GlobalSearch.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3865B0063865B0063865B006 /* AppDelegate+GlobalSearch.swift */; };
@@ -407,6 +408,7 @@
 		D1FFC0DE000000000000A002 /* DiffCommentStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1FFC0DE000000000000A001 /* DiffCommentStore.swift */; };
 		D1FFC0DE000000000000C002 /* DiffCommentStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1FFC0DE000000000000C001 /* DiffCommentStoreTests.swift */; };
 		D1FFC0DE000000000000D002 /* DiffCommentSubmissionPool.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1FFC0DE000000000000D001 /* DiffCommentSubmissionPool.swift */; };
+		B8F266296A1A3D9A45BD840F /* DisplayResolutionRegressionUITests+RenderStats.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8F266286A1A3D9A45BD840F /* DisplayResolutionRegressionUITests+RenderStats.swift */; };
 		B8F266266A1A3D9A45BD840F /* DisplayResolutionRegressionUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8F266276A1A3D9A45BD840F /* DisplayResolutionRegressionUITests.swift */; };
 		D0C0D0C0D0C0D0C0D0C0D003 /* DockEmptyView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0C0D0C0D0C0D0C0D0C0D004 /* DockEmptyView.swift */; };
 		D0C0D0C0D0C0D0C0D0C0D001 /* DockPanelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0C0D0C0D0C0D0C0D0C0D002 /* DockPanelView.swift */; };
@@ -1234,6 +1236,7 @@
 		C4160A030000000000000002 /* AppDelegate+ClosedItemHistory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppDelegate+ClosedItemHistory.swift"; sourceTree = "<group>"; };
 		C3677004000000000000002 /* AppDelegate+CmuxSSHURL.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppDelegate+CmuxSSHURL.swift"; sourceTree = "<group>"; };
 		C65930010000000000000004 /* AppDelegate+CrashSessionSnapshotRemoval.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppDelegate+CrashSessionSnapshotRemoval.swift"; sourceTree = "<group>"; };
+		C0DEF6D10000000000000002 /* AppDelegate+DisplayResolutionUITestDiagnostics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppDelegate+DisplayResolutionUITestDiagnostics.swift"; sourceTree = "<group>"; };
 		E3309A02 /* AppDelegate+EqualizeSplitsShortcut.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppDelegate+EqualizeSplitsShortcut.swift"; sourceTree = "<group>"; };
 		C4160A040000000000000002 /* AppDelegate+FocusHistoryContextMenu.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppDelegate+FocusHistoryContextMenu.swift"; sourceTree = "<group>"; };
 		3865B0063865B0063865B006 /* AppDelegate+GlobalSearch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Search/AppDelegate+GlobalSearch.swift"; sourceTree = "<group>"; };
@@ -1532,6 +1535,7 @@
 		D1FFC0DE000000000000A001 /* DiffCommentStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiffCommentStore.swift; sourceTree = "<group>"; };
 		D1FFC0DE000000000000C001 /* DiffCommentStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiffCommentStoreTests.swift; sourceTree = "<group>"; };
 		D1FFC0DE000000000000D001 /* DiffCommentSubmissionPool.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiffCommentSubmissionPool.swift; sourceTree = "<group>"; };
+		B8F266286A1A3D9A45BD840F /* DisplayResolutionRegressionUITests+RenderStats.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "DisplayResolutionRegressionUITests+RenderStats.swift"; sourceTree = "<group>"; };
 		B8F266276A1A3D9A45BD840F /* DisplayResolutionRegressionUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DisplayResolutionRegressionUITests.swift; sourceTree = "<group>"; };
 		D0C0D0C0D0C0D0C0D0C0D004 /* DockEmptyView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DockEmptyView.swift; sourceTree = "<group>"; };
 		D0C0D0C0D0C0D0C0D0C0D002 /* DockPanelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DockPanelView.swift; sourceTree = "<group>"; };
@@ -2377,6 +2381,7 @@
 				B8F266256A1A3D9A45BD840F /* SidebarHelpMenuUITests.swift */,
 				C0DE32470000000000000006 /* CommandPaletteIdentifierClipboardUITests.swift */,
 				B8F266276A1A3D9A45BD840F /* DisplayResolutionRegressionUITests.swift */,
+				B8F266286A1A3D9A45BD840F /* DisplayResolutionRegressionUITests+RenderStats.swift */,
 				F0F0A002A1B2C3D4E5F60718 /* WorkspaceSidebarScrollUITests.swift */,
 				C2577001A1B2C3D4E5F60718 /* TerminalCmdClickUITests.swift */,
 				B9000131A1B2C3D4E5F60719 /* SidebarPullRequestInteractivityUITests.swift */,
@@ -2792,6 +2797,7 @@
 				C3677002000000000000002 /* CmuxSSHURLRequest.swift */,
 				C3677004000000000000002 /* AppDelegate+CmuxSSHURL.swift */,
 				C65930010000000000000004 /* AppDelegate+CrashSessionSnapshotRemoval.swift */,
+				C0DEF6D10000000000000002 /* AppDelegate+DisplayResolutionUITestDiagnostics.swift */,
 				E3309A02 /* AppDelegate+EqualizeSplitsShortcut.swift */,
 				D7AB00000000000000000002 /* AppDelegate+MoveTabToNewWorkspace.swift */,
 				2907A0022907A0022907A002 /* AppDelegate+RecoverableMainWindowRoutes.swift */,
@@ -3921,6 +3927,7 @@
 				C4160A030000000000000001 /* AppDelegate+ClosedItemHistory.swift in Sources */,
 				C3677004000000000000001 /* AppDelegate+CmuxSSHURL.swift in Sources */,
 				C65930010000000000000003 /* AppDelegate+CrashSessionSnapshotRemoval.swift in Sources */,
+				C0DEF6D10000000000000001 /* AppDelegate+DisplayResolutionUITestDiagnostics.swift in Sources */,
 				E3309A01 /* AppDelegate+EqualizeSplitsShortcut.swift in Sources */,
 				C4160A040000000000000001 /* AppDelegate+FocusHistoryContextMenu.swift in Sources */,
 				3865A0063865A0063865A006 /* AppDelegate+GlobalSearch.swift in Sources */,
@@ -4602,6 +4609,7 @@
 				B900001BA1B2C3D4E5F60719 /* CloseWorkspacesConfirmDialogUITests.swift in Sources */,
 				C0DE32470000000000000005 /* CommandPaletteIdentifierClipboardUITests.swift in Sources */,
 				D10000000000000000B00000 /* ControlSocketReadinessUITestSupport.swift in Sources */,
+				B8F266296A1A3D9A45BD840F /* DisplayResolutionRegressionUITests+RenderStats.swift in Sources */,
 				B8F266266A1A3D9A45BD840F /* DisplayResolutionRegressionUITests.swift in Sources */,
 				FEED0000000000000000F009 /* FeedSidebarUITests.swift in Sources */,
 				D0E0F0B4A1B2C3D4E5F60718 /* FindSelectionShortcutUITests.swift in Sources */,
