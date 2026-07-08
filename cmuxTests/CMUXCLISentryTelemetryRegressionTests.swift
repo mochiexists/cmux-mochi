@@ -27,7 +27,7 @@ private final class CMUXCLISentryTelemetryBundleToken {}
         let probePath = root.appendingPathComponent("sentry-probe.txt", isDirectory: false).path
         let result = runProcess(
             executablePath: cliPath,
-            arguments: ["ping"],
+            arguments: ["--socket", socketPath, "ping"],
             environment: sentryProbeEnvironment(socketPath: socketPath, probePath: probePath),
             timeout: 5
         )
@@ -52,7 +52,7 @@ private final class CMUXCLISentryTelemetryBundleToken {}
         let probePath = root.appendingPathComponent("sentry-probe.txt", isDirectory: false).path
         let result = runProcess(
             executablePath: cliPath,
-            arguments: ["ping"],
+            arguments: ["--socket", socketPath, "ping"],
             environment: sentryProbeEnvironment(socketPath: socketPath, probePath: probePath),
             timeout: 5
         )
@@ -81,7 +81,7 @@ private final class CMUXCLISentryTelemetryBundleToken {}
 
         let result = runProcess(
             executablePath: cliPath,
-            arguments: ["ping"],
+            arguments: ["--socket", socketPath, "ping"],
             environment: environment,
             timeout: 2
         )
@@ -99,17 +99,47 @@ private final class CMUXCLISentryTelemetryBundleToken {}
         )
     }
 
+#if DEBUG
+    @Test func debugCLIRequiresExplicitSentryEnablement() throws {
+        let cliPath = try bundledCLIPath()
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("cmux-cli-sentry-debug-disabled-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let socketPath = "127.0.0.1:\(try unusedRelayPort())"
+        let captureProbePath = root.appendingPathComponent("sentry-capture-probe.txt", isDirectory: false).path
+        let result = runProcess(
+            executablePath: cliPath,
+            arguments: ["--socket", socketPath, "ping"],
+            environment: sentryProbeEnvironment(socketPath: socketPath, probePath: captureProbePath, enableSentry: false),
+            timeout: 2
+        )
+
+        #expect(!result.timedOut, Comment(rawValue: result.stdout))
+        #expect(result.status != 0, Comment(rawValue: result.stdout))
+        #expect(result.stdout.contains("Missing relay auth metadata"), Comment(rawValue: result.stdout))
+        #expect(
+            !FileManager.default.fileExists(atPath: captureProbePath),
+            Comment(rawValue: "Debug CLI telemetry should be opt-in. Output: \(result.stdout)")
+        )
+    }
+#endif
+
     private func bundledCLIPath() throws -> String {
         try BundledCLITestSupport.bundledCLIPath(for: CMUXCLISentryTelemetryBundleToken.self)
     }
 
-    private func sentryProbeEnvironment(socketPath: String, probePath: String) -> [String: String] {
+    private func sentryProbeEnvironment(socketPath: String, probePath: String, enableSentry: Bool = true) -> [String: String] {
         var environment = ProcessInfo.processInfo.environment
         for key in Array(environment.keys) where key.hasPrefix("CMUX_") {
             environment.removeValue(forKey: key)
         }
         environment["CMUX_SOCKET_PATH"] = socketPath
         environment["CMUX_CLI_SENTRY_CAPTURE_PROBE_PATH"] = probePath
+        if enableSentry {
+            environment["CMUX_CLI_SENTRY_ENABLED"] = "1"
+        }
         environment["CMUXTERM_CLI_RESPONSE_TIMEOUT_SEC"] = "0.1"
         environment["HOME"] = URL(fileURLWithPath: probePath).deletingLastPathComponent().path
         return environment

@@ -10039,17 +10039,26 @@ final class Workspace: Identifiable, ObservableObject {
     }
 
     private func bonsplitTabContextMenuItems(for tabId: TabID) -> [TabContextMenuItem] {
-        guard tabContextActionTarget(tabId: tabId) != nil else { return [] }
-        return [
+        guard let target = tabContextActionTarget(tabId: tabId) else { return [] }
+        var items = [
             TabContextMenuItem(
                 id: Self.revealInFinderTabContextMenuItemId,
                 title: String(localized: "contextMenu.revealInFinder", defaultValue: "Reveal in Finder")
-            ),
+            )
+        ]
+        if target.isFile {
+            items.append(TabContextMenuItem(
+                id: Self.copyFileTabContextMenuItemId,
+                title: FileExternalOpenText.copyFileLabel(fileURL: URL(fileURLWithPath: target.path))
+            ))
+        }
+        items.append(
             TabContextMenuItem(
                 id: Self.copyPathTabContextMenuItemId,
                 title: String(localized: "contextMenu.copyPath", defaultValue: "Copy Path")
-            ),
-        ]
+            )
+        )
+        return items
     }
 
     private func copyIdentifiersToPasteboard(surfaceId: UUID) {
@@ -11706,6 +11715,7 @@ extension Workspace: BonsplitDelegate {
     }
 
     private static let revealInFinderTabContextMenuItemId = "revealInFinder"
+    private static let copyFileTabContextMenuItemId = "copyFile"
     private static let copyPathTabContextMenuItemId = "copyPath"
 
     private func directoryForTabContextAction(tabId: TabID) -> String? {
@@ -11717,7 +11727,7 @@ extension Workspace: BonsplitDelegate {
         return directory.isEmpty ? nil : directory
     }
 
-    /// Pure target-resolution for a tab's Reveal-in-Finder / Copy-Path actions.
+    /// Pure target-resolution for a tab's Reveal-in-Finder / Copy-File / Copy-Path actions.
     /// A markdown pane's backing file wins, then a browser pane showing a local
     /// `file://` page (its file) — both revealed as a *selected file*. Otherwise
     /// fall back to the pane's working directory, revealed as a *folder*. A
@@ -11743,12 +11753,12 @@ extension Workspace: BonsplitDelegate {
         return nil
     }
 
-    /// Resolves the Reveal-in-Finder / Copy-Path target for a live tab by
+    /// Resolves the Reveal-in-Finder / Copy-File / Copy-Path target for a live tab by
     /// reading the backing panel, then delegating to the pure resolver.
     private func tabContextActionTarget(tabId: TabID) -> (path: String, isFile: Bool)? {
         let panel = panelIdFromSurfaceId(tabId).flatMap { panels[$0] }
         // Any file-backed panel (markdown, file preview, artifact, …) exposes
-        // `filePath`, so every such tab gets Reveal in Finder / Copy Path
+        // `filePath`, so every such tab gets Reveal in Finder / Copy File / Copy Path
         // without enumerating concrete panel types here.
         return Self.tabContextActionTarget(
             filePath: (panel as? FileBackedPanel)?.filePath,
@@ -13326,6 +13336,9 @@ extension Workspace: BonsplitDelegate {
         case Self.copyPathTabContextMenuItemId:
             guard let target = tabContextActionTarget(tabId: tab.id) else { return }
             FileExternalOpenAction.copyPath(target.path)
+        case Self.copyFileTabContextMenuItemId:
+            guard let target = tabContextActionTarget(tabId: tab.id), target.isFile else { return }
+            FileExternalOpenAction.copyFile(fileURL: URL(fileURLWithPath: target.path))
         default:
             break
         }

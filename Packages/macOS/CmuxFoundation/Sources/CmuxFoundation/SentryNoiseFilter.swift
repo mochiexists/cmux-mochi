@@ -6,7 +6,7 @@ public struct SentryNoiseFilter: Sendable {
     public init() {}
 
     /// Returns `true` when a CLI socket transport stage failed because the peer
-    /// was absent, refused the connection, or disappeared during a write.
+    /// was absent, refused the connection, or disappeared mid-command.
     public func isExpectedCLISocketTransportFailure(
         stage: String,
         message: String,
@@ -18,10 +18,17 @@ public struct SentryNoiseFilter: Sendable {
         return isExpectedCLISocketTransportMessage(message)
     }
 
-    /// Returns `true` for expected CLI socket connect/write error messages that
-    /// are normal lifecycle races at fleet scale.
+    /// Returns `true` for expected CLI socket connect/write/read error messages
+    /// that are normal lifecycle races at fleet scale.
     public func isExpectedCLISocketTransportMessage(_ text: String) -> Bool {
         let t = text.lowercased()
+
+        if t.contains("socket closed before reply") ||
+            t.contains("socket closed before complete reply") ||
+            t.contains("socket read error") ||
+            t == "not connected" {
+            return true
+        }
 
         let isSocketWriteFailure =
             t.contains("failed to write to socket") ||

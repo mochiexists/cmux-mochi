@@ -21,6 +21,15 @@ final class SentryNoiseFilterTests: XCTestCase {
             stage: "socket_connect",
             message: "Socket not found at /tmp/cmux.sock"
         ))
+        XCTAssertTrue(filter.isExpectedCLISocketTransportFailure(
+            stage: "hooks_claude_dispatch",
+            message: "Socket closed before reply",
+            dataKeys: ["socket_operation", "socket_phase"]
+        ))
+        XCTAssertTrue(filter.isExpectedCLISocketTransportFailure(
+            stage: "socket_command",
+            message: "Socket read error"
+        ))
     }
 
     func testKeepsActionableSocketFailures() {
@@ -54,6 +63,10 @@ final class SentryNoiseFilterTests: XCTestCase {
         XCTAssertFalse(filter.isExpectedCLISocketTransportFailure(
             stage: "codex-monitor-start",
             message: "Failed to write to socket (Broken pipe, errno 32)"
+        ))
+        XCTAssertFalse(filter.isExpectedCLISocketTransportFailure(
+            stage: "hooks_claude_dispatch",
+            message: "Socket closed before reply"
         ))
     }
 }

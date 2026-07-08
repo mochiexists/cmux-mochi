@@ -1,6 +1,6 @@
-import XCTest
 import AppKit
 import Bonsplit
+import Testing
 
 #if canImport(cmux_DEV)
 @testable import cmux_DEV
@@ -9,39 +9,39 @@ import Bonsplit
 #endif
 
 @MainActor
-final class TabContextMenuPathTests: XCTestCase {
-    func testTabContextMenuItemsProviderIsSetOnWorkspaceInit() {
+@Suite struct TabContextMenuPathTests {
+    @Test func tabContextMenuItemsProviderIsSetOnWorkspaceInit() {
         let workspace = Workspace()
 
-        XCTAssertNotNil(
-            workspace.bonsplitController.tabContextMenuItemsProvider,
+        #expect(
+            workspace.bonsplitController.tabContextMenuItemsProvider != nil,
             "Workspace should provide Bonsplit with app-owned path actions"
         )
     }
 
-    func testTabContextMenuItemsProviderTracksPanelDirectory() throws {
+    @Test func tabContextMenuItemsProviderTracksPanelDirectory() throws {
         let workspace = Workspace()
-        let panelId = try XCTUnwrap(workspace.focusedPanelId)
-        let tabId = try XCTUnwrap(workspace.surfaceIdFromPanelId(panelId))
+        let panelId = try #require(workspace.focusedPanelId)
+        let tabId = try #require(workspace.surfaceIdFromPanelId(panelId))
 
-        XCTAssertEqual(workspace.bonsplitController.tabContextMenuItemsProvider?(tabId, PaneID()).map(\.id) ?? [], [])
+        #expect(workspace.bonsplitController.tabContextMenuItemsProvider?(tabId, PaneID()).map(\.id) ?? [] == [])
 
         workspace.panelDirectories[panelId] = "   "
-        XCTAssertEqual(workspace.bonsplitController.tabContextMenuItemsProvider?(tabId, PaneID()).map(\.id) ?? [], [])
+        #expect(workspace.bonsplitController.tabContextMenuItemsProvider?(tabId, PaneID()).map(\.id) ?? [] == [])
 
         workspace.panelDirectories[panelId] = "/Users/test/Documents/project"
         let items = workspace.bonsplitController.tabContextMenuItemsProvider?(tabId, PaneID()) ?? []
-        XCTAssertEqual(items.map(\.id), ["revealInFinder", "copyPath"])
-        XCTAssertEqual(items.map(\.title), ["Reveal in Finder", "Copy Path"])
-        XCTAssertTrue(items.allSatisfy(\.isEnabled))
+        #expect(items.map(\.id) == ["revealInFinder", "copyPath"])
+        #expect(items.map(\.title) == ["Reveal in Finder", "Copy Path"])
+        #expect(items.map(\.isEnabled) == [true, true])
     }
 
-    func testCopyPathTabContextMenuItemWritesTrimmedAbsolutePathToPasteboard() throws {
+    @Test func copyPathTabContextMenuItemWritesTrimmedAbsolutePathToPasteboard() throws {
         let workspace = Workspace()
-        let panelId = try XCTUnwrap(workspace.focusedPanelId)
-        let paneId = try XCTUnwrap(workspace.paneId(forPanelId: panelId))
-        let tabId = try XCTUnwrap(workspace.surfaceIdFromPanelId(panelId))
-        let tab = try XCTUnwrap(workspace.bonsplitController.tab(tabId))
+        let panelId = try #require(workspace.focusedPanelId)
+        let paneId = try #require(workspace.paneId(forPanelId: panelId))
+        let tabId = try #require(workspace.surfaceIdFromPanelId(panelId))
+        let tab = try #require(workspace.bonsplitController.tab(tabId))
         let directory = "/Users/test/Documents/project"
         let pasteboard = NSPasteboard.general
 
@@ -55,15 +55,15 @@ final class TabContextMenuPathTests: XCTestCase {
             inPane: paneId
         )
 
-        XCTAssertEqual(pasteboard.string(forType: .string), directory)
+        #expect(pasteboard.string(forType: .string) == directory)
     }
 
-    func testCopyIdentifiersTabContextActionWritesWorkspacePaneSurfacePayload() throws {
+    @Test func copyIdentifiersTabContextActionWritesWorkspacePaneSurfacePayload() throws {
         let workspace = Workspace()
-        let panelId = try XCTUnwrap(workspace.focusedPanelId)
-        let paneId = try XCTUnwrap(workspace.paneId(forPanelId: panelId))
-        let tabId = try XCTUnwrap(workspace.surfaceIdFromPanelId(panelId))
-        let tab = try XCTUnwrap(workspace.bonsplitController.tab(tabId))
+        let panelId = try #require(workspace.focusedPanelId)
+        let paneId = try #require(workspace.paneId(forPanelId: panelId))
+        let tabId = try #require(workspace.surfaceIdFromPanelId(panelId))
+        let tab = try #require(workspace.bonsplitController.tab(tabId))
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
 
@@ -74,75 +74,76 @@ final class TabContextMenuPathTests: XCTestCase {
             inPane: paneId
         )
 
-        let payload = try XCTUnwrap(pasteboard.string(forType: .string))
-        XCTAssertTrue(payload.contains("workspace_id=\(workspace.id.uuidString)"))
-        XCTAssertTrue(payload.contains("pane_id=\(paneId.id.uuidString)"))
-        XCTAssertTrue(payload.contains("surface_id=\(panelId.uuidString)"))
+        let payload = try #require(pasteboard.string(forType: .string))
+        #expect(payload.contains("workspace_id=\(workspace.id.uuidString)"))
+        #expect(payload.contains("pane_id=\(paneId.id.uuidString)"))
+        #expect(payload.contains("surface_id=\(panelId.uuidString)"))
     }
 
     // MARK: - Markdown / browser-local-file targets (pure resolver)
 
-    func testActionTargetPrefersMarkdownFileAsSelectedFile() {
+    @Test func actionTargetPrefersMarkdownFileAsSelectedFile() {
         let target = Workspace.tabContextActionTarget(
             filePath: "  /Users/test/Documents/notes/readme.md  ",
             browserURL: nil,
             directory: "/Users/test/Documents/notes"
         )
-        XCTAssertEqual(target?.path, "/Users/test/Documents/notes/readme.md")
-        XCTAssertEqual(target?.isFile, true)
+        #expect(target?.path == "/Users/test/Documents/notes/readme.md")
+        #expect(target?.isFile == true)
     }
 
-    func testActionTargetUsesBrowserLocalFileURLAsSelectedFile() {
+    @Test func actionTargetUsesBrowserLocalFileURLAsSelectedFile() {
         let target = Workspace.tabContextActionTarget(
             filePath: nil,
             browserURL: URL(fileURLWithPath: "/Users/test/site/index.html"),
             directory: nil
         )
-        XCTAssertEqual(target?.path, "/Users/test/site/index.html")
-        XCTAssertEqual(target?.isFile, true)
+        #expect(target?.path == "/Users/test/site/index.html")
+        #expect(target?.isFile == true)
     }
 
-    func testActionTargetIgnoresRemoteBrowserURLAndFallsBackToDirectory() {
+    @Test func actionTargetIgnoresRemoteBrowserURLAndFallsBackToDirectory() {
         let target = Workspace.tabContextActionTarget(
             filePath: nil,
             browserURL: URL(string: "https://example.com/page.html"),
             directory: "/Users/test/project"
         )
-        XCTAssertEqual(target?.path, "/Users/test/project")
-        XCTAssertEqual(target?.isFile, false)
+        #expect(target?.path == "/Users/test/project")
+        #expect(target?.isFile == false)
     }
 
-    func testActionTargetFallsBackToDirectoryAsFolder() {
+    @Test func actionTargetFallsBackToDirectoryAsFolder() {
         let target = Workspace.tabContextActionTarget(
             filePath: "   ",
             browserURL: nil,
             directory: "/Users/test/project"
         )
-        XCTAssertEqual(target?.path, "/Users/test/project")
-        XCTAssertEqual(target?.isFile, false)
+        #expect(target?.path == "/Users/test/project")
+        #expect(target?.isFile == false)
     }
 
-    func testActionTargetNilWhenNothingResolvable() {
-        XCTAssertNil(Workspace.tabContextActionTarget(filePath: nil, browserURL: nil, directory: nil))
-        XCTAssertNil(Workspace.tabContextActionTarget(filePath: "  ", browserURL: nil, directory: "   "))
+    @Test func actionTargetNilWhenNothingResolvable() {
+        #expect(Workspace.tabContextActionTarget(filePath: nil, browserURL: nil, directory: nil) == nil)
+        #expect(Workspace.tabContextActionTarget(filePath: "  ", browserURL: nil, directory: "   ") == nil)
     }
 
-    func testMarkdownTabExposesPathActionsAndCopiesFilePath() throws {
+    @Test func markdownTabExposesPathActionsAndCopiesFilePath() throws {
         let workspace = Workspace()
-        let paneId = try XCTUnwrap(workspace.bonsplitController.allPaneIds.first)
+        let paneId = try #require(workspace.bonsplitController.allPaneIds.first)
         let filePath = "/Users/test/Documents/notes/readme.md"
-        let panel = try XCTUnwrap(
+        let panel = try #require(
             workspace.newMarkdownSurface(inPane: paneId, filePath: filePath)
         )
-        let tabId = try XCTUnwrap(workspace.surfaceIdFromPanelId(panel.id))
+        let tabId = try #require(workspace.surfaceIdFromPanelId(panel.id))
 
-        // A markdown tab shows the path actions even with no working directory.
+        // A markdown tab shows file actions even with no working directory.
         let items = workspace.bonsplitController.tabContextMenuItemsProvider?(tabId, PaneID()) ?? []
-        XCTAssertEqual(items.map(\.id), ["revealInFinder", "copyPath"])
+        #expect(items.map(\.id) == ["revealInFinder", "copyFile", "copyPath"])
+        #expect(items.map(\.title) == ["Reveal in Finder", "Copy .md File", "Copy Path"])
 
         // Copy Path writes the markdown FILE path, not a directory.
-        let tab = try XCTUnwrap(workspace.bonsplitController.tab(tabId))
-        let actionPane = try XCTUnwrap(workspace.paneId(forPanelId: panel.id))
+        let tab = try #require(workspace.bonsplitController.tab(tabId))
+        let actionPane = try #require(workspace.paneId(forPanelId: panel.id))
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
         workspace.splitTabBar(
@@ -151,25 +152,26 @@ final class TabContextMenuPathTests: XCTestCase {
             for: tab,
             inPane: actionPane
         )
-        XCTAssertEqual(pasteboard.string(forType: .string), filePath)
+        #expect(pasteboard.string(forType: .string) == filePath)
     }
 
-    func testFilePreviewTabExposesPathActionsAndCopiesFilePath() throws {
+    @Test func filePreviewTabExposesPathActionsAndCopiesFilePath() throws {
         let workspace = Workspace()
-        let paneId = try XCTUnwrap(workspace.bonsplitController.allPaneIds.first)
+        let paneId = try #require(workspace.bonsplitController.allPaneIds.first)
         let filePath = "/Users/test/Documents/project/.build/release/tool"
-        let panel = try XCTUnwrap(
+        let panel = try #require(
             workspace.newFilePreviewSurface(inPane: paneId, filePath: filePath)
         )
-        let tabId = try XCTUnwrap(workspace.surfaceIdFromPanelId(panel.id))
+        let tabId = try #require(workspace.surfaceIdFromPanelId(panel.id))
 
-        // A file-preview tab shows the path actions even with no working directory.
+        // A file-preview tab shows file actions even with no working directory.
         let items = workspace.bonsplitController.tabContextMenuItemsProvider?(tabId, PaneID()) ?? []
-        XCTAssertEqual(items.map(\.id), ["revealInFinder", "copyPath"])
+        #expect(items.map(\.id) == ["revealInFinder", "copyFile", "copyPath"])
+        #expect(items.map(\.title) == ["Reveal in Finder", "Copy File", "Copy Path"])
 
         // Copy Path writes the previewed FILE path, not a directory.
-        let tab = try XCTUnwrap(workspace.bonsplitController.tab(tabId))
-        let actionPane = try XCTUnwrap(workspace.paneId(forPanelId: panel.id))
+        let tab = try #require(workspace.bonsplitController.tab(tabId))
+        let actionPane = try #require(workspace.paneId(forPanelId: panel.id))
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
         workspace.splitTabBar(
@@ -178,23 +180,24 @@ final class TabContextMenuPathTests: XCTestCase {
             for: tab,
             inPane: actionPane
         )
-        XCTAssertEqual(pasteboard.string(forType: .string), filePath)
+        #expect(pasteboard.string(forType: .string) == filePath)
     }
 
-    func testArtifactTabExposesPathActionsAndCopiesFilePath() throws {
+    @Test func artifactTabExposesPathActionsAndCopiesFilePath() throws {
         let workspace = Workspace()
-        let paneId = try XCTUnwrap(workspace.bonsplitController.allPaneIds.first)
+        let paneId = try #require(workspace.bonsplitController.allPaneIds.first)
         let filePath = "/Users/test/.config/cmux/artifacts/2026/06/29/showcase.tsx"
-        let panel = try XCTUnwrap(
+        let panel = try #require(
             workspace.newArtifactSurface(inPane: paneId, filePath: filePath, kind: .react)
         )
-        let tabId = try XCTUnwrap(workspace.surfaceIdFromPanelId(panel.id))
+        let tabId = try #require(workspace.surfaceIdFromPanelId(panel.id))
 
         let items = workspace.bonsplitController.tabContextMenuItemsProvider?(tabId, PaneID()) ?? []
-        XCTAssertEqual(items.map(\.id), ["revealInFinder", "copyPath"])
+        #expect(items.map(\.id) == ["revealInFinder", "copyFile", "copyPath"])
+        #expect(items.map(\.title) == ["Reveal in Finder", "Copy .tsx File", "Copy Path"])
 
-        let tab = try XCTUnwrap(workspace.bonsplitController.tab(tabId))
-        let actionPane = try XCTUnwrap(workspace.paneId(forPanelId: panel.id))
+        let tab = try #require(workspace.bonsplitController.tab(tabId))
+        let actionPane = try #require(workspace.paneId(forPanelId: panel.id))
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
         workspace.splitTabBar(
@@ -203,25 +206,88 @@ final class TabContextMenuPathTests: XCTestCase {
             for: tab,
             inPane: actionPane
         )
-        XCTAssertEqual(pasteboard.string(forType: .string), filePath)
+        #expect(pasteboard.string(forType: .string) == filePath)
     }
 
-    func testBonsplitPathActionsUseGenericCustomMenuItems() throws {
+    @Test func copyFileTabContextMenuItemWritesFileObjectToPasteboard() throws {
         let workspace = Workspace()
-        let panelId = try XCTUnwrap(workspace.focusedPanelId)
-        let tabId = try XCTUnwrap(workspace.surfaceIdFromPanelId(panelId))
+        let paneId = try #require(workspace.bonsplitController.allPaneIds.first)
+        let tempDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("cmux-copy-file-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: tempDirectory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDirectory) }
+        let fileURL = tempDirectory.appendingPathComponent("readme.md")
+        try "# hello\n".write(to: fileURL, atomically: true, encoding: .utf8)
+        let filePath = fileURL.path
+        let panel = try #require(
+            workspace.newMarkdownSurface(inPane: paneId, filePath: filePath)
+        )
+        let tabId = try #require(workspace.surfaceIdFromPanelId(panel.id))
+        let tab = try #require(workspace.bonsplitController.tab(tabId))
+        let actionPane = try #require(workspace.paneId(forPanelId: panel.id))
+        let pasteboard = NSPasteboard.general
+
+        pasteboard.clearContents()
+        workspace.splitTabBar(
+            workspace.bonsplitController,
+            didRequestTabContextMenuItem: "copyFile",
+            for: tab,
+            inPane: actionPane
+        )
+
+        let copiedFilePaths = fileURLs(on: pasteboard).map(\.path)
+        let copiedString = pasteboard.string(forType: .string)
+        #expect(copiedFilePaths == [filePath])
+        #expect(copiedString == filePath)
+    }
+
+    @Test func copyFileTabContextMenuItemIgnoresDirectoryTargets() throws {
+        let workspace = Workspace()
+        let panelId = try #require(workspace.focusedPanelId)
+        let paneId = try #require(workspace.paneId(forPanelId: panelId))
+        let tabId = try #require(workspace.surfaceIdFromPanelId(panelId))
+        let tab = try #require(workspace.bonsplitController.tab(tabId))
+        let pasteboard = NSPasteboard.general
+
+        workspace.panelDirectories[panelId] = "/Users/test/Documents/project"
+        pasteboard.clearContents()
+        pasteboard.setString("before", forType: .string)
+        workspace.splitTabBar(
+            workspace.bonsplitController,
+            didRequestTabContextMenuItem: "copyFile",
+            for: tab,
+            inPane: paneId
+        )
+
+        let directoryCopyString = pasteboard.string(forType: .string)
+        let directoryCopyFileURLs = fileURLs(on: pasteboard)
+        #expect(directoryCopyString == "before")
+        #expect(directoryCopyFileURLs.isEmpty)
+    }
+
+    @Test func bonsplitPathActionsUseGenericCustomMenuItems() throws {
+        let workspace = Workspace()
+        let panelId = try #require(workspace.focusedPanelId)
+        let tabId = try #require(workspace.surfaceIdFromPanelId(panelId))
 
         workspace.panelDirectories[panelId] = "/Users/test/Documents/project"
 
         let items = workspace.bonsplitController.tabContextMenuItemsProvider?(tabId, PaneID()) ?? []
-        XCTAssertEqual(
-            items,
-            [
-                TabContextMenuItem(id: "revealInFinder", title: "Reveal in Finder"),
-                TabContextMenuItem(id: "copyPath", title: "Copy Path"),
-            ]
-        )
-        XCTAssertFalse(TabContextAction.allCases.map(\.rawValue).contains("revealInFinder"))
-        XCTAssertFalse(TabContextAction.allCases.map(\.rawValue).contains("copyPath"))
+        #expect(items == [
+            TabContextMenuItem(id: "revealInFinder", title: "Reveal in Finder"),
+            TabContextMenuItem(id: "copyPath", title: "Copy Path"),
+        ])
+        #expect(!TabContextAction.allCases.map(\.rawValue).contains("revealInFinder"))
+        #expect(!TabContextAction.allCases.map(\.rawValue).contains("copyFile"))
+        #expect(!TabContextAction.allCases.map(\.rawValue).contains("copyPath"))
+    }
+
+    private func fileURLs(on pasteboard: NSPasteboard) -> [URL] {
+        let objects = pasteboard.readObjects(forClasses: [NSURL.self], options: nil) ?? []
+        return objects.compactMap { object in
+            if let url = object as? URL { return url }
+            if let url = object as? NSURL { return url as URL }
+            return nil
+        }
     }
 }

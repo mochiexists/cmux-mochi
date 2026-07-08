@@ -501,7 +501,11 @@ the expected text without connecting to a cmux socket.
 - `cmux welcome` -> `Toggle Left Sidebar`
 - `cmux welcome` -> `Toggle Right Sidebar`
 - `cmux welcome` -> `Reopen last closed tab/workspace`
+- `cmux welcome` -> `Resource Monitor`
+- `cmux welcome` -> `Conductor — drive visible Codex and Claude worker panes`
 - `cmux welcome` -> `Artifact panes`
+- `cmux welcome` -> `Copy File`
+- `cmux welcome` -> `Cmd+Shift+T restores closed tabs/workspaces`
 - `cmux shortcuts --help` -> `Usage: cmux shortcuts`
 - `cmux disable-browser --help` -> `Usage: cmux disable-browser [--json]`
 - `cmux enable-browser --help` -> `Usage: cmux enable-browser [--json]`

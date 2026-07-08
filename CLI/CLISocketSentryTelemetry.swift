@@ -32,6 +32,47 @@ enum CLISocketEnvironment {
     }
 }
 
+struct CLISentryStartupPolicy {
+    struct Decision: Equatable {
+        let shouldStart: Bool
+        let reason: String
+    }
+
+    static func decision(environment: [String: String]) -> Decision {
+        if isTruthy(environment["CMUX_CLI_SENTRY_DISABLED"]) ||
+            isTruthy(environment["CMUX_CLAUDE_HOOK_SENTRY_DISABLED"]) {
+            return Decision(shouldStart: false, reason: "env-disabled")
+        }
+
+        if isTruthy(environment["CMUX_CLI_SENTRY_ENABLED"]) {
+            return Decision(shouldStart: true, reason: "env-enabled")
+        }
+
+        if isCI(environment) {
+            return Decision(shouldStart: false, reason: "ci")
+        }
+
+#if DEBUG
+        return Decision(shouldStart: false, reason: "debug-default")
+#else
+        return Decision(shouldStart: true, reason: "production-cli")
+#endif
+    }
+
+    private static func isCI(_ environment: [String: String]) -> Bool {
+        ["CI", "GITHUB_ACTIONS", "XCODE_CLOUD"].contains { key in
+            isTruthy(environment[key])
+        }
+    }
+
+    private static func isTruthy(_ rawValue: String?) -> Bool {
+        let normalized = rawValue?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased() ?? ""
+        return ["1", "true", "yes", "on"].contains(normalized)
+    }
+}
+
 final class CLISocketSentryTelemetry {
     private struct PendingBreadcrumb {
         let message: String
@@ -45,7 +86,7 @@ final class CLISocketSentryTelemetry {
     private let processEnv: [String: String]
     private let workspaceId: String?
     private let surfaceId: String?
-    private let disabledByEnv: Bool
+    private let startupDecision: CLISentryStartupPolicy.Decision
     private let noiseFilter: SentryNoiseFilter
     private var pendingBreadcrumbs: [PendingBreadcrumb] = []
 
@@ -113,9 +154,7 @@ final class CLISocketSentryTelemetry {
         self.processEnv = processEnv
         self.workspaceId = processEnv["CMUX_WORKSPACE_ID"]
         self.surfaceId = processEnv["CMUX_SURFACE_ID"]
-        self.disabledByEnv =
-            processEnv["CMUX_CLI_SENTRY_DISABLED"] == "1" ||
-            processEnv["CMUX_CLAUDE_HOOK_SENTRY_DISABLED"] == "1"
+        self.startupDecision = CLISentryStartupPolicy.decision(environment: processEnv)
         self.noiseFilter = SentryNoiseFilter()
     }
 
@@ -180,7 +219,7 @@ final class CLISocketSentryTelemetry {
     }
 
     private var shouldEmit: Bool {
-        !disabledByEnv
+        startupDecision.shouldStart
     }
 
 #if DEBUG
@@ -228,6 +267,13 @@ final class CLISocketSentryTelemetry {
             "cli_command": command,
             "cli_subcommand": subcommand
         ]
+        event.fingerprint = [
+            "cmux-cli",
+            command,
+            subcommand,
+            fingerprintComponent(from: context["stage"] as? String ?? "unknown-stage"),
+            fingerprintComponent(from: String(describing: error))
+        ]
         event.context = ["cli_socket": context]
         if !breadcrumbs.isEmpty {
             event.breadcrumbs = breadcrumbs
@@ -243,6 +289,26 @@ final class CLISocketSentryTelemetry {
             underlying = current.userInfo[NSUnderlyingErrorKey] as? NSError
         }
         return errors
+    }
+
+    private static func fingerprintComponent(from rawValue: String, maxLength: Int = 120) -> String {
+        var value = rawValue.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        value = replacing(pattern: #"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"#, in: value, with: "<uuid>")
+        value = replacing(pattern: #"\b(?:surface|workspace|pane|window):[A-Za-z0-9._:-]+\b"#, in: value, with: "<ref>")
+        value = replacing(pattern: #"(?<!\w)/(?:[^\s:),]+/)*[^\s:),]+"#, in: value, with: "<path>")
+        value = replacing(pattern: #"\s+"#, in: value, with: " ")
+        if value.count > maxLength {
+            value = String(value.prefix(maxLength))
+        }
+        return value.isEmpty ? "unknown" : value
+    }
+
+    private static func replacing(pattern: String, in value: String, with replacement: String) -> String {
+        guard let regex = try? NSRegularExpression(pattern: pattern) else {
+            return value
+        }
+        let range = NSRange(value.startIndex..<value.endIndex, in: value)
+        return regex.stringByReplacingMatches(in: value, range: range, withTemplate: replacement)
     }
 
     private static func makeException(for error: NSError) -> Exception {

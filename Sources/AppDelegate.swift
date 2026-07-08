@@ -27,6 +27,83 @@ import Darwin
 import CmuxFoundation
 import CmuxSidebar
 
+struct AppSentryStartupPolicy {
+    struct Decision: Equatable {
+        let shouldStart: Bool
+        let reason: String
+    }
+
+    static func decision(
+        telemetryEnabled: Bool,
+        isRunningUnderXCTest: Bool,
+        environment: [String: String]
+    ) -> Decision {
+        if !telemetryEnabled {
+            return Decision(shouldStart: false, reason: "telemetry-disabled")
+        }
+        if booleanEnvironmentValue("CMUX_APP_SENTRY_DISABLED", in: environment) == true {
+            return Decision(shouldStart: false, reason: "env-disabled")
+        }
+        if booleanEnvironmentValue("CMUX_APP_SENTRY_ENABLED", in: environment) == true {
+            return Decision(shouldStart: true, reason: "env-enabled")
+        }
+        if isRunningUnderXCTest {
+            return Decision(shouldStart: false, reason: "xctest")
+        }
+        if isCIEnvironment(environment) {
+            return Decision(shouldStart: false, reason: "ci")
+        }
+
+#if DEBUG
+        return Decision(shouldStart: false, reason: "debug-default")
+#else
+        return Decision(shouldStart: true, reason: "production")
+#endif
+    }
+
+    static func decision(
+        telemetryEnabled: Bool,
+        environment: [String: String]
+    ) -> Decision {
+        decision(
+            telemetryEnabled: telemetryEnabled,
+            isRunningUnderXCTest: isRunningUnderXCTest(environment),
+            environment: environment
+        )
+    }
+
+    private static func isRunningUnderXCTest(_ environment: [String: String]) -> Bool {
+        if environment["XCTestConfigurationFilePath"] != nil { return true }
+        if environment["XCTestBundlePath"] != nil { return true }
+        if environment["XCTestSessionIdentifier"] != nil { return true }
+        if environment["XCInjectBundle"] != nil { return true }
+        if environment["XCInjectBundleInto"] != nil { return true }
+        if environment["DYLD_INSERT_LIBRARIES"]?.contains("libXCTest") == true { return true }
+        return environment.keys.contains { $0.hasPrefix("CMUX_UI_TEST_") }
+    }
+
+    private static func isCIEnvironment(_ environment: [String: String]) -> Bool {
+        booleanEnvironmentValue("CI", in: environment) == true ||
+            booleanEnvironmentValue("GITHUB_ACTIONS", in: environment) == true ||
+            booleanEnvironmentValue("XCODE_CLOUD", in: environment) == true
+    }
+
+    private static func booleanEnvironmentValue(_ key: String, in environment: [String: String]) -> Bool? {
+        guard let rawValue = environment[key]?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !rawValue.isEmpty else {
+            return nil
+        }
+        switch rawValue.lowercased() {
+        case "1", "true", "yes", "on":
+            return true
+        case "0", "false", "no", "off":
+            return false
+        default:
+            return nil
+        }
+    }
+}
+
 private enum CmuxThemeNotifications {
     static let reloadConfig = Notification.Name("com.cmuxterm.themes.reload-config")
 }
@@ -1266,11 +1343,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         let env = ProcessInfo.processInfo.environment
         let isRunningUnderXCTest = isRunningUnderXCTest(env)
         let telemetryEnabled = TelemetrySettings.enabledForCurrentLaunch
+        let sentryStartupDecision = AppSentryStartupPolicy.decision(
+            telemetryEnabled: telemetryEnabled,
+            isRunningUnderXCTest: isRunningUnderXCTest,
+            environment: env
+        )
         StartupBreadcrumbLog.append(
             "appDelegate.didFinish.begin",
             fields: [
                 "xctest": isRunningUnderXCTest ? "1" : "0",
-                "telemetry": telemetryEnabled ? "1" : "0"
+                "telemetry": telemetryEnabled ? "1" : "0",
+                "sentry": sentryStartupDecision.shouldStart ? "1" : "0",
+                "sentry_reason": sentryStartupDecision.reason
             ]
         )
         AppIconLaunchState.markDidFinishLaunching()
@@ -1367,7 +1451,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         }
 #endif
 
-        if telemetryEnabled {
+        if sentryStartupDecision.shouldStart {
             // Pre-warm locale before Sentry to avoid a startup data race.
             // Locale initialization (os.locale.ensureLocale / NSLocale._preferredLanguages)
             // on the main thread can race with Sentry's background init thread
@@ -1415,6 +1499,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
                 options.beforeSendSpan = { span in scrubber.scrub(span) }
             }
             StartupBreadcrumbLog.append("appDelegate.didFinish.sentry.complete")
+        } else {
+            StartupBreadcrumbLog.append(
+                "appDelegate.didFinish.sentry.skipped",
+                fields: ["reason": sentryStartupDecision.reason]
+            )
         }
 
         if telemetryEnabled && !isRunningUnderXCTest {
@@ -1469,7 +1558,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         installShortcutDefaultsObserver()
         if !isRunningUnderXCTest {
             GlobalSearchCoordinator.shared.start()
-            sentryStartMemoryContextRefresh()
+            if sentryStartupDecision.shouldStart {
+                sentryStartMemoryContextRefresh()
+            }
         }
         SystemWideHotkeyController.shared.start()
         AgentHibernationController.shared.start()

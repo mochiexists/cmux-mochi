@@ -3233,7 +3233,7 @@ struct CMUXCLI {
         // so help text is available even when cmux is not running.
         let preSeparatorArgs = commandArgs.firstIndex(of: "--").map { commandArgs[..<$0] } ?? commandArgs[...]
         if command != "__tmux-compat",
-           preSeparatorArgs.contains(where: { $0 == "--help" || $0 == "-h" }) {
+           Self.requestsSubcommandHelp(preSeparatorArgs) {
             if dispatchSubcommandHelp(command: command, commandArgs: commandArgs) {
                 return
             }
@@ -16817,12 +16817,30 @@ struct CMUXCLI {
 
     /// Dispatch help for a subcommand. Returns true if help was printed.
     private func dispatchSubcommandHelp(command: String, commandArgs: [String]) -> Bool {
-        guard commandArgs.contains("--help") || commandArgs.contains("-h") else { return false }
+        let preSeparatorArgs = commandArgs.firstIndex(of: "--").map { commandArgs[..<$0] } ?? commandArgs[...]
+        guard Self.requestsSubcommandHelp(preSeparatorArgs) else { return false }
         guard let text = subcommandUsage(command) else { return false }
         print("cmux \(command)")
         print("")
         print(text)
         return true
+    }
+
+    private static func requestsSubcommandHelp<S: Sequence>(_ args: S) -> Bool where S.Element == String {
+        var iterator = args.makeIterator()
+        let first = iterator.next()?.lowercased()
+        if first == "help" {
+            return true
+        }
+        if first == "--help" || first == "-h" {
+            return true
+        }
+        while let arg = iterator.next() {
+            if arg == "--help" || arg == "-h" {
+                return true
+            }
+        }
+        return false
     }
 
     /// Escape and quote a string for safe embedding in a v1 socket command.
@@ -35057,19 +35075,21 @@ export default function cmuxPiSessionExtension(pi: ExtensionAPI) {
         print("  \(bold)Also see\(reset)\(subdued)            ovm · https://github.com/mochiexists/ovm\(reset)")
         print()
         print("  \(tagline)Added in this fork\(reset)")
-        print("  \(mochi)•\(reset) Resume mode — defaults to Medium: the resume command is pre-typed, you submit it to re-open the session")
-        print("  \(mochi)•\(reset) Scrollback that persists across quits and crashes")
-        print("  \(mochi)•\(reset) Pane zoom that survives relaunch")
-        print("  \(mochi)•\(reset) Reveal in Finder / Copy Path on terminal, markdown, artifact & local-file tabs")
-        print("  \(mochi)•\(reset) Task Manager as a tab or full-area page")
-        print("  \(mochi)•\(reset) Always-on CPU / memory readout in the sidebar footer")
-        print("  \(mochi)•\(reset) Sidebar spring-load — drag a session onto a workspace to switch")
-        print("  \(mochi)•\(reset) One-click \"Open in External Browser\" toggle")
-        print("  \(mochi)•\(reset) Copy / Show IDs with workspace, pane, surface, agent session, and resume command details")
-        print("  \(mochi)•\(reset) cmux Mochi Conductor skill for driving visible Codex/Claude worker panes")
+        print("  \(mochi)•\(reset) Session continuity — Medium resume pre-types saved agent resume commands, with scrollback, pane zoom, and crash/quit restore preserved")
+        print("  \(mochi)•\(reset) Resource Monitor — an always-on CPU/memory glance in the sidebar footer opens the full Task Manager")
+        print("  \(mochi)•\(reset) Conductor — drive visible Codex and Claude worker panes from cmux")
+        print("    \(mochi)-\(reset) bundled Conductor skill for Codex and Claude workflows")
+        print("    \(mochi)-\(reset) native worker-pane routing with cmux whoami / identify")
+        print("    \(mochi)-\(reset) surface-attributed agent events and lifecycle updates")
+        print("    \(mochi)-\(reset) send guard blocks unsafe sends into live non-agent foreground jobs")
+        print("    \(mochi)-\(reset) workspace capture for inspecting whole multi-pane workspaces")
         print("  \(mochi)•\(reset) Artifact panes — cmux artifact new/open/list for React, HTML, SVG, Mermaid, code, and file artifacts")
-        print("  \(mochi)•\(reset) Privacy Frost — blur a sensitive workspace or a whole group from the sidebar to redact it on screen")
-        print("  \(mochi)•\(reset) Workspace capture — cmux capture-workspace snapshots a whole workspace (every pane) to one image with a per-pane rect map")
+        print("  \(mochi)•\(reset) File-backed tabs — Reveal in Finder, Copy File, and Copy Path for markdown, artifact, file-preview, local-file browser, and code tabs")
+        print("  \(mochi)•\(reset) Navigation polish — Cmd+Shift+T restores closed tabs/workspaces, plus sidebar spring-load switching while dragging")
+        print("  \(mochi)•\(reset) Privacy Frost — blur sensitive workspaces or groups from the sidebar to redact them on screen")
+        print("  \(mochi)•\(reset) Sidebar stability — render-storm and lazy-layout fixes keep busy agent workspaces responsive")
+        print("  \(mochi)•\(reset) Browser control — one-click \"Open in External Browser\" toggle")
+        print("  \(mochi)•\(reset) Copy / Show IDs with workspace, pane, surface, agent session, and resume command details")
         print()
         print("  \(subdued)\(String(repeating: "\u{2500}", count: 58))\(reset)")
         print("  \(italic)\(subdued)Passkeys/WebAuthn are temporarily disabled in current Developer ID builds.\(reset)")
