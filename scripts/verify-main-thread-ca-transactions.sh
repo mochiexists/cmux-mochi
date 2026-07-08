@@ -22,12 +22,16 @@ if [ ! -d "$APP_PATH" ]; then
 fi
 
 APP_BASENAME="$(basename "$APP_PATH")"
-if [ "$APP_BASENAME" = "cmux DEV.app" ] && [ "${CMUX_ALLOW_UNTAGGED_CA_REGRESSION:-0}" != "1" ]; then
-  echo "ERROR: refusing to launch untagged cmux DEV.app without CMUX_ALLOW_UNTAGGED_CA_REGRESSION=1" >&2
+if { [ "$APP_BASENAME" = "cmux DEV.app" ] || [ "$APP_BASENAME" = "cmux Mochi DEV.app" ]; } &&
+  [ "${CMUX_ALLOW_UNTAGGED_CA_REGRESSION:-0}" != "1" ]; then
+  echo "ERROR: refusing to launch untagged dev app without CMUX_ALLOW_UNTAGGED_CA_REGRESSION=1" >&2
   exit 2
 fi
 
-BINARY="$APP_PATH/Contents/MacOS/cmux DEV"
+BINARY="$APP_PATH/Contents/MacOS/${APP_BASENAME%.app}"
+if [ ! -x "$BINARY" ]; then
+  BINARY="$APP_PATH/Contents/MacOS/cmux DEV"
+fi
 if [ ! -x "$BINARY" ]; then
   BINARY="$APP_PATH/Contents/MacOS/cmux"
 fi
