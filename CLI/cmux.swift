@@ -4640,7 +4640,8 @@ struct CMUXCLI {
             // `cmux send -- "--enter"` stays literal text. --wait implies submit
             // (you can't wait for a reply to text you never sent).
             let (waitForReply, rem2e) = extractBoolFlag(rem2d, names: ["--wait"])
-            let (explicitSubmit, rem2) = extractSendSubmitFlag(rem2e)
+            let (forceSend, rem2f) = extractBoolFlag(rem2e, names: ["--force"])
+            let (explicitSubmit, rem2) = extractSendSubmitFlag(rem2f)
             let submitAfterSend = explicitSubmit || waitForReply
             let windowRaw = windowOpt ?? windowId
             let workspaceArg = wsArg ?? Self.callerWorkspaceForSurfaceHandle(sfArg, windowRaw: windowRaw)
@@ -4649,6 +4650,7 @@ struct CMUXCLI {
             guard !rawText.isEmpty else { throw CLIError(message: "send requires text") }
             let text = unescapeSendText(rawText)
             var params: [String: Any] = ["text": text]
+            if forceSend { params["force"] = true }
             let winId = try normalizeWindowHandle(windowRaw, client: client)
             if let winId { params["window_id"] = winId }
             let wsId = try normalizeWorkspaceHandle(workspaceArg, client: client, windowHandle: winId)
@@ -22761,10 +22763,13 @@ struct CMUXCLI {
             let target = try tmuxResolveSurfaceTarget(parsed.value("-t"), client: client)
             let text = tmuxSendKeysText(from: parsed.positional, literal: parsed.hasFlag("-l"))
             if !text.isEmpty {
+                // tmux send-keys semantics deliberately type into whatever runs
+                // in the pane, so bypass the live-foreground-job send guard.
                 _ = try client.sendV2(method: "surface.send_text", params: [
                     "workspace_id": target.workspaceId,
                     "surface_id": target.surfaceId,
-                    "text": text
+                    "text": text,
+                    "force": true
                 ])
             }
 
@@ -35460,7 +35465,7 @@ export default function cmuxPiSessionExtension(pi: ExtensionAPI) {
           current-workspace [--window <id|ref|index>]
           read-screen [--workspace <id|ref|index>] [--surface <id|ref|index>] [--window <id|ref|index>] [--scrollback] [--lines <n>]
           capture-workspace|workspace-screenshot [--workspace <id|ref|index>] [--window <id|ref|index>] [--out <file>] [--format <png|jpeg>] [--max-dimension <n|none>] [--sidebar <include|exclude>]
-          send [--workspace <id|ref|index>] [--surface <id|ref|index>] [--window <id|ref|index>] <text>
+          send [--workspace <id|ref|index>] [--surface <id|ref|index>] [--window <id|ref|index>] [--force] <text>
           send-key [--workspace <id|ref|index>] [--surface <id|ref|index>] [--window <id|ref|index>] <key>
           send-panel --panel <id|ref|index> [--workspace <id|ref|index>] [--window <id|ref|index>] <text>
           send-key-panel --panel <id|ref|index> [--workspace <id|ref|index>] [--window <id|ref|index>] <key>

@@ -413,14 +413,15 @@ extension ControlSurfaceContext {
     ) -> ControlSurfaceTriggerFlashResolution { .tabManagerUnavailable }
 
     func controlSurfaceInputStrings() -> ControlSurfaceInputStrings {
-        ControlSurfaceInputStrings(inputQueueFull: "", surfaceUnavailable: "", processExited: "")
+        ControlSurfaceInputStrings(inputQueueFull: "", surfaceUnavailable: "", processExited: "", liveForegroundJob: "")
     }
 
     func controlSurfaceSendText(
         routing: ControlRoutingSelectors,
         surfaceID: UUID?,
         hasSurfaceIDParam: Bool,
-        text: String
+        text: String,
+        force: Bool
     ) -> ControlSurfaceSendResolution { .tabManagerUnavailable }
 
     func controlSurfaceSendKey(

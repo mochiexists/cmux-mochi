@@ -15,6 +15,8 @@ public struct ControlSurfaceInputStrings: Sendable, Equatable {
     public let surfaceUnavailable: String
     /// The `process_exited` message.
     public let processExited: String
+    /// The `live_foreground_job` message.
+    public let liveForegroundJob: String
 
     /// Creates the input strings.
     ///
@@ -22,13 +24,16 @@ public struct ControlSurfaceInputStrings: Sendable, Equatable {
     ///   - inputQueueFull: The `input_queue_full` message.
     ///   - surfaceUnavailable: The `surface_unavailable` message.
     ///   - processExited: The `process_exited` message.
+    ///   - liveForegroundJob: The `live_foreground_job` message.
     public init(
         inputQueueFull: String,
         surfaceUnavailable: String,
-        processExited: String
+        processExited: String,
+        liveForegroundJob: String
     ) {
         self.inputQueueFull = inputQueueFull
         self.surfaceUnavailable = surfaceUnavailable
         self.processExited = processExited
+        self.liveForegroundJob = liveForegroundJob
     }
 }
