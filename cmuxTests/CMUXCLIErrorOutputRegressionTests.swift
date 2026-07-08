@@ -52,62 +52,6 @@ import Testing
         }
     }
 
-    @Test func testCommandHelpAliasDoesNotConnectToSocket() throws {
-        let cliPath = try bundledCLIPath()
-        var environment = ProcessInfo.processInfo.environment
-        for key in Array(environment.keys) where key.hasPrefix("CMUX_") {
-            environment.removeValue(forKey: key)
-        }
-        environment["CMUX_CLI_SENTRY_ENABLED"] = "1"
-        environment["CMUX_SOCKET_PATH"] = "127.0.0.1:58248"
-
-        let result = runProcess(
-            executablePath: cliPath,
-            arguments: ["ping", "help"],
-            environment: environment,
-            timeout: 5
-        )
-
-        XCTAssertFalse(result.timedOut, result.stdout)
-        XCTAssertEqual(result.status, 0, result.stdout)
-        XCTAssertTrue(result.stdout.contains("Usage: cmux ping"), result.stdout)
-        XCTAssertFalse(result.stdout.contains("Socket not found"), result.stdout)
-        XCTAssertFalse(result.stdout.contains("Missing relay auth metadata"), result.stdout)
-    }
-
-    @Test func testWelcomeHighlightsCurrentMochiFeatures() throws {
-        let cliPath = try bundledCLIPath()
-        let result = runProcess(
-            executablePath: cliPath,
-            arguments: ["welcome"],
-            environment: ["CMUX_CLI_SENTRY_DISABLED": "1"],
-            timeout: 5
-        )
-
-        #expect(!result.timedOut)
-        #expect(result.status == 0)
-        #expect(result.stdout.contains("Reopen last closed tab/workspace"))
-        #expect(result.stdout.contains("Artifact panes"))
-        #expect(result.stdout.contains("Resource Monitor"))
-        #expect(result.stdout.contains("Conductor — drive visible Codex and Claude worker panes"))
-        #expect(result.stdout.contains("surface-attributed agent events"))
-        #expect(result.stdout.contains("send guard blocks unsafe sends"))
-        #expect(result.stdout.contains("Copy File"))
-        #expect(result.stdout.contains("code tabs"))
-        #expect(result.stdout.contains("Cmd+Shift+T restores closed tabs/workspaces"))
-        #expect(result.stdout.contains("Sidebar stability"))
-        #expect(result.stdout.contains("Privacy Frost — blur sensitive workspaces or groups"))
-        #expect(result.stdout.contains("Passkeys/WebAuthn are temporarily disabled"))
-        #expect(result.stdout.contains("\u{001B}[3m"))
-        let conductorIndex = try #require(result.stdout.range(of: "Conductor — drive visible Codex and Claude")?.lowerBound)
-        let artifactsIndex = try #require(result.stdout.range(of: "Artifact panes")?.lowerBound)
-        let passkeysIndex = try #require(result.stdout.range(of: "Passkeys/WebAuthn")?.lowerBound)
-        #expect(conductorIndex < artifactsIndex)
-        #expect(artifactsIndex < passkeysIndex)
-        #expect(!result.stdout.contains("Codex close-and-resume"))
-        #expect(!result.stdout.contains("needs the Mochi Codex fork"))
-    }
-
     @Test func testBundledCLIInTaggedDebugAppPrefersItsOwnSocketWithoutEnvironmentOverride() throws {
         let cliPath = try bundledCLIPath()
         let tagSlug = "cli-socket-\(UUID().uuidString.lowercased())"

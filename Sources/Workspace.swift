@@ -10040,25 +10040,12 @@ final class Workspace: Identifiable, ObservableObject {
 
     private func bonsplitTabContextMenuItems(for tabId: TabID) -> [TabContextMenuItem] {
         guard let target = tabContextActionTarget(tabId: tabId) else { return [] }
-        var items = [
-            TabContextMenuItem(
-                id: Self.revealInFinderTabContextMenuItemId,
-                title: String(localized: "contextMenu.revealInFinder", defaultValue: "Reveal in Finder")
-            )
-        ]
-        if target.isFile {
-            items.append(TabContextMenuItem(
-                id: Self.copyFileTabContextMenuItemId,
-                title: FileExternalOpenText.copyFileLabel(fileURL: URL(fileURLWithPath: target.path))
-            ))
-        }
-        items.append(
-            TabContextMenuItem(
-                id: Self.copyPathTabContextMenuItemId,
-                title: String(localized: "contextMenu.copyPath", defaultValue: "Copy Path")
-            )
+        return WorkspaceTabContextMenuItems.pathActions(
+            target: target,
+            revealInFinderId: Self.revealInFinderTabContextMenuItemId,
+            copyFileId: Self.copyFileTabContextMenuItemId,
+            copyPathId: Self.copyPathTabContextMenuItemId
         )
-        return items
     }
 
     private func copyIdentifiersToPasteboard(surfaceId: UUID) {

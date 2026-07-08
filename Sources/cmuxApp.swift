@@ -4528,11 +4528,6 @@ enum TelemetrySettings {
     // single source of truth; this anchor only freezes that read for the lifetime
     // of the launch.
     static let enabledForCurrentLaunch = AppCatalogSection().sendAnonymousTelemetry.value(in: .standard)
-    static let appSentryStartupDecision = AppSentryStartupPolicy.decision(
-        telemetryEnabled: enabledForCurrentLaunch,
-        environment: ProcessInfo.processInfo.environment
-    )
-    static let appSentryEnabledForCurrentLaunch = appSentryStartupDecision.shouldStart
 }
 
 @MainActor

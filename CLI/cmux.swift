@@ -16826,23 +16826,6 @@ struct CMUXCLI {
         return true
     }
 
-    private static func requestsSubcommandHelp<S: Sequence>(_ args: S) -> Bool where S.Element == String {
-        var iterator = args.makeIterator()
-        let first = iterator.next()?.lowercased()
-        if first == "help" {
-            return true
-        }
-        if first == "--help" || first == "-h" {
-            return true
-        }
-        while let arg = iterator.next() {
-            if arg == "--help" || arg == "-h" {
-                return true
-            }
-        }
-        return false
-    }
-
     /// Escape and quote a string for safe embedding in a v1 socket command.
     /// The socket tokenizer treats `\` and `"` as special inside quoted strings,
     /// so both must be escaped before wrapping in double quotes. Newlines and
@@ -35078,11 +35061,8 @@ export default function cmuxPiSessionExtension(pi: ExtensionAPI) {
         print("  \(mochi)•\(reset) Session continuity — Medium resume pre-types saved agent resume commands, with scrollback, pane zoom, and crash/quit restore preserved")
         print("  \(mochi)•\(reset) Resource Monitor — an always-on CPU/memory glance in the sidebar footer opens the full Task Manager")
         print("  \(mochi)•\(reset) Conductor — drive visible Codex and Claude worker panes from cmux")
-        print("    \(mochi)-\(reset) bundled Conductor skill for Codex and Claude workflows")
-        print("    \(mochi)-\(reset) native worker-pane routing with cmux whoami / identify")
-        print("    \(mochi)-\(reset) surface-attributed agent events and lifecycle updates")
-        print("    \(mochi)-\(reset) send guard blocks unsafe sends into live non-agent foreground jobs")
-        print("    \(mochi)-\(reset) workspace capture for inspecting whole multi-pane workspaces")
+        print("    \(mochi)-\(reset) bundled Conductor skill, cmux whoami / identify routing, and workspace capture")
+        print("    \(mochi)-\(reset) surface-attributed lifecycle events plus send guard for live non-agent jobs")
         print("  \(mochi)•\(reset) Artifact panes — cmux artifact new/open/list for React, HTML, SVG, Mermaid, code, and file artifacts")
         print("  \(mochi)•\(reset) File-backed tabs — Reveal in Finder, Copy File, and Copy Path for markdown, artifact, file-preview, local-file browser, and code tabs")
         print("  \(mochi)•\(reset) Navigation polish — Cmd+Shift+T restores closed tabs/workspaces, plus sidebar spring-load switching while dragging")
