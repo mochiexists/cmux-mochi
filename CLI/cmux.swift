@@ -5355,9 +5355,15 @@ struct CMUXCLI {
         let (workspaceOpt, argsAfterWorkspace) = parseOption(argsAfterLimit, name: "--workspace")
         let (windowOpt, argsAfterWindow) = parseOption(argsAfterWorkspace, name: "--window")
         let (surfaceOpt, argsAfterSurface) = parseOption(argsAfterWindow, name: "--surface")
-        let (directionOpt, argsAfterDirection) = parseOption(argsAfterSurface, name: "--direction")
-        let (focusOpt, argsAfterFocus) = parseOption(argsAfterDirection, name: "--focus")
+        let (paneOpt, argsAfterPane) = parseOption(argsAfterSurface, name: "--pane")
+        let (directionOpt, argsAfterDirection) = parseOption(argsAfterPane, name: "--direction")
+        let (dirOpt, argsAfterDir) = parseOption(argsAfterDirection, name: "--dir")
+        let (focusOpt, argsAfterFocus) = parseOption(argsAfterDir, name: "--focus")
         args = argsAfterFocus
+
+        if paneOpt != nil, directionOpt != nil {
+            throw CLIError(message: "artifact: --pane and --direction are mutually exclusive (--pane tabs into an existing pane; --direction splits)")
+        }
 
         let subcommand: String
         if let first = args.first {
@@ -5414,12 +5420,18 @@ struct CMUXCLI {
             guard let rawTarget = args.first, !rawTarget.isEmpty else {
                 throw CLIError(message: "artifact open requires an id or path. Usage: cmux artifact open <id|path> [options]")
             }
+            if dirOpt != nil {
+                throw CLIError(message: "artifact open: --dir only applies to 'artifact new'")
+            }
             let trailing = Array(args.dropFirst())
             if let extra = trailing.first {
                 throw CLIError(message: "artifact open: unexpected argument '\(extra)'. Usage: cmux artifact open <id|path> [options]")
             }
 
-            var params: [String: Any] = ["direction": directionOpt ?? "right"]
+            var params: [String: Any] = [:]
+            if let directionOpt, !directionOpt.isEmpty {
+                params["direction"] = directionOpt
+            }
             let expandedTarget = (rawTarget as NSString).expandingTildeInPath
             let absoluteTarget = resolvePath(rawTarget)
             if FileManager.default.fileExists(atPath: expandedTarget) || FileManager.default.fileExists(atPath: absoluteTarget) {
@@ -5436,15 +5448,28 @@ struct CMUXCLI {
                     params["surface_id"] = surface
                 }
             }
-            let workspaceRaw = workspaceOpt ?? (windowOpt == nil ? ProcessInfo.processInfo.environment["CMUX_WORKSPACE_ID"] : nil)
-            if let workspaceRaw {
-                if let workspace = try normalizeWorkspaceHandle(workspaceRaw, client: client) {
-                    params["workspace_id"] = workspace
-                }
-            }
+            var windowHandle: String?
             if let windowRaw = windowOpt {
                 if let window = try normalizeWindowHandle(windowRaw, client: client) {
                     params["window_id"] = window
+                    windowHandle = window
+                }
+            }
+            let workspaceRaw = workspaceOpt ?? (windowOpt == nil ? ProcessInfo.processInfo.environment["CMUX_WORKSPACE_ID"] : nil)
+            var workspaceHandle: String?
+            if let workspaceRaw {
+                if let workspace = try normalizeWorkspaceHandle(
+                    workspaceRaw,
+                    client: client,
+                    windowHandle: windowHandle
+                ) {
+                    params["workspace_id"] = workspace
+                    workspaceHandle = workspace
+                }
+            }
+            if let paneOpt, !paneOpt.isEmpty {
+                if let pane = try normalizePaneHandle(paneOpt, client: client, workspaceHandle: workspaceHandle, windowHandle: windowHandle) {
+                    params["pane_id"] = pane
                 }
             }
             try applyFocusOption(focusOpt, defaultValue: false, to: &params)
@@ -5466,11 +5491,14 @@ struct CMUXCLI {
         }
         if let unknown = args.first {
             throw CLIError(
-                message: "artifact new: unexpected argument '\(unknown)'. Usage: cmux artifact new [--title <t>] [--kind react|html|svg|mermaid|code] [--direction right|down|left|up] [--surface <id>] [--focus <true|false>]"
+                message: "artifact new: unexpected argument '\(unknown)'. Usage: cmux artifact new [--title <t>] [--kind react|html|svg|mermaid|code] [--pane <id>] [--direction right|down|left|up] [--dir <path>] [--surface <id>] [--focus <true|false>]"
             )
         }
 
-        var params: [String: Any] = ["direction": directionOpt ?? "right"]
+        var params: [String: Any] = [:]
+        if let directionOpt, !directionOpt.isEmpty {
+            params["direction"] = directionOpt
+        }
         if let titleOpt, !titleOpt.isEmpty {
             params["title"] = titleOpt
         }
@@ -5480,21 +5508,37 @@ struct CMUXCLI {
         if let templateOpt, !templateOpt.isEmpty {
             params["template"] = templateOpt
         }
+        if let dirOpt, !dirOpt.isEmpty {
+            params["dir"] = resolvePath(dirOpt)
+        }
         let surfaceRaw = surfaceOpt ?? ProcessInfo.processInfo.environment["CMUX_SURFACE_ID"]
         if let surfaceRaw {
             if let surface = try normalizeSurfaceHandle(surfaceRaw, client: client) {
                 params["surface_id"] = surface
             }
         }
-        let workspaceRaw = workspaceOpt ?? (windowOpt == nil ? ProcessInfo.processInfo.environment["CMUX_WORKSPACE_ID"] : nil)
-        if let workspaceRaw {
-            if let workspace = try normalizeWorkspaceHandle(workspaceRaw, client: client) {
-                params["workspace_id"] = workspace
-            }
-        }
+        var windowHandle: String?
         if let windowRaw = windowOpt {
             if let window = try normalizeWindowHandle(windowRaw, client: client) {
                 params["window_id"] = window
+                windowHandle = window
+            }
+        }
+        let workspaceRaw = workspaceOpt ?? (windowOpt == nil ? ProcessInfo.processInfo.environment["CMUX_WORKSPACE_ID"] : nil)
+        var workspaceHandle: String?
+        if let workspaceRaw {
+            if let workspace = try normalizeWorkspaceHandle(
+                workspaceRaw,
+                client: client,
+                windowHandle: windowHandle
+            ) {
+                params["workspace_id"] = workspace
+                workspaceHandle = workspace
+            }
+        }
+        if let paneOpt, !paneOpt.isEmpty {
+            if let pane = try normalizePaneHandle(paneOpt, client: client, workspaceHandle: workspaceHandle, windowHandle: windowHandle) {
+                params["pane_id"] = pane
             }
         }
         try applyFocusOption(focusOpt, defaultValue: false, to: &params)
@@ -16786,17 +16830,25 @@ struct CMUXCLI {
             agent) edit it. Existing artifacts can be reopened by short id,
             store-relative path, absolute path, or filename.
 
+            Placement: --pane adds the artifact as a tab in an existing pane;
+            --direction forces a split. With neither, the nearest right-side
+            pane is reused when one exists, otherwise a right split is created.
+
             Options:
               --title <text>               Artifact title (used for the filename + heading)
               --kind <react|html|svg|mermaid|code|file>
                                             Artifact kind (default: react)
-              --template <name>            Seed from a bundled sample (e.g. 'showcase', 'live-events')
+              --template <name>            Seed from a bundled sample (e.g. 'showcase',
+                                            'live-events', 'writers-room')
+              --dir <path>                 Write the new artifact file into this folder
+                                            (e.g. a repo-local scratchpad) instead of the store tree
               --repo <path>                Filter list to artifacts from a repo
               --limit N                    Limit list results
               --workspace <id|ref|index>   Target workspace (default: $CMUX_WORKSPACE_ID)
               --surface <id|ref|index>     Surface to open beside (default: $CMUX_SURFACE_ID / focused)
               --window <id|ref|index>      Target window
-              --direction <left|right|up|down>  Split direction (default: right)
+              --pane <id|ref|index>        Open as a tab in this existing pane (no split)
+              --direction <left|right|up|down>  Force a split in this direction
               --focus <true|false>         Focus the new artifact pane (default: false)
 
             Examples:
@@ -16805,9 +16857,12 @@ struct CMUXCLI {
               cmux artifact new --title "Flow" --kind mermaid
               cmux artifact new --template showcase --focus true
               cmux artifact new --template live-events --focus true
+              cmux artifact new --template writers-room --title "Team scratchpad"
+              cmux artifact new --template writers-room --dir ./artifacts
+              cmux artifact new --pane pane:2 --title "Notes" --kind html
               cmux artifact open ./diagram.svg --focus true
               cmux artifact open ./report.pdf --focus true
-              cmux artifact open f6b2ef0a --focus true
+              cmux artifact open f6b2ef0a --pane pane:2
               cmux artifact list --repo . --limit 10
             """
         default:

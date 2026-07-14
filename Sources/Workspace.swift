@@ -8570,6 +8570,8 @@ final class Workspace: Identifiable, ObservableObject {
     /// Scaffolds a new artifact in the global store and opens it. When `split` is
     /// provided, splits `paneId` in that direction (the "open beside me" path);
     /// otherwise adds a tab to `paneId`. Captures provenance from `originCwd`.
+    /// `scaffoldDirectory` overrides where the file is written (e.g. a repo-local
+    /// scratchpad folder) while keeping the provenance index entry.
     @discardableResult
     func createArtifact(
         title: String,
@@ -8579,7 +8581,8 @@ final class Workspace: Identifiable, ObservableObject {
         originCwd: String?,
         originSurfaceId: String?,
         source: String? = nil,
-        focus: Bool = true
+        focus: Bool = true,
+        scaffoldDirectory: String? = nil
     ) -> ArtifactPanel? {
         let origin = ArtifactStore.resolveOrigin(
             cwd: originCwd,
@@ -8587,7 +8590,8 @@ final class Workspace: Identifiable, ObservableObject {
             surfaceId: originSurfaceId
         )
         guard let created = try? ArtifactStore().createNew(
-            title: title, kind: kind, origin: origin, source: source
+            title: title, kind: kind, origin: origin, source: source,
+            directory: scaffoldDirectory
         ) else {
             return nil
         }
@@ -9031,53 +9035,6 @@ final class Workspace: Identifiable, ObservableObject {
         guard let tabId = surfaceIdFromPanelId(panelId),
               let paneId = paneId(forPanelId: panelId) else { return nil }
         return bonsplitController.tabs(inPane: paneId).firstIndex(where: { $0.id == tabId })
-    }
-
-    /// Returns the nearest right-side sibling pane for browser/file-preview placement.
-    /// The search is local to the source pane's ancestry in the split tree:
-    /// use the closest horizontal ancestor where the source is in the first (left) branch.
-    func preferredRightSideTargetPane(fromPanelId panelId: UUID) -> PaneID? {
-        guard let sourcePane = paneId(forPanelId: panelId) else { return nil }
-        let sourcePaneId = sourcePane.id.uuidString
-        let tree = bonsplitController.treeSnapshot()
-        guard let path = browserPathToPane(targetPaneId: sourcePaneId, node: tree) else { return nil }
-
-        let layout = bonsplitController.layoutSnapshot()
-        let paneFrameById = Dictionary(uniqueKeysWithValues: layout.panes.map { ($0.paneId, $0.frame) })
-        let sourceFrame = paneFrameById[sourcePaneId]
-        let sourceCenterY = sourceFrame.map { $0.y + ($0.height * 0.5) } ?? 0
-        let sourceRightX = sourceFrame.map { $0.x + $0.width } ?? 0
-
-        for crumb in path {
-            guard crumb.split.orientation == "horizontal", crumb.branch == .first else { continue }
-            var candidateNodes: [ExternalPaneNode] = []
-            browserCollectPaneNodes(node: crumb.split.second, into: &candidateNodes)
-            if candidateNodes.isEmpty { continue }
-
-            let sorted = candidateNodes.sorted { lhs, rhs in
-                let lhsDy = abs((lhs.frame.y + (lhs.frame.height * 0.5)) - sourceCenterY)
-                let rhsDy = abs((rhs.frame.y + (rhs.frame.height * 0.5)) - sourceCenterY)
-                if lhsDy != rhsDy { return lhsDy < rhsDy }
-
-                let lhsDx = abs(lhs.frame.x - sourceRightX)
-                let rhsDx = abs(rhs.frame.x - sourceRightX)
-                if lhsDx != rhsDx { return lhsDx < rhsDx }
-
-                if lhs.frame.x != rhs.frame.x { return lhs.frame.x < rhs.frame.x }
-                return lhs.id < rhs.id
-            }
-
-            for candidate in sorted {
-                guard let candidateUUID = UUID(uuidString: candidate.id),
-                      candidateUUID != sourcePane.id,
-                      let pane = bonsplitController.allPaneIds.first(where: { $0.id == candidateUUID }) else {
-                    continue
-                }
-                return pane
-            }
-        }
-
-        return nil
     }
 
     /// Returns the top-right pane in the current split tree.

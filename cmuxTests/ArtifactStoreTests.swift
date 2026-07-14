@@ -109,6 +109,76 @@ struct ArtifactStoreTests {
         #expect(!ArtifactKind.file.requiresTextSource)
     }
 
+    @Test func bundledWritersRoomSampleIsAvailable() throws {
+        let sample = try #require(ArtifactSamples.sample(named: "writers-room"))
+
+        #expect(sample.title == "Writers' Room")
+        #expect(sample.kind == .html)
+        let source = try #require(ArtifactSamples.source(for: sample))
+        #expect(source.contains("Writers' Room"))
+        #expect(source.contains("window.cmux.room.read"))
+        #expect(source.contains("window.cmux.room.post"))
+        #expect(source.contains("watchContext"))
+        #expect(source.contains("COPY AGENT BRIEFING"))
+        #expect(source.contains("\"type\":\"join\""))
+    }
+
+    @Test func createNewWithDirectoryOverrideScaffoldsOutsideStoreTree() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("artifact-store-\(UUID().uuidString)", isDirectory: true)
+        let scratch = FileManager.default.temporaryDirectory
+            .appendingPathComponent("artifact-scratch-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: scratch, withIntermediateDirectories: true)
+        defer {
+            try? FileManager.default.removeItem(at: root)
+            try? FileManager.default.removeItem(at: scratch)
+        }
+
+        let store = ArtifactStore(rootPath: root.path)
+        let created = try store.createNew(
+            title: "Team Scratchpad",
+            kind: .html,
+            origin: ArtifactOrigin(cwd: scratch.path),
+            source: "<h1>room</h1>",
+            directory: scratch.path,
+            now: fixedDate,
+            shortID: "a1b2c3d4"
+        )
+
+        #expect(created.path.hasPrefix(scratch.path))
+        #expect((created.record.file as NSString).isAbsolutePath)
+        #expect(FileManager.default.fileExists(atPath: created.path))
+        #expect(try String(contentsOfFile: created.path, encoding: .utf8) == "<h1>room</h1>")
+
+        // The record stays indexed, listable, and resolvable by id.
+        #expect(store.absolutePath(for: created.record) == created.path)
+        #expect(store.listRecords().contains(created.record))
+        let resolved = try #require(store.resolve(identifier: "a1b2c3d4"))
+        #expect(resolved.path == created.path)
+        #expect(resolved.kind == .html)
+    }
+
+    @Test func createNewWithoutDirectoryKeepsStoreRelativeRecords() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("artifact-store-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let store = ArtifactStore(rootPath: root.path)
+        let created = try store.createNew(
+            title: "Plain",
+            kind: .html,
+            origin: ArtifactOrigin(),
+            source: "<p>plain</p>",
+            now: fixedDate,
+            shortID: "b2c3d4e5"
+        )
+
+        #expect(!(created.record.file as NSString).isAbsolutePath)
+        #expect(created.path.hasPrefix(root.path))
+    }
+
     @Test func bundledLiveEventsSampleIsAvailable() throws {
         let sample = try #require(ArtifactSamples.sample(named: "live-events"))
 
@@ -123,8 +193,15 @@ struct ArtifactStoreTests {
     }
 
     @MainActor
-    @Test func cmuxBridgeReportsReadOnlyCapabilities() throws {
+    @Test func cmuxBridgeReportsCapabilitiesIncludingRoomWrites() throws {
         let bridge = ArtifactRuntimeCmuxBridge()
+        bridge.update(
+            panelId: UUID(),
+            workspaceId: UUID(),
+            filePath: "/tmp/writers-room.html",
+            webView: nil,
+            roomEnabled: true
+        )
 
         let response = bridge.handle(request: [
             "requestId": "capabilities-1",
@@ -138,12 +215,17 @@ struct ArtifactStoreTests {
         #expect(response["requestId"] as? String == "capabilities-1")
         #expect(response["ok"] as? Bool == true)
         let value = try #require(response["value"] as? [String: Any])
-        #expect(value["read_only"] as? Bool == true)
+        #expect(value["read_only"] as? Bool == false)
         let methods = try #require(value["methods"] as? [String])
         #expect(methods.contains("system.snapshot"))
         #expect(methods.contains("events.snapshot"))
         #expect(methods.contains("surface.read"))
         #expect(methods.contains("readSurface"))
+        #expect(methods.contains("context"))
+        #expect(methods.contains("room.read"))
+        #expect(methods.contains("room.post"))
+        let writes = try #require(value["writes"] as? [String])
+        #expect(writes == ["room.post"])
     }
 
     @MainActor

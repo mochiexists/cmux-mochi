@@ -107,7 +107,9 @@ struct ArtifactRecord: Codable, Equatable, Sendable {
     /// ISO-8601 UTC timestamp, e.g. `2026-06-28T14:30:22Z`.
     var createdAt: String
     var title: String
-    /// Path to the artifact source file, relative to the store root.
+    /// Path to the artifact source file: relative to the store root for
+    /// store-managed files, or absolute when scaffolded into a caller-chosen
+    /// directory (`artifact new --dir`).
     var file: String
     var kind: ArtifactKind
     var origin: ArtifactOrigin
@@ -215,22 +217,31 @@ struct ArtifactStore {
     /// the record and the absolute path of the written file.
     /// - Parameter source: explicit starter content (e.g. a bundled sample).
     ///   When `nil`, the kind's ``ArtifactScaffold`` default is used.
+    /// - Parameter directory: absolute directory to write the source file into
+    ///   instead of the dated store tree (e.g. a repo-local scratchpad folder).
+    ///   The record then stores the absolute path and stays fully recallable
+    ///   through `artifact list`/`open`.
     @discardableResult
     func createNew(
         title: String,
         kind: ArtifactKind,
         origin: ArtifactOrigin,
         source: String? = nil,
+        directory: String? = nil,
         now: Date = Date(),
         shortID: String = String(UUID().uuidString.prefix(8)).lowercased()
     ) throws -> (record: ArtifactRecord, path: String) {
-        let record = Self.makeRecord(
+        var record = Self.makeRecord(
             id: shortID,
             createdAt: now,
             title: title,
             kind: kind,
             origin: origin
         )
+        if let directory, (directory as NSString).isAbsolutePath {
+            let filename = (record.file as NSString).lastPathComponent
+            record.file = (directory as NSString).appendingPathComponent(filename)
+        }
         let scaffold = source ?? ArtifactScaffold.source(for: kind, title: title)
         let path = try create(scaffold: scaffold, record: record)
         return (record, path)
@@ -238,9 +249,14 @@ struct ArtifactStore {
 
     // MARK: - Disk I/O
 
-    /// Absolute path on disk for a record's source file.
+    /// Absolute path on disk for a record's source file. Records scaffolded
+    /// into a caller-chosen directory store an absolute path, which passes
+    /// through unchanged; store-relative paths resolve against the root.
     func absolutePath(for record: ArtifactRecord) -> String {
-        (rootPath as NSString).appendingPathComponent(record.file)
+        if (record.file as NSString).isAbsolutePath {
+            return record.file
+        }
+        return (rootPath as NSString).appendingPathComponent(record.file)
     }
 
     /// Absolute path on disk for a store-relative artifact source path.

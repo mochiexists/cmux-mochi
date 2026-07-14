@@ -1,0 +1,437 @@
+<!doctype html>
+<!--
+  Writers' Room — the bundled multi-agent scratchpad artifact.
+
+  The conversation lives in a JSONL sidecar next to this file
+  (`<this-file>.room.jsonl`). Agents append one JSON object per line from any
+  shell; this pane renders the same log through the cmux runtime bridge and
+  hot-updates on every append. The pane always knows its own address
+  (window / workspace / pane / surface) via `window.cmux.context()`.
+
+  Protocol: the FIRST line a participant writes is a join entry —
+  `{"type":"join","name":"<Name>","model":"<model-id>","role":"agent"}` —
+  then messages: `{"type":"msg","name":"<Name>","body":"..."}`.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="cmux-artifact-room" content="enabled">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: Canvas;
+    --ink: CanvasText;
+    --dim: color-mix(in srgb, CanvasText 55%, transparent);
+    --line: color-mix(in srgb, CanvasText 14%, transparent);
+    --panel: color-mix(in srgb, CanvasText 5%, Canvas);
+    --accent: #e8a552;
+    --mono: ui-monospace, "SF Mono", Menlo, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; min-height: 100%; }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font: 14px/1.55 -apple-system, "SF Pro Text", system-ui, sans-serif;
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+  }
+
+  header.masthead {
+    padding: 14px 18px 10px;
+    border-bottom: 1px solid var(--line);
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  .masthead h1 {
+    margin: 0;
+    font: 600 13px/1 var(--mono);
+    letter-spacing: .2em;
+    text-transform: uppercase;
+  }
+  .masthead .address {
+    font: 11px/1.4 var(--mono);
+    color: var(--dim);
+    letter-spacing: .04em;
+  }
+  .masthead .address b { color: var(--ink); font-weight: 600; }
+  .live {
+    margin-left: auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font: 10px/1 var(--mono);
+    letter-spacing: .18em;
+    color: var(--dim);
+  }
+  .live::before {
+    content: "";
+    width: 7px; height: 7px; border-radius: 50%;
+    background: #d9534f;
+    animation: blink 2.4s ease-in-out infinite;
+  }
+  @keyframes blink { 0%, 100% { opacity: 1 } 50% { opacity: .25 } }
+
+  .toolbar {
+    padding: 8px 18px;
+    border-bottom: 1px solid var(--line);
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+  .roster { display: flex; gap: 6px; flex-wrap: wrap; }
+  .chip {
+    font: 11px/1 var(--mono);
+    padding: 5px 9px;
+    border-radius: 999px;
+    border: 1px solid var(--line);
+    color: var(--dim);
+  }
+  .chip b { font-weight: 700; }
+  .chip .model { opacity: .7; }
+  button.copy {
+    margin-left: auto;
+    font: 600 11px/1 var(--mono);
+    letter-spacing: .06em;
+    padding: 7px 12px;
+    border-radius: 6px;
+    border: 1px solid var(--line);
+    background: var(--panel);
+    color: var(--ink);
+    cursor: pointer;
+  }
+  button.copy:hover { border-color: var(--accent); color: var(--accent); }
+
+  main {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px 18px;
+  }
+  .empty {
+    max-width: 560px;
+    margin: 24px auto;
+    border: 1px dashed var(--line);
+    border-radius: 10px;
+    padding: 18px;
+    color: var(--dim);
+    font-size: 13px;
+  }
+  .empty h2 { margin: 0 0 8px; font: 600 12px/1 var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--ink); }
+  .empty ol { margin: 0; padding-left: 18px; }
+  .empty li { margin-bottom: 4px; }
+  .empty code { font: 11.5px var(--mono); }
+
+  .entry { margin-bottom: 16px; padding-left: 14px; border-left: 3px solid var(--line); }
+  .entry .head { display: flex; gap: 8px; align-items: baseline; margin-bottom: 2px; }
+  .entry .who { font: 700 11.5px var(--mono); letter-spacing: .1em; text-transform: uppercase; }
+  .entry .ts { font: 10.5px var(--mono); color: var(--dim); }
+  .entry .body { white-space: pre-wrap; overflow-wrap: anywhere; }
+  .entry.join { border-left-style: double; }
+  .entry.join .body { color: var(--dim); font-size: 13px; }
+  .entry.join .model {
+    font: 11px var(--mono);
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    padding: 1px 6px;
+  }
+  .entry.note .who, .entry.note .body { color: var(--dim); }
+  .skipped { font: 11px var(--mono); color: var(--dim); margin-bottom: 12px; }
+
+  footer.compose {
+    border-top: 1px solid var(--line);
+    padding: 10px 18px 14px;
+    display: grid;
+    grid-template-columns: 140px 1fr auto;
+    gap: 8px;
+    align-items: start;
+  }
+  .compose input, .compose textarea {
+    font: 13px/1.4 inherit;
+    color: var(--ink);
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 7px;
+    padding: 8px 10px;
+    width: 100%;
+  }
+  .compose input { font-family: var(--mono); font-size: 12px; }
+  .compose textarea { resize: vertical; min-height: 38px; max-height: 160px; }
+  .compose button {
+    font: 600 12px/1 var(--mono);
+    letter-spacing: .08em;
+    padding: 11px 16px;
+    border-radius: 7px;
+    border: 1px solid var(--accent);
+    background: color-mix(in srgb, var(--accent) 14%, transparent);
+    color: var(--accent);
+    cursor: pointer;
+  }
+  .compose button:disabled { opacity: .4; cursor: default; }
+  .compose .error { grid-column: 1 / -1; font: 11px var(--mono); color: #d9534f; }
+</style>
+</head>
+<body>
+
+<header class="masthead">
+  <h1>Writers' Room</h1>
+  <span class="address" id="address">locating pane…</span>
+  <span class="live">LIVE</span>
+</header>
+
+<div class="toolbar">
+  <div class="roster" id="roster"></div>
+  <button class="copy" id="copyBriefing">COPY AGENT BRIEFING</button>
+</div>
+
+<main id="log"></main>
+
+<footer class="compose">
+  <input id="name" placeholder="Your name" maxlength="64">
+  <textarea id="body" placeholder="Say something — every participant sees this file."></textarea>
+  <button id="send">POST</button>
+  <div class="error" id="error" hidden></div>
+</footer>
+
+<script>
+(function () {
+  "use strict";
+
+  let context = null;
+  let roomPath = "";
+  let entries = [];
+  let skipped = 0;
+
+  const el = (id) => document.getElementById(id);
+
+  function nameHue(name) {
+    let hash = 0;
+    for (const ch of String(name)) {
+      hash = ((hash << 5) - hash + ch.codePointAt(0)) | 0;
+    }
+    return ((hash % 360) + 360) % 360;
+  }
+  function nameColor(name) {
+    return "hsl(" + nameHue(name) + " 60% 55%)";
+  }
+
+  function escapeHTML(value) {
+    return String(value == null ? "" : value)
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  }
+
+  function shortTime(ts) {
+    const date = ts ? new Date(ts) : null;
+    if (!date || Number.isNaN(date.getTime())) { return ""; }
+    return date.toLocaleString(undefined, {
+      month: "short", day: "numeric", hour: "2-digit", minute: "2-digit"
+    });
+  }
+
+  function renderAddress() {
+    const target = el("address");
+    if (!context || context.ok === false) {
+      target.textContent = "detached from cmux topology";
+      return;
+    }
+    const ws = context.workspace || {};
+    const pane = context.pane || {};
+    const surface = context.surface || {};
+    const win = context.window || {};
+    target.innerHTML =
+      "<b>" + escapeHTML(win.ref || "window:?") + "</b> · " +
+      "<b>" + escapeHTML(ws.ref || "workspace:?") + "</b> “" + escapeHTML(ws.title || "") + "” · " +
+      "<b>" + escapeHTML(pane.ref || "pane:?") + "</b> · " +
+      "<b>" + escapeHTML(surface.ref || "surface:?") + "</b>";
+  }
+
+  function participants() {
+    const seen = new Map();
+    for (const entry of entries) {
+      if (entry.type !== "join" || !entry.name) { continue; }
+      seen.set(entry.name, { name: entry.name, model: entry.model || "", role: entry.role || "" });
+    }
+    return [...seen.values()];
+  }
+
+  function renderRoster() {
+    const roster = el("roster");
+    roster.innerHTML = participants().map((who) =>
+      '<span class="chip" style="border-color:' + nameColor(who.name) + '">' +
+      '<b style="color:' + nameColor(who.name) + '">' + escapeHTML(who.name) + "</b>" +
+      (who.model ? ' <span class="model">' + escapeHTML(who.model) + "</span>" : "") +
+      "</span>"
+    ).join("");
+  }
+
+  function emptyStateHTML() {
+    return '<div class="empty">' +
+      "<h2>Room is open</h2>" +
+      "<p>No one has joined yet. Hit <b>COPY AGENT BRIEFING</b> and paste it into each agent session. " +
+      "The protocol is three steps:</p>" +
+      "<ol>" +
+      "<li>Join first: append a <code>join</code> line with your name and model.</li>" +
+      "<li>Talk: append <code>msg</code> lines (or use the box below — that's the human seat).</li>" +
+      "<li>Watch the room file for new lines between your turns.</li>" +
+      "</ol>" +
+      "</div>";
+  }
+
+  function renderLog() {
+    const log = el("log");
+    const atBottom = log.scrollTop + log.clientHeight >= log.scrollHeight - 40;
+    if (!entries.length) {
+      log.innerHTML = emptyStateHTML();
+      return;
+    }
+    let html = "";
+    if (skipped > 0) {
+      html += '<div class="skipped">' + skipped + " malformed line(s) skipped</div>";
+    }
+    for (const entry of entries) {
+      const name = entry.name || "?";
+      const color = nameColor(name);
+      const type = entry.type === "join" || entry.type === "note" ? entry.type : "msg";
+      html += '<article class="entry ' + type + '" style="border-left-color:' + color + '">';
+      html += '<div class="head"><span class="who" style="color:' + color + '">' + escapeHTML(name) + "</span>";
+      html += '<span class="ts">' + escapeHTML(shortTime(entry.ts)) + "</span></div>";
+      if (type === "join") {
+        html += '<div class="body">joined the room' +
+          (entry.model ? ' <span class="model">' + escapeHTML(entry.model) + "</span>" : "") +
+          (entry.role ? " · " + escapeHTML(entry.role) : "") + "</div>";
+      } else {
+        html += '<div class="body">' + escapeHTML(entry.body || "") + "</div>";
+      }
+      html += "</article>";
+    }
+    log.innerHTML = html;
+    if (atBottom) { log.scrollTop = log.scrollHeight; }
+  }
+
+  function briefingText() {
+    const ws = (context && context.workspace) || {};
+    const pane = (context && context.pane) || {};
+    const surface = (context && context.surface) || {};
+    const win = (context && context.window) || {};
+    const address = [win.ref, ws.ref, pane.ref, surface.ref].filter(Boolean).join(" / ");
+    const wsFlag = ws.ref ? " --workspace " + ws.ref : "";
+    const quotedRoomPath = "'" + String(roomPath).replace(/'/g, "'\"'\"'") + "'";
+    return [
+      "You are joining a shared multi-agent scratchpad (a cmux Writers' Room artifact pane).",
+      "",
+      "Where: " + (address || "see `cmux tree --all`") + (ws.title ? " (workspace “" + ws.title + "”)" : "") + ".",
+      "The pane renders this room file and updates live on every append:",
+      "",
+      "  " + roomPath,
+      "",
+      "Protocol (JSONL — one JSON object per line, appended to that file):",
+      "1. IDENTIFY FIRST. Before anything else, append a join line with your chosen short name and your model id:",
+      "   printf '%s\\n' '{\"type\":\"join\",\"name\":\"<YourName>\",\"model\":\"<model-id>\",\"role\":\"agent\"}' >> " + quotedRoomPath,
+      "2. Talk by appending msg lines. Use jq so arbitrary text stays valid JSON:",
+      "   jq -cn --arg name \"<YourName>\" --arg body \"your message\" '{type:\"msg\",name:$name,body:$body}' >> " + quotedRoomPath,
+      "3. Watch for replies between your turns — poll the file's mtime or line count, e.g.:",
+      "   wc -l < " + quotedRoomPath + "   (re-read the tail when it grows)",
+      "",
+      "Rules: append only — never rewrite or delete existing lines. Keep messages short and concrete.",
+      "Every participant (humans included) appears in the room roster after their join line.",
+      "The human operator posts from a compose box inside the pane itself.",
+      "If you need to locate the pane later: cmux tree" + wsFlag + " --id-format both",
+      "",
+      "First order of business: join, greet the room, then coordinate the work with the other participants."
+    ].join("\n");
+  }
+
+  async function copyBriefing() {
+    const button = el("copyBriefing");
+    const textValue = briefingText();
+    try {
+      await navigator.clipboard.writeText(textValue);
+    } catch {
+      const ta = document.createElement("textarea");
+      ta.value = textValue;
+      ta.style.position = "fixed";
+      ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand("copy");
+      ta.remove();
+    }
+    button.textContent = "COPIED ✓";
+    setTimeout(() => { button.textContent = "COPY AGENT BRIEFING"; }, 1600);
+  }
+
+  async function refreshRoom() {
+    const room = await window.cmux.room.read();
+    roomPath = room.path || roomPath;
+    entries = Array.isArray(room.entries) ? room.entries : [];
+    skipped = room.skipped || 0;
+    renderRoster();
+    renderLog();
+  }
+
+  async function post() {
+    const nameField = el("name");
+    const bodyField = el("body");
+    const errorField = el("error");
+    const sendButton = el("send");
+    const name = nameField.value.trim() || "Operator";
+    const body = bodyField.value.trim();
+    if (!body) { return; }
+    sendButton.disabled = true;
+    errorField.hidden = true;
+    try {
+      const hasJoined = participants().some((who) => who.name === name);
+      if (!hasJoined) {
+        await window.cmux.room.post({ type: "join", name, role: "human" });
+      }
+      const result = await window.cmux.room.post({ type: "msg", name, role: "human", body });
+      if (result && result.ok === false) {
+        throw new Error(result.message || "post failed");
+      }
+      bodyField.value = "";
+      try { await window.storage.set("writers-room.name", name); } catch {}
+      await refreshRoom();
+    } catch (error) {
+      errorField.textContent = String((error && error.message) || error);
+      errorField.hidden = false;
+    } finally {
+      sendButton.disabled = false;
+    }
+  }
+
+  async function start() {
+    try {
+      const savedName = await window.storage.get("writers-room.name");
+      if (savedName) { el("name").value = String(savedName); }
+    } catch {}
+    if (!el("name").value) { el("name").value = "Operator"; }
+
+    el("send").addEventListener("click", post);
+    el("body").addEventListener("keydown", (event) => {
+      if ((event.metaKey || event.ctrlKey) && event.key === "Enter") { post(); }
+    });
+    el("copyBriefing").addEventListener("click", copyBriefing);
+
+    window.cmux.room.onUpdate(() => { refreshRoom(); });
+    await refreshRoom();
+
+    try {
+      await window.cmux.watchContext((next) => {
+        context = next;
+        renderAddress();
+      });
+    } catch {
+      renderAddress();
+    }
+  }
+
+  start();
+})();
+</script>
+</body>
+</html>

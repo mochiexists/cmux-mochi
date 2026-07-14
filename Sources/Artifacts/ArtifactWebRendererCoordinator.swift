@@ -72,6 +72,7 @@ final class ArtifactWebRendererCoordinator: NSObject, WKNavigationDelegate, WKUI
     }
 
     func loadShell(initialSource: String, kind: ArtifactKind) {
+        cmuxBridge.updateRoomCapability(from: initialSource)
         pendingSource = initialSource
         pendingKind = kind
         lastSource = nil
@@ -87,6 +88,7 @@ final class ArtifactWebRendererCoordinator: NSObject, WKNavigationDelegate, WKUI
     }
 
     func update(source: String, kind: ArtifactKind) {
+        cmuxBridge.updateRoomCapability(from: source)
         let contentChanged = lastSource != source || lastKind != kind
         let shellNeedsReload = !isLoaded && !isShellLoading
         guard contentChanged || shellNeedsReload else { return }

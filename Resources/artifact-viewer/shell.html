@@ -251,13 +251,67 @@ function cmuxBridgeScript() {
       if (handler) {
         handler(data.event);
       }
+      return;
+    }
+    if (data.source === "cmux-artifact-room-event") {
+      roomUpdateHandlers.forEach((handler) => {
+        try { handler(); } catch {}
+      });
+      window.dispatchEvent(new CustomEvent("cmux:roomchange"));
     }
   });
+  const roomUpdateHandlers = new Set();
   window.cmux = {
     call: (method, params = {}) => sendCmuxRequest("call", { method, params }),
     getSnapshot: (options = {}) => sendCmuxRequest("call", { method: "system.snapshot", params: options }),
     eventsSnapshot: (options = {}) => sendCmuxRequest("call", { method: "events.snapshot", params: options }),
     readSurface: (options = {}) => sendCmuxRequest("call", { method: "surface.read", params: options }),
+    context: () => sendCmuxRequest("call", { method: "context", params: {} }),
+    watchContext: async (handler) => {
+      let lastKey = null;
+      let refreshTimer = null;
+      const emit = (context) => {
+        const key = JSON.stringify(context);
+        if (key === lastKey) { return; }
+        lastKey = key;
+        if (typeof handler === "function") {
+          try { handler(context); } catch {}
+        }
+        window.dispatchEvent(new CustomEvent("cmux:contextchange", { detail: context }));
+      };
+      const refresh = async () => {
+        try { emit(await window.cmux.context()); } catch {}
+      };
+      const scheduleRefresh = () => {
+        if (refreshTimer) { clearTimeout(refreshTimer); }
+        refreshTimer = setTimeout(refresh, 150);
+      };
+      await refresh();
+      const subscription = await window.cmux.subscribe({ scope: "all", replayLimit: 0 }, (event) => {
+        const name = String((event && event.name) || (event && event.type) || "");
+        // Topology events drive prompt refreshes; heartbeats are the lazy
+        // catch-all so a silent mutation still converges within one interval.
+        if (!/surface|pane|workspace|window|split|tab|select|focus|move|heartbeat/i.test(name)) { return; }
+        scheduleRefresh();
+      });
+      return {
+        refresh,
+        stop: () => {
+          if (refreshTimer) { clearTimeout(refreshTimer); }
+          return subscription.unsubscribe();
+        }
+      };
+    },
+    room: {
+      read: () => sendCmuxRequest("call", { method: "room.read", params: {} }),
+      post: (entry = {}) => sendCmuxRequest("call", { method: "room.post", params: entry }),
+      onUpdate: (handler) => {
+        if (typeof handler === "function") {
+          roomUpdateHandlers.add(handler);
+        }
+        return () => roomUpdateHandlers.delete(handler);
+      }
+    },
     subscribe: async (options = {}, handler) => {
       const response = await sendCmuxRequest("subscribe", { options });
       const subscriptionId = String(response && response.subscription_id || "");
@@ -700,6 +754,13 @@ function cmuxDispatch(payload) {
 
 window.__cmuxArtifactCmuxResolve = cmuxResponse;
 window.__cmuxArtifactCmuxDispatch = cmuxDispatch;
+
+function roomDispatch() {
+  if (!frame.contentWindow) { return; }
+  frame.contentWindow.postMessage({ source: "cmux-artifact-room-event" }, "*");
+}
+
+window.__cmuxArtifactRoomDispatch = roomDispatch;
 
 window.__cmuxRenderArtifact = function(payload) {
   const kind = payload && payload.kind;

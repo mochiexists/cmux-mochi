@@ -93,6 +93,7 @@ extension TerminalController {
         "pane.join",
         "markdown.open",
         "artifact.new",
+        "artifact.open",
         "browser.open_split",
         "sidebar.custom.open"
     ]

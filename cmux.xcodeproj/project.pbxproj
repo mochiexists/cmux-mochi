@@ -94,6 +94,8 @@
 		4E6FFD77B76CF89F63CA10FB /* ArtifactPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24B3C994CE2474BDB68C1B4A /* ArtifactPanel.swift */; };
 		699489D671A6C482ABEFB9CF /* ArtifactPanelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 18BBE73FD292510241FC9534 /* ArtifactPanelView.swift */; };
 		FEC9FB4A54E9C93DDA39CF44 /* ArtifactRendererSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB3EEB8FE6F58AA363832B01 /* ArtifactRendererSession.swift */; };
+		B8DDAEB263C0AD8BBAF4F10B /* ArtifactRoomStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8CD3D1B6336DB9F0B307B518 /* ArtifactRoomStore.swift */; };
+		37DEDDB68F06B09E3918C40E /* ArtifactRoomStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 449949A4F24447A27EEFF6C7 /* ArtifactRoomStoreTests.swift */; };
 		A4F771020000000000000001 /* ArtifactRuntimeCmuxBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = A4F771010000000000000001 /* ArtifactRuntimeCmuxBridge.swift */; };
 		74ACD7CBA333B959A70DAD2B /* ArtifactSamples.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5CF96BF2D5323E08C7184035 /* ArtifactSamples.swift */; };
 		F6D329A4DC3327450161A6C2 /* ArtifactScaffold.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B4B962B57D28DD2867D7988 /* ArtifactScaffold.swift */; };
@@ -1050,6 +1052,7 @@
 		D7AB00000000000000000015 /* Workspace+DetachedSurfaceTransfer.swift in Sources */ = {isa = PBXBuildFile; fileRef = D7AB00000000000000000016 /* Workspace+DetachedSurfaceTransfer.swift */; };
 		E3309A05 /* Workspace+EqualizeSplitsSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3309A06 /* Workspace+EqualizeSplitsSupport.swift */; };
 		C3744E010000000000000001 /* Workspace+PanelLifecycle.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3744E020000000000000001 /* Workspace+PanelLifecycle.swift */; };
+		BEEA01000000000000000001 /* Workspace+RightSidePlacement.swift in Sources */ = {isa = PBXBuildFile; fileRef = BEEA01000000000000000002 /* Workspace+RightSidePlacement.swift */; };
 		CA52B0170000000000000000 /* Workspace+SurfaceNavigation.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA52C0170000000000000000 /* Workspace+SurfaceNavigation.swift */; };
 		E3B7A400000000000000020A /* Workspace+WorkspaceSurfaceTreeReading.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3B7A400000000000000020B /* Workspace+WorkspaceSurfaceTreeReading.swift */; };
 		A5001406 /* Workspace.swift in Sources */ = {isa = PBXBuildFile; fileRef = A5001416 /* Workspace.swift */; };
@@ -1273,6 +1276,8 @@
 		24B3C994CE2474BDB68C1B4A /* ArtifactPanel.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ArtifactPanel.swift; path = Artifacts/ArtifactPanel.swift; sourceTree = "<group>"; };
 		18BBE73FD292510241FC9534 /* ArtifactPanelView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ArtifactPanelView.swift; path = Artifacts/ArtifactPanelView.swift; sourceTree = "<group>"; };
 		DB3EEB8FE6F58AA363832B01 /* ArtifactRendererSession.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ArtifactRendererSession.swift; path = Artifacts/ArtifactRendererSession.swift; sourceTree = "<group>"; };
+		8CD3D1B6336DB9F0B307B518 /* ArtifactRoomStore.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ArtifactRoomStore.swift; path = Artifacts/ArtifactRoomStore.swift; sourceTree = "<group>"; };
+		449949A4F24447A27EEFF6C7 /* ArtifactRoomStoreTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ArtifactRoomStoreTests.swift; sourceTree = "<group>"; };
 		A4F771010000000000000001 /* ArtifactRuntimeCmuxBridge.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ArtifactRuntimeCmuxBridge.swift; path = Artifacts/ArtifactRuntimeCmuxBridge.swift; sourceTree = "<group>"; };
 		5CF96BF2D5323E08C7184035 /* ArtifactSamples.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ArtifactSamples.swift; path = Artifacts/ArtifactSamples.swift; sourceTree = "<group>"; };
 		8B4B962B57D28DD2867D7988 /* ArtifactScaffold.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ArtifactScaffold.swift; path = Artifacts/ArtifactScaffold.swift; sourceTree = "<group>"; };
@@ -2162,6 +2167,7 @@
 		D7AB00000000000000000016 /* Workspace+DetachedSurfaceTransfer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Workspace+DetachedSurfaceTransfer.swift"; sourceTree = "<group>"; };
 		E3309A06 /* Workspace+EqualizeSplitsSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Workspace+EqualizeSplitsSupport.swift"; sourceTree = "<group>"; };
 		C3744E020000000000000001 /* Workspace+PanelLifecycle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Workspace+PanelLifecycle.swift"; sourceTree = "<group>"; };
+		BEEA01000000000000000002 /* Workspace+RightSidePlacement.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Workspace+RightSidePlacement.swift"; sourceTree = "<group>"; };
 		CA52C0170000000000000000 /* Workspace+SurfaceNavigation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Workspace+SurfaceNavigation.swift"; sourceTree = "<group>"; };
 		E3B7A400000000000000020B /* Workspace+WorkspaceSurfaceTreeReading.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Workspace+WorkspaceSurfaceTreeReading.swift"; sourceTree = "<group>"; };
 		A5001416 /* Workspace.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Workspace.swift; sourceTree = "<group>"; };
@@ -3007,6 +3013,7 @@
 				A5001651 /* CmuxConfig.swift */,
 				C10D00040000000000000004 /* CmuxSurfaceTabBarBuiltInAction.swift */,
 				C57B00030000000000000002 /* Workspace+CustomSidebarPane.swift */,
+				BEEA01000000000000000002 /* Workspace+RightSidePlacement.swift */,
 				C0DEF0A10000000000000002 /* CmuxConfigUI.swift */,
 				E30750000000000000000003 /* CmuxWorkspaceDefinition.swift */,
 				A5001653 /* CmuxConfigExecutor.swift */,
@@ -3055,6 +3062,7 @@
 				59065015952E1B5BE5E23519 /* Mobile */,
 				31B04B98376C9BA8B9E44DCB /* TerminalViewportUITestRecorder.swift */,
 				F4E4F7CBCE2DE8B0FD17E704 /* ArtifactStore.swift */,
+				8CD3D1B6336DB9F0B307B518 /* ArtifactRoomStore.swift */,
 				A4F770010000000000000001 /* ArtifactExternalPreview.swift */,
 				24B3C994CE2474BDB68C1B4A /* ArtifactPanel.swift */,
 				18BBE73FD292510241FC9534 /* ArtifactPanelView.swift */,
@@ -3453,6 +3461,7 @@
 				9BD519CFE74530A46DF0925D /* MobileHostAuthorizationTests.swift */,
 				5E2701030000000000000002 /* SentryEventScrubberTests.swift */,
 				7D0998A40FAB5A99C6B65D21 /* ArtifactStoreTests.swift */,
+				449949A4F24447A27EEFF6C7 /* ArtifactRoomStoreTests.swift */,
 			);
 			path = cmuxTests;
 			sourceTree = "<group>";
@@ -3949,6 +3958,7 @@
 				4E6FFD77B76CF89F63CA10FB /* ArtifactPanel.swift in Sources */,
 				699489D671A6C482ABEFB9CF /* ArtifactPanelView.swift in Sources */,
 				FEC9FB4A54E9C93DDA39CF44 /* ArtifactRendererSession.swift in Sources */,
+				B8DDAEB263C0AD8BBAF4F10B /* ArtifactRoomStore.swift in Sources */,
 				A4F771020000000000000001 /* ArtifactRuntimeCmuxBridge.swift in Sources */,
 				74ACD7CBA333B959A70DAD2B /* ArtifactSamples.swift in Sources */,
 				F6D329A4DC3327450161A6C2 /* ArtifactScaffold.swift in Sources */,
@@ -4490,6 +4500,7 @@
 				D7AB00000000000000000015 /* Workspace+DetachedSurfaceTransfer.swift in Sources */,
 				E3309A05 /* Workspace+EqualizeSplitsSupport.swift in Sources */,
 				C3744E010000000000000001 /* Workspace+PanelLifecycle.swift in Sources */,
+				BEEA01000000000000000001 /* Workspace+RightSidePlacement.swift in Sources */,
 				CA52B0170000000000000000 /* Workspace+SurfaceNavigation.swift in Sources */,
 				E3B7A400000000000000020A /* Workspace+WorkspaceSurfaceTreeReading.swift in Sources */,
 				A5001406 /* Workspace.swift in Sources */,
@@ -4660,6 +4671,7 @@
 				4E6A6F5C1D2B4980A1234568 /* AppDelegateSurfaceShortcutRoutingTests.swift in Sources */,
 				A11EAA000000000000000000 /* AppearanceSettingsTests.swift in Sources */,
 				C0DEF5E70000000000000001 /* AppSentryStartupPolicyTests.swift in Sources */,
+				37DEDDB68F06B09E3918C40E /* ArtifactRoomStoreTests.swift in Sources */,
 				81EFF8C65678AA497BB468A4 /* ArtifactStoreTests.swift in Sources */,
 				A47E00010000000000000001 /* AuthEnvironmentTests.swift in Sources */,
 				FF068325E8A04E51A30AE9BA /* AutoNamingCodexAdapterTests.swift in Sources */,

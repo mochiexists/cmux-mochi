@@ -28,6 +28,13 @@ enum ArtifactSamples {
             kind: .react,
             resource: "live-events",
             ext: "jsx"
+        ),
+        Sample(
+            name: "writers-room",
+            title: "Writers' Room",
+            kind: .html,
+            resource: "writers-room",
+            ext: "html"
         )
     ]
 

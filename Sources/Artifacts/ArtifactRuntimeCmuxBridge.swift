@@ -1,9 +1,13 @@
 import AppKit
+import CmuxControlSocket
+import CmuxFoundation
 import Foundation
 import WebKit
 
 @MainActor
 final class ArtifactRuntimeCmuxBridge {
+    static let roomCapabilityMarker = #"<meta name="cmux-artifact-room" content="enabled">"#
+
     private struct LiveSubscription {
         let subscription: CmuxEventSubscription
         let task: Task<Void, Never>
@@ -15,15 +19,32 @@ final class ArtifactRuntimeCmuxBridge {
     private var workspaceId: UUID = UUID()
     private var filePath: String = ""
     private var subscriptions: [String: LiveSubscription] = [:]
+    private var roomEnabled = false
+    private var roomWatcher: FileWatcher?
+    private var roomWatchTask: Task<Void, Never>?
     #if DEBUG
     var dispatchSinkForTesting: ((String, [String: Any]) -> Void)?
     #endif
 
-    func update(panelId: UUID, workspaceId: UUID, filePath: String, webView: WKWebView?) {
+    func update(
+        panelId: UUID,
+        workspaceId: UUID,
+        filePath: String,
+        webView: WKWebView?,
+        roomEnabled: Bool = false
+    ) {
+        if filePath != self.filePath {
+            stopRoomWatcher()
+        }
         self.panelId = panelId
         self.workspaceId = workspaceId
         self.filePath = filePath
         self.webView = webView
+        setRoomEnabled(roomEnabled)
+    }
+
+    func updateRoomCapability(from source: String) {
+        setRoomEnabled(source.contains(Self.roomCapabilityMarker))
     }
 
     func close() {
@@ -32,6 +53,8 @@ final class ArtifactRuntimeCmuxBridge {
             CmuxEventBus.shared.unsubscribe(live.subscription)
         }
         subscriptions.removeAll()
+        stopRoomWatcher()
+        roomEnabled = false
         webView = nil
     }
 
@@ -64,6 +87,14 @@ final class ArtifactRuntimeCmuxBridge {
     }
 
     private func callResponse(requestId: String?, method: String, params: [String: Any]) -> [String: Any] {
+        if method == "room.read" || method == "room.post" {
+            guard roomEnabled else {
+                return failure(
+                    requestId: requestId,
+                    error: "room capability is not enabled for this artifact"
+                )
+            }
+        }
         let value: Any
         switch method {
         case "capabilities":
@@ -81,6 +112,12 @@ final class ArtifactRuntimeCmuxBridge {
             ]
         case "surface.read", "readSurface":
             value = readSurface(params: params)
+        case "context", "artifact.context":
+            value = contextSnapshot()
+        case "room.read":
+            value = roomRead()
+        case "room.post":
+            value = roomPost(params: params)
         default:
             return failure(requestId: requestId, error: "unsupported cmux bridge method '\(method)'")
         }
@@ -153,9 +190,10 @@ final class ArtifactRuntimeCmuxBridge {
     }
 
     private func systemSnapshot(scope: String) -> [String: Any] {
-        [
+        return [
             "protocol": "cmux-artifact-bridge",
-            "version": 1,
+            "protocol_version": 2,
+            "schema_version": 1,
             "generated_at": CmuxEventBus.isoTimestamp(Date()),
             "artifact": [
                 "panel_id": panelId.uuidString,
@@ -180,16 +218,157 @@ final class ArtifactRuntimeCmuxBridge {
     }
 
     private func capabilities() -> [String: Any] {
-        [
+        var methods = [
+            "capabilities", "snapshot", "system.snapshot", "events.snapshot",
+            "surface.read", "readSurface", "context"
+        ]
+        if roomEnabled {
+            methods.append(contentsOf: ["room.read", "room.post"])
+        }
+        return [
             "protocol": "cmux-artifact-bridge",
-            "version": 1,
-            "read_only": true,
-            "methods": ["capabilities", "snapshot", "system.snapshot", "events.snapshot", "surface.read", "readSurface"],
+            "protocol_version": 2,
+            "read_only": !roomEnabled,
+            "methods": methods,
+            "writes": roomEnabled ? ["room.post"] : [],
             "subscriptions": [
                 "event_bus": true,
                 "filters": ["names", "categories", "afterSeq", "scope", "replayLimit"]
             ]
         ]
+    }
+
+    // MARK: - Self context
+
+    /// Resolves where this artifact currently lives in the UI — window,
+    /// workspace, pane, and surface (id + `kind:N` socket ref + indexes). The
+    /// lookup scans live topology by the artifact's panel id, so it stays
+    /// correct after the surface is dragged to another pane, workspace, or
+    /// window.
+    private func contextSnapshot() -> [String: Any] {
+        guard let app = AppDelegate.shared else {
+            return ["ok": false, "code": "unavailable", "message": "App context is not available"]
+        }
+        for summary in app.listMainWindowSummaries() {
+            guard let manager = app.tabManagerFor(windowId: summary.windowId) else { continue }
+            for (workspaceIndex, workspace) in manager.tabs.enumerated() {
+                guard workspace.panels[panelId] != nil,
+                      let pane = workspace.paneId(forPanelId: panelId) else { continue }
+                let tabIds = workspace.surfaceIdsInTabOrder(inPaneId: pane.id)
+                let selectedTabId = workspace.selectedSurfaceId(inPaneId: pane.id)
+                let ownTabIndex = workspace.indexInPane(forPanelId: panelId)
+                let ownTabId: UUID? = ownTabIndex.flatMap { index in
+                    tabIds.indices.contains(index) ? tabIds[index] : nil
+                }
+                let paneIndex = workspace.allPaneIds.firstIndex(where: { $0 == pane.id })
+                return [
+                    "ok": true,
+                    "generated_at": CmuxEventBus.isoTimestamp(Date()),
+                    "file_path": filePath,
+                    "window": [
+                        "id": summary.windowId.uuidString,
+                        "ref": socketRef(kind: .window, uuid: summary.windowId),
+                        "is_key": summary.isKeyWindow
+                    ],
+                    "workspace": [
+                        "id": workspace.id.uuidString,
+                        "ref": socketRef(kind: .workspace, uuid: workspace.id),
+                        "index": workspaceIndex,
+                        "title": workspace.title,
+                        "is_selected": workspace.id == summary.selectedWorkspaceId
+                    ],
+                    "pane": [
+                        "id": pane.id.uuidString,
+                        "ref": socketRef(kind: .pane, uuid: pane.id),
+                        "index": paneIndex ?? NSNull(),
+                        "tab_count": tabIds.count
+                    ],
+                    "surface": [
+                        "id": panelId.uuidString,
+                        "ref": socketRef(kind: .surface, uuid: panelId),
+                        "title": workspace.panelTitle(panelId: panelId)
+                            ?? workspace.panels[panelId]?.displayTitle
+                            ?? "",
+                        "tab_index": ownTabIndex ?? NSNull(),
+                        "is_selected": ownTabId != nil && ownTabId == selectedTabId,
+                        "is_focused": workspace.focusedPanelId == panelId
+                    ]
+                ]
+            }
+        }
+        return ["ok": false, "code": "not_found", "message": "Artifact surface is not attached to any workspace"]
+    }
+
+    /// Mints the same `kind:N` handle the cmux socket CLI reports, so text an
+    /// artifact renders matches `cmux tree` / `cmux identify` output.
+    private func socketRef(kind: ControlHandleKind, uuid: UUID) -> Any {
+        TerminalController.shared.v2Ref(kind: kind, uuid: uuid)
+    }
+
+    // MARK: - Room (multi-agent scratchpad sidecar)
+
+    /// `room.read` — parse the artifact's `.room.jsonl` sidecar. Starts the
+    /// sidecar watcher so external appends (agents posting from a shell)
+    /// re-notify the artifact.
+    private func roomRead() -> [String: Any] {
+        let store = ArtifactRoomStore(artifactFilePath: filePath)
+        ensureRoomWatcher()
+        let result = store.read()
+        return [
+            "ok": true,
+            "path": store.roomPath,
+            "exists": result.exists,
+            "entries": result.entries,
+            "skipped": result.skipped,
+            "truncated": result.truncated
+        ]
+    }
+
+    /// `room.post` — validate and append one entry to the sidecar (the
+    /// artifact compose box path). The watcher then fans the change back out
+    /// to the artifact, same as an external append.
+    private func roomPost(params: [String: Any]) -> [String: Any] {
+        let store = ArtifactRoomStore(artifactFilePath: filePath)
+        ensureRoomWatcher()
+        do {
+            let entry = try store.append(entry: params)
+            return ["ok": true, "path": store.roomPath, "entry": entry]
+        } catch {
+            return ["ok": false, "code": "invalid_params", "message": error.localizedDescription]
+        }
+    }
+
+    /// Watches the room sidecar (created lazily on first room call; the
+    /// watcher recovers via nearest-existing-ancestor when the file does not
+    /// exist yet) and pings the shell so room UIs re-read on every append.
+    private func ensureRoomWatcher() {
+        guard roomWatchTask == nil else { return }
+        let store = ArtifactRoomStore(artifactFilePath: filePath)
+        let watcher = FileWatcher(path: store.roomPath)
+        roomWatcher = watcher
+        let events = watcher.events
+        roomWatchTask = Task { @MainActor [weak self] in
+            for await _ in events {
+                guard let self else { break }
+                self.webView?.evaluateJavaScript(
+                    "window.__cmuxArtifactRoomDispatch && window.__cmuxArtifactRoomDispatch();",
+                    completionHandler: nil
+                )
+            }
+        }
+    }
+
+    private func stopRoomWatcher() {
+        roomWatchTask?.cancel()
+        roomWatchTask = nil
+        roomWatcher = nil
+    }
+
+    private func setRoomEnabled(_ enabled: Bool) {
+        if roomEnabled, !enabled {
+            stopRoomWatcher()
+        }
+        roomEnabled = enabled
     }
 
     private func windowSnapshots(scope: String) -> [[String: Any]] {

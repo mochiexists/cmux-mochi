@@ -6713,11 +6713,59 @@ class TerminalController {
         return result
     }
 
+    /// Resolves where an artifact surface should land. An explicit `pane_id`
+    /// wins (tab into that pane); an explicit direction forces a split; with
+    /// neither, reuse the nearest right-side sibling pane (tab) and fall back
+    /// to a right split — the same placement contract as markdown/browser
+    /// helper surfaces.
+    @MainActor
+    private func v2ResolveArtifactTargetPane(
+        workspace ws: Workspace,
+        params: [String: Any],
+        directionStr: String?,
+        sourceSurfaceId: UUID
+    ) -> (pane: PaneID?, error: V2CallResult?) {
+        if directionStr != nil, params["pane_id"] != nil {
+            return (
+                nil,
+                .err(
+                    code: "invalid_params",
+                    message: "pane_id and direction are mutually exclusive",
+                    data: nil
+                )
+            )
+        }
+        if let directionStr, parseSplitDirection(directionStr) == nil {
+            return (
+                nil,
+                .err(
+                    code: "invalid_params",
+                    message: "Invalid direction (left|right|up|down)",
+                    data: ["direction": directionStr]
+                )
+            )
+        }
+        if let requestedPaneUUID = v2UUID(params, "pane_id") {
+            guard let pane = ws.bonsplitController.allPaneIds.first(where: { $0.id == requestedPaneUUID }) else {
+                return (nil, .err(code: "not_found", message: "Pane not found in workspace", data: nil))
+            }
+            return (pane, nil)
+        }
+        if directionStr == nil,
+           let pane = ws.preferredRightSideTargetPane(fromPanelId: sourceSurfaceId) {
+            return (pane, nil)
+        }
+        return (nil, nil)
+    }
+
     /// `artifact.new` — scaffold a new artifact in the global store and open it
-    /// in a split beside the source surface (the conductor "open beside me"
-    /// path). Params: `title?`, `kind?` (react/html/svg/mermaid/code/file),
-    /// `direction?`
-    /// (right/down/left/up), `surface_id?`, `focus?`.
+    /// beside the source surface (the conductor "open beside me" path).
+    /// Placement: explicit `pane_id` tabs into that pane; explicit `direction`
+    /// splits; otherwise the nearest right-side pane is reused, falling back to
+    /// a right split. Params: `title?`, `kind?`
+    /// (react/html/svg/mermaid/code/file), `direction?` (right/down/left/up),
+    /// `pane_id?`, `surface_id?`, `dir?` (scaffold directory override),
+    /// `focus?`.
     private func v2ArtifactNew(params: [String: Any]) -> V2CallResult {
         guard let tabManager = v2ResolveTabManager(params: params) else {
             return .err(code: "unavailable", message: "TabManager not available", data: nil)
@@ -6748,6 +6796,19 @@ class TerminalController {
             if kindRaw == nil { kind = sample.kind }
         }
 
+        // Optional scaffold directory override (`dir`): materialize the file in
+        // a caller-chosen folder (e.g. a repo-local scratchpad) instead of the
+        // dated store tree. The provenance index records the absolute path.
+        var scaffoldDirectory: String?
+        if let dirRaw = v2String(params, "dir")?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !dirRaw.isEmpty {
+            let expanded = (dirRaw as NSString).expandingTildeInPath
+            guard (expanded as NSString).isAbsolutePath else {
+                return .err(code: "invalid_params", message: "dir must be an absolute path", data: nil)
+            }
+            scaffoldDirectory = expanded
+        }
+
         var result: V2CallResult = .err(code: "internal_error", message: "Failed to create artifact", data: nil)
         v2MainSync {
             guard let ws = v2ResolveWorkspace(params: params, tabManager: tabManager) else {
@@ -6771,30 +6832,69 @@ class TerminalController {
             let originCwd = ws.panelDirectories[sourceSurfaceId]
             let resolvedTitle = (title?.isEmpty == false) ? title! : (sampleTitle ?? "Artifact")
 
-            // direction → split placement; default to a right-hand split.
-            let split: (orientation: SplitOrientation, insertFirst: Bool)
-            if let directionStr, let direction = parseSplitDirection(directionStr) {
-                split = (direction.isHorizontal ? .horizontal : .vertical,
-                         direction == .left || direction == .up)
-            } else {
-                split = (.horizontal, false)
+            let target = v2ResolveArtifactTargetPane(
+                workspace: ws,
+                params: params,
+                directionStr: directionStr,
+                sourceSurfaceId: sourceSurfaceId
+            )
+            if let error = target.error {
+                result = error
+                return
             }
 
-            guard let panel = ws.createArtifact(
-                title: resolvedTitle,
-                kind: kind,
-                inPane: sourcePane,
-                split: split,
-                originCwd: originCwd,
-                originSurfaceId: sourceSurfaceId.uuidString,
-                source: sampleSource,
-                focus: focus
-            ) else {
+            let panel: ArtifactPanel?
+            let placement: String
+            if let targetPane = target.pane {
+                panel = ws.createArtifact(
+                    title: resolvedTitle,
+                    kind: kind,
+                    inPane: targetPane,
+                    split: nil,
+                    originCwd: originCwd,
+                    originSurfaceId: sourceSurfaceId.uuidString,
+                    source: sampleSource,
+                    focus: focus,
+                    scaffoldDirectory: scaffoldDirectory
+                )
+                placement = "pane_tab"
+            } else {
+                // direction → split placement; default to a right-hand split.
+                let split: (orientation: SplitOrientation, insertFirst: Bool)
+                if let directionStr, let direction = parseSplitDirection(directionStr) {
+                    split = (direction.isHorizontal ? .horizontal : .vertical,
+                             direction == .left || direction == .up)
+                } else {
+                    split = (.horizontal, false)
+                }
+                panel = ws.createArtifact(
+                    title: resolvedTitle,
+                    kind: kind,
+                    inPane: sourcePane,
+                    split: split,
+                    originCwd: originCwd,
+                    originSurfaceId: sourceSurfaceId.uuidString,
+                    source: sampleSource,
+                    focus: focus,
+                    scaffoldDirectory: scaffoldDirectory
+                )
+                placement = "split"
+            }
+
+            guard let panel else {
                 result = .err(code: "internal_error", message: "Failed to create artifact", data: nil)
                 return
             }
 
             let targetPaneUUID = ws.paneId(forPanelId: panel.id)?.id
+            let reportedPlacement: String
+            if placement == "pane_tab",
+               let requestedPane = target.pane,
+               targetPaneUUID != requestedPane.id {
+                reportedPlacement = "existing_surface"
+            } else {
+                reportedPlacement = placement
+            }
             let windowId = v2ResolveWindowId(tabManager: tabManager)
             result = .ok([
                 "window_id": v2OrNull(windowId?.uuidString),
@@ -6806,15 +6906,19 @@ class TerminalController {
                 "pane_id": v2OrNull(targetPaneUUID?.uuidString),
                 "pane_ref": v2Ref(kind: .pane, uuid: targetPaneUUID),
                 "file_path": panel.filePath,
-                "kind": panel.kind.rawValue
+                "kind": panel.kind.rawValue,
+                "placement": reportedPlacement
             ])
         }
         return result
     }
 
     /// `artifact.open` — open an existing artifact by id, store-relative path,
-    /// absolute path, or filename. Params: `target` (or `id`/`path`), `kind?`,
-    /// `direction?`, `surface_id?`, `focus?`.
+    /// absolute path, or filename. Placement follows the same contract as
+    /// `artifact.new`: explicit `pane_id` tabs into that pane, explicit
+    /// `direction` splits, otherwise the nearest right-side pane is reused.
+    /// Params: `target` (or `id`/`path`), `kind?`, `direction?`, `pane_id?`,
+    /// `surface_id?`, `focus?`.
     private func v2ArtifactOpen(params: [String: Any]) -> V2CallResult {
         let target = v2String(params, "target")
             ?? v2String(params, "id")
@@ -6866,24 +6970,35 @@ class TerminalController {
             }
 
             let focus = v2FocusAllowed(requested: v2Bool(params, "focus") ?? false)
-            let split: (orientation: SplitOrientation, insertFirst: Bool)
-            if let directionStr, let direction = parseSplitDirection(directionStr) {
-                split = (direction.isHorizontal ? .horizontal : .vertical,
-                         direction == .left || direction == .up)
-            } else {
-                split = (.horizontal, false)
+            let target = v2ResolveArtifactTargetPane(
+                workspace: ws,
+                params: params,
+                directionStr: directionStr,
+                sourceSurfaceId: sourceSurfaceId
+            )
+            if let error = target.error {
+                result = error
+                return
             }
 
             let panel: ArtifactPanel?
-            if directionStr == nil,
-               let targetPane = ws.preferredRightSideTargetPane(fromPanelId: sourceSurfaceId) {
+            let placement: String
+            if let targetPane = target.pane {
                 panel = ws.openOrFocusArtifactSurface(
                     inPane: targetPane,
                     filePath: resolved.path,
                     kind: resolved.kind,
                     focus: focus
                 )
+                placement = "pane_tab"
             } else {
+                let split: (orientation: SplitOrientation, insertFirst: Bool)
+                if let directionStr, let direction = parseSplitDirection(directionStr) {
+                    split = (direction.isHorizontal ? .horizontal : .vertical,
+                             direction == .left || direction == .up)
+                } else {
+                    split = (.horizontal, false)
+                }
                 panel = ws.splitPaneWithArtifact(
                     targetPane: sourcePane,
                     orientation: split.orientation,
@@ -6892,6 +7007,7 @@ class TerminalController {
                     kind: resolved.kind,
                     focus: focus
                 )
+                placement = "split"
             }
 
             guard let panel else {
@@ -6911,7 +7027,8 @@ class TerminalController {
                 "pane_id": v2OrNull(targetPaneUUID?.uuidString),
                 "pane_ref": v2Ref(kind: .pane, uuid: targetPaneUUID),
                 "file_path": panel.filePath,
-                "kind": panel.kind.rawValue
+                "kind": panel.kind.rawValue,
+                "placement": placement
             ]
             if let record = resolved.record {
                 payload["artifact"] = v2ArtifactRecordPayload(record, store: store)
