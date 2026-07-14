@@ -73,6 +73,29 @@ struct AgentSessionSocketSurfaceTests {
     }
 
     @Test
+    func testWorkspaceSessionSnapshotPersistsAttachedProviderSession() throws {
+        let manager = TabManager()
+        let workspace = try #require(manager.selectedWorkspace)
+        let paneId = try #require(workspace.bonsplitController.focusedPaneId)
+        let providerSessionID = "019dad34-d218-7943-b81a-eddac5c87951"
+
+        let panel = try #require(
+            workspace.newAgentSessionSurface(
+                inPane: paneId,
+                providerID: .codex,
+                rendererKind: .react,
+                providerSessionID: providerSessionID,
+                focus: false
+            )
+        )
+
+        let snapshot = workspace.sessionSnapshot(includeScrollback: false)
+        let panelSnapshot = try #require(snapshot.panels.first { $0.id == panel.id })
+        expectEqual(panel.providerSessionID, providerSessionID)
+        expectEqual(panelSnapshot.agentSession?.providerSessionID, providerSessionID)
+    }
+
+    @Test
     func testWorkspaceRestoreMarksAgentSessionSurfaceAsRestored() throws {
         let manager = TabManager()
         let workspace = try #require(manager.selectedWorkspace)

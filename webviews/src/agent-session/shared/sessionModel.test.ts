@@ -295,6 +295,42 @@ test("provider turn completion marks the active assistant transcript complete", 
   });
 });
 
+test("provider transcript snapshots replace the mirror transcript", () => {
+  const running = reduceSession(
+    reduceSession(initialState("react"), { type: "context", context }),
+    { type: "starting" },
+  );
+  const started = reduceSession(running, {
+    type: "event",
+    event: {
+      type: "provider.started",
+      sessionId: "runtime-1",
+      providerId: "codex",
+      executablePath: "/usr/bin/codex",
+      arguments: [],
+    },
+  });
+
+  const mirrored = reduceSession(started, {
+    type: "event",
+    event: {
+      type: "provider.transcript",
+      sessionId: "runtime-1",
+      providerId: "codex",
+      providerSessionId: "thread-1",
+      entries: [
+        { id: "user-1", role: "user", text: "say hi" },
+        { id: "agent-1", role: "assistant", text: "hi", isComplete: true, sessionId: "runtime-1" },
+      ],
+    },
+  });
+
+  expect(mirrored.transcript).toEqual([
+    { id: "user-1", role: "user", text: "say hi" },
+    { id: "agent-1", role: "assistant", text: "hi", isComplete: true, sessionId: "runtime-1" },
+  ]);
+});
+
 test("provider exit marks assistant transcript complete", () => {
   const running = {
     ...initialState("solid"),

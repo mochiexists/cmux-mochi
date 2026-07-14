@@ -10,6 +10,42 @@ import Testing
 @Suite(.serialized)
 @MainActor
 struct CodexAppServerSessionTests {
+    @Test
+    func testExistingThreadStartsReadOnlySnapshotMirror() async throws {
+        var sentLines: [String] = []
+        var snapshots: [[String: Any]] = []
+        let session = CodexAppServerSession(
+            workingDirectory: nil,
+            existingThreadID: "019dad34-d218-7943-b81a-eddac5c87951",
+            mirrorRefreshInterval: nil,
+            writeData: { data in
+                sentLines.append(String(decoding: data, as: UTF8.self).trimmingCharacters(in: .newlines))
+            },
+            outputSink: { _, _ in },
+            threadSnapshotSink: { snapshots.append($0) }
+        )
+
+        try await session.start()
+        session.consumeStdout(
+            #"{"id":1,"result":{"userAgent":"codex","codexHome":"/tmp","platformFamily":"unix","platformOs":"macos"}}"#
+                + "\n")
+        await Task.yield()
+
+        expectEqual(jsonLine(sentLines[1])["method"] as? String, "initialized")
+        let readRequest = jsonLine(sentLines[2])
+        expectEqual(readRequest["method"] as? String, "thread/read")
+        let params = try #require(readRequest["params"] as? [String: Any])
+        expectEqual(params["threadId"] as? String, "019dad34-d218-7943-b81a-eddac5c87951")
+        expectEqual(params["includeTurns"] as? Bool, true)
+        expectFalse(sentLines.contains { jsonLine($0)["method"] as? String == "thread/resume" })
+
+        session.consumeStdout(
+            #"{"id":2,"result":{"thread":{"id":"019dad34-d218-7943-b81a-eddac5c87951","turns":[]}}}"#
+                + "\n")
+        expectEqual(snapshots.count, 1)
+        expectEqual(snapshots.first?["id"] as? String, "019dad34-d218-7943-b81a-eddac5c87951")
+    }
+
     private func expectThrowsErrorAsync<T>(
         _ expression: () async throws -> T,
         sourceLocation: SourceLocation = #_sourceLocation
