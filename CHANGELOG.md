@@ -2,6 +2,16 @@
 
 All notable changes to cmux are documented here.
 
+## [0.64.173] - 2026-07-14
+
+cmux **Mochi** fork patch release.
+
+### Added
+- Added bundled artifact guidance and clearer placement recipes so Codex and Claude sessions can create artifacts and reuse existing helper panes more predictably.
+
+### Fixed
+- Prevented restored native agent-session tabs from automatically starting a second provider process before the user resumes them.
+
 ## [0.64.172] - 2026-07-08
 
 cmux **Mochi** fork patch release.
