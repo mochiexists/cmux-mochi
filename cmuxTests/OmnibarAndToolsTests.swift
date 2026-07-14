@@ -516,7 +516,7 @@ final class VSCodeServeWebWorkspaceRegistryTests: XCTestCase {
         registry.stopAll()
     }
 
-    func testRegistrySeparatesControllersByProfileWithinWorkspace() {
+    func testRegistryReusesOneFullWorkbenchControllerWithinWorkspace() {
         let factoryLock = NSLock()
         var factoryCallCount = 0
         var requestedProfiles: [VSCodeServeWebProfile] = []
@@ -572,9 +572,9 @@ final class VSCodeServeWebWorkspaceRegistryTests: XCTestCase {
         let profiles = requestedProfiles
         factoryLock.unlock()
 
-        XCTAssertEqual(calls, 2)
-        XCTAssertEqual(profiles, [.standard, .claudeCode])
-        XCTAssertEqual(resolvedURLs.map { $0?.port }, [7601, 7602, 7601])
+        XCTAssertEqual(calls, 1)
+        XCTAssertEqual(profiles, [.standard])
+        XCTAssertEqual(resolvedURLs.map { $0?.port }, [7601, 7601, 7601])
         registry.stopAll()
     }
 
