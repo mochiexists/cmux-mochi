@@ -330,6 +330,7 @@ Feed and agent hooks:
 | `feed.item.resolved` | A Feed reply command resolved a permission, question, or plan item. |
 | `agent.hook.<HookEventName>` | Agent hook event received through Feed. Examples include Claude Code and Codex permission requests when their hooks are installed. |
 | `agent.state.changed` | An agent's lifecycle state transitioned (`running`, `idle`, `needsInput`, `unknown`) for a specific surface. Payload carries `agent_key`, `previous_state`, and `state`. Deduplicated: repeated reports of the same state do not re-fire. |
+| `agent.turn.completed` | A native agent-session turn reached a terminal provider state. Payload carries `provider_id`, `runtime_session_id`, `provider_session_id`, `turn_id`, and `status`, plus the event's workspace/surface scope. |
 
 App, browser, and config:
 

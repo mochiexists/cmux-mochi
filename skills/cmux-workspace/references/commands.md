@@ -43,7 +43,7 @@ cmux tree --workspace "$CMUX_WORKSPACE_ID"
 
 cmux new-split right --workspace "$CMUX_WORKSPACE_ID"
 cmux new-split down --workspace "$CMUX_WORKSPACE_ID" --surface "$CMUX_SURFACE_ID"
-cmux new-pane --workspace "$CMUX_WORKSPACE_ID" --type terminal --direction right
+cmux new-pane --workspace "$CMUX_WORKSPACE_ID" --type terminal
 cmux new-pane --workspace "$CMUX_WORKSPACE_ID" --type browser --url http://localhost:3000
 cmux new-surface --workspace "$CMUX_WORKSPACE_ID" --type terminal --pane pane:1
 cmux new-surface --workspace "$CMUX_WORKSPACE_ID" --type browser --pane pane:1 --url http://localhost:3000

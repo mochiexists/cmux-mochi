@@ -41,7 +41,7 @@ When you are inside cmux (`CMUX_WORKSPACE_ID` is set) and the task asks for a sc
   ```
 - To show a capture back to the user, open it in a right-side pane (see Right-Side Helper Pane): capture FIRST, then
   ```bash
-  cmux new-pane --workspace "${CMUX_WORKSPACE_ID:-}" --type browser --direction right --url "file:///tmp/workspace.png" --focus false
+  cmux new-pane --workspace "${CMUX_WORKSPACE_ID:-}" --type browser --url "file:///tmp/workspace.png" --focus false
   ```
 
 ## Non-Disruptive Automation
@@ -60,7 +60,7 @@ Build layout additively, in one shot. Prefer commands that create a new pane alr
 
 ```bash
 # pane and content in one call, no follow-up needed
-cmux new-pane --workspace "${CMUX_WORKSPACE_ID}" --type browser --direction right --url "http://127.0.0.1:8765"
+cmux new-pane --workspace "${CMUX_WORKSPACE_ID}" --type browser --url "http://127.0.0.1:8765"
 cmux new-pane --workspace "${CMUX_WORKSPACE_ID}" --type terminal --direction down
 ```
 
@@ -88,7 +88,7 @@ Use this policy:
   ```
 - If there is no helper pane, create exactly one right-side pane:
   ```bash
-  cmux new-pane --workspace "${CMUX_WORKSPACE_ID:-}" --type terminal --direction right --focus false
+  cmux new-pane --workspace "${CMUX_WORKSPACE_ID:-}" --type terminal --focus false
   ```
 - If there are multiple obvious stale helper panes from this same automation and the user asked to tidy or reuse, keep one right helper pane and clean up the duplicates. Do not close panes you cannot confidently identify as stale helper output.
 - Send commands to the new or reused helper surface by explicit surface ref. Do not focus it unless the user asks.
@@ -170,7 +170,7 @@ cmux close-workspace --workspace workspace:4
 cmux close-surface --workspace "${CMUX_WORKSPACE_ID:-}" --surface surface:3
 
 # additive layout (safe, no focus side effects beyond the command's own defaults)
-cmux new-pane --workspace "${CMUX_WORKSPACE_ID:-}" --type terminal --direction right
+cmux new-pane --workspace "${CMUX_WORKSPACE_ID:-}" --type terminal
 cmux new-surface --workspace "${CMUX_WORKSPACE_ID:-}" --type terminal
 
 # focus-changing (USER-AFFECTING, only on explicit ask, see Non-Disruptive Automation above)

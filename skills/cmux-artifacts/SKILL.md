@@ -38,38 +38,38 @@ Supported options:
 Create an artifact beside the calling surface:
 
 ```bash
-cmux artifact new --surface "$CMUX_SURFACE_ID" --direction right --focus true
+cmux artifact new --surface "$CMUX_SURFACE_ID" --focus true
 ```
 
 Create the bundled capabilities showcase:
 
 ```bash
-cmux artifact new --template showcase --surface "$CMUX_SURFACE_ID" --direction right --focus true
+cmux artifact new --template showcase --surface "$CMUX_SURFACE_ID" --focus true
 ```
 
 Create the bundled live-events cockpit:
 
 ```bash
-cmux artifact new --template live-events --surface "$CMUX_SURFACE_ID" --direction right --focus true
+cmux artifact new --template live-events --surface "$CMUX_SURFACE_ID" --focus true
 ```
 
 Create a named React artifact:
 
 ```bash
-cmux artifact new --title "Pricing table" --kind react --surface "$CMUX_SURFACE_ID" --direction right --focus true
+cmux artifact new --title "Pricing table" --kind react --surface "$CMUX_SURFACE_ID" --focus true
 ```
 
 Create a named HTML artifact:
 
 ```bash
-cmux artifact new --title "Browser capture" --kind html --surface "$CMUX_SURFACE_ID" --direction right --focus true
+cmux artifact new --title "Browser capture" --kind html --surface "$CMUX_SURFACE_ID" --focus true
 ```
 
 Create a Mermaid or SVG artifact:
 
 ```bash
-cmux artifact new --title "System flow" --kind mermaid --surface "$CMUX_SURFACE_ID" --direction right --focus true
-cmux artifact new --title "Logo sketch" --kind svg --surface "$CMUX_SURFACE_ID" --direction right --focus true
+cmux artifact new --title "System flow" --kind mermaid --surface "$CMUX_SURFACE_ID" --focus true
+cmux artifact new --title "Logo sketch" --kind svg --surface "$CMUX_SURFACE_ID" --focus true
 ```
 
 List recent artifacts:
@@ -82,18 +82,18 @@ cmux artifact list --repo . --limit 10
 Reopen an artifact by id, path, or filename:
 
 ```bash
-cmux artifact open <id-or-path> --surface "$CMUX_SURFACE_ID" --direction right --focus true
+cmux artifact open <id-or-path> --surface "$CMUX_SURFACE_ID" --focus true
 ```
 
 Open an existing Claude-style artifact file directly:
 
 ```bash
-cmux artifact open /path/to/artifact.jsx --surface "$CMUX_SURFACE_ID" --direction right --focus true
-cmux artifact open /path/to/artifact.html --surface "$CMUX_SURFACE_ID" --direction right --focus true
-cmux artifact open /path/to/diagram.svg --surface "$CMUX_SURFACE_ID" --direction right --focus true
-cmux artifact open /path/to/flow.mermaid --surface "$CMUX_SURFACE_ID" --direction right --focus true
-cmux artifact open /path/to/script.py --surface "$CMUX_SURFACE_ID" --direction right --focus true
-cmux artifact open /path/to/report.pdf --surface "$CMUX_SURFACE_ID" --direction right --focus true
+cmux artifact open /path/to/artifact.jsx --surface "$CMUX_SURFACE_ID" --focus true
+cmux artifact open /path/to/artifact.html --surface "$CMUX_SURFACE_ID" --focus true
+cmux artifact open /path/to/diagram.svg --surface "$CMUX_SURFACE_ID" --focus true
+cmux artifact open /path/to/flow.mermaid --surface "$CMUX_SURFACE_ID" --focus true
+cmux artifact open /path/to/script.py --surface "$CMUX_SURFACE_ID" --focus true
+cmux artifact open /path/to/report.pdf --surface "$CMUX_SURFACE_ID" --focus true
 ```
 
 This works for normal exported/copied Claude artifact source files: React source
@@ -124,7 +124,7 @@ If there is no right-side helper pane yet, create the artifact to the right of
 the caller surface:
 
 ```bash
-cmux artifact new --surface "${CMUX_SURFACE_ID:-}" --direction right --focus false
+cmux artifact new --surface "${CMUX_SURFACE_ID:-}" --focus false
 ```
 
 If a right-side helper pane already exists, the user usually means "put another

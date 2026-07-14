@@ -130,8 +130,8 @@ no explicit target resolves.
 | `tree` | Print a window, workspace, pane, and surface tree. |
 | `top` | Print process/resource usage for cmux windows, workspaces, panes, and surfaces. |
 | `focus-pane` | Focus a pane. |
-| `new-pane` | Create a pane with terminal or browser content. |
-| `new-surface`, `new-tab` | Create a surface/tab inside a pane. Supports `--type agent-session --provider codex` for native Codex worker tabs. |
+| `new-pane` | Create terminal or browser content to the right. With no `--direction`, a full-width source splits 50/50; later calls add tabs to the existing right pane. An explicit direction always requests a literal split. |
+| `new-surface`, `new-tab` | Create a surface/tab inside a pane. Supports `--type agent-session --provider codex` for native Codex worker tabs and `--session-id` for a read-only mirror of an existing Codex session. |
 | `close-surface` | Close a surface. |
 | `move-surface` | Move a surface to another pane, workspace, window, or index. |
 | `split-off` | Move a surface into a new split without changing focus by default. |
@@ -150,7 +150,7 @@ no explicit target resolves.
 | `select-workspace` | Select a workspace. |
 | `rename-workspace`, `rename-window` | Rename a workspace. `rename-window` is a compatibility alias. |
 | `current-workspace` | Print current workspace information. |
-| `read-screen` | Read text from the selected surface. Terminal surfaces support scrollback. Native `agent-session` surfaces need a structured agent read API instead of screenshot/WebView scraping. |
+| `read-screen` | Read text from the selected terminal surface, including optional scrollback. Use `surface text` for a structured native `agent-session` transcript. |
 | `capture-workspace`, `workspace-screenshot` | Capture one visible workspace (its panes plus the tab bar) as a single image with a per-pane rect map. The left sidebar is excluded by default (`--sidebar include` to keep it). Never changes focus; the workspace must already be selected in its window. |
 | `send` | Send text to a terminal surface. |
 | `send-key` | Send one key to a terminal surface. |
@@ -345,7 +345,7 @@ surface commands:
 | --- | --- |
 | `surface ingest` | Capture an LLM-ready bundle for a supported surface. Returns extracted text, screenshot metadata, a short prompt block, and by default writes an audit directory under `~/.config/cmux/conductor/audit/YYYY/MM/DD/`. Defaults to PNG, `profile=llm`, and `max_dimension=2048`; pass `--format jpeg`, `--jpeg-quality`, `--max-dimension none`, `--no-audit`, `--no-text`, or `--no-screenshot` to override. |
 | `surface screenshot` | Save a screenshot of a supported surface without using the system screen recorder path. Emits format, byte count, width, height, original dimensions, aspect ratio, and compression metadata. Supports `--format png|jpeg`, `--jpeg-quality`, `--max-dimension`, `--profile`, `--include-base64`, and optional audit writing. |
-| `surface text` | Read text from a surface. Terminals return viewport/scrollback text, browsers return DOM text, and file-backed panes return source text. |
+| `surface text` | Read text from a surface. Terminals return viewport/scrollback text, browsers return DOM text, file-backed panes return source text, and native agent sessions return their structured transcript plus provider/runtime/turn identity. |
 | `browser import` | Open the browser import wizard. In detected coding-agent environments, defaults to non-interactive cookie import; pass `--interactive` to force the wizard. Non-interactive import supports `--from`, `--profile`, `--all-profiles`, `--to-profile`, `--create-profile`, and `--domain`. |
 | `browser cookies` | Get, set, or clear cookies. |
 | `browser storage` | Get, set, or clear local/session storage. |

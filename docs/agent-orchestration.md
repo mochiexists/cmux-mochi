@@ -34,7 +34,22 @@ cmux new-surface --type agent-session --provider codex --workspace "$CMUX_WORKSP
 
 This path launches `codex app-server --listen stdio://` and submits turns through Codex app-server JSON-RPC from the native cmux surface. It is the right foundation for structured commander control.
 
-Current limitation: the external CLI/socket surface cannot yet submit to or read from that same native agent-session directly. Until that lands, use the visible composer for native Codex surfaces, or use a terminal Codex pane when a conductor must submit autonomously today.
+To mirror an existing Codex session, pass its provider session/thread ID:
+
+```bash
+cmux new-surface --type agent-session --provider codex --session-id "$CODEX_SESSION_ID" --workspace "$CMUX_WORKSPACE_ID" --focus false
+```
+
+An attached surface is a read-only observer. It refreshes persisted Codex thread history with `thread/read`, so updates are near-live snapshots rather than token-level streaming. It never resumes the thread in a second process and never answers approvals. A new terminal completion publishes `agent.turn.completed` with provider, runtime-session, provider-session, and turn IDs.
+
+Native agent-session transcript and screenshot capture are available without WebView scraping or system screen recording:
+
+```bash
+cmux surface text --surface "$TARGET_SURFACE" --json
+cmux surface screenshot --surface "$TARGET_SURFACE" --out /tmp/agent.png
+```
+
+Current limitation: the external CLI/socket surface cannot yet submit a new turn to a native agent-session. Use the visible composer for writable native Codex surfaces, or use a terminal Codex pane when a conductor must submit autonomously today.
 
 Terminal fallback:
 
@@ -94,7 +109,7 @@ Additional CLI hardening to make agent control boring:
 - Destructive socket methods should fail when no explicit target resolves, instead of falling back to focus.
 - Agent launchers such as `codex-teams`, `claude-teams`, and `omx` should grow `--new-tab`, `--workspace`, and initial `--prompt`/`--goal` placement flags.
 - `new-tab` should be a discoverable alias for `new-surface`.
-- `read-screen` should gain a structured read path for native `agent-session` surfaces rather than requiring screenshot or WebView scraping.
+- `agent read` should wrap the structured native transcript already exposed by `surface text` and add higher-level filtering.
 
 ## Saved Swarm Scenes
 
