@@ -2,6 +2,21 @@
 
 All notable changes to cmux are documented here.
 
+## [0.64.173] - 2026-07-14
+
+cmux **Mochi** fork patch release.
+
+### Added
+- Added a Writers' Room artifact template for shared human-and-agent scratchpads, with live participant context, safe concurrent message appends, and repo-local artifact creation through `cmux artifact new --dir`.
+
+### Changed
+- Improved "open beside me" placement for artifacts, browsers, Markdown, file previews, and custom sidebars: the first addition creates a 50/50 right pane, while later additions reuse the existing right pane as tabs instead of nesting more splits.
+- Expanded the bundled cmux skills with explicit pane, workspace, and caller-targeting recipes so Codex and Claude sessions choose deterministic destinations.
+
+### Fixed
+- Prevented restored native agent-session tabs from automatically starting a second provider process before the user resumes them.
+- Hardened writable artifact rooms with explicit per-artifact opt-in, bounded log reads, validated entries, and truthful placement/error responses.
+
 ## [0.64.172] - 2026-07-08
 
 cmux **Mochi** fork patch release.
