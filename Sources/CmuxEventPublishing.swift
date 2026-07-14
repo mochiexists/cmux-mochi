@@ -176,6 +176,33 @@ extension CmuxEventBus {
         )
     }
 
+    func publishAgentTurnCompleted(
+        workspaceId: UUID,
+        surfaceId: UUID,
+        providerID: String,
+        runtimeSessionID: String?,
+        providerSessionID: String?,
+        turnID: String?,
+        status: String
+    ) {
+        publish(
+            name: "agent.turn.completed",
+            category: "agent",
+            source: "agent.session",
+            workspaceId: workspaceId.uuidString,
+            surfaceId: surfaceId.uuidString,
+            payload: [
+                "workspace_id": workspaceId.uuidString,
+                "surface_id": surfaceId.uuidString,
+                "provider_id": providerID,
+                "runtime_session_id": runtimeSessionID ?? NSNull(),
+                "provider_session_id": providerSessionID ?? NSNull(),
+                "turn_id": turnID ?? NSNull(),
+                "status": status
+            ]
+        )
+    }
+
     func publishPaneCreated(
         workspaceId: UUID,
         paneId: UUID,

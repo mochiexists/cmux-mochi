@@ -140,7 +140,7 @@ public protocol ControlProjectContext: AnyObject {
         routing: ControlRoutingSelectors,
         surfaceID: UUID?,
         filePath: String,
-        directionRaw: String,
+        directionRaw: String?,
         fontSize: Double?,
         fontSizeInvalid: Bool,
         requestedFocus: Bool

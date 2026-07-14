@@ -207,6 +207,7 @@ export async function startProvider(state: SessionState, dispatch: (action: Acti
 
 type StartProviderSnapshot = {
   providerId: ProviderId;
+  providerSessionId?: string;
   workingDirectory?: string;
   copy?: AppContext["copy"];
 };
@@ -214,6 +215,7 @@ type StartProviderSnapshot = {
 function startProviderSnapshotFromState(state: SessionState): StartProviderSnapshot {
   return {
     providerId: state.selectedProviderId,
+    providerSessionId: state.context?.providerSessionId,
     workingDirectory: state.context?.workingDirectory,
     copy: state.context?.copy,
   };
@@ -227,6 +229,7 @@ async function startProviderSnapshot(
   try {
     const reply = await callNative<{ sessionId: string }>("provider.start", {
       providerId: snapshot.providerId,
+      providerSessionId: snapshot.providerSessionId,
       workingDirectory: snapshot.workingDirectory,
     });
     dispatch({ type: "startAccepted", sessionId: reply.sessionId });
@@ -403,6 +406,14 @@ function applyEvent(state: SessionState, event: AgentEvent): SessionState {
         ...state,
         log: appendLog(state, event.stream, event.text),
         transcript: appendProviderTranscript(state, event),
+      };
+    case "provider.transcript":
+      if (event.sessionId !== state.runningSessionId) {
+        return state;
+      }
+      return {
+        ...state,
+        transcript: event.entries.slice(-200),
       };
     case "provider.activity":
       if (event.sessionId !== state.runningSessionId) {

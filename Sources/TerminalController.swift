@@ -5472,6 +5472,7 @@ class TerminalController {
         let browserPanel: BrowserPanel?
         let browserWebView: WKWebView?
         let artifactPanel: ArtifactPanel?
+        let agentSessionPanel: AgentSessionPanel?
         let markdownPanel: MarkdownPanel?
         let filePreviewPanel: FilePreviewPanel?
     }
@@ -5531,6 +5532,7 @@ class TerminalController {
                     browserPanel: panel as? BrowserPanel,
                     browserWebView: (panel as? BrowserPanel)?.webView,
                     artifactPanel: panel as? ArtifactPanel,
+                    agentSessionPanel: panel as? AgentSessionPanel,
                     markdownPanel: panel as? MarkdownPanel,
                     filePreviewPanel: panel as? FilePreviewPanel
                 ),
@@ -6780,11 +6782,14 @@ class TerminalController {
                 split = (.horizontal, false)
             }
 
+            let reusePane = directionStr == nil
+                ? ws.preferredRightSideTargetPane(fromPanelId: sourceSurfaceId)
+                : nil
             guard let panel = ws.createArtifact(
                 title: resolvedTitle,
                 kind: kind,
-                inPane: sourcePane,
-                split: split,
+                inPane: reusePane ?? sourcePane,
+                split: reusePane == nil ? split : nil,
                 originCwd: originCwd,
                 originSurfaceId: sourceSurfaceId.uuidString,
                 source: sampleSource,
@@ -8415,6 +8420,26 @@ class TerminalController {
                 return .err(code: "internal_error", message: "Failed to capture snapshot", data: nil)
             }
             capturedImage = snapshotImage
+        } else if let agentSessionPanel = ctx.agentSessionPanel {
+            let snapshotResult: NSImage?? = v2AwaitCallback(timeout: 15.0) { finish in
+                v2MainSync {
+                    agentSessionPanel.rendererSession.captureVisibleSnapshot { result in
+                        switch result {
+                        case .success(let image):
+                            finish(image)
+                        case .failure:
+                            finish(nil)
+                        }
+                    }
+                }
+            }
+            guard let snapshotResult else {
+                return .err(code: "timeout", message: "Timed out waiting for snapshot", data: nil)
+            }
+            guard let snapshotImage = snapshotResult else {
+                return .err(code: "internal_error", message: "Failed to capture snapshot", data: nil)
+            }
+            capturedImage = snapshotImage
         } else {
             return .err(
                 code: "not_supported",
@@ -8619,6 +8644,7 @@ class TerminalController {
 
         let text: String
         let source: String
+        var agentTranscript: AgentSessionTranscriptSnapshot?
         if let terminalPanel = ctx.terminalPanel {
             let snapshot = v2MainSync {
                 readTerminalTextRawSnapshot(terminalPanel: terminalPanel, includeScrollback: includeScrollback || lineLimit != nil)
@@ -8692,6 +8718,11 @@ class TerminalController {
                 text = v2MainSync { artifactPanel.source }
                 source = "artifact_source"
             }
+        } else if let agentSessionPanel = ctx.agentSessionPanel {
+            let snapshot = v2MainSync { agentSessionPanel.rendererSession.transcriptSnapshot() }
+            text = snapshot.text
+            source = "agent_transcript"
+            agentTranscript = snapshot
         } else if let markdownPanel = ctx.markdownPanel {
             text = v2MainSync { markdownPanel.textContent.isEmpty ? markdownPanel.content : markdownPanel.textContent }
             source = "markdown_source"
@@ -8717,6 +8748,14 @@ class TerminalController {
         result["base64"] = limited.data(using: .utf8)?.base64EncodedString() ?? ""
         result["source"] = source
         result["scrollback"] = ctx.terminalPanel != nil && (includeScrollback || lineLimit != nil)
+        if let agentTranscript {
+            result["entries"] = agentTranscript.entries
+            result["provider_id"] = agentTranscript.providerID
+            result["runtime_session_id"] = agentTranscript.runtimeSessionID ?? NSNull()
+            result["provider_session_id"] = agentTranscript.providerSessionID ?? NSNull()
+            result["turn_id"] = agentTranscript.turnID ?? NSNull()
+            result["turn_status"] = agentTranscript.turnStatus ?? NSNull()
+        }
         return .ok(result)
     }
 

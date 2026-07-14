@@ -4302,15 +4302,33 @@ struct CMUXCLI {
         case "new-pane":
             let workspaceArg = workspaceFromArgsOrEnv(commandArgs, windowOverride: windowId)
             let type = optionValue(commandArgs, name: "--type")
-            let direction = optionValue(commandArgs, name: "--direction") ?? "right"
+            let direction = optionValue(commandArgs, name: "--direction")
             let url = optionValue(commandArgs, name: "--url")
             let focusOpt = optionValue(commandArgs, name: "--focus")
-            var params: [String: Any] = ["direction": direction]
+            var params: [String: Any] = [:]
             let winId = try normalizeWindowHandle(windowFromArgsOrOverride(commandArgs, windowOverride: windowId), client: client)
             if let winId { params["window_id"] = winId }
             let wsId = try normalizeWorkspaceHandle(workspaceArg, client: client, windowHandle: winId)
             if let wsId { params["workspace_id"] = wsId }
+            let ambientWorkspaceID = winId == nil
+                ? try normalizeWorkspaceHandle(
+                    ProcessInfo.processInfo.environment["CMUX_WORKSPACE_ID"],
+                    client: client
+                )
+                : nil
+            let canUseAmbientSurface = winId == nil
+                && (wsId == nil || wsId == ambientWorkspaceID)
+            let surfaceRaw = optionValue(commandArgs, name: "--surface")
+                ?? (canUseAmbientSurface ? ProcessInfo.processInfo.environment["CMUX_SURFACE_ID"] : nil)
+            let sourceSurfaceID = try normalizeSurfaceHandle(
+                surfaceRaw,
+                client: client,
+                workspaceHandle: wsId,
+                windowHandle: winId
+            )
+            if let sourceSurfaceID { params["surface_id"] = sourceSurfaceID }
             if let type { params["type"] = type }
+            if let direction { params["direction"] = direction }
             if let url { params["url"] = url }
             try applyFocusOption(focusOpt, defaultValue: false, to: &params)
             let payload = try client.sendV2(method: "pane.create", params: params)
@@ -4323,6 +4341,8 @@ struct CMUXCLI {
             let url = optionValue(commandArgs, name: "--url")
             let provider = optionValue(commandArgs, name: "--provider") ?? optionValue(commandArgs, name: "--provider-id")
             let renderer = optionValue(commandArgs, name: "--renderer") ?? optionValue(commandArgs, name: "--renderer-kind")
+            let providerSessionID = optionValue(commandArgs, name: "--session-id")
+                ?? optionValue(commandArgs, name: "--provider-session-id")
             let workingDirectory = optionValue(commandArgs, name: "--working-directory") ?? optionValue(commandArgs, name: "--cwd")
             let focusOpt = optionValue(commandArgs, name: "--focus")
             var params: [String: Any] = [:]
@@ -4336,6 +4356,7 @@ struct CMUXCLI {
             if let url { params["url"] = url }
             if let provider { params["provider_id"] = provider }
             if let renderer { params["renderer_kind"] = renderer }
+            if let providerSessionID { params["provider_session_id"] = providerSessionID }
             if let workingDirectory = workingDirectory?.trimmingCharacters(in: .whitespacesAndNewlines),
                !workingDirectory.isEmpty {
                 params["working_directory"] = resolvePath(workingDirectory)
@@ -5301,8 +5322,10 @@ struct CMUXCLI {
         let absolutePath = resolvePath(rawPath)
 
         // Build params
-        let direction = directionOpt ?? "right"
-        var params: [String: Any] = ["path": absolutePath, "direction": direction]
+        var params: [String: Any] = ["path": absolutePath]
+        if let directionOpt {
+            params["direction"] = directionOpt
+        }
         if let fontSize {
             params["font_size"] = fontSize
         }
@@ -15787,11 +15810,14 @@ struct CMUXCLI {
             return """
             Usage: cmux new-pane [flags]
 
-            Create a new pane in the workspace.
+            Place terminal or browser content to the right of the caller.
+            The first call splits a full-width pane 50/50; later calls add tabs
+            to the existing right pane. Pass --direction for a literal split.
 
             Flags:
               --type <terminal|browser>           Pane type (default: terminal)
-              --direction <left|right|up|down>    Split direction (default: right)
+              --direction <left|right|up|down>    Force a literal split in this direction
+              --surface <id|ref|index>            Caller surface (default: $CMUX_SURFACE_ID)
               --workspace <id|ref|index>          Target workspace (default: $CMUX_WORKSPACE_ID)
               --window <id|ref|index>             Window context for workspace refs and indexes
               --url <url>                         URL for browser panes
@@ -15817,6 +15843,7 @@ struct CMUXCLI {
               --provider <codex|claude|opencode>
                                            Provider for agent-session surfaces (default: codex)
               --renderer <react|solid>    Renderer for agent-session surfaces (default: react)
+              --session-id <id>          Read-only mirror of an existing Codex session
               --working-directory <path>   Working directory for terminal and agent surfaces
               --focus <true|false>        Focus the new surface (default: false)
 
@@ -35439,7 +35466,7 @@ export default function cmuxPiSessionExtension(pi: ExtensionAPI) {
           memory [--all] [--workspace <id|ref|index>] [--groups <count>]
           focus-pane --pane <id|ref|index> [--workspace <id|ref|index>] [--window <id|ref|index>]
           new-pane [--type <terminal|browser>] [--direction <left|right|up|down>] [--workspace <id|ref|index>] [--window <id|ref|index>] [--url <url>] [--focus <true|false>]
-          new-surface|new-tab [--type <terminal|browser|agent-session>] [--pane <id|ref|index>] [--workspace <id|ref|index>] [--window <id|ref|index>] [--url <url>] [--provider <codex|claude|opencode>] [--renderer <react|solid>] [--focus <true|false>]
+          new-surface|new-tab [--type <terminal|browser|agent-session>] [--pane <id|ref|index>] [--workspace <id|ref|index>] [--window <id|ref|index>] [--url <url>] [--provider <codex|claude|opencode>] [--renderer <react|solid>] [--session-id <id>] [--focus <true|false>]
           close-surface [--surface <id|ref|index>] [--workspace <id|ref|index>] [--window <id|ref|index>]
           move-surface --surface <id|ref|index> [--pane <id|ref|index>] [--workspace <id|ref|index>] [--window <id|ref|index>] [--before <id|ref|index>] [--after <id|ref|index>] [--index <n>] [--focus <true|false>]
           split-off --surface <id|ref|index> <left|right|up|down> [--workspace <id|ref|index>] [--window <id|ref|index>] [--focus <true|false>]

@@ -105,13 +105,17 @@ def main() -> int:
             "browser.open_split",
             {"workspace_id": workspace_id, "surface_id": right_bottom_surface, "url": "about:blank"},
         ) or {}
-        _must(bool(open_from_right.get("created_split")) is True, f"Expected new split from right-most pane: {open_from_right}")
+        _must(bool(open_from_right.get("created_split")) is False, f"Expected right-most pane reuse: {open_from_right}")
         _must(
-            _pane_count(c, workspace_id) == before_right_open + 1,
-            f"Expected pane count +1 after right-most open_split: before={before_right_open} after={_pane_count(c, workspace_id)}",
+            str(open_from_right.get("target_pane_id") or "") == right_bottom_pane,
+            f"Expected right-most caller to add a tab in its pane ({right_bottom_pane}): {open_from_right}",
+        )
+        _must(
+            _pane_count(c, workspace_id) == before_right_open,
+            f"Pane count changed after right-most reuse: before={before_right_open} after={_pane_count(c, workspace_id)}",
         )
 
-    print("PASS: browser.open_split reuses nearest right pane and only splits from right-most callers")
+    print("PASS: browser.open_split reuses the nearest right pane or tabs the right-most pane")
     return 0
 
 

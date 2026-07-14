@@ -6,6 +6,7 @@ final class AgentSessionRunningSession {
     let executablePath: String
     let arguments: [String]
     let workingDirectory: String?
+    let providerSessionID: String?
     let process: Process
     let stdin: Pipe
     let inputWriter: AgentSessionInputWriter
@@ -21,6 +22,8 @@ final class AgentSessionRunningSession {
     var terminationEscalationTimer: DispatchSourceTimer?
     var pendingExitStatus: Int32?
     var drainedStreams: Set<String> = []
+    var didReceiveInitialMirrorSnapshot = false
+    var knownMirrorTerminalTurnIDs: Set<String> = []
     private var stdoutBuffer = AgentSessionOutputLineBuffer()
     private var stderrBuffer = AgentSessionOutputLineBuffer()
     private var openCodeEventTextAccumulator = OpenCodeEventTextAccumulator()
@@ -31,6 +34,7 @@ final class AgentSessionRunningSession {
         executablePath: String,
         arguments: [String],
         workingDirectory: String?,
+        providerSessionID: String?,
         process: Process,
         stdin: Pipe,
         inputWriter: AgentSessionInputWriter,
@@ -41,6 +45,7 @@ final class AgentSessionRunningSession {
         self.executablePath = executablePath
         self.arguments = arguments
         self.workingDirectory = workingDirectory
+        self.providerSessionID = providerSessionID
         self.process = process
         self.stdin = stdin
         self.inputWriter = inputWriter

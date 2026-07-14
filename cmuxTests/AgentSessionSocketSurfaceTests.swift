@@ -11,6 +11,67 @@ import Testing
 @MainActor
 struct AgentSessionSocketSurfaceTests {
     @Test
+    func testNativeTranscriptSnapshotTracksProviderIdentityAndEntries() {
+        let rendererSession = AgentSessionWebRendererSession()
+        rendererSession.consumeProviderEvent([
+            "type": "provider.transcript",
+            "sessionId": "runtime-1",
+            "providerId": "codex",
+            "providerSessionId": "thread-1",
+            "entries": [
+                ["id": "user-1", "role": "user", "text": "say hi"],
+                ["id": "agent-1", "role": "assistant", "text": "hi", "isComplete": true]
+            ]
+        ])
+        rendererSession.consumeProviderEvent([
+            "type": "provider.turnComplete",
+            "sessionId": "runtime-1",
+            "providerId": "codex",
+            "providerSessionId": "thread-1",
+            "turnId": "turn-1",
+            "status": "completed"
+        ])
+
+        let snapshot = rendererSession.transcriptSnapshot()
+        expectEqual(snapshot.text, "User: say hi\n\nAssistant: hi")
+        expectEqual(snapshot.entries.count, 2)
+        expectEqual(snapshot.providerID, "codex")
+        expectEqual(snapshot.runtimeSessionID, "runtime-1")
+        expectEqual(snapshot.providerSessionID, "thread-1")
+        expectEqual(snapshot.turnID, "turn-1")
+        expectEqual(snapshot.turnStatus, "completed")
+    }
+
+    @Test
+    func testAgentTurnCompletionEventCarriesProviderAndTurnIdentity() throws {
+        CmuxEventBus.shared.resetForTesting()
+        defer { CmuxEventBus.shared.resetForTesting() }
+        let workspaceID = UUID()
+        let surfaceID = UUID()
+
+        CmuxEventBus.shared.publishAgentTurnCompleted(
+            workspaceId: workspaceID,
+            surfaceId: surfaceID,
+            providerID: "codex",
+            runtimeSessionID: "runtime-1",
+            providerSessionID: "thread-1",
+            turnID: "turn-1",
+            status: "completed"
+        )
+
+        let event = try #require(CmuxEventBus.shared.retainedSnapshot().last)
+        let payload = try #require(event["payload"] as? [String: Any])
+        expectEqual(event["name"] as? String, "agent.turn.completed")
+        expectEqual(payload["workspace_id"] as? String, workspaceID.uuidString)
+        expectEqual(payload["surface_id"] as? String, surfaceID.uuidString)
+        expectEqual(payload["provider_id"] as? String, "codex")
+        expectEqual(payload["runtime_session_id"] as? String, "runtime-1")
+        expectEqual(payload["provider_session_id"] as? String, "thread-1")
+        expectEqual(payload["turn_id"] as? String, "turn-1")
+        expectEqual(payload["status"] as? String, "completed")
+    }
+
+    @Test
     func testPanelTypeParserAcceptsAgentSessionSpellings() {
         let controller = TerminalController.shared
 

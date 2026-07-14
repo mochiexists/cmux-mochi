@@ -35,6 +35,7 @@ export type AppContext = {
   workspaceId: string;
   renderer: RendererKind;
   initialProviderId: ProviderId;
+  providerSessionId?: string;
   workingDirectory?: string;
   rateLimitRows?: AgentSessionRateLimitRow[];
   copy: AgentSessionCopy;
@@ -146,6 +147,26 @@ export type AgentEvent =
       arguments: string[];
     }
   | {
+      type: "provider.transcript";
+      sessionId: string;
+      providerId: ProviderId;
+      providerSessionId: string;
+      entries: Array<{
+        id: string;
+        role: "user" | "assistant" | "notice" | "activity";
+        text: string;
+        tone?: "error" | "warning";
+        sessionId?: string;
+        sentAtMs?: number;
+        activityId?: string;
+        activityKind?: "command" | "fileChange" | "other";
+        activityStatus?: "inProgress" | "completed" | "failed" | "stopped";
+        detail?: string;
+        isComplete?: boolean;
+        output?: string;
+      }>;
+    }
+  | {
       type: "provider.output";
       sessionId: string;
       providerId: ProviderId;
@@ -167,6 +188,9 @@ export type AgentEvent =
       type: "provider.turnComplete";
       sessionId: string;
       providerId: ProviderId;
+      providerSessionId?: string;
+      turnId?: string;
+      status?: string;
     }
   | {
       type: "provider.exit";

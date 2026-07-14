@@ -354,6 +354,7 @@ extension TerminalController {
                 inPane: paneId,
                 providerID: providerID,
                 rendererKind: rendererKind,
+                providerSessionID: inputs.providerSessionID,
                 workingDirectory: inputs.workingDirectory,
                 focus: focus
             )?.id

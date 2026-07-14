@@ -17,6 +17,32 @@ import Bonsplit
 @MainActor
 @Suite(.serialized)
 struct MobileWorkspaceListFidelityTests {
+    @Test func rightSidePlacementReusesRightmostNarrowPane() throws {
+        let workspace = Workspace()
+        let leftPanelId = try #require(workspace.focusedPanelId)
+        #expect(
+            workspace.preferredRightSideTargetPane(fromPanelId: leftPanelId) == nil,
+            "A full-width pane should split on the first add-to-right request"
+        )
+        let rightPanel = try #require(
+            workspace.newBrowserSplit(
+                from: leftPanelId,
+                orientation: .horizontal,
+                focus: false
+            )
+        )
+        let rightPane = try #require(workspace.paneId(forPanelId: rightPanel.id))
+
+        #expect(
+            workspace.preferredRightSideTargetPane(fromPanelId: leftPanelId) == rightPane,
+            "A left pane should reuse its existing right sibling"
+        )
+        #expect(
+            workspace.preferredRightSideTargetPane(fromPanelId: rightPanel.id) == rightPane,
+            "A rightmost half-width pane should gain a tab instead of another nested split"
+        )
+    }
+
     /// Builds a workspace with `count` terminals as tabs in a single pane so that
     /// a within-pane `reorderTab` genuinely changes their on-screen order. Returns
     /// the workspace and panel ids in spatial (tab) order.

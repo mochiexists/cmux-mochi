@@ -6,22 +6,28 @@ final class CodexAppServerSession {
     typealias OutputSink = (_ stream: String, _ text: String) -> Void
     typealias ActivitySink = (_ activity: [String: Any]) -> Void
     typealias TurnCompleteSink = () -> Void
+    typealias ThreadSnapshotSink = (_ thread: [String: Any]) -> Void
     typealias FailureSink = (_ details: String?) -> Void
 
     private static let maxQueuedInputCount = 1
     private static let maxQueuedInputBytes = 64 * 1024
 
     private let workingDirectory: String?
+    private let existingThreadID: String?
+    private let mirrorRefreshInterval: TimeInterval?
     private let writeData: DataWriter
     private let outputSink: OutputSink
     private let activitySink: ActivitySink
     private let turnCompleteSink: TurnCompleteSink
+    private let threadSnapshotSink: ThreadSnapshotSink
     private let failureSink: FailureSink
     private var nextRequestID = 1
     private var initializeRequestID: Int?
     private var didInitialize = false
     private var threadStartRequestID: Int?
+    private var threadReadRequestIDs: Set<Int> = []
     private var threadID: String?
+    private var mirrorRefreshTask: Task<Void, Never>?
     private var queuedInputs: [CodexAppServerQueuedInput] = []
     private var stdoutBuffer = ""
     private var didFailStartup = false
@@ -31,17 +37,23 @@ final class CodexAppServerSession {
 
     init(
         workingDirectory: String?,
+        existingThreadID: String? = nil,
+        mirrorRefreshInterval: TimeInterval? = 0.75,
         writeData: @escaping DataWriter,
         outputSink: @escaping OutputSink,
         activitySink: @escaping ActivitySink = { _ in },
         turnCompleteSink: @escaping TurnCompleteSink = {},
+        threadSnapshotSink: @escaping ThreadSnapshotSink = { _ in },
         failureSink: @escaping FailureSink = { _ in }
     ) {
         self.workingDirectory = workingDirectory
+        self.existingThreadID = existingThreadID
+        self.mirrorRefreshInterval = mirrorRefreshInterval
         self.writeData = writeData
         self.outputSink = outputSink
         self.activitySink = activitySink
         self.turnCompleteSink = turnCompleteSink
+        self.threadSnapshotSink = threadSnapshotSink
         self.failureSink = failureSink
     }
 
@@ -64,6 +76,9 @@ final class CodexAppServerSession {
 
     func submit(_ text: String, permissionMode: AgentSessionPermissionMode = .standard) async throws {
         guard !text.isEmpty else { return }
+        guard existingThreadID == nil else {
+            throw AgentSessionBridgeError.providerNotReady(AgentSessionProviderID.codex.displayName)
+        }
         guard !didFailStartup else {
             throw AgentSessionBridgeError.providerNotReady(AgentSessionProviderID.codex.displayName)
         }
@@ -149,7 +164,7 @@ final class CodexAppServerSession {
             Task { @MainActor in
                 do {
                     try await sendNotification(method: "initialized")
-                    try await startThreadIfNeeded()
+                    try await bindThreadIfNeeded()
                 } catch {
                     failStartup(details: error.localizedDescription)
                 }
@@ -169,6 +184,18 @@ final class CodexAppServerSession {
             return
         }
 
+        if threadReadRequestIDs.remove(id) != nil {
+            guard let thread = result?["thread"] as? [String: Any],
+                  let providerThreadID = thread["id"] as? String else {
+                failStartup(details: nil)
+                return
+            }
+            threadID = providerThreadID
+            threadSnapshotSink(thread)
+            scheduleMirrorRefresh()
+            return
+        }
+
         if turnStartRequestIDs.remove(id) != nil {
             return
         }
@@ -176,7 +203,7 @@ final class CodexAppServerSession {
 
     private func handleRPCError(id: Int, error: [String: Any]) {
         let details = error["message"] as? String
-        if id == initializeRequestID || id == threadStartRequestID {
+        if id == initializeRequestID || id == threadStartRequestID || threadReadRequestIDs.remove(id) != nil {
             failStartup(details: details)
             return
         }
@@ -546,13 +573,61 @@ final class CodexAppServerSession {
         threadStartRequestID = try await sendRequest(method: "thread/start", params: params)
     }
 
+    private func bindThreadIfNeeded() async throws {
+        if existingThreadID != nil {
+            try await readMirrorSnapshot()
+        } else {
+            try await startThreadIfNeeded()
+        }
+    }
+
+    private func readMirrorSnapshot() async throws {
+        guard let existingThreadID,
+              threadReadRequestIDs.isEmpty,
+              !didFailStartup else {
+            return
+        }
+        let requestID = try await sendRequest(
+            method: "thread/read",
+            params: [
+                "threadId": existingThreadID,
+                "includeTurns": true
+            ]
+        )
+        threadReadRequestIDs.insert(requestID)
+    }
+
+    private func scheduleMirrorRefresh() {
+        mirrorRefreshTask?.cancel()
+        guard let mirrorRefreshInterval else { return }
+        mirrorRefreshTask = Task { @MainActor [weak self] in
+            let nanoseconds = UInt64(max(0.1, mirrorRefreshInterval) * 1_000_000_000)
+            try? await Task.sleep(nanoseconds: nanoseconds)
+            guard !Task.isCancelled, let self else { return }
+            do {
+                try await self.readMirrorSnapshot()
+            } catch {
+                self.emitCodexRPCFailure(error)
+                self.scheduleMirrorRefresh()
+            }
+        }
+    }
+
+    func stop() {
+        mirrorRefreshTask?.cancel()
+        mirrorRefreshTask = nil
+    }
+
     private func failStartup(details: String?) {
         guard !didFailStartup else { return }
         didFailStartup = true
         initializeRequestID = nil
         didInitialize = false
         threadStartRequestID = nil
+        threadReadRequestIDs.removeAll()
         threadID = nil
+        mirrorRefreshTask?.cancel()
+        mirrorRefreshTask = nil
         isTurnInFlight = false
         activePermissionMode = .standard
         turnStartRequestIDs.removeAll()

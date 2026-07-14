@@ -623,6 +623,7 @@ extension Workspace {
             agentSessionSnapshot = SessionAgentSessionPanelSnapshot(
                 rendererKind: agentPanel.rendererKind,
                 providerID: agentPanel.currentProviderID,
+                providerSessionID: agentPanel.providerSessionID,
                 workingDirectory: directory
             )
             projectSnapshot = nil
@@ -1621,6 +1622,7 @@ extension Workspace {
                     inPane: paneId,
                     providerID: agentSession.providerID,
                     rendererKind: agentSession.rendererKind,
+                    providerSessionID: agentSession.providerSessionID,
                     workingDirectory: agentSession.workingDirectory ?? snapshot.directory,
                     focus: false,
                     restoredFromSession: true
@@ -8227,13 +8229,14 @@ final class Workspace: Identifiable, ObservableObject {
         inPane paneId: PaneID,
         filePath: String,
         focus: Bool? = nil,
-        targetIndex: Int? = nil
+        targetIndex: Int? = nil,
+        fontSize: Double? = nil
     ) -> MarkdownPanel? {
         let shouldFocusNewTab = focus ?? (bonsplitController.focusedPaneId == paneId)
         let previousFocusedPanelId = focusedPanelId
         let previousHostedView = focusedTerminalPanel?.hostedView
 
-        let markdownPanel = MarkdownPanel(workspaceId: id, filePath: filePath)
+        let markdownPanel = MarkdownPanel(workspaceId: id, filePath: filePath, fontSize: fontSize)
         panels[markdownPanel.id] = markdownPanel
         panelTitles[markdownPanel.id] = markdownPanel.displayTitle
 
@@ -8797,6 +8800,7 @@ final class Workspace: Identifiable, ObservableObject {
         inPane paneId: PaneID,
         providerID: AgentSessionProviderID = .codex,
         rendererKind: AgentSessionRendererKind,
+        providerSessionID: String? = nil,
         workingDirectory: String? = nil,
         focus: Bool? = nil,
         targetIndex: Int? = nil,
@@ -8811,6 +8815,7 @@ final class Workspace: Identifiable, ObservableObject {
             workspaceId: id,
             rendererKind: rendererKind,
             initialProviderID: providerID,
+            providerSessionID: providerSessionID,
             workingDirectory: directory,
             restoredFromSession: restoredFromSession
         )
@@ -9075,6 +9080,16 @@ final class Workspace: Identifiable, ObservableObject {
                 }
                 return pane
             }
+        }
+
+        var normalizedBounds: [String: CGRect] = [:]
+        browserCollectNormalizedPaneBounds(
+            node: tree,
+            availableRect: CGRect(x: 0, y: 0, width: 1, height: 1),
+            into: &normalizedBounds
+        )
+        if let sourceBounds = normalizedBounds[sourcePaneId], sourceBounds.width < 0.999 {
+            return sourcePane
         }
 
         return nil

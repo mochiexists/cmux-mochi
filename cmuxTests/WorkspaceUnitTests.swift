@@ -5803,25 +5803,6 @@ final class WorkspacePanelGitBranchTests: XCTestCase {
         XCTAssertEqual(try paneId(in: split.second), forkPaneId)
     }
 
-    func testRightSidePlacementReusesRightmostNarrowPane() throws {
-        let workspace = Workspace()
-        let leftPanelId = try XCTUnwrap(workspace.focusedPanelId)
-        let rightPanel = try XCTUnwrap(
-            workspace.newBrowserSplit(
-                from: leftPanelId,
-                orientation: .horizontal,
-                focus: false
-            )
-        )
-        let rightPane = try XCTUnwrap(workspace.paneId(forPanelId: rightPanel.id))
-
-        XCTAssertEqual(
-            workspace.preferredRightSideTargetPane(fromPanelId: rightPanel.id),
-            rightPane,
-            "A rightmost half-width pane should gain a tab instead of another nested split"
-        )
-    }
-
     @MainActor
     func testWorkspacePaneSurfaceIdentifierPayloadIncludesAgentSessionWhenAvailable() throws {
         let workspaceId = try XCTUnwrap(UUID(uuidString: "11111111-1111-1111-1111-111111111111"))

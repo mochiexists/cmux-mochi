@@ -15,6 +15,8 @@ public struct ControlSurfaceCreateInputs: Sendable, Equatable {
     public let providerRaw: String?
     /// The raw `renderer_kind`/`renderer` token, or `nil` (defaults to react).
     public let rendererRaw: String?
+    /// Existing provider session/thread id to mirror, if any.
+    public let providerSessionID: String?
     /// The raw `url` string, or `nil`.
     public let urlRaw: String?
     /// The trimmed-non-empty `working_directory`, or `nil`.
@@ -37,6 +39,7 @@ public struct ControlSurfaceCreateInputs: Sendable, Equatable {
         typeRaw: String?,
         providerRaw: String?,
         rendererRaw: String?,
+        providerSessionID: String?,
         urlRaw: String?,
         workingDirectory: String?,
         initialCommand: String?,
@@ -49,6 +52,7 @@ public struct ControlSurfaceCreateInputs: Sendable, Equatable {
         self.typeRaw = typeRaw
         self.providerRaw = providerRaw
         self.rendererRaw = rendererRaw
+        self.providerSessionID = providerSessionID
         self.urlRaw = urlRaw
         self.workingDirectory = workingDirectory
         self.initialCommand = initialCommand

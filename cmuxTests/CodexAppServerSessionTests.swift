@@ -11,6 +11,13 @@ import Testing
 @MainActor
 struct CodexAppServerSessionTests {
     @Test
+    func testMirrorDoesNotTreatExternallyActiveTurnAsCompleted() {
+        expectFalse(AgentSessionProcessStore.isTerminalTurnStatus("interrupted"))
+        expectTrue(AgentSessionProcessStore.isTerminalTurnStatus("completed"))
+        expectTrue(AgentSessionProcessStore.isTerminalTurnStatus("failed"))
+    }
+
+    @Test
     func testExistingThreadStartsReadOnlySnapshotMirror() async throws {
         var sentLines: [String] = []
         var snapshots: [[String: Any]] = []

@@ -8,6 +8,7 @@ final class AgentSessionPanel: Panel {
     private(set) var workspaceId: UUID
     let rendererKind: AgentSessionRendererKind
     let initialProviderID: AgentSessionProviderID
+    let providerSessionID: String?
     let workingDirectory: String?
     let restoredFromSession: Bool
     let rendererSession = AgentSessionWebRendererSession()
@@ -26,6 +27,7 @@ final class AgentSessionPanel: Panel {
         workspaceId: UUID,
         rendererKind: AgentSessionRendererKind,
         initialProviderID: AgentSessionProviderID = .codex,
+        providerSessionID: String? = nil,
         workingDirectory: String? = nil,
         restoredFromSession: Bool = false
     ) {
@@ -33,6 +35,7 @@ final class AgentSessionPanel: Panel {
         self.workspaceId = workspaceId
         self.rendererKind = rendererKind
         self.initialProviderID = initialProviderID
+        self.providerSessionID = providerSessionID
         self.currentProviderID = initialProviderID
         self.workingDirectory = workingDirectory
         self.restoredFromSession = restoredFromSession

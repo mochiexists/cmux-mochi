@@ -396,6 +396,8 @@ extension ControlCommandCoordinator {
             typeRaw: string(params, "type"),
             providerRaw: string(params, "provider_id") ?? string(params, "provider"),
             rendererRaw: string(params, "renderer_kind") ?? string(params, "renderer"),
+            providerSessionID: optionalTrimmedRawString(params, "provider_session_id")
+                ?? optionalTrimmedRawString(params, "session_id"),
             urlRaw: string(params, "url"),
             workingDirectory: optionalTrimmedRawString(params, "working_directory"),
             initialCommand: optionalTrimmedRawString(params, "initial_command"),

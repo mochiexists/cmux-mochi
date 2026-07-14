@@ -181,8 +181,8 @@ extension TerminalController: ControlPaneContext {
         guard let tabManager = resolveTabManager(routing: routing) else {
             return .tabManagerUnavailable
         }
-        guard let directionRaw = inputs.directionRaw,
-              let direction = parseSplitDirection(directionRaw) else {
+        let direction = inputs.directionRaw.flatMap { parseSplitDirection($0) }
+        if inputs.directionRaw != nil, direction == nil {
             return .invalidDirection
         }
 
@@ -195,8 +195,8 @@ extension TerminalController: ControlPaneContext {
             return browserDisabledCreateResolution(rawURL: inputs.urlRaw, url: url, tabManager: tabManager)
         }
 
-        let orientation = direction.orientation
-        let insertFirst = direction.insertFirst
+        let orientation = direction?.orientation ?? .horizontal
+        let insertFirst = direction?.insertFirst ?? false
 
         var initialDividerPosition: Double?
         if inputs.hasInitialDividerPosition {
@@ -232,28 +232,55 @@ extension TerminalController: ControlPaneContext {
 
         let newPanelId: UUID?
         let focus = v2FocusAllowed(requested: inputs.requestedFocus)
+        let reusePane = direction == nil
+            ? ws.preferredRightSideTargetPane(fromPanelId: sourcePanelId)
+            : nil
         if panelType == .browser {
-            newPanelId = ws.newBrowserSplit(
-                from: sourcePanelId,
-                orientation: orientation,
-                insertFirst: insertFirst,
-                url: url,
-                focus: focus,
-                creationPolicy: .automationPreload,
-                initialDividerPosition: initialDividerPosition.map { CGFloat($0) }
-            )?.id
+            if let reusePane {
+                newPanelId = ws.newBrowserSurface(
+                    inPane: reusePane,
+                    url: url,
+                    focus: focus,
+                    selectWhenNotFocused: true,
+                    creationPolicy: .automationPreload
+                )?.id
+            } else {
+                newPanelId = ws.newBrowserSplit(
+                    from: sourcePanelId,
+                    orientation: orientation,
+                    insertFirst: insertFirst,
+                    url: url,
+                    focus: focus,
+                    creationPolicy: .automationPreload,
+                    initialDividerPosition: initialDividerPosition.map { CGFloat($0) }
+                )?.id
+            }
         } else {
-            switch ws.newTerminalSplitOutcome(
-                from: sourcePanelId,
-                orientation: orientation,
-                insertFirst: insertFirst,
-                focus: focus,
-                workingDirectory: inputs.workingDirectory,
-                initialCommand: inputs.initialCommand,
-                tmuxStartCommand: inputs.tmuxStartCommand,
-                startupEnvironment: inputs.startupEnvironment,
-                initialDividerPosition: initialDividerPosition.map { CGFloat($0) }
-            ) {
+            let outcome: TerminalPanelCreationOutcome
+            if let reusePane {
+                outcome = ws.newTerminalSurfaceOutcome(
+                    inPane: reusePane,
+                    focus: focus,
+                    workingDirectory: inputs.workingDirectory,
+                    initialCommand: inputs.initialCommand,
+                    tmuxStartCommand: inputs.tmuxStartCommand,
+                    startupEnvironment: inputs.startupEnvironment,
+                    inheritWorkingDirectoryFallback: true
+                )
+            } else {
+                outcome = ws.newTerminalSplitOutcome(
+                    from: sourcePanelId,
+                    orientation: orientation,
+                    insertFirst: insertFirst,
+                    focus: focus,
+                    workingDirectory: inputs.workingDirectory,
+                    initialCommand: inputs.initialCommand,
+                    tmuxStartCommand: inputs.tmuxStartCommand,
+                    startupEnvironment: inputs.startupEnvironment,
+                    initialDividerPosition: initialDividerPosition.map { CGFloat($0) }
+                )
+            }
+            switch outcome {
             case .created(let panel):
                 newPanelId = panel.id
             case .routedToRemote:

@@ -9,6 +9,7 @@ final class AgentSessionWebRendererCoordinator: NSObject, WKNavigationDelegate, 
     private var workspaceId = UUID()
     private var rendererKind: AgentSessionRendererKind = .react
     private var initialProviderID: AgentSessionProviderID = .codex
+    private var providerSessionID: String?
     private var workingDirectory: String?
     private var restoredFromSession = false
     private var theme: AgentSessionWebTheme = .resolve(
@@ -30,12 +31,14 @@ final class AgentSessionWebRendererCoordinator: NSObject, WKNavigationDelegate, 
         }
     }
     var onProviderIDChanged: ((AgentSessionProviderID) -> Void)?
+    var onProviderEvent: (([String: Any]) -> Void)?
 
     func bind(
         panelId: UUID,
         workspaceId: UUID,
         rendererKind: AgentSessionRendererKind,
         initialProviderID: AgentSessionProviderID,
+        providerSessionID: String? = nil,
         workingDirectory: String?,
         restoredFromSession: Bool,
         theme: AgentSessionWebTheme,
@@ -51,6 +54,7 @@ final class AgentSessionWebRendererCoordinator: NSObject, WKNavigationDelegate, 
         }
         self.rendererKind = rendererKind
         self.initialProviderID = initialProviderID
+        self.providerSessionID = providerSessionID
         self.workingDirectory = workingDirectory
         self.restoredFromSession = restoredFromSession
         isPanelFocused = isFocused
@@ -60,6 +64,8 @@ final class AgentSessionWebRendererCoordinator: NSObject, WKNavigationDelegate, 
             applyThemeToLoadedPage()
         }
         processStore.eventSink = { [weak self] event in
+            self?.onProviderEvent?(event)
+            self?.publishProviderEvent(event)
             self?.sendEvent(event)
         }
         processStore.activeProviderSink = { [weak self] hasActiveProvider in
@@ -574,6 +580,9 @@ final class AgentSessionWebRendererCoordinator: NSObject, WKNavigationDelegate, 
             if let workingDirectory {
                 context["workingDirectory"] = workingDirectory
             }
+            if let providerSessionID {
+                context["providerSessionId"] = providerSessionID
+            }
             return context
         case "app.pickFiles":
             return await pickLocalFiles()
@@ -622,7 +631,8 @@ final class AgentSessionWebRendererCoordinator: NSObject, WKNavigationDelegate, 
             }
             let session = try await processStore.start(
                 plan: plan,
-                workingDirectory: request.string("workingDirectory") ?? workingDirectory
+                workingDirectory: request.string("workingDirectory") ?? workingDirectory,
+                providerSessionID: request.string("providerSessionId") ?? providerSessionID
             )
             return [
                 "sessionId": session.sessionId,
@@ -726,6 +736,19 @@ final class AgentSessionWebRendererCoordinator: NSObject, WKNavigationDelegate, 
             _ = error
 #endif
         }
+    }
+
+    private func publishProviderEvent(_ event: [String: Any]) {
+        guard event["type"] as? String == "provider.turnComplete" else { return }
+        CmuxEventBus.shared.publishAgentTurnCompleted(
+            workspaceId: workspaceId,
+            surfaceId: panelId,
+            providerID: event["providerId"] as? String ?? initialProviderID.rawValue,
+            runtimeSessionID: event["sessionId"] as? String,
+            providerSessionID: event["providerSessionId"] as? String ?? providerSessionID,
+            turnID: event["turnId"] as? String,
+            status: event["status"] as? String ?? "completed"
+        )
     }
 
     private func handleExternalLink(_ url: URL) {

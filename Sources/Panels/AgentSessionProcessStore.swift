@@ -16,7 +16,11 @@ final class AgentSessionProcessStore {
     private var lastEmittedHasActiveProviderSession: Bool?
     private static let terminationEscalationInterval: DispatchTimeInterval = .seconds(3)
 
-    func start(plan: AgentSessionLaunchPlan, workingDirectory: String?) async throws -> AgentSessionStartedSession {
+    func start(
+        plan: AgentSessionLaunchPlan,
+        workingDirectory: String?,
+        providerSessionID: String? = nil
+    ) async throws -> AgentSessionStartedSession {
         guard sessions.isEmpty else {
             throw AgentSessionBridgeError.sessionAlreadyRunning
         }
@@ -47,6 +51,7 @@ final class AgentSessionProcessStore {
             executablePath: plan.executableURL.path,
             arguments: launchArguments,
             workingDirectory: workingDirectory,
+            providerSessionID: providerSessionID,
             process: process,
             stdin: stdin,
             inputWriter: inputWriter,
@@ -55,6 +60,7 @@ final class AgentSessionProcessStore {
         if plan.provider == .codex {
             running.codexAppServerSession = CodexAppServerSession(
                 workingDirectory: workingDirectory,
+                existingThreadID: providerSessionID,
                 writeData: { data in
                     try await inputWriter.write(data)
                 },
@@ -78,6 +84,10 @@ final class AgentSessionProcessStore {
                         sessionId: sessionId,
                         providerID: plan.provider
                     )
+                },
+                threadSnapshotSink: { [weak self, weak running] thread in
+                    guard let running else { return }
+                    self?.emitMirrorSnapshot(thread, session: running)
                 },
                 failureSink: { [weak self] _ in
                     self?.failSession(sessionId: sessionId, status: 1)
@@ -259,6 +269,7 @@ final class AgentSessionProcessStore {
     }
 
     private func cancelSessionTasks(_ session: AgentSessionRunningSession) {
+        session.codexAppServerSession?.stop()
         session.terminationEscalationTimer?.cancel()
         session.terminationEscalationTimer = nil
         session.stdoutReadTask?.cancel()
@@ -612,13 +623,17 @@ final class AgentSessionProcessStore {
     }
 
     private func emitStarted(session: AgentSessionRunningSession) {
-        eventSink?([
+        var event: [String: Any] = [
             "type": "provider.started",
             "sessionId": session.sessionId,
             "providerId": session.providerID.rawValue,
             "executablePath": session.executablePath,
             "arguments": session.arguments
-        ])
+        ]
+        if let providerSessionID = session.providerSessionID {
+            event["providerSessionId"] = providerSessionID
+        }
+        eventSink?(event)
     }
 
     private func emitOutput(
@@ -657,6 +672,124 @@ final class AgentSessionProcessStore {
             "sessionId": sessionId,
             "providerId": providerID.rawValue
         ])
+    }
+
+    private func emitMirrorSnapshot(_ thread: [String: Any], session: AgentSessionRunningSession) {
+        let providerSessionID = (thread["id"] as? String) ?? session.providerSessionID ?? ""
+        let turns = thread["turns"] as? [[String: Any]] ?? []
+        eventSink?([
+            "type": "provider.transcript",
+            "sessionId": session.sessionId,
+            "providerId": session.providerID.rawValue,
+            "providerSessionId": providerSessionID,
+            "entries": Self.mirrorTranscriptEntries(turns: turns, runtimeSessionID: session.sessionId)
+        ])
+
+        let terminalTurns = turns.compactMap { turn -> (String, String)? in
+            guard let id = turn["id"] as? String,
+                  let status = turn["status"] as? String,
+                  Self.isTerminalTurnStatus(status) else {
+                return nil
+            }
+            return (id, status)
+        }
+        let terminalIDs = Set(terminalTurns.map(\.0))
+        if session.didReceiveInitialMirrorSnapshot {
+            for (turnID, status) in terminalTurns where !session.knownMirrorTerminalTurnIDs.contains(turnID) {
+                eventSink?([
+                    "type": "provider.turnComplete",
+                    "sessionId": session.sessionId,
+                    "providerId": session.providerID.rawValue,
+                    "providerSessionId": providerSessionID,
+                    "turnId": turnID,
+                    "status": status
+                ])
+            }
+        } else {
+            session.didReceiveInitialMirrorSnapshot = true
+        }
+        session.knownMirrorTerminalTurnIDs.formUnion(terminalIDs)
+    }
+
+    static func isTerminalTurnStatus(_ status: String) -> Bool {
+        switch status.lowercased() {
+        // ThreadStore normalizes a turn that is still active in another Codex
+        // process to `interrupted` when read by this observer. Treating that as
+        // terminal would publish a false completion while the turn is running.
+        case "completed", "failed", "cancelled", "canceled":
+            return true
+        default:
+            return false
+        }
+    }
+
+    private static func mirrorTranscriptEntries(
+        turns: [[String: Any]],
+        runtimeSessionID: String
+    ) -> [[String: Any]] {
+        var entries: [[String: Any]] = []
+        for turn in turns {
+            let isComplete = (turn["status"] as? String).map(isTerminalTurnStatus) ?? false
+            for item in turn["items"] as? [[String: Any]] ?? [] {
+                guard let id = item["id"] as? String,
+                      let type = item["type"] as? String else {
+                    continue
+                }
+                switch type {
+                case "userMessage":
+                    let text = userMessageText(item["content"])
+                    if !text.isEmpty {
+                        entries.append(["id": id, "role": "user", "text": text])
+                    }
+                case "agentMessage":
+                    guard let text = item["text"] as? String, !text.isEmpty else { continue }
+                    entries.append([
+                        "id": id,
+                        "role": "assistant",
+                        "text": text,
+                        "sessionId": runtimeSessionID,
+                        "isComplete": isComplete
+                    ])
+                case "commandExecution":
+                    let command = item["command"] as? String ?? "Command"
+                    var entry: [String: Any] = [
+                        "id": id,
+                        "role": "activity",
+                        "text": command,
+                        "sessionId": runtimeSessionID,
+                        "activityId": id,
+                        "activityKind": "command",
+                        "activityStatus": normalizedActivityStatus(item["status"] as? String)
+                    ]
+                    if let output = item["aggregatedOutput"] as? String, !output.isEmpty {
+                        entry["output"] = output
+                    }
+                    entries.append(entry)
+                default:
+                    continue
+                }
+            }
+        }
+        return Array(entries.suffix(200))
+    }
+
+    private static func userMessageText(_ content: Any?) -> String {
+        guard let parts = content as? [[String: Any]] else { return "" }
+        return parts.compactMap { part in
+            for key in ["text", "prompt"] {
+                if let value = part[key] as? String, !value.isEmpty { return value }
+            }
+            return nil
+        }.joined(separator: "\n")
+    }
+
+    private static func normalizedActivityStatus(_ status: String?) -> String {
+        switch status?.lowercased() {
+        case "completed", "success": return "completed"
+        case "failed", "error": return "failed"
+        case "interrupted", "stopped", "cancelled", "canceled": return "stopped"
+        default: return "inProgress"
+        }
     }
 
     private func emitExit(
