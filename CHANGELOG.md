@@ -9,6 +9,9 @@ cmux **Mochi** fork patch release.
 ### Added
 - Added bundled artifact guidance and clearer placement recipes so Codex and Claude sessions can create artifacts and reuse existing helper panes more predictably.
 
+### Changed
+- Improved "open beside me" placement for artifacts, browsers, Markdown, file previews, and custom sidebars: the first addition creates a 50/50 right pane, while later additions reuse that pane as tabs instead of nesting more splits.
+
 ### Fixed
 - Prevented restored native agent-session tabs from automatically starting a second provider process before the user resumes them.
 
