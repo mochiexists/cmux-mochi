@@ -438,14 +438,12 @@ final class VSCodeServeWebControllerTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: tokenFileURL.path))
     }
 
-    func testServeWebArgumentsIncludeServerDataDirectoryWhenProvided() {
+    func testServeWebArgumentsUseOrdinaryPersistentWorkbenchProfile() {
         let tokenFileURL = URL(fileURLWithPath: "/tmp/cmux-token")
-        let dataDirectoryURL = URL(fileURLWithPath: "/tmp/cmux-claude-profile", isDirectory: true)
 
         let arguments = VSCodeServeWebController.serveWebArgumentsForTesting(
             argumentsPrefix: ["serve-web"],
-            connectionTokenFileURL: tokenFileURL,
-            serverDataDirectoryURL: dataDirectoryURL
+            connectionTokenFileURL: tokenFileURL
         )
 
         XCTAssertEqual(
@@ -456,17 +454,8 @@ final class VSCodeServeWebControllerTests: XCTestCase {
                 "--host", "127.0.0.1",
                 "--port", "0",
                 "--connection-token-file", "/tmp/cmux-token",
-                "--server-data-dir", "/tmp/cmux-claude-profile",
             ]
         )
-    }
-
-    func testServeWebArgumentsOmitServerDataDirectoryWhenUnavailable() {
-        let arguments = VSCodeServeWebController.serveWebArgumentsForTesting(
-            connectionTokenFileURL: URL(fileURLWithPath: "/tmp/cmux-token"),
-            serverDataDirectoryURL: nil
-        )
-
         XCTAssertFalse(arguments.contains("--server-data-dir"))
     }
 }
@@ -519,15 +508,13 @@ final class VSCodeServeWebWorkspaceRegistryTests: XCTestCase {
     func testRegistryReusesOneFullWorkbenchControllerWithinWorkspace() {
         let factoryLock = NSLock()
         var factoryCallCount = 0
-        var requestedProfiles: [VSCodeServeWebProfile] = []
-        let registry = VSCodeServeWebWorkspaceRegistry.makeForTesting { profile in
+        let registry = VSCodeServeWebWorkspaceRegistry.makeForTesting {
             factoryLock.lock()
             factoryCallCount += 1
-            requestedProfiles.append(profile)
             let port = 7600 + factoryCallCount
             factoryLock.unlock()
 
-            return VSCodeServeWebController.makeForTesting(profile: profile) { _, _ in
+            return VSCodeServeWebController.makeForTesting { _, _ in
                 (Process(), URL(string: "http://127.0.0.1:\(port)?tkn=test")!)
             }
         }
@@ -550,8 +537,7 @@ final class VSCodeServeWebWorkspaceRegistryTests: XCTestCase {
 
         registry.ensureServeWebURL(
             forWorkspaceID: workspaceID,
-            vscodeApplicationURL: vscodeAppURL,
-            profile: .claudeCode
+            vscodeApplicationURL: vscodeAppURL
         ) { url in
             resolvedURLs.append(url)
             claude.fulfill()
@@ -569,11 +555,9 @@ final class VSCodeServeWebWorkspaceRegistryTests: XCTestCase {
 
         factoryLock.lock()
         let calls = factoryCallCount
-        let profiles = requestedProfiles
         factoryLock.unlock()
 
         XCTAssertEqual(calls, 1)
-        XCTAssertEqual(profiles, [.standard])
         XCTAssertEqual(resolvedURLs.map { $0?.port }, [7601, 7601, 7601])
         registry.stopAll()
     }

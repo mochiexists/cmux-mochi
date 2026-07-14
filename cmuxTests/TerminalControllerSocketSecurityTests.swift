@@ -1348,7 +1348,7 @@ final class TerminalControllerSocketSecurityTests {
         XCTAssertEqual(error["code"] as? String, "browser_disabled")
     }
 
-    @Test func testBrowserOpenSplitAppliesVSCodeClaudeContentMode() throws {
+    @Test func testBrowserOpenSplitRejectsRemovedVSCodeClaudeContentMode() throws {
         let defaults = UserDefaults.standard
         let previousBrowserDisabled = defaults.object(forKey: BrowserAvailabilitySettings.disabledKey)
         BrowserAvailabilitySettings.setDisabled(false)
@@ -1376,14 +1376,9 @@ final class TerminalControllerSocketSecurityTests {
             ]
         )
 
-        XCTAssertEqual(response["ok"] as? Bool, true, "Unexpected JSON-RPC response: \(response)")
-        let result = try XCTUnwrap(response["result"] as? [String: Any], "Unexpected JSON-RPC response: \(response)")
-        XCTAssertEqual(result["content_mode"] as? String, "vscode_claude_code")
-        let surfaceIDString = try XCTUnwrap(result["surface_id"] as? String)
-        let surfaceID = try XCTUnwrap(UUID(uuidString: surfaceIDString))
-        let browserPanel = try XCTUnwrap(workspace.panels[surfaceID] as? BrowserPanel)
-        XCTAssertEqual(browserPanel.contentMode, .vscodeClaudeCode)
-        XCTAssertEqual(browserPanel.isOmnibarVisible, false)
+        XCTAssertEqual(response["ok"] as? Bool, false, "Unexpected JSON-RPC response: \(response)")
+        let error = try XCTUnwrap(response["error"] as? [String: Any], "Unexpected JSON-RPC response: \(response)")
+        XCTAssertEqual(error["code"] as? String, "invalid_params")
     }
 
     @Test func testBrowserOpenSplitRejectsInvalidContentMode() throws {
@@ -1400,6 +1395,25 @@ final class TerminalControllerSocketSecurityTests {
         XCTAssertEqual(response["ok"] as? Bool, false, "Unexpected JSON-RPC response: \(response)")
         let error = try XCTUnwrap(response["error"] as? [String: Any], "Unexpected JSON-RPC response: \(response)")
         XCTAssertEqual(error["code"] as? String, "invalid_params")
+    }
+
+    @Test func testVSCodeOpenRejectsMissingDirectoryBeforeStartingServer() throws {
+        defer {
+            TerminalController.shared.setActiveTabManager(nil)
+        }
+
+        TerminalController.shared.setActiveTabManager(TabManager())
+        let missingPath = FileManager.default.temporaryDirectory
+            .appendingPathComponent("cmux-missing-\(UUID().uuidString)", isDirectory: true)
+            .path
+        let response = try handleV2Request(
+            method: "vscode.open",
+            params: ["path": missingPath]
+        )
+
+        XCTAssertEqual(response["ok"] as? Bool, false, "Unexpected JSON-RPC response: \(response)")
+        let error = try XCTUnwrap(response["error"] as? [String: Any], "Unexpected JSON-RPC response: \(response)")
+        XCTAssertEqual(error["code"] as? String, "invalid_path")
     }
 
     @Test func testLegacyCloseSurfaceCommandRecordsRecentlyClosedHistory() throws {

@@ -5120,6 +5120,9 @@ struct CMUXCLI {
             print(usage())
 
         // Browser commands
+        case "vscode":
+            try runVSCodeCommand(commandArgs: commandArgs, client: client, jsonOutput: jsonOutput, idFormat: idFormat)
+
         case "browser":
             try runBrowserCommand(commandArgs: commandArgs, client: client, jsonOutput: jsonOutput, idFormat: idFormat)
 
@@ -12710,6 +12713,75 @@ struct CMUXCLI {
         return (result.status, result.stdout, result.stderr)
     }
 
+    private func runVSCodeCommand(
+        commandArgs: [String],
+        client: SocketClient,
+        jsonOutput: Bool,
+        idFormat: CLIIDFormat
+    ) throws {
+        var args = commandArgs
+        if args.first == "open" {
+            args.removeFirst()
+        } else if let first = args.first, first == "help" || first == "--help" || first == "-h" {
+            print(subcommandUsage("vscode") ?? "")
+            return
+        }
+
+        let (workspaceOpt, argsAfterWorkspace) = parseOption(args, name: "--workspace")
+        let (windowOpt, argsAfterWindow) = parseOption(argsAfterWorkspace, name: "--window")
+        let (focusOpt, pathArgs) = parseOption(argsAfterWindow, name: "--focus")
+        if let strayFlag = pathArgs.first(where: { $0.hasPrefix("--") }) {
+            let format = String(
+                localized: "cli.vscode.unsupportedOptionFormat",
+                defaultValue: "vscode open does not support %@"
+            )
+            throw CLIError(message: String(format: format, strayFlag))
+        }
+        guard pathArgs.count <= 1 else {
+            throw CLIError(message: String(
+                localized: "cli.vscode.oneDirectory",
+                defaultValue: "vscode open accepts one directory"
+            ))
+        }
+
+        let rawPath = pathArgs.first ?? FileManager.default.currentDirectoryPath
+        let expandedPath = (rawPath as NSString).expandingTildeInPath
+        let directoryURL: URL
+        if expandedPath.hasPrefix("/") {
+            directoryURL = URL(fileURLWithPath: expandedPath, isDirectory: true).standardizedFileURL
+        } else {
+            directoryURL = URL(
+                fileURLWithPath: expandedPath,
+                isDirectory: true,
+                relativeTo: URL(fileURLWithPath: FileManager.default.currentDirectoryPath, isDirectory: true)
+            ).standardizedFileURL
+        }
+
+        var params: [String: Any] = ["path": directoryURL.path]
+        let workspaceRaw = workspaceOpt ?? (windowOpt == nil ? ProcessInfo.processInfo.environment["CMUX_WORKSPACE_ID"] : nil)
+        if let workspaceRaw,
+           let workspace = try normalizeWorkspaceHandle(workspaceRaw, client: client) {
+            params["workspace_id"] = workspace
+        }
+        if let windowOpt,
+           let window = try normalizeWindowHandle(windowOpt, client: client) {
+            params["window_id"] = window
+        }
+        try applyFocusOption(focusOpt, defaultValue: false, to: &params)
+
+        let payload = try client.sendV2(method: "vscode.open", params: params)
+        if jsonOutput {
+            print(jsonString(formatIDs(payload, mode: idFormat)))
+            return
+        }
+        let workspace = formatHandle(payload, kind: "workspace", idFormat: idFormat) ?? "unknown"
+        let format = String(
+            localized: "cli.vscode.startingFormat",
+            defaultValue: "Starting VS Code workbench for %@ in %@"
+        )
+        print(String(format: format, directoryURL.path, workspace))
+    }
+
     private func runBrowserCommand(
         commandArgs: [String],
         client: SocketClient,
@@ -12898,21 +12970,6 @@ struct CMUXCLI {
 
         func stringPayloadValue(_ value: Any?) -> String? {
             (value as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
-        }
-
-        func normalizedBrowserContentMode(_ raw: String) throws -> String {
-            let normalized = raw
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-                .lowercased()
-                .replacingOccurrences(of: "_", with: "-")
-            switch normalized {
-            case "normal":
-                return "normal"
-            case "vscode-claude-code", "vscode-claude", "claude-code", "claude":
-                return "vscode_claude_code"
-            default:
-                throw CLIError(message: "--content-mode must be one of: normal, vscode-claude-code")
-            }
         }
 
         func browserProfileLine(_ raw: Any) -> String? {
@@ -13198,7 +13255,7 @@ struct CMUXCLI {
             let (workspaceOpt, argsAfterWorkspace) = parseOption(subArgs, name: "--workspace")
             let (windowOpt, argsAfterWindow) = parseOption(argsAfterWorkspace, name: "--window")
             let (focusOpt, argsAfterFocus) = parseOption(argsAfterWindow, name: "--focus")
-            let (contentModeOpt, urlArgs) = parseOption(argsAfterFocus, name: "--content-mode")
+            let urlArgs = argsAfterFocus
             // Reject unrecognized flags instead of folding them into the URL, where they
             // would silently produce an unparseable URL (blank page) or a search query.
             if let strayFlag = urlArgs.first(where: { $0.hasPrefix("--") }) {
@@ -13218,9 +13275,6 @@ struct CMUXCLI {
             }()
 
             if surfaceRaw != nil, subcommand == "open" {
-                if contentModeOpt != nil {
-                    throw CLIError(message: "browser <surface> open does not support --content-mode")
-                }
                 // Treat `browser <surface> open <url>` as navigate for agent-browser ergonomics.
                 let sid = try requireSurface()
                 guard !url.isEmpty else {
@@ -13246,12 +13300,6 @@ struct CMUXCLI {
             }
             if respectExternalOpenRules {
                 params["respect_external_open_rules"] = true
-            }
-            if let contentModeOpt {
-                let contentMode = try normalizedBrowserContentMode(contentModeOpt)
-                if contentMode != "normal" {
-                    params["content_mode"] = contentMode
-                }
             }
             if let windowRaw = windowOpt {
                 if let window = try normalizeWindowHandle(windowRaw, client: client) {
@@ -16665,6 +16713,12 @@ struct CMUXCLI {
               install-hooks     Install cmux hooks into ~/.codex/hooks.json
               uninstall-hooks   Remove cmux hooks from ~/.codex/hooks.json
             """
+        case "vscode":
+            return String(localized: "cli.vscode.usage", defaultValue: """
+            Usage: cmux vscode open [directory] [--workspace <id|ref|index>] [--window <id|ref|index>] [--focus <true|false>]
+
+            Open a full VS Code workbench in cmux. The directory defaults to the caller's current directory and focus defaults to false.
+            """)
         case "browser":
             return """
             Usage: cmux browser [--surface <id|ref|index> | <surface>] <subcommand> [args]
@@ -16674,10 +16728,9 @@ struct CMUXCLI {
             `open`/`open-split`/`new`/`identify` can run without an explicit surface.
 
             Subcommands:
-              open|open-split|new [url] [--workspace <id|ref|index>] [--window <id|ref|index>] [--focus <true|false>] [--content-mode <normal|vscode-claude-code>]
+              open|open-split|new [url] [--workspace <id|ref|index>] [--window <id|ref|index>] [--focus <true|false>]
                 open/open-split/new default to $CMUX_WORKSPACE_ID when --workspace is omitted and --window is not set
                 --focus defaults to false
-                --content-mode vscode-claude-code extracts the VS Code Claude Code tab in a browser pane
               disable | enable | status
               goto|navigate <url> [--snapshot-after]
               back|forward|reload [--snapshot-after]
@@ -35391,6 +35444,7 @@ export default function cmuxPiSessionExtension(pi: ExtensionAPI) {
           agent-hibernation <on|off>
           restore-session
           open <path-or-url>... [--workspace <id|ref|index>] [--surface <id|ref|index>] [--pane <id|ref|index>] [--window <id|ref|index>] [--focus <true|false>] [--no-focus]
+          vscode open [directory] [--workspace <id|ref|index>] [--window <id|ref|index>] [--focus <true|false>]
           diff [patch-file|-] [--source <unstaged|staged|branch|last-turn>] [--unstaged|--staged|--branch|--last-turn] [--workspace <id|ref|index>] [--surface <id|ref|index>] [--window <id|ref|index>] [--cwd <path>] [--base <ref>] [--focus <true|false>] [--no-focus] [--title <text>] [--layout <split|unified>] [--font-size <points>]
           feedback [--email <email> --body <text> [--image <path> ...]]
           feed tui|clear
@@ -35517,8 +35571,8 @@ export default function cmuxPiSessionExtension(pi: ExtensionAPI) {
 
           browser [--surface <id|ref|index> | <surface>] <subcommand> ...
           browser disable | enable | status
-          browser open [url] [--focus <true|false>] [--content-mode <normal|vscode-claude-code>] (create browser split in caller's workspace; if surface supplied, behaves like navigate)
-          browser open-split [url] [--content-mode <normal|vscode-claude-code>]
+          browser open [url] [--focus <true|false>] (create browser split in caller's workspace; if surface supplied, behaves like navigate)
+          browser open-split [url]
           browser goto|navigate <url> [--snapshot-after]
           browser back|forward|reload [--snapshot-after]
           browser react-grab toggle [--surface <id>] [--return-to <terminal-surface>]

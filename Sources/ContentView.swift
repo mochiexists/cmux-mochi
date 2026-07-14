@@ -6423,25 +6423,6 @@ struct ContentView: View {
         )
         contributions.append(
             CommandPaletteCommandContribution(
-                commandId: "palette.openFolderInVSCodeClaude",
-                title: constant(
-                    String(
-                        localized: "command.openFolderInVSCodeClaude.title",
-                        defaultValue: "Open Folder in Claude Code (VS Code)…"
-                    )
-                ),
-                subtitle: constant(
-                    String(
-                        localized: "command.openFolderInVSCodeClaude.subtitle",
-                        defaultValue: "Claude Code in VS Code"
-                    )
-                ),
-                keywords: ["open", "folder", "directory", "project", "vs", "code", "inline", "editor", "browser", "claude", "anthropic", "agent"],
-                when: { _ in TerminalDirectoryOpenTarget.vscodeClaudeInline.isAvailable() }
-            )
-        )
-        contributions.append(
-            CommandPaletteCommandContribution(
                 commandId: "palette.reopenPreviousSession",
                 title: constant(String(localized: "command.reopenPreviousSession.title", defaultValue: "Restore Previous App Launch")),
                 subtitle: constant(String(localized: "command.reopenPreviousSession.subtitle", defaultValue: "History")),
@@ -7645,11 +7626,6 @@ struct ContentView: View {
         registry.register(commandId: "palette.openFolderInVSCodeInline") {
             DispatchQueue.main.async {
                 AppDelegate.shared?.showOpenFolderInInlineVSCodePanel(tabManager: tabManager)
-            }
-        }
-        registry.register(commandId: "palette.openFolderInVSCodeClaude") {
-            DispatchQueue.main.async {
-                AppDelegate.shared?.showOpenFolderInVSCodeClaudePanel(tabManager: tabManager)
             }
         }
         registry.register(commandId: "palette.reopenPreviousSession") {
@@ -9506,8 +9482,6 @@ struct ContentView: View {
             return true
         case .vscodeInline:
             return openFocusedDirectoryInInlineVSCode(directoryURL)
-        case .vscodeClaudeInline:
-            return openFocusedDirectoryInVSCodeClaude(directoryURL)
         default:
             guard let applicationURL = target.applicationURL() else { return false }
             let configuration = NSWorkspace.OpenConfiguration()
@@ -9518,10 +9492,6 @@ struct ContentView: View {
 
     private func openFocusedDirectoryInInlineVSCode(_ directoryURL: URL) -> Bool {
         AppDelegate.shared?.openDirectoryInInlineVSCode(directoryURL, tabManager: tabManager) ?? false
-    }
-
-    private func openFocusedDirectoryInVSCodeClaude(_ directoryURL: URL) -> Bool {
-        AppDelegate.shared?.openDirectoryInVSCodeClaude(directoryURL, tabManager: tabManager) ?? false
     }
 
     private func stopInlineVSCodeServeWeb() {
