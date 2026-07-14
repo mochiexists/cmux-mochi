@@ -31,10 +31,24 @@ The first workbench beside a full-width pane creates the normal right-hand split
 
 ## Claude Code inside the workbench
 
+VS Code serve-web uses a separate server extension host, normally under
+`~/.vscode-server/extensions`. Desktop VS Code normally uses
+`~/.vscode/extensions`. A desktop Claude Code installation therefore does not
+mean Claude Code is installed in the served workbench.
+
 If the user wants Claude Code:
 
 1. Open the full workbench with `cmux vscode open`.
-2. Ask them to use the normal Extensions view and install the official Claude Code extension from the VS Code Marketplace if it is not already present in the served environment.
-3. Ask them to sign in through the extension's normal UI.
+2. Tell them that they may need to install the official Claude Code extension
+   afresh in that server's normal Extensions view.
+3. Leave the Marketplace installation, publisher-trust confirmation, and
+   Claude sign-in to the user through VS Code's normal UI.
 
-Never copy the desktop extension directory, write `extensions.json`, create a separate `--server-data-dir`, or automate authentication. VS Code's desktop and serve-web extension hosts may legitimately require separate Marketplace installation.
+Do not search the Marketplace, click Install, confirm publisher trust, run a
+CLI extension installation, or automate authentication on the user's behalf
+unless they explicitly request that specific action. A request to open VS Code
+or Claude Code does not authorize installing the extension.
+
+Never copy or share the desktop extension directory, write `extensions.json`,
+or create a separate `--server-data-dir`. Keep VS Code's desktop and serve-web
+extension hosts separate and use the normal server-side installation flow.
