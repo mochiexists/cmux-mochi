@@ -124,7 +124,7 @@ private final class BridgeTestClient: @unchecked Sendable {
     }
 }
 
-@Suite("RemotePTYBridgeServer")
+@Suite("RemotePTYBridgeServer", .serialized)
 struct RemotePTYBridgeServerTests {
     private func makeServer(
         client: RecordingPTYBridgeRPCClient,
