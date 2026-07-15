@@ -415,9 +415,15 @@ Every commit must pass the smallest complete gate for its scope:
 At the end of every phase:
 
 ```bash
-./scripts/fork-overlay-audit.sh
 git status --short
 git diff --check v0.64.19..HEAD
+```
+
+Before Phase 8, compare fork-sensitive paths against the ledger because the new branch does not
+yet contain the fork audit script. From Phase 8 onward, also run:
+
+```bash
+./scripts/fork-overlay-audit.sh
 ```
 
 At product-stack milestones, run the exact universal Release build. Before any nightly, require a
@@ -428,8 +434,9 @@ successful full `ci.yml` run on the exact candidate SHA.
 Before moving the stack toward `main`:
 
 ```bash
+BASE=$(git merge-base v0.64.173 v0.64.19)
 git log --reverse --oneline v0.64.19..HEAD
-git range-diff v0.64.19...v0.64.173 v0.64.19...HEAD
+git range-diff "$BASE"..v0.64.173 v0.64.19..HEAD
 git diff --check v0.64.19..HEAD
 git diff --stat v0.64.19..HEAD
 ```
