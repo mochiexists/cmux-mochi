@@ -2,15 +2,18 @@
 
 All notable changes to cmux are documented here.
 
-## [0.64.173] - 2026-07-14
+## [0.64.173] - 2026-07-15
 
 cmux **Mochi** fork patch release.
 
 ### Added
 - Added bundled artifact guidance and clearer placement recipes so Codex and Claude sessions can create artifacts and reuse existing helper panes more predictably.
+- Added `cmux vscode open [directory]` and a bundled skill for opening a full VS Code workbench in a native cmux pane, with one shared server per workspace.
 
 ### Changed
 - Improved "open beside me" placement for artifacts, browsers, Markdown, file previews, and custom sidebars: the first addition creates a 50/50 right pane, while later additions reuse that pane as tabs instead of nesting more splits.
+- Replaced the experimental Claude-only extracted VS Code view with the normal VS Code workbench, where users install and sign in to extensions through VS Code's standard UI.
+- Made Conductor terminal-agent handoffs submit text and Enter atomically, verify the target actually started the turn, and recover without duplicating a stranded prompt.
 
 ### Fixed
 - Prevented restored native agent-session tabs from automatically starting a second provider process before the user resumes them.
