@@ -1,424 +1,511 @@
-# Fork overlay cleanup — make cmux-mochi a thin toggle on upstream
+# Clean upstream refresh and Mochi feature replay
 
-**Goal:** shrink the fork's diff against upstream (`manaflow-ai/cmux`) so rebases stop being
-release-breaking events, convert the nightly lane into a dispatch-only ALPHA lane, and make the
-release pipeline provably identical between CI and the release workflow.
+## Objective
 
-**Executor:** Codex (multi-turn). **Reviewer:** Claude reviews each phase's outcome before the
-next phase starts. **Do not** create tags, publish releases, dispatch workflows on GitHub, or
-open PRs/issues on any repo as part of this plan — all of that is done by Phil manually.
+Build the next cmux Mochi line from a fresh upstream release-tag worktree, then replay the
+Mochi product behavior as a small, reviewable, upstream-friendly commit stack. Do not rebase
+the existing 200-commit fork history wholesale.
 
----
+The migration is complete only when:
 
-## Context you need before touching anything
+- every behavior shipped in `v0.64.173` has an explicit disposition: **upstream owns it**,
+  **ported**, **intentionally retired**, or **deferred with a named blocker**;
+- every retained feature is green in the commit that introduces it;
+- a clean-fork nightly is signed, notarized, and installed beside stable `v0.64.173`;
+- the stable-versus-nightly regression matrix passes;
+- fork identity, signing, update feeds, release lanes, and submodule ownership survive the
+  refresh audit.
 
-- Repo: `/Users/timapple/Documents/mochi/mochi-dev/cmux-mochi-clean`. Trunk is `main`.
-  `origin` = `mochiexists/cmux-mochi` (fork), `upstream` = `manaflow-ai/cmux`.
-- Upstream base: `git merge-base main upstream/main` = `d65cbf2e3` (2026-06-23, ≈ upstream
-  v0.64.17, their latest release). Fork carries 117 commits: 44 added files, 217 modified
-  upstream files, +20.6k/−4.5k.
-- Current shipped fork release: v0.64.166 (build 111). Stable feed:
-  `https://github.com/mochiexists/cmux-mochi/releases/latest/download/appcast.xml`.
-- Fork identity values (canonical, from fork-overlay memory): Team ID `599WAZ6282`,
-  stable bundle `com.cmux-mochi`, app name `cmux Mochi`, nightly bundle
-  `com.cmux-mochi.nightly` / name `cmux Mochi NIGHTLY` (becomes ALPHA in Phase 4).
-- **Work on a branch per phase** off `main` (`fix/overlay-p0-guards`, `refactor/overlay-p1-build`,
-  …). One logical change per commit, conventional messages. Merge to `main` only after the
-  phase's verification gate passes and Claude has reviewed.
+This plan prepares and validates the clean stack. It does not open upstream PRs or issues,
+force-push shared branches, or publish a new stable release without a separate release decision.
 
-### Hard rules (violating any of these = stop and report)
+## Frozen references and live divergence
 
-1. **Never run bare `xcodebuild` into the default derived-data path and never launch an
-   untagged `cmux DEV.app`.** For Debug builds use `./scripts/reload.sh --tag overlay-p<N>`
-   (build only, no `--launch`). For compile-only checks use
-   `-derivedDataPath /tmp/cmux-overlay-p<N>`.
-2. **After any branch switch: `git submodule update --init`** (ghostty and vendor/bonsplit
-   pointers do not auto-update).
-3. **pbxproj:** the pre-commit hook normalizes `cmux.xcodeproj/project.pbxproj`. If you add a
-   test file under `cmuxTests/`, it MUST be wired into the pbxproj (four entries; copy the
-   pattern from `TabManagerUnitTests.swift`) — otherwise it silently never runs
-   ("Executed 0 tests" is a failure, check for it explicitly).
-4. **Baseline test failures exist.** Before claiming your change broke or fixed anything in the
-   broad suites, run the same suite on `main` at the same base and diff the failure lists. Only
-   NEW failures are yours. Do not chase pre-existing failures; list them in your report.
-5. **All user-facing strings localized** (`String(localized:)` + entries in
-   `Resources/Localizable.xcstrings` for en AND ja). Phase 4 touches user-visible text.
-6. Shell is zsh on macOS; `python3` not `python`; bash 3.2 has no associative arrays.
-7. Do not modify anything under `web/services`, `workers/`, or Cloud-VM backend code — guard
-   its CI only (Phase 0).
+Record these refs in the migration ledger before starting. If upstream publishes a newer stable
+tag before implementation begins, repeat the inventory and deliberately update the baseline;
+never silently switch to `upstream/main`.
 
-### Canonical build & test commands (use these exact forms)
+| Role | Ref | Commit |
+| --- | --- | --- |
+| Current stable behavior baseline | `v0.64.173` | `6cc68ba8ccfebcf9260e6fea049792b6cc44219b` |
+| Fresh upstream source baseline | `v0.64.19` | `1c22c556433fe035cdc60372bdd7443613f49a92` |
+| Observed upstream tip, not the base | `upstream/main` | `2dc5237c59e06b8f1007533cd4d14b13e702e553` |
+| Common ancestor | — | `d65cbf2e3757bfd0151b9f37d7f9b89760f6aaaa` |
+
+Live inventory on 2026-07-15:
+
+- fork commits since the common ancestor: 200 (196 non-merge);
+- upstream `v0.64.19` commits since the common ancestor: 1,132 (985 non-merge);
+- historical fork overlay from the common ancestor: 358 files, +27,772/-5,496;
+- exact patch-equivalent fork commits found by `git cherry v0.64.19 v0.64.173`: zero.
+
+Those numbers make a history rebase the high-risk option. The chosen strategy is a fresh branch
+from the release tag plus semantic feature replay.
+
+## Working layout
+
+Use a new persistent worktree, not `/tmp`, and leave the released checkout untouched.
 
 ```bash
-# A. Debug compile check (fast, per-commit sanity):
-xcodebuild -project cmux.xcodeproj -scheme cmux -configuration Debug \
-  -destination 'platform=macOS' -derivedDataPath /tmp/cmux-overlay-check build
-
-# B. THE release build (the thing that broke v0.64.163–165; Phase 1 turns this into a script):
-CMUX_SKIP_ZIG_BUILD=1 xcodebuild -project cmux.xcodeproj -scheme cmux -configuration Release \
-  -derivedDataPath /tmp/cmux-overlay-release -jobs 1 \
-  -destination 'generic/platform=macOS' \
-  ARCHS="arm64 x86_64" ONLY_ACTIVE_ARCH=NO \
-  SWIFT_COMPILATION_MODE=singlefile CODE_SIGNING_ALLOWED=NO build
-
-# C. Unit tests, focused (preferred; substitute the class under test):
-xcodebuild test -project cmux.xcodeproj -scheme cmux-unit -configuration Debug \
-  -destination 'platform=macOS' -derivedDataPath /tmp/cmux-overlay-check \
-  -only-testing:cmuxTests/<TestClass>
-# Verify the log says "Executed N tests" with N > 0.
-
-# D. SPM package tests (updater work in Phase 4):
-swift test --package-path Packages/macOS/CmuxUpdater
-
-# E. Shell-script test suite for CI machinery (run the individual scripts):
-tests/test_ci_sparkle_build_monotonic.sh
-tests/test_nightly_universal_build.sh
-tests/test_ci_self_hosted_guard.sh
-
-# F. Workflow syntax lint (install once if missing: brew install actionlint):
-actionlint .github/workflows/<changed>.yml
-
-# G. Fork overlay audit (must pass at the end of EVERY phase):
-./scripts/fork-overlay-audit.sh
+cd /Users/timapple/Documents/mochi/mochi-dev/cmux-inline-vscode-clean
+git fetch upstream refs/tags/v0.64.19:refs/tags/v0.64.19
+git worktree add \
+  -b refactor/mochi-v0.64.19-clean \
+  /Users/timapple/Documents/mochi/mochi-dev/cmux-mochi-v06419-clean \
+  v0.64.19
+cd /Users/timapple/Documents/mochi/mochi-dev/cmux-mochi-v06419-clean
+git submodule update --init --recursive
 ```
 
-**When to build what:** run (A) after every commit that touches Swift. Run (B) at the end of any
-phase that touched Swift, the pbxproj, entitlements, plists, or build scripts — this is
-mandatory before declaring the phase done; it is the exact build the release runs. Run (F) after
-every workflow edit. Run (G) at the end of every phase.
+Do not create the branch until the implementation begins. At that point verify that neither the
+branch nor path already exists. Keep these roles distinct throughout the migration:
 
----
+- `v0.64.173`: behavioral oracle and stable A/B install;
+- `v0.64.19`: untouched upstream baseline;
+- `refactor/mochi-v0.64.19-clean`: clean implementation stack;
+- `main`: released Mochi trunk, updated only after the clean stack is accepted.
 
-## Phase 0 — Neuter the dangerous manaflow leftovers (small, do first)
+## Rules for the clean stack
 
-**Why:** three lanes would do the WRONG thing if ever triggered on the fork.
+1. One green, independently reviewable behavior per commit. Do not replay version bumps,
+   changelog-only releases, conflict-resolution commits, or old CI repairs that the new base no
+   longer needs.
+2. Prefer reimplementation against current upstream APIs. Use `git cherry-pick -n` only when a
+   commit is already self-contained, still architecturally correct, and its full diff is wanted.
+3. Keep upstream hot files as adapters. New behavior belongs in an existing cohesive package or
+   a justified domain package; `Workspace`, `ContentView`, `AppDelegate`, `TabManager`, and
+   `TerminalController` should normally receive only composition or forwarding changes.
+4. Packages remain a downward-only DAG: Core values/protocols -> service actors/repositories ->
+   `@MainActor @Observable` domain/coordinators -> UI -> executable composition root.
+5. No new runtime singleton, global mutable store, screen-stability polling, or sleep-to-settle
+   synchronization. Inject services at the app composition root and expose real async signals.
+6. Every public package API gets DocC and package-local tests. Every app-target test file must be
+   wired into both the project and the test target and must execute a non-zero test count.
+7. All user-visible strings go through the localization catalog with English and Japanese entries.
+8. Run `scripts/normalize-pbxproj.py` and `scripts/check-pbxproj.sh` after project wiring changes.
+9. Run `git submodule update --init --recursive` after every branch switch and verify fork-owned
+   submodule URLs only after the fork overlay is applied.
+10. Never move or reuse a failed stable tag. The clean nightly is the promotion gate; versioning
+    happens after the stack is accepted.
 
-Tasks:
+## Required migration ledger
 
-1. `.github/workflows/update-homebrew.yml` — add a job-level guard to every job:
-   `if: github.repository == 'manaflow-ai/cmux'` (it bumps manaflow's Homebrew tap).
-   Deliberate future option, out of scope here: re-point this lane at a mochiexists tap if we
-   ever want `brew install` distribution. For now it stays gated off; note that option in
-   `FORK.md` (see task 7).
-2. `.github/workflows/presence.yml` — same guard on every job (it deploys manaflow's
-   Cloudflare worker; it already fired once on the fork).
-3. `.github/workflows/cloud-vm-migrate.yml`, `cloud-vm-smoke.yml`, `test-depot.yml` — same
-   guard. They are dispatch-only and inert, but a mis-dispatch should be a no-op, not an error.
-4. Do **not** delete any workflow file (deletions cause delete/modify conflicts on every rebase).
-5. Extend `scripts/fork-overlay-audit.sh`: for each file in 1–3, `require_file_contains` the
-   guard string. This makes the guards rebase-survivable.
-6. `nightly.yml`'s upstream feed URL (`files.cmux.com`) is fixed in Phase 4, not here — but add
-   a `require_file_absent "nightly.yml" "files.cmux.com"` audit line in Phase 4, noted here so
-   it isn't forgotten.
-7. `FORK.md` already exists at the repo root (created 2026-07-02) as the canonical internal
-   fork-notes doc (identity values, gotchas, lane map). **Every later phase that changes fork
-   reality (Phase 3 identity injection, Phase 4 alpha lane) must update FORK.md in the same
-   branch** — treat a stale FORK.md as a failing verification gate. In this phase, just confirm
-   it exists and add an audit line: `require_file_contains "FORK.md" "com.cmux-mochi"`.
+Create `plans/fork-overlay-cleanup/FEATURE-LEDGER.md` in the clean worktree before the first
+feature commit. One row per product behavior, not per historical commit:
 
-Verification gate: (F) on each edited workflow; (G) passes; `git diff` shows only `if:` lines
-and audit-script additions. No build needed (no Swift touched).
+| Field | Meaning |
+| --- | --- |
+| Feature | User-visible behavior or release invariant |
+| Source commits | Relevant commits in `v0.64.173` |
+| Stable proof | Test/manual recipe that proves the current behavior |
+| Upstream state | Equivalent, partial, absent, or regressed in `v0.64.19` |
+| Disposition | Upstream-owned, port, retire, or defer |
+| Clean commit | New commit that owns the behavior, or `none` |
+| Nightly proof | Automated and manual proof on the clean build |
 
----
+Populate it from all 196 non-merge commits, then collapse release churn into behavior rows:
 
-## Phase 1 — One canonical release build + a pretag guard that earns its name
+```bash
+BASE=$(git merge-base v0.64.173 v0.64.19)
+git log --no-merges --reverse --format='%H%x09%ad%x09%s' --date=short \
+  "$BASE"..v0.64.173
+git diff --name-status "$BASE"..v0.64.173
+git log --no-merges --format='%H%x09%s' "$BASE"..v0.64.173 -- <feature-path>
+```
 
-**Why:** v0.64.163–165 failed because `release.yml` built with `-jobs 1` +
-`SWIFT_COMPILATION_MODE=singlefile` while `ci.yml`'s `release-build` job built without them, so
-green CI did not prove the release build compiles.
+No source commit may disappear without being represented by a row or explicitly classified as
+release/version churn. This ledger is the safeguard against accidentally losing an old feature
+while intentionally discarding its obsolete implementation.
 
-Tasks:
+## Initial feature disposition
 
-1. Create `scripts/build-release-universal.sh`:
-   - Contains exactly command (B) above, with `-derivedDataPath` (default `build-universal`),
-     `-clonedSourcePackagesDirPath`, and an optional `--appicon <name>` passthrough
-     (nightly/alpha lane uses `ASSETCATALOG_COMPILER_APPICON_NAME`) as parameters.
-   - Flag decision (already made): **keep** `-jobs 1` + `SWIFT_COMPILATION_MODE=singlefile`
-     everywhere. v0.64.166 shipped with them; consistency beats speed here.
-2. Replace the inline xcodebuild in `release.yml` ("Build universal app (Release)", ~line 307)
-   with a call to the script. Preserve the surrounding `if:` conditions and env exactly.
-3. Replace the inline xcodebuild in `ci.yml` `release-build` job (~line 1354) with the same
-   script call (this job currently omits the two flags — after this change CI proves the real
-   release variant).
-4. Replace the equivalent build in `nightly.yml` with the script (keep its
-   `ASSETCATALOG_COMPILER_APPICON_NAME=AppIcon-Nightly` via `--appicon`).
-5. Rewrite `scripts/release-pretag-guard.sh` to run, in order:
-   a. `tests/test_ci_sparkle_build_monotonic.sh` (existing check);
-   b. `./scripts/fork-overlay-audit.sh`;
-   c. CI-green-on-HEAD check: `gh run list --repo mochiexists/cmux-mochi
-      --commit "$(git rev-parse HEAD)" --workflow ci.yml --json conclusion,status` — fail unless
-      a completed run with conclusion `success` exists for this exact SHA. Support
-      `--skip-ci-check` for offline use, printing a loud warning;
-   d. Optional `--build` flag that runs `scripts/build-release-universal.sh` locally.
-6. Add a shell test `tests/test_release_pretag_guard.sh` following the style of
-   `tests/test_ci_self_hosted_guard.sh`: stub `gh` on PATH to return success/failure/missing-run
-   JSON and assert the guard's exit codes. Wire nothing into pbxproj (pure shell).
-7. **Update the workflow-text guard tests or CI goes red.** Several `tests/test_ci_*.sh`
-   scripts grep the workflow YAML for literal strings and run as part of `ci.yml`.
-   `tests/test_ci_release_sdk_lane.sh` (line ~57) requires the literal
-   `CMUX_SKIP_ZIG_BUILD=1 xcodebuild` in both `ci.yml` and `release.yml` — after this phase
-   that literal only exists inside the new script. Inventory every affected test with
-   `grep -ln 'xcodebuild\|SWIFT_COMPILATION_MODE\|CMUX_SKIP_ZIG_BUILD' tests/*.sh`, then update
-   each to assert (a) the workflows call `scripts/build-release-universal.sh` and (b) the
-   flags (`CMUX_SKIP_ZIG_BUILD=1`, `-jobs 1`, `SWIFT_COMPILATION_MODE=singlefile`,
-   `ARCHS="arm64 x86_64"`) live inside the script itself. Run every updated test locally and
-   confirm each still FAILS when its assertion target is removed (temporarily break the script
-   to prove the test bites, then restore).
-8. Update `skills/cmux-release/SKILL.md` and the release section of `CLAUDE.md` if the invocation
-   changed (it shouldn't — same script name).
+This is the starting hypothesis from the live `v0.64.19` audit. Phase 1 must prove each row and
+may change the disposition with evidence.
 
-Verification gate: run the new script locally end-to-end (this is the mandatory (B) for the
-phase — expect ~20–40 min); (E) all three listed scripts plus the new test pass; (F) on the
-three workflows; (G) passes. Diff review point: the three workflows must now contain zero
-inline `xcodebuild` for the universal app build.
+| Feature family | Initial disposition | Reason / proof target |
+| --- | --- | --- |
+| Upstream sidebar performance backports (`#6807`, `#7117`, `#7221`) | Upstream-owned | Present in the newer upstream history; do not replay fork backports. |
+| Task Manager and reopen-closed-item infrastructure | Upstream-owned | Both are present in `v0.64.19`; compare UX and retain only missing Mochi deltas. |
+| Core inline VS Code `serve-web` workbench | Upstream-owned first | `v0.64.19` already discovers VS Code, runs `serve-web`, and opens it in a native browser surface. Prove folder routing and lifecycle before adding runtime code. |
+| VS Code skill and extension-profile explanation | Port | Keep the concise user guidance: VS Code Server has an independent extension profile; users install/trust/sign in normally. Do not auto-install marketplace extensions. |
+| Adaptive “open beside me” placement | Port | Missing upstream. First request from a full-width pane makes a 50/50 right split; later requests reuse the existing right pane as tabs. |
+| Restored native agent-session provider autostart suppression | Port | Upstream still starts auto-start providers without a restored-session distinction. |
+| Atomic conductor submission and confirmation | Port, redesign wait | Upstream `send` still only types. Port explicit type+Enter semantics; replace screen-settle polling with lifecycle/event confirmation. |
+| Agent lifecycle events and surface attribution | Port after overlap audit | Needed for deterministic conductor completion and useful independently of the skill. |
+| Refuse text injection into a live non-agent foreground job | Port if upstream lacks equivalent guard | Preserve safety without blocking known agent TUIs. |
+| Artifact workbench, `artifact.new`, live bridge, Writers' Room sample | Port | No equivalent macOS artifact pane exists in `v0.64.19`. Rebuild around injected repository/service boundaries. |
+| Bundled cmux skills for Codex and Claude | Port | Fork product capability; keep runtime installer separate from individual skill content. |
+| Workspace capture and Privacy Frost | Evaluate then port missing behavior | Upstream has changed workspace/canvas architecture; preserve capture semantics and privacy without replaying old view diffs. |
+| Agent resume modes, alias prefill, and scrollback continuity | Evaluate carefully | Upstream now has significant session tracking and restore work but not the Mochi tri-state `medium` policy. Re-prove each behavior independently. |
+| Show/Copy IDs overlay | Evaluate/port | Symbol absent in `v0.64.19`; redesign as a small diagnostic domain rather than restoring large `ContentView` hunks. |
+| Sidebar spring-load during cross-workspace drag | Evaluate | Re-run the stable recipe against current upstream; port only if the behavior is still absent. |
+| Tab path actions and external-browser launch target | Evaluate | Upstream UI has evolved; compare user behavior before retaining fork code. |
+| Socket fallback, pane zoom persistence, updater UI fixes | Evaluate for upstream equivalence | These are likely partly or fully superseded. Keep only a demonstrated regression. |
+| Bonsplit/Ghostty fork pins | Minimize | Prefer upstream submodule commits. Retain a fork pointer only for a still-required patch with its own proof and upstream submission candidate. |
+| Mochi identity, signing, feeds, release lanes, Sentry, dead-lane guards | Port last as fork overlay | Operationally required but intentionally not upstreamable. Keep separate from product commits. |
 
----
+The 2026-07-05 agent-surface request also gets explicit rows. Native external-session attach,
+agent-surface transcript ingest, and agent-surface screenshots were not completed by the current
+fork. Do not claim them as regressions. The clean stack should retain the reliable terminal/TUI
+conductor path and lifecycle events; native read-only mirroring remains a separate feature unless
+the new upstream agent-chat architecture makes it small and supportable.
 
-## Phase 2 — Workflows → repo variables and minimal guards
+## Phase 0 — Establish three clean baselines
 
-**Why:** repo *variables* live in GitHub settings, not files. Every fork value expressible as
-`${{ vars.X || '<upstream default>' }}` where upstream already has that pattern = zero file diff.
+Before changing code:
 
-Tasks:
+1. Verify `v0.64.173` is clean and record its exact CI, nightly, and stable release URLs in the
+   ledger.
+2. Create the fresh worktree at `v0.64.19`, initialize submodules, and record all submodule SHAs.
+3. Build untouched upstream with a dedicated derived-data path and run its package/app tests.
+4. Launch an explicitly tagged upstream development build without replacing either installed
+   Mochi application.
+5. Capture baseline failures and do not “fix” them in feature commits.
 
-1. Produce the inventory first and commit it as `plans/fork-overlay-cleanup/workflow-diff.md`:
-   ```bash
-   BASE=$(git merge-base main upstream/main)
-   for f in .github/workflows/*.yml; do git diff "$BASE"..main -- "$f"; done
-   ```
-   Classify every hunk as: (a) value already parameterized upstream via `vars.*` — revert the
-   hunk, record the variable name + fork value to set; (b) fork-structural (release lane, guards,
-   caching fixes) — keep, note why; (c) dead-lane guard from Phase 0 — keep.
-2. Known (a) candidates: runner labels (`vars.MACOS_RUNNER_26`, `vars.MACOS_RUNNER_26_RELEASE`,
-   `vars.LINUX_RUNNER` — the `MACOS_RUNNER_26=cmux-mochi-mini` var is already set on the repo).
-   Verify each with `gh variable list --repo mochiexists/cmux-mochi`. **Output the list of
-   variables Phil must set; do NOT set them yourself.** Do not revert a hunk until its variable
-   is confirmed set or listed for Phil.
-3. For hunks that are fork-structural but larger than needed, shrink them to the minimal stable
-   form (e.g. a single guarded step rather than a rewritten job).
-4. Add to `fork-overlay-audit.sh`: a hunk-count budget. For each of `release.yml`, `ci.yml`,
-   `nightly.yml`, compute `git diff $(git merge-base main upstream/main)..main -- <file> |
-   grep -c '^@@'` and fail if it exceeds a recorded budget (set the budget to the post-Phase-2
-   actual counts; the audit fails if the overlay *grows*).
+Baseline commands:
 
-Verification gate: (F) on every touched workflow; (G) passes; workflow-diff.md committed with
-every hunk accounted for; the vars-to-set list is in your report. No Swift touched → no (B),
-but run (A) once as a smoke check that the checkout is sane.
+```bash
+swift test --package-path Packages/macOS/CmuxWorkspaces
+swift test --package-path Packages/macOS/CmuxControlSocket
+xcodebuild -project cmux.xcodeproj -scheme cmux -configuration Debug \
+  -destination 'platform=macOS' \
+  -derivedDataPath /tmp/cmux-v06419-baseline build
+CMUX_SKIP_ZIG_BUILD=1 xcodebuild -project cmux.xcodeproj -scheme cmux \
+  -configuration Release -destination 'generic/platform=macOS' \
+  -derivedDataPath /tmp/cmux-v06419-release -jobs 1 \
+  ARCHS='arm64 x86_64' ONLY_ACTIVE_ARCH=NO \
+  SWIFT_COMPILATION_MODE=singlefile CODE_SIGNING_ALLOWED=NO build
+```
 
----
+Use the repo's current test scripts where they supersede these raw commands. The exact universal
+single-file Release build remains mandatory because it catches failures that Debug does not.
 
-## Phase 3 — Identity injection at package time
+Gate: untouched upstream builds, package tests have a recorded result, and the baseline failure
+list is committed to the ledger before the first port.
 
-**Why:** `nightly.yml` already proves the pattern: build an upstream-shaped app, then stamp
-bundle ID / name / feed / icon with PlistBuddy **before signing**. Doing the same for stable
-removes the identity edits from `Resources/Info.plist`, the entitlements files, and the pbxproj
-(`PRODUCT_NAME`) from the source diff — the category that silently reverts on every rebase.
+## Phase 1 — Prove upstream overlap before writing code
 
-Tasks:
+For each ledger row:
 
-1. Extract the injection logic from `nightly.yml`'s "Inject nightly identities and metadata"
-   step into `scripts/inject-fork-identity.sh <app-path> <stable|alpha>`:
-   stable → name `cmux Mochi`, bundle `com.cmux-mochi`, feed
-   `https://github.com/mochiexists/cmux-mochi/releases/latest/download/appcast.xml`, icon
-   `AppIcon`; alpha values come from Phase 4. It must set CFBundleIdentifier, CFBundleName,
-   CFBundleDisplayName, SUFeedURL, URL-scheme entries, and rename the `.app` — mirror every key
-   the nightly step currently sets, plus anything `verify-app-bundle-channel-metadata.sh` checks.
-2. Wire it into `release.yml` between build and codesign. **Order is load-bearing:**
-   build → inject → sign → notarize → verify. Injection after signing invalidates the signature.
-3. Wire the existing `scripts/verify-app-bundle-channel-metadata.sh <app> stable` into
-   `release.yml` right after injection (it currently exists but confirm it runs in the lane;
-   add if missing).
-4. Now revert the *identity-only* hunks in `Resources/Info.plist` and pbxproj `PRODUCT_NAME`
-   toward upstream — **one file per commit**, and after each revert run (A) plus
-   `scripts/inject-fork-identity.sh` against the built app followed by
-   `verify-app-bundle-channel-metadata.sh`. If a hunk is NOT identity (e.g. a fork feature needs
-   a plist key), keep it and record it in the audit script.
-   **ENTITLEMENTS ARE EXCLUDED — do not revert `cmux.entitlements`,
-   `cmux.release.entitlements`, or `cmux.nightly.entitlements` toward upstream.** Upstream's
-   versions hardcode manaflow's signing identity (`com.apple.application-identifier =
-   7WLXT3NR37.com.cmuxterm.app`, `com.apple.developer.team-identifier = 7WLXT3NR37`); the fork
-   deliberately removed those keys. Entitlements are sealed into the code signature at signing
-   time — plist injection cannot correct them afterward, and signing our cert (team
-   `599WAZ6282`) against manaflow's application-identifier produces a broken or rejected
-   bundle. The three entitlements files stay as retained fork diffs. Add audit lines:
-   `require_file_absent` for `7WLXT3NR37` in all three entitlements files.
-5. **Deliberate exception — do not revert:** `UpdateFeedResolver.swift`'s fallback URL must stay
-   pointing at `mochiexists/cmux-mochi`. If it fell back to upstream's feed, a Mochi install
-   with a missing plist key would update itself into upstream cmux. Add an audit line asserting
-   the mochiexists URL is present in that file.
-6. Local dev implications: `reload.sh --tag` already stamps its own dev identities — verify a
-   tagged Debug build still gets a tagged bundle ID after the pbxproj revert (build one with
-   `./scripts/reload.sh --tag overlay-p3` and inspect its Info.plist with PlistBuddy).
-7. Update `fork-overlay-audit.sh`: assert `inject-fork-identity.sh` exists and contains the
-   stable bundle ID + feed URL; assert release.yml calls it before the signing step (grep order
-   check is fine: injection step name must appear before "codesign" in the file).
+1. Run the stable `v0.64.173` proof recipe.
+2. Run the same recipe on the tagged `v0.64.19` dev build.
+3. Inspect current upstream source and tests.
+4. Mark the behavior equivalent, partial, absent, or intentionally changed.
+5. Choose a disposition and acceptance test.
 
-Verification gate: (B) full release build, then run injection + verify script against the
-produced app for the stable channel; (A); (C) on `AuthEnvironmentTests` and
-`TerminalAndGhosttyTests` (bundle-ID-sensitive suites); (E) `tests/test_nightly_universal_build.sh`;
-(F); (G). Report must include the PlistBuddy dump of the injected app's identity keys.
+Start with the likely supersessions: VS Code workbench, Task Manager, reopen closed items,
+sidebar performance, socket routing, tab path actions, and browser launch behavior. Dropping code
+is a positive outcome when upstream passes the same behavior test.
 
----
+Gate: every source commit is accounted for, every port row has a concrete acceptance test, and
+there are no “keep just in case” entries.
 
-## Phase 4 — Alpha lane (rename nightly, dispatch-only, fork-controlled feed)
+## Phase 2 — Shared adaptive right-side placement
 
-**Why:** Phil wants a prerelease he ships exactly when he wants. The nightly lane is already
-dispatch-only on the fork but still half-wired to manaflow (feed URL `files.cmux.com`).
+Port this first because it is cohesive, package-testable, and a dependency of artifacts, VS Code,
+browser/file previews, Markdown, and custom sidebars.
 
-Decisions already made — implement as stated:
-- **Keep the filename `nightly.yml`** (renaming = delete/modify conflict on rebase). Change the
-  workflow display `name:` to `Alpha build`.
-- Separate-app model (like nightly today): name `cmux Mochi ALPHA`, bundle
-  `com.cmux-mochi.alpha`, URL scheme `cmux-alpha`.
-- Feed: rolling GitHub prerelease tag `alpha` on `mochiexists/cmux-mochi` (upstream uses the
-  same rolling-tag pattern for its Nightly release). Feed URL:
-  `https://github.com/mochiexists/cmux-mochi/releases/download/alpha/appcast.xml`.
-- Versioning: `<base>-alpha.<build>`; build number baseline read from the alpha appcast (reuse
-  the appcast-baseline logic in `scripts/bump-version.sh`). The alpha app is a separate bundle
-  with its own feed, so no cross-channel build reservation is needed — build numbers only need
-  to increase within the alpha feed.
-- Trigger: `workflow_dispatch` only. Delete the commented-out `push:` block and the
-  "decide whether a nightly build is needed" job (its head-vs-nightly-tag comparison is
-  meaningless for a dispatch-only lane); keep a `force`-free simple dispatch.
-  **Removing `decide` is not a one-hunk delete** — the workflow has ~38 references to
-  `needs.decide` / `decide.outputs.*`. Mechanical checklist, verify each with a final
-  `grep -n 'decide' .github/workflows/nightly.yml` returning zero hits:
-  a. remove `decide` from every job's `needs:` list;
-  b. replace `needs.decide.outputs.head_sha` (checkout `ref:`, build-SHA env, release body)
-     with `github.sha`;
-  c. replace `needs.decide.outputs.short_sha` with a step that computes
-     `git rev-parse --short HEAD`;
-  d. replace `needs.decide.outputs.should_build` / `should_publish` guards: dispatch-only means
-     always build; keep publish gated only on the build job succeeding;
-  e. update the rolling-tag movement / current-head guard steps that compared against
-     `head_sha`;
-  f. update the workflow-text tests that grep nightly.yml:
-     `tests/test_ci_nightly_tag_push_auth.sh`, `tests/test_nightly_universal_build.sh`,
-     `tests/test_ci_nightly_xcode_selection.sh`, `tests/test_ci_nightly_prune_python_compat.sh`
-     — run each after the edit; prove each still fails when its target is broken;
-  g. run `actionlint .github/workflows/nightly.yml` — an invalid workflow parses as
-     "phantom failure with no jobs" on GitHub, so lint locally, do not discover it by pushing.
-- Icon: reuse `AppIcon-Nightly` for now (follow-up ticket: parameterize
-  `scripts/generate_nightly_icon.py` for an ALPHA banner). Do not block on iconography.
+Target shape:
 
-Tasks:
+- pure `WorkspaceRightSidePlacementPlanner` value in `CmuxWorkspaces`;
+- immutable Bonsplit tree snapshot input;
+- outcomes: reuse existing right pane as a tab, reuse the source when already at the right edge,
+  or create one right split;
+- tiny app-target adapter resolving `PaneID` and invoking existing creation APIs;
+- every “beside” entry point calls the same adapter.
 
-1. Transform `nightly.yml` per the decisions: identity values, feed URL (audit:
-   `require_file_absent` for `files.cmux.com`), publish step targets the rolling `alpha`
-   prerelease (create-or-update: upload DMG `cmux-alpha-macos-<build>.dmg` + regenerate and
-   upload `appcast.xml` on that tag). Use `scripts/build-release-universal.sh --appicon
-   AppIcon-Nightly` and `scripts/inject-fork-identity.sh <app> alpha` from Phases 1/3.
-2. `scripts/verify-app-bundle-channel-metadata.sh`: change the `nightly` case to `alpha`
-   (expected name `cmux Mochi ALPHA`, bundle `com.cmux-mochi.alpha`, icon `AppIcon-Nightly`).
-   Keep accepting `nightly` as a deprecated alias that errors with a pointer, so stale callers
-   fail loudly rather than validating the wrong thing.
-3. `Packages/macOS/CmuxUpdater/UpdateFeedResolver.swift`: replace the `isNightly` bool with a
-   channel classification that recognizes `/alpha/` (and legacy `/nightly/`) path segments;
-   update `UpdateDriver+SPUUpdaterDelegate.swift`'s log line and `UpdateStateModelTests`.
-   Two-commit red/green: first commit adds the failing test for `/alpha/` classification,
-   second the implementation. Run (D) both times, confirm red then green.
-3b. **The runtime channel identity is recognized far beyond the updater — update every
-   surface.** Known sites (verify and extend with
-   `grep -rn 'com\.cmux-mochi\.nightly\|cmux-nightly\|"nightly"' Sources Packages CLI
-   --include='*.swift'`, excluding `.build/` checkouts):
-   - `Sources/Auth/AuthEnvironment.swift` (~line 49): callback scheme returns `cmux-nightly`
-     for the nightly bundle ID — add/rename to `cmux-alpha` for `com.cmux-mochi.alpha`;
-   - `Packages/Shared/CmuxAuthRuntime/.../BrowserSignIn/AuthCallbackRouter.swift`:
-     `builtInSchemes` set must include `cmux-alpha` or browser sign-in callbacks are rejected;
-   - `Packages/macOS/CmuxSettings/.../SocketControl/SocketPathMarkerFiles.swift` and
-     `SocketPathVariant.swift`, plus
-     `Packages/macOS/CmuxControlSocket/.../Transport/SocketTransport+PathLock.swift`:
-     nightly bundle-ID constants, marker-file names, and `/tmp/cmux-nightly.sock` path —
-     introduce the alpha equivalents;
-   - `Sources/cmuxApp.swift` (~line 4498): channel classification on bundle-ID prefix;
-   - also sweep: `Sources/App/StartupBreadcrumbLog.swift`, `Sources/CmuxSSHURLRequest.swift`,
-     `Sources/Cloud/PresenceHeartbeatClient.swift`,
-     `Packages/macOS/CmuxFoundation/.../CmuxGhosttyConfigPathResolver.swift`,
-     `Packages/iOS/CmuxMobileShell/.../MacBuildChannel.swift`.
-   Policy: the channel is renamed to **alpha** everywhere user- or filesystem-visible; keep
-   the legacy `com.cmux-mochi.nightly` bundle-ID *recognition* paths working (accept both) so
-   any lingering installed NIGHTLY app or stale on-disk markers don't misroute sockets or auth.
-   Update the paired tests (`SocketPathMarkerFilesTests`, `MacBuildChannelTests`,
-   `AuthEnvironmentTests`, `TerminalControllerSocketSecurityTests`) and run (C) for app-target
-   suites plus the explicit SPM package tests for every touched package:
-   `swift test --package-path Packages/macOS/CmuxUpdater`,
-   `swift test --package-path Packages/macOS/CmuxSettings`,
-   `swift test --package-path Packages/macOS/CmuxControlSocket`,
-   `swift test --package-path Packages/macOS/CmuxFoundation`,
-   `swift test --package-path Packages/Shared/CmuxAuthRuntime`, and
-   `swift test --package-path Packages/iOS/CmuxMobileShell`. Every one of these files is already
-   fork-modified, so this adds no new overlay files.
-4. Any new user-visible strings (update pill/popover channel labels if they surface the channel)
-   need en + ja entries in `Localizable.xcstrings`. Perform the localization audit and state its
-   result in your report.
-5. `tests/test_nightly_universal_build.sh`: update expectations to the alpha identity; keep
-   filename.
-6. Docs: update `skills/cmux-release/SKILL.md` + `references/release-checklist.md` and the
-   release section of `CLAUDE.md` with the alpha flow:
-   `gh workflow run nightly.yml` → installs/updates only the ALPHA app. Note explicitly that
-   stable users can never receive alpha builds (separate bundle + separate feed).
-7. `web/app/[locale]/nightly/page.tsx` is fork-modified already — update its copy/link to the
-   alpha DMG (en + ja message catalogs).
+Clean commits:
 
-Verification gate: (D) green with the new resolver tests (and red confirmed on the test-only
-commit); (B) + inject `alpha` + `verify-app-bundle-channel-metadata.sh <app> alpha` on the
-artifact; (C) on updater-adjacent suites; (E) updated nightly/alpha shell test; (F) on
-nightly.yml; (G). **Do not dispatch the workflow** — Phil will run the first real alpha as the
-end-to-end test and confirm Sparkle offers an update from the alpha feed.
+1. `feat(workspaces): add adaptive right-side placement policy`
+   - package values, planner, DocC, package tests only;
+   - cases: full width, left/right pair, right-edge source, vertical stack, 2x2 alignment,
+     headless geometry, missing source.
+2. `feat(workspaces): route beside openings through shared placement`
+   - browser, Markdown, file preview, artifact, inline VS Code, and custom-sidebar adapters;
+   - app tests prove no nested 25/25 split after a right pane already exists.
 
----
+Gate: `CmuxWorkspaces` tests, focused app tests, Debug build, and one visual topology smoke.
 
-## Phase 5 — App-code seams (worst-first, strictly incremental)
+## Phase 3 — Deterministic conductor I/O
 
-**Why:** `ContentView.swift` carries 51 fork hunks, `AppDelegate.swift` 44, `TabManager.swift`
-21 — in upstream's highest-churn files. Goal: each fork feature's body lives in a fork-only
-file; the upstream file keeps at most a one-line call site per integration point.
+Build the protocol/runtime capability before changing skill prose.
 
-Protocol (repeat per file, one PR-sized branch per file, ContentView first):
+Target behavior:
 
-1. Map every fork hunk in the file to its feature
-   (`git log --oneline $(git merge-base main upstream/main)..main -- <file>` + blame).
-2. For each feature, move the implementation into `Sources/Mochi/<Feature>.swift` (new files;
-   create the directory; wire new files into the pbxproj) as extensions/helper types. The
-   upstream file keeps a single stable call per hook point.
-3. **Do not touch the typing-latency contracts:** `TabItemView`'s `Equatable` conformance +
-   `.equatable()` call site, `WindowTerminalHostView.hitTest()`'s pointer-event gate, and
-   `TerminalSurface.forceRefresh()` must not gain properties, observation, or indirection.
-   The recent `fix: split sidebar row modifier chain` commits (fa2520012, fb5a66c90) exist to
-   keep Release type-checking tractable — do not re-inline what they split.
-4. Behavior must be identical: no signature changes visible to tests, no string changes.
-5. After each file: (A); (C) on that file's suites (ContentView → `TabManagerUnitTests`,
-   `ShortcutAndCommandPaletteTests`, `OmnibarAndToolsTests`; AppDelegate →
-   `TerminalAndGhosttyTests`, `CmuxEventBusTests`; TabManager → `TabManagerUnitTests`,
-   `WorkspaceUnitTests`); then (B) — Phase 5 is exactly the kind of change that trips Release
-   singlefile type-checking, so the release build is mandatory per file, not per phase.
-6. Success metric per file: hunk count in the upstream file drops by ≥60% and every remaining
-   hunk is ≤3 lines. Record before/after counts in the audit budget from Phase 2.
+- `cmux send --enter` / `--submit` types and submits as one requested operation;
+- command output identifies the resolved target and whether Enter was delivered;
+- a caller can wait on an agent lifecycle transition attributed to the same surface/turn;
+- failure/timeout is explicit and non-zero;
+- sending to an unrelated live foreground process is rejected unless the caller deliberately
+  overrides it;
+- the conductor skill reads back enough state to prove that the prompt left the input and the
+  agent entered working/finished state.
 
-Stop after ContentView, AppDelegate, and TabManager. Further files are follow-up work.
+Do not retain the current screen-unchanged polling loop as the final completion primitive. Use
+the agent event stream or an `AsyncStream` exposed by the responsible service. A bounded timeout
+is allowed; sleep-to-settle polling is not.
 
----
+Clean commits:
 
-## Phase 6 — Prepare upstream contributions (PREPARE ONLY)
+1. `feat(events): publish attributed agent lifecycle transitions`
+2. `feat(control): guard text delivery by foreground process ownership`
+3. `feat(cli): add explicit submit and lifecycle wait to send`
+4. `docs(skills): verify conductor prompt submission`
 
-1. Identify the socket fix and zoom fix commits (see `cmux-mochi-159-backlog` context; locate
-   via `git log --grep` for socket/zoom on the fork range) and any generally-useful test
-   hardening from the 37 modified test files.
-2. For each: create a clean branch off `upstream/main`, cherry-pick + adapt, run (A) and the
-   relevant (C) suites against it, and write the PR description to
-   `plans/fork-overlay-cleanup/upstream-pr-<name>.md`.
-3. **Do not push to any manaflow remote and do not open PRs or issues** — manaflow-ai is not
-   Phil's org; he opens these himself after review.
+Tests cover literal `--enter` after `--`, submit aliases, target resolution, Enter-delivery
+failure, non-agent rejection, agent allowance, event attribution, completion, and timeout.
 
----
+Gate: `CmuxControlSocket` tests, CLI integration tests against a tagged dev app, conductor skill
+validation, and a live Codex-to-Claude/Codex turn where the receiving pane visibly submits.
 
-## Definition of done / final report
+## Phase 4 — Native agent-session restore safety
 
-- Phases 0–4 merged to `main`; Phase 5 done for the three named files; Phase 6 branches local.
-- `./scripts/fork-overlay-audit.sh` enforces: dead-lane guards, identity injection presence +
-  ordering, resolver fallback URL, `files.cmux.com` absence, and hunk-count budgets.
-- Final report must include: per-phase commit list; the repo variables Phil must set; before/after
-  overlay stats (`git diff --stat $(git merge-base main upstream/main)..main | tail -1` and
-  hunk counts for the three Phase-5 files); every test suite run with pass/fail and the
-  pre-existing-failure baseline diff; anything skipped and why.
-- No tags created, no workflows dispatched, no releases published, nothing pushed to manaflow.
+Port only the restored-panel distinction, not old agent-session renderer code.
+
+Target shape:
+
+- restoration passes a value describing launch intent (`restoredDormant` versus `newInteractive`),
+  rather than a loose Boolean if current upstream APIs make that natural;
+- provider metadata reports auto-start capability separately from whether this panel should
+  auto-start now;
+- restored panels render without spawning a second provider process;
+- explicit user resume/start still launches exactly once.
+
+Clean commit: `fix(agent-session): keep restored provider panels dormant until resumed`.
+
+Gate: provider policy unit tests, session-restore tests, process-count smoke, and a relaunch test
+covering both Codex and a provider that normally auto-starts.
+
+## Phase 5 — Inline VS Code, upstream first
+
+Run the minimal acceptance test against untouched `v0.64.19`:
+
+1. Discover Visual Studio Code or explain how to install it.
+2. Open a selected directory through `code-tunnel serve-web` in a native cmux browser pane.
+3. Open a second directory/workspace without killing the first active workbench unexpectedly.
+4. Stop/restart the server and close its owning workspace without leaking a process or token file.
+5. Confirm the web workbench uses its own extension profile; manually install/trust the Anthropic
+   extension and sign in through normal VS Code UI.
+
+If upstream passes, add only the bundled skill:
+
+- `docs(skills): add inline VS Code workbench workflow`.
+
+If a real lifecycle gap remains, replace the current singleton workspace registry with an injected
+`VSCodeServeWebService` actor (in a cohesive service package if the test seam justifies it). The app
+composition root owns it; workspace close calls the service; tests use injected process launching,
+filesystem, token paths, and clock/deadline. Then use two commits:
+
+1. `fix(vscode): scope serve-web lifecycle to workspace ownership`
+2. `docs(skills): add inline VS Code workbench workflow`
+
+Never auto-install or silently trust marketplace extensions. The skill explains that desktop VS
+Code extensions and the server profile are separate and that install/trust/sign-in is a one-time
+normal UI action in the server workbench.
+
+Gate: focused lifecycle tests, no orphan process/token files, native pane visual smoke, and skill
+validation.
+
+## Phase 6 — Artifact domain and Writers' Room
+
+Rebuild artifacts as a domain rather than restoring the current app-target global store.
+
+Suggested package shape:
+
+- `CmuxArtifacts`: Sendable artifact IDs/records/entries, validation, repository protocol,
+  filesystem repository actor, bounded log reads, scaffold policy, live event stream;
+- `CmuxArtifactsUI`: WebKit/SwiftUI renderer and bridge depending on the domain, never directly on
+  a concrete repository;
+- executable target: composition and minimal `Panel`/`Workspace` adapters;
+- `CmuxControlSocket`: `artifact.new` request/response contract via an injected app context;
+- CLI: `cmux artifact new --dir` and truthful placement/error output.
+
+Clean commits:
+
+1. `feat(artifacts): add artifact domain and repository`
+2. `feat(artifacts): add native artifact panel and renderer`
+3. `feat(artifacts): add artifact creation control and CLI`
+4. `feat(artifacts): add opt-in writable rooms and Writers' Room sample`
+5. `docs(skills): add artifact creation and collaboration recipes`
+
+Security/correctness invariants:
+
+- writable rooms require per-artifact opt-in;
+- paths are canonicalized beneath the selected root;
+- appended entries are schema-validated and size-bounded;
+- log reads are bounded;
+- concurrent appends do not corrupt entries;
+- bridge recovery does not freeze the app;
+- placement responses describe the pane/tab actually created.
+
+Gate: package tests, bridge/renderer tests, CLI tests, right-placement integration, built-in sample
+smoke, and a two-writer Writers' Room exercise.
+
+## Phase 7 — Remaining Mochi product slices
+
+Work strictly from the ledger, one vertical slice at a time. Recommended order minimizes shared
+hot-file churn:
+
+1. bundled skill installer (Codex and Claude destinations, idempotent updates);
+2. workspace capture, sidebar exclusion, and Privacy Frost;
+3. agent resume tri-state, alias prefill, and scrollback continuity;
+4. Show/Copy IDs diagnostic overlay;
+5. sidebar drag spring-load if still missing;
+6. any proven missing tab-path/browser/updater/socket/zoom behavior;
+7. submodule-only patches that remain necessary.
+
+Each slice must have:
+
+- stable proof and upstream failure recorded first;
+- a named domain owner and dependency direction;
+- one green implementation commit (or a small ordered stack when the domain genuinely requires it);
+- focused tests plus Debug compile;
+- no unrelated formatting, version, changelog, or release changes.
+
+If a slice requires more than three-line hooks in several upstream hot files, stop and design a
+Coordinator/Service/Repository seam before editing. Do not recreate the current large
+`ContentView.swift`, `Workspace.swift`, or `AppDelegate.swift` overlay.
+
+## Phase 8 — Apply the fork overlay last
+
+Only after the product stack is green, apply the intentionally non-upstreamable fork machinery.
+
+Clean commits:
+
+1. `chore(fork): apply Mochi identity and owned submodules`
+   - app/bundle names and URL schemes;
+   - entitlements and signing-team compatibility;
+   - stable/nightly socket variants;
+   - only still-required Ghostty/Bonsplit fork URLs and pins.
+2. `ci(fork): restore Mochi release and update lanes`
+   - exact universal build script;
+   - stable and separate-app nightly identities/feeds;
+   - signing, notarization, Sparkle, Sentry, daemon assets;
+   - repo-variable runner routing;
+   - guards on upstream-only workflows;
+   - pre-tag guard and immutable-asset checks.
+3. `docs(fork): document overlay audit and release operations`
+   - `FORK.md`, release skill/checklist, current gotchas.
+
+Extend `scripts/fork-overlay-audit.sh` to verify at least:
+
+- no upstream signing team, feed, app name, or release repository leaks into shipping paths;
+- Mochi bundle IDs, feed URLs, app names, and Sentry target are present;
+- identity injection runs before code signing;
+- stable and nightly remain separate bundles and feeds;
+- submodule URLs and pointers are deliberate;
+- upstream-only workflows cannot mutate Manaflow infrastructure from the fork;
+- release workflows call the same universal build script proven by CI.
+
+Do not bump the final version in these commits. Version/changelog prep is a separate release commit
+after the clean nightly is accepted.
+
+## Per-commit validation gate
+
+Every commit must pass the smallest complete gate for its scope:
+
+- changed Swift package: `swift test --package-path <package>`;
+- app-target Swift: focused non-zero test suite and Debug build;
+- project file: normalization and project check scripts;
+- workflow: `actionlint` plus the matching shell guard tests;
+- localization: localization audit with en/ja coverage;
+- skill: skill validation and bundle/install test;
+- submodule: build/test inside the submodule plus parent pointer validation.
+
+At the end of every phase:
+
+```bash
+./scripts/fork-overlay-audit.sh
+git status --short
+git diff --check v0.64.19..HEAD
+```
+
+At product-stack milestones, run the exact universal Release build. Before any nightly, require a
+successful full `ci.yml` run on the exact candidate SHA.
+
+## Clean-history review gate
+
+Before moving the stack toward `main`:
+
+```bash
+git log --reverse --oneline v0.64.19..HEAD
+git range-diff v0.64.19...v0.64.173 v0.64.19...HEAD
+git diff --check v0.64.19..HEAD
+git diff --stat v0.64.19..HEAD
+```
+
+Review every commit independently:
+
+- does it build and test at that point in history?
+- does its message name the behavior rather than the migration?
+- could an upstream maintainer review it without understanding Mochi branding?
+- are fork-only values absent from upstreamable commits?
+- is there a smaller current-upstream API that eliminates the patch?
+
+Prepare upstream contribution branches only after this review, one feature per branch from the
+same upstream tag (or current upstream main after rebasing that individual contribution). Do not
+push or open upstream PRs without explicit approval.
+
+## Nightly and stable-versus-clean regression
+
+1. Run a branch nightly on the clean candidate first. It may upload an Actions artifact but must
+   not move the public rolling nightly tag.
+2. Verify the branch artifact's version, architectures, signature/notarization, bundle ID, feed,
+   daemon manifest, and appcast.
+3. After exact-SHA CI and review, integrate the clean stack into `main` using a strategy that
+   preserves the curated commits.
+4. Dispatch the public rolling nightly from exact `main` HEAD and verify tag, release assets, and
+   appcast independently.
+5. Install stable `v0.64.173` and the clean nightly side by side. Use separate config/socket
+   identities and the same fixture repository.
+
+Required A/B matrix:
+
+| Area | Stable `v0.64.173` | Clean nightly |
+| --- | --- | --- |
+| Launch, update feed, bundle identity, CLI discovery | Baseline | Equal or deliberately changed |
+| One full-width pane -> add right | 50/50 | 50/50 |
+| Existing right pane -> add right again | New tab in right pane | Same |
+| Browser, Markdown, file, custom sidebar, VS Code, artifact placement | Baseline | Same topology |
+| Inline VS Code directory open, stop/restart, extension profile | Baseline | Same or upstream-better |
+| Restored native agent panel | No duplicate provider | Same |
+| Conductor prompt submit | Prompt leaves input and turn starts | Same, with event proof |
+| Artifact create/render/live update/Writers' Room | Baseline | Same |
+| Resume mode and scrollback after relaunch | Baseline | Same for every retained mode |
+| Privacy/capture behavior | Baseline | Same |
+| CLI/socket targeting and safety errors | Baseline | Same or stricter documented result |
+| Core upstream workflows not modified by Mochi | — | `v0.64.19` behavior preserved |
+
+Record screenshots/topology JSON, process counts, CLI output, test logs, and app metadata in
+`plans/fork-overlay-cleanup/VALIDATION-MATRIX.md`. “Looks good” is not a passing row.
+
+## Promotion and rollback
+
+Promote only when:
+
+- the feature ledger has no unowned source commit;
+- exact candidate SHA is fully green in CI;
+- the public clean nightly is signed, notarized, and verified;
+- all required A/B rows pass or have an approved intentional delta;
+- the fork overlay audit passes against both source and built bundles;
+- the curated commit stack has been reviewed for upstreamability.
+
+Keep `v0.64.173` installed and immutable throughout testing. If the clean nightly regresses, move
+the nightly only through the normal workflow after fixing the branch; do not change stable. If a
+stable tag is eventually cut and its workflow fails, fix forward with the next patch version—never
+move or reuse the failed tag.
+
+## Completion report
+
+The final implementation report must include:
+
+- upstream and stable SHAs used;
+- feature ledger counts by disposition;
+- ordered clean commit list;
+- package/dependency changes;
+- every test/build/workflow run and exact result;
+- branch and public nightly run IDs plus verified assets/appcasts;
+- stable-versus-clean regression matrix;
+- retained fork-only diffs and why each cannot be upstreamed;
+- prepared upstream contribution branches, if any, without publishing them;
+- remaining blockers or intentionally deferred features.
