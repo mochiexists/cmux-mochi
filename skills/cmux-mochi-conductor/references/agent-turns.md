@@ -4,20 +4,33 @@ Use this reference when sending prompts to a target agent and collecting the res
 
 ## Submit a Prompt
 
-For Codex TUI targets, send text and then press Enter explicitly:
+For Codex TUI targets, type and submit in one atomic command:
 
 ```bash
-cmux send --surface "$TARGET_SURFACE" "Summarize the failing test and propose the smallest fix."
-cmux send-key --surface "$TARGET_SURFACE" enter
+cmux send --surface "$TARGET_SURFACE" --enter "Summarize the failing test and propose the smallest fix."
 ```
 
-For shell targets and some other TUIs, `--enter` can be enough:
+Use the same form for shell targets and other TUIs:
 
 ```bash
 cmux send --surface "$TARGET_SURFACE" --enter "Summarize the failing test and propose the smallest fix."
 ```
 
 Do not depend on a trailing newline embedded in the sent text.
+
+Immediately read the target after a brief pause. Confirm the prompt moved out of
+the input composer and the target shows processing, assistant output, or a later
+idle prompt. Command success proves that cmux routed the input, not that the TUI
+accepted the turn. If the text is still stranded in the composer, run
+`cmux send-key --surface "$TARGET_SURFACE" enter` once, then read again. Do not
+resend the prompt.
+
+For a one-shot task, `--wait` implies `--enter`, waits for the screen to settle,
+and prints the visible result:
+
+```bash
+cmux send --surface "$TARGET_SURFACE" --wait "Summarize the failing test and propose the smallest fix."
+```
 
 ## Read the Result
 
@@ -31,10 +44,10 @@ Increase `--lines` when the answer is longer or when the useful output scrolled 
 
 Use a gentle read loop for simple tasks:
 
-1. Send one prompt.
-2. Wait a few seconds.
-3. Read screen/scrollback.
-4. Repeat the read only until the target is idle or the requested answer is visible.
+1. Send one prompt with `--enter`.
+2. Wait briefly and read screen/scrollback to prove submission.
+3. If it is stranded in the composer, press Enter once without resending text.
+4. Repeat only the read until the target is idle or the requested answer is visible.
 
 Do not send a second prompt unless the first one clearly failed or the user asked for a follow-up.
 
@@ -56,5 +69,5 @@ If the target pane restarted or lost a pending resume prompt:
 
 - Use Show IDs / Copy IDs to find `resume_command`.
 - Send the resume command to the same surface.
-- Submit with `cmux send-key ... enter` after sending text when the target is Codex TUI.
+- Submit prompts with `cmux send --enter`, then verify with `read-screen`.
 - Re-read the screen before sending any new task prompt.

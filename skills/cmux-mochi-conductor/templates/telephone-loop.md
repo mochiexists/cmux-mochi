@@ -44,7 +44,7 @@ Do not write helper relay scripts. Each visible agent should pass the baton itse
 
 ## Worker Prompt
 
-Send this to each worker, changing `YOUR_LABEL`, `NEXT_LABEL`, `NEXT_SURFACE`, `NEXT_SUBMIT`, and whether this worker should mark the next hop as `FINAL`.
+Send this to each worker, changing `YOUR_LABEL`, `NEXT_LABEL`, `NEXT_SURFACE`, and whether this worker should mark the next hop as `FINAL`.
 
 ```text
 You are YOUR_LABEL.
@@ -55,34 +55,22 @@ Rules:
 - Only react to a message that starts with BATON.
 - Use your own wording in the pane before you pass it on, if you want.
 - Pass it on by running exactly one shell command. The next message only needs to start with BATON:
-  cmux send --surface "NEXT_SURFACE" "BATON from YOUR_LABEL: <message you want to pass>" && NEXT_SUBMIT
+  cmux send --surface "NEXT_SURFACE" --enter "BATON from YOUR_LABEL: <message you want to pass>"
 - If this is the final hop, include FINAL somewhere in the BATON message.
 - If you receive a BATON marked FINAL, react however you like and do not pass it on.
 - Do not create helper scripts, temp files, background loops, or contact external services.
 - Preserve the active CMUX_SOCKET_PATH if it is set.
 ```
 
-Use this for `NEXT_SUBMIT` when the next worker is a Codex TUI pane:
-
-```bash
-cmux send-key --surface "NEXT_SURFACE" enter
-```
-
-Use this for `NEXT_SUBMIT` when the next worker is a plain shell:
-
-```bash
-true
-```
-
-`cmux send --enter` is enough for many shell targets, but it can leave text sitting in the Codex TUI composer without submitting. For visible Codex workers, always pair `cmux send` with `cmux send-key ... enter`.
+`--enter` types and submits against the same resolved surface, so the worker
+cannot forget a separate submit command.
 
 ## Starter Baton
 
 Start the loop by sending the first message to A:
 
 ```bash
-cmux send --surface "$SURFACE_A" "BATON from COMMANDER: hey, I passed you a message. pass it to B. keep it the same, or not, it is up to you :)"
-cmux send-key --surface "$SURFACE_A" enter
+cmux send --surface "$SURFACE_A" --enter "BATON from COMMANDER: hey, I passed you a message. pass it to B. keep it the same, or not, it is up to you :)"
 ```
 
 ## Socket Routing Smoke
@@ -108,8 +96,7 @@ cmux read-screen --surface "$SURFACE" --scrollback --lines 120
 If one worker stalls, send a single nudge to that worker:
 
 ```bash
-cmux send --surface "$SURFACE" "Continue the telephone loop from the latest baton visible in this pane. Follow your assigned NEXT_SURFACE."
-cmux send-key --surface "$SURFACE" enter
+cmux send --surface "$SURFACE" --enter "Continue the telephone loop from the latest baton visible in this pane. Follow your assigned NEXT_SURFACE."
 ```
 
 ## Cleanup

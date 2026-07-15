@@ -26,10 +26,13 @@ Current limitation: external conductor commands cannot yet address that native s
 Terminal fallback:
 
 ```bash
-cmux send --surface "$TARGET_SURFACE" "Your prompt"
-cmux send-key --surface "$TARGET_SURFACE" enter
+cmux send --surface "$TARGET_SURFACE" --enter "Your prompt"
 cmux read-screen --surface "$TARGET_SURFACE" --scrollback --lines 200
 ```
+
+Verify the prompt left the composer and the agent started processing or produced
+output. If it remains stranded, press Enter once with `send-key` and re-read;
+do not resend the prompt.
 
 ## Claude Code
 

@@ -32,7 +32,7 @@ Do not write helper relay scripts. Each visible agent should pass the story itse
 
 ## Worker Prompt
 
-Send the same prompt shape to each worker, changing only `YOUR_LABEL`, `NEXT_LABEL`, `NEXT_SURFACE`, and `NEXT_SUBMIT`.
+Send the same prompt shape to each worker, changing only `YOUR_LABEL`, `NEXT_LABEL`, and `NEXT_SURFACE`.
 
 ```text
 You are YOUR_LABEL.
@@ -47,34 +47,22 @@ Rules:
 - Only react to a message that starts with STORY.
 - You may say your added word in the pane if you want.
 - Pass it on by running exactly one shell command. The next message only needs to start with STORY:
-  cmux send --surface "NEXT_SURFACE" "STORY from YOUR_LABEL: <full story with your one word added>" && NEXT_SUBMIT
+  cmux send --surface "NEXT_SURFACE" --enter "STORY from YOUR_LABEL: <full story with your one word added>"
 - If you decide the story is done, include FINAL somewhere in the STORY message.
 - If you receive a STORY marked FINAL, react however you like and do not pass it on.
 - Do not create helper scripts, temp files, background loops, or contact external services.
 - Preserve the active CMUX_SOCKET_PATH if it is set.
 ```
 
-Use this for `NEXT_SUBMIT` when the next worker is a Codex TUI pane:
-
-```bash
-cmux send-key --surface "NEXT_SURFACE" enter
-```
-
-Use this for `NEXT_SUBMIT` when the next worker is a plain shell:
-
-```bash
-true
-```
-
-For visible Codex TUI workers, pair `cmux send` with `cmux send-key ... enter`. `cmux send --enter` can leave text sitting in the composer without submitting.
+`--enter` types and submits against the same resolved surface, so the worker
+cannot forget a separate submit command.
 
 ## Starter Story
 
 Start the loop by sending the first story fragment to A:
 
 ```bash
-cmux send --surface "$SURFACE_A" "STORY from COMMANDER: once"
-cmux send-key --surface "$SURFACE_A" enter
+cmux send --surface "$SURFACE_A" --enter "STORY from COMMANDER: once"
 ```
 
 Good starter fragments:
@@ -97,8 +85,7 @@ cmux read-screen --surface "$SURFACE" --scrollback --lines 120
 If one worker stalls, send a single nudge to that worker:
 
 ```bash
-cmux send --surface "$SURFACE" "Continue the story loop from the latest STORY visible in this pane. Add exactly one word, then pass it to NEXT_LABEL. If the story feels complete after your word, you may include FINAL."
-cmux send-key --surface "$SURFACE" enter
+cmux send --surface "$SURFACE" --enter "Continue the story loop from the latest STORY visible in this pane. Add exactly one word, then pass it to NEXT_LABEL. If the story feels complete after your word, you may include FINAL."
 ```
 
 ## Cleanup

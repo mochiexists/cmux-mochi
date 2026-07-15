@@ -44,20 +44,31 @@ Terminal fallback, for Claude and non-native agents:
 cmux send --surface "$TARGET_SURFACE" --enter "Review the current diff and report only blocking issues."
 ```
 
-For Codex TUI targets, prefer an explicit submit key after sending text:
+For Codex TUI targets, submit atomically so the driver cannot forget the Enter step:
 
 ```bash
-cmux send --surface "$TARGET_SURFACE" "Review the current diff and report only blocking issues."
-cmux send-key --surface "$TARGET_SURFACE" enter
+cmux send --surface "$TARGET_SURFACE" --enter "Review the current diff and report only blocking issues."
 ```
 
-Read terminal targets without stealing focus:
+Then prove the turn was submitted by reading the target without stealing focus:
 
 ```bash
 cmux read-screen --surface "$TARGET_SURFACE" --scrollback --lines 200
 ```
 
-If the response is incomplete, wait briefly and read again. Do not spam repeated prompts.
+Confirm the prompt is no longer merely sitting in the input composer and that the
+target shows processing, assistant output, or a later idle prompt. A successful
+`cmux send` exit proves routing, not that the TUI accepted the turn. If the text is
+still in the composer, send only `cmux send-key --surface "$TARGET_SURFACE" enter`
+once and read again; never resend the prompt and create a duplicate. If the
+response is incomplete, wait briefly and read again. Do not spam repeated prompts.
+
+For a one-shot task where the driver wants the completed visible response, use
+`--wait`; it implies `--enter`, waits for the screen to settle, and prints it:
+
+```bash
+cmux send --surface "$TARGET_SURFACE" --wait "Review the current diff and report only blocking issues."
+```
 
 For one image of the whole visible workspace (every pane plus the tab bar, with a per-pane rect map in the JSON payload; the left sidebar is excluded by default, `--sidebar include` to keep it), use the workspace capture instead of stitching per-surface screenshots:
 
@@ -175,7 +186,8 @@ For turn patterns and event use, read `references/agent-turns.md`.
 
 ## Guardrails
 
-- Do not rely on a trailing `\n` in `cmux send` to submit. For Codex TUI panes, send the text and then run `cmux send-key ... enter`.
+- Do not rely on a trailing `\n` in `cmux send` to submit. Use `cmux send --enter` (or `--wait`) so typing and Enter target the same resolved surface, then verify submission with `read-screen`.
+- If verification shows text stranded in the composer, press Enter once with `send-key`; do not resend the text.
 - Do not scrape native agent-session surfaces by screenshot or DOM text as the primary integration. Add or use structured agent commands.
 - Do not focus, close, clear, or recycle target panes unless the user asked for that.
 - Do not mix up visual tab titles with session identity. Trust Show IDs / Copy IDs and the CLI topology.
