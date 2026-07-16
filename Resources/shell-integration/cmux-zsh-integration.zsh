@@ -1942,6 +1942,25 @@ _cmux_zshexit() {
     [[ -n "${_CMUX_GIT_ACTIVE_PWD_FILE:-}" ]] && /bin/rm -f -- "$_CMUX_GIT_ACTIVE_PWD_FILE" >/dev/null 2>&1 || true
 }
 
+# Agent launch aliases (cx/cxy/cc/ccy). The reopen + in-place resume paste
+# emits short alias commands (e.g. `cd <cwd> && cxy resume <id>`). Define
+# sensible defaults here so the pasted command works even when the user's
+# dotfiles do not provide them. This integration is sourced from .zshenv,
+# before the user's .zshrc, so any user-provided definition loaded later wins.
+# We also skip defining a name that is already an alias or function so a
+# definition set in the user's .zshenv is preserved.
+_cmux_define_agent_alias() {
+    local _name="$1"; shift
+    (( $+aliases[$_name] )) && return 0
+    (( $+functions[$_name] )) && return 0
+    functions[$_name]="$*"
+}
+_cmux_define_agent_alias cx 'command codex "$@"'
+_cmux_define_agent_alias cxy 'command codex --dangerously-bypass-approvals-and-sandbox "$@"'
+_cmux_define_agent_alias cc 'command claude "$@"'
+_cmux_define_agent_alias ccy 'command claude --dangerously-skip-permissions "$@"'
+unfunction _cmux_define_agent_alias 2>/dev/null
+
 autoload -Uz add-zsh-hook
 add-zsh-hook preexec _cmux_preexec
 add-zsh-hook precmd _cmux_precmd
