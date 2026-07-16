@@ -1669,7 +1669,8 @@ extension Workspace {
                     providerID: agentSession.providerID,
                     rendererKind: agentSession.rendererKind,
                     workingDirectory: restoresUntrustedSavedDirectory ? nil : (agentSession.workingDirectory ?? snapshot.directory),
-                    focus: false
+                    focus: false,
+                    restoredFromSession: true
                   ) else {
                 return nil
             }
@@ -8772,7 +8773,8 @@ final class Workspace: Identifiable, ObservableObject {
         rendererKind: AgentSessionRendererKind,
         workingDirectory: String? = nil,
         focus: Bool? = nil,
-        targetIndex: Int? = nil
+        targetIndex: Int? = nil,
+        restoredFromSession: Bool = false
     ) -> AgentSessionPanel? {
         let shouldFocusNewTab = focus ?? (bonsplitController.focusedPaneId == paneId)
         let previousFocusedPanelId = focusedPanelId
@@ -8790,7 +8792,8 @@ final class Workspace: Identifiable, ObservableObject {
             workspaceId: id,
             rendererKind: rendererKind,
             initialProviderID: providerID,
-            workingDirectory: directory
+            workingDirectory: directory,
+            restoredFromSession: restoredFromSession
         )
         panels[agentPanel.id] = agentPanel
         panelTitles[agentPanel.id] = agentPanel.displayTitle

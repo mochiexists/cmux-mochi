@@ -45,6 +45,7 @@ struct AgentSessionSocketSurfaceTests {
         expectEqual(panel.initialProviderID, .opencode)
         expectEqual(panel.rendererKind, .solid)
         expectEqual(panel.workingDirectory, "/tmp")
+        expectFalse(panel.restoredFromSession)
         expectEqual(workspace.panelDirectories[panel.id], "/tmp")
         expectEqual(workspace.focusedPanelId, panel.id)
     }
@@ -69,5 +70,33 @@ struct AgentSessionSocketSurfaceTests {
         let panelSnapshot = try #require(snapshot.panels.first { $0.id == panel.id })
         expectEqual(panelSnapshot.directory, "/tmp/cmux-agent-session-cwd")
         expectEqual(panelSnapshot.agentSession?.workingDirectory, "/tmp/cmux-agent-session-cwd")
+    }
+
+    @Test
+    func testWorkspaceRestoreMarksAgentSessionSurfaceAsRestored() throws {
+        let manager = TabManager()
+        let workspace = try #require(manager.selectedWorkspace)
+        let paneId = try #require(workspace.bonsplitController.focusedPaneId)
+
+        let panel = try #require(
+            workspace.newAgentSessionSurface(
+                inPane: paneId,
+                providerID: .codex,
+                rendererKind: .react,
+                workingDirectory: "/tmp/cmux-agent-session-restore",
+                focus: true
+            )
+        )
+        let snapshot = workspace.sessionSnapshot(includeScrollback: false)
+        let restoredWorkspace = Workspace()
+
+        let restoredPanelIds = restoredWorkspace.restoreSessionSnapshot(snapshot)
+        let restoredPanelId = try #require(restoredPanelIds[panel.id])
+        let restoredPanel = try #require(restoredWorkspace.panels[restoredPanelId] as? AgentSessionPanel)
+
+        expectTrue(restoredPanel.restoredFromSession)
+        expectEqual(restoredPanel.initialProviderID, AgentSessionProviderID.codex)
+        expectEqual(restoredPanel.rendererKind, AgentSessionRendererKind.react)
+        expectEqual(restoredPanel.workingDirectory, "/tmp/cmux-agent-session-restore")
     }
 }
