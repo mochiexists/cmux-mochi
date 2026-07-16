@@ -760,6 +760,16 @@ struct cmuxApp: App {
                     AppDelegate.shared?.showOpenFolderInInlineVSCodePanel()
                 }
                 .disabled(!TerminalDirectoryOpenTarget.vscodeInline.isAvailable())
+
+                Button(
+                    String(
+                        localized: "menu.file.openFolderInVSCodeClaude",
+                        defaultValue: "Open Folder in Claude Code (VS Code)…"
+                    )
+                ) {
+                    AppDelegate.shared?.showOpenFolderInVSCodeClaudePanel()
+                }
+                .disabled(!TerminalDirectoryOpenTarget.vscodeClaudeInline.isAvailable())
             }
 
             // Close tab/workspace

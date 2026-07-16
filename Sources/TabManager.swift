@@ -3953,6 +3953,7 @@ class TabManager: ObservableObject {
         url: URL? = nil,
         preferSplitRight: Bool = false,
         preferredProfileID: UUID? = nil,
+        contentMode: BrowserPanelContentMode = .normal,
         insertAtEnd: Bool = false
     ) -> UUID? {
         guard BrowserAvailabilitySettings.isEnabled() else { return nil }
@@ -3968,7 +3969,8 @@ class TabManager: ObservableObject {
                    url: url,
                    focus: true,
                    insertAtEnd: insertAtEnd,
-                   preferredProfileID: preferredProfileID
+                   preferredProfileID: preferredProfileID,
+                   contentMode: contentMode
                ) {
                 rememberFocusedSurface(tabId: tabId, surfaceId: browserPanel.id)
                 return browserPanel.id
@@ -3995,7 +3997,8 @@ class TabManager: ObservableObject {
                    orientation: .horizontal,
                    url: url,
                    preferredProfileID: preferredProfileID,
-                   focus: true
+                   focus: true,
+                   contentMode: contentMode
                ) {
                 rememberFocusedSurface(tabId: tabId, surfaceId: browserPanel.id)
                 return browserPanel.id
@@ -4008,7 +4011,8 @@ class TabManager: ObservableObject {
                   url: url,
                   focus: true,
                   insertAtEnd: insertAtEnd,
-                  preferredProfileID: preferredProfileID
+                  preferredProfileID: preferredProfileID,
+                  contentMode: contentMode
               ) else {
             return nil
         }
@@ -4021,6 +4025,7 @@ class TabManager: ObservableObject {
     func openBrowser(
         url: URL? = nil,
         preferredProfileID: UUID? = nil,
+        contentMode: BrowserPanelContentMode = .normal,
         insertAtEnd: Bool = false
     ) -> UUID? {
         guard let tabId = selectedTabId else { return nil }
@@ -4029,6 +4034,7 @@ class TabManager: ObservableObject {
             url: url,
             preferSplitRight: false,
             preferredProfileID: preferredProfileID,
+            contentMode: contentMode,
             insertAtEnd: insertAtEnd
         )
     }

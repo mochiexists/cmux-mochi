@@ -47,4 +47,27 @@ struct BrowserPanelSessionRestoreTests {
         #expect(history.backHistoryURLStrings == ["https://example.com/back"])
         #expect(history.forwardHistoryURLStrings == ["https://example.com/forward"])
     }
+
+    @Test
+    func sessionRestorePreservesVSCodeClaudeContentMode() throws {
+        let url = try #require(URL(string: "http://127.0.0.1:8780/?folder=/tmp/project"))
+        let panel = BrowserPanel(workspaceId: UUID())
+        defer { panel.close() }
+
+        panel.restoreSessionSnapshot(SessionBrowserPanelSnapshot(
+            urlString: url.absoluteString,
+            profileID: nil,
+            shouldRenderWebView: false,
+            pageZoom: 1.0,
+            developerToolsVisible: false,
+            omnibarVisible: true,
+            contentMode: .vscodeClaudeCode,
+            backHistoryURLStrings: nil,
+            forwardHistoryURLStrings: nil
+        ))
+
+        #expect(panel.contentMode == .vscodeClaudeCode)
+        #expect(panel.isOmnibarVisible == false)
+        #expect(panel.currentURL == url)
+    }
 }

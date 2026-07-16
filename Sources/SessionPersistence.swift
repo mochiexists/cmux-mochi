@@ -1514,6 +1514,7 @@ struct SessionBrowserPanelSnapshot: Codable, Sendable {
     var developerToolsVisible: Bool
     var isMuted: Bool
     var omnibarVisible: Bool? = nil
+    var contentMode: BrowserPanelContentMode? = nil
     var backHistoryURLStrings: [String]?
     var forwardHistoryURLStrings: [String]?
     /// True when the surface is a transparent internal cmux UI (e.g. the diff
@@ -1533,6 +1534,7 @@ struct SessionBrowserPanelSnapshot: Codable, Sendable {
         developerToolsVisible: Bool,
         isMuted: Bool = false,
         omnibarVisible: Bool? = nil,
+        contentMode: BrowserPanelContentMode? = nil,
         backHistoryURLStrings: [String]?,
         forwardHistoryURLStrings: [String]?,
         transparentBackground: Bool? = nil,
@@ -1546,6 +1548,7 @@ struct SessionBrowserPanelSnapshot: Codable, Sendable {
         self.developerToolsVisible = developerToolsVisible
         self.isMuted = isMuted
         self.omnibarVisible = omnibarVisible
+        self.contentMode = contentMode
         self.backHistoryURLStrings = backHistoryURLStrings
         self.forwardHistoryURLStrings = forwardHistoryURLStrings
         self.transparentBackground = transparentBackground
@@ -1561,6 +1564,7 @@ struct SessionBrowserPanelSnapshot: Codable, Sendable {
         case developerToolsVisible
         case isMuted
         case omnibarVisible
+        case contentMode
         case backHistoryURLStrings
         case forwardHistoryURLStrings
         case transparentBackground
@@ -1577,6 +1581,7 @@ struct SessionBrowserPanelSnapshot: Codable, Sendable {
         developerToolsVisible = try container.decode(Bool.self, forKey: .developerToolsVisible)
         isMuted = try container.decodeIfPresent(Bool.self, forKey: .isMuted) ?? false
         omnibarVisible = try container.decodeIfPresent(Bool.self, forKey: .omnibarVisible)
+        contentMode = try container.decodeIfPresent(BrowserPanelContentMode.self, forKey: .contentMode)
         backHistoryURLStrings = try container.decodeIfPresent([String].self, forKey: .backHistoryURLStrings)
         forwardHistoryURLStrings = try container.decodeIfPresent([String].self, forKey: .forwardHistoryURLStrings)
         transparentBackground = try container.decodeIfPresent(Bool.self, forKey: .transparentBackground)
