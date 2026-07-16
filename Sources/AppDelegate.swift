@@ -1358,7 +1358,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         }
 #endif
 
-        if telemetryEnabled {
+        if AppSentryRuntime.enabledForCurrentLaunch {
             // Pre-warm locale before Sentry to avoid a startup data race.
             // Locale initialization (os.locale.ensureLocale / NSLocale._preferredLanguages)
             // on the main thread can race with Sentry's background init thread
@@ -1463,7 +1463,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         installShortcutDefaultsObserver()
         if !isRunningUnderXCTest {
             GlobalSearchCoordinator.shared.start()
-            sentryStartMemoryContextRefresh()
+            if AppSentryRuntime.enabledForCurrentLaunch { sentryStartMemoryContextRefresh() }
         }
         SystemWideHotkeyController.shared.start()
         AgentHibernationController.shared.start()

@@ -717,7 +717,7 @@ class GhosttyApp {
                 lastReportedUptime: lastScrollLagReportUptime,
                 cooldown: scrollLagReportCooldownSeconds
             ) {
-                if TelemetrySettings.enabledForCurrentLaunch {
+                if AppSentryRuntime.enabledForCurrentLaunch {
                     SentrySDK.capture(message: "Scroll lag detected") { scope in
                         scope.setLevel(.warning)
                         scope.setContext(value: [
