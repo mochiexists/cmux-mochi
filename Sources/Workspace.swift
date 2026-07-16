@@ -119,6 +119,15 @@ extension Workspace {
             (notificationStore?.hasUnreadNotification(forTabId: id, surfaceId: nil) ?? false) ||
             (notificationStore?.hasRestoredUnreadIndicator(forTabId: id) ?? false)
         let workspaceNotificationSnapshots = notificationSnapshots(surfaceId: nil)
+        // Capture which pane (if any) is zoom-maximized, mapped from the live
+        // bonsplit PaneID to a stable panelId so it survives restore (PaneIDs are
+        // regenerated). Restore re-applies it via paneId(forPanelId:).
+        let zoomedPanelId: UUID? = bonsplitController.zoomedPaneId.flatMap { zoomedPaneId in
+            self.bonsplitController.tabs(inPane: zoomedPaneId)
+                .lazy
+                .compactMap { self.surfaceIdToPanelId[$0.id] }
+                .first
+        }
         var snapshot = SessionWorkspaceSnapshot(
             workspaceId: id,
             stableId: stableId,
@@ -134,6 +143,7 @@ extension Workspace {
             notifications: workspaceNotificationSnapshots.isEmpty ? nil : workspaceNotificationSnapshots,
             currentDirectory: currentDirectory,
             focusedPanelId: focusedPanelId,
+            zoomedPanelId: zoomedPanelId,
             layout: layout,
             layoutMode: layoutMode.rawValue,
             canvasPanes: canvasSessionPaneSnapshots(),
@@ -268,6 +278,15 @@ extension Workspace {
             focusPanel(fallbackFocusedPanelId)
         } else {
             scheduleFocusReconcile()
+        }
+        // Re-apply pane zoom after focus restore. A fresh restore starts
+        // un-zoomed, so a single toggle maximizes the saved pane; it is a no-op on
+        // single-pane layouts (the split collapsed during restore).
+        if let zoomedOldPanelId = snapshot.zoomedPanelId,
+           let zoomedNewPanelId = oldToNewPanelIds[zoomedOldPanelId],
+           panels[zoomedNewPanelId] != nil,
+           let zoomedPaneId = paneId(forPanelId: zoomedNewPanelId) {
+            _ = bonsplitController.togglePaneZoom(inPane: zoomedPaneId)
         }
         if !normalizedCurrentDirectory.isEmpty {
             currentDirectory = normalizedCurrentDirectory
