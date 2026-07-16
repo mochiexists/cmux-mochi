@@ -4918,7 +4918,19 @@ struct CMUXCLI {
         case "send":
             let (wsArg, rem0) = parseOption(commandArgs, name: "--workspace")
             let (sfArg, rem1) = parseOption(rem0, name: "--surface")
-            let (windowOpt, rem2) = parseOption(rem1, name: "--window")
+            let (windowOpt, rem2e) = parseOption(rem1, name: "--window")
+            // Pull the boolean --force flag out BEFORE computing the text. Only
+            // honored before a `--` literal separator, so `cmux send -- "--force"`
+            // keeps `--force` as literal message text.
+            let forceSend: Bool
+            let rem2: [String]
+            if let sepIdx = rem2e.firstIndex(of: "--") {
+                forceSend = rem2e[0..<sepIdx].contains("--force")
+                rem2 = Array(rem2e[0..<sepIdx]).filter { $0 != "--force" } + Array(rem2e[sepIdx...])
+            } else {
+                forceSend = rem2e.contains("--force")
+                rem2 = rem2e.filter { $0 != "--force" }
+            }
             let windowRaw = windowOpt ?? windowId
             let workspaceArg = wsArg ?? Self.callerWorkspaceForSurfaceHandle(sfArg, windowRaw: windowRaw)
             let surfaceArg = sfArg ?? (wsArg == nil && windowRaw == nil ? ProcessInfo.processInfo.environment["CMUX_SURFACE_ID"] : nil)
@@ -4926,6 +4938,7 @@ struct CMUXCLI {
             guard !rawText.isEmpty else { throw CLIError(message: "send requires text") }
             let text = unescapeSendText(rawText)
             var params: [String: Any] = ["text": text]
+            if forceSend { params["force"] = true }
             let winId = try normalizeWindowHandle(windowRaw, client: client)
             if let winId { params["window_id"] = winId }
             let wsId = try normalizeWorkspaceHandle(workspaceArg, client: client, windowHandle: winId)
@@ -22854,10 +22867,13 @@ struct CMUXCLI {
             let target = try tmuxResolveSurfaceTarget(parsed.value("-t"), client: client)
             let text = tmuxSendKeysText(from: parsed.positional, literal: parsed.hasFlag("-l"))
             if !text.isEmpty {
+                // tmux send-keys semantics deliberately type into whatever runs
+                // in the pane, so bypass the live-foreground-job send guard.
                 _ = try client.sendV2(method: "surface.send_text", params: [
                     "workspace_id": target.workspaceId,
                     "surface_id": target.surfaceId,
-                    "text": text
+                    "text": text,
+                    "force": true
                 ])
             }
 
@@ -35220,7 +35236,7 @@ export default CMUXSessionRestore;
           rename-window [--workspace <id|ref|index>] [--window <id|ref|index>] <title>
           current-workspace [--window <id|ref|index>]
           read-screen [--workspace <id|ref|index>] [--surface <id|ref|index>] [--window <id|ref|index>] [--scrollback] [--lines <n>]
-          send [--workspace <id|ref|index>] [--surface <id|ref|index>] [--window <id|ref|index>] <text>
+          send [--workspace <id|ref|index>] [--surface <id|ref|index>] [--window <id|ref|index>] [--force] <text>
           send-key [--workspace <id|ref|index>] [--surface <id|ref|index>] [--window <id|ref|index>] <key>
           send-panel --panel <id|ref|index> [--workspace <id|ref|index>] [--window <id|ref|index>] <text>
           send-key-panel --panel <id|ref|index> [--workspace <id|ref|index>] [--window <id|ref|index>] <key>
