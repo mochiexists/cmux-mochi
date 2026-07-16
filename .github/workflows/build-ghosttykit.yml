@@ -9,7 +9,10 @@ concurrency:
 
 jobs:
   build-ghosttykit:
-    runs-on: ${{ vars.MACOS_RUNNER_15 || 'blacksmith-6vcpu-macos-15' }}
+    # Build GhosttyKit on GitHub-hosted macOS 15. Zig 0.15.2 currently fails
+    # linking this target on macOS 26, while the app release itself must build
+    # on the self-hosted M4 macOS 26 runner in release.yml.
+    runs-on: macos-15
     timeout-minutes: 20
     env:
       GHOSTTYKIT_CRASH_REPORT_SUBDIR: cmux/crash
@@ -26,6 +29,16 @@ jobs:
           if [ -d "$ws/.git/modules" ]; then
             find "$ws/.git/modules" -type f -name "*.lock" -delete 2>/dev/null || true
           fi
+
+      - name: Print runner identity
+        shell: bash
+        run: |
+          echo "runner.name=${{ runner.name }}"
+          echo "runner.os=${{ runner.os }}"
+          echo "runner.arch=${{ runner.arch }}"
+          echo "hostname=$(hostname)"
+          sw_vers
+          uname -m
 
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -45,7 +58,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           TAG="xcframework-${{ steps.ghostty-sha.outputs.sha }}-${GHOSTTYKIT_BUILD_FLAVOR}"
-          if gh release view "$TAG" --repo manaflow-ai/ghostty >/dev/null 2>&1; then
+          if gh release view "$TAG" --repo mochiexists/ghostty >/dev/null 2>&1; then
             echo "exists=true" >> "$GITHUB_OUTPUT"
             echo "Release $TAG already exists, skipping build"
           else
@@ -106,6 +119,14 @@ jobs:
           COPYFILE_DISABLE=1 tar czf GhosttyKit.xcframework.tar.gz GhosttyKit.xcframework
           python3 scripts/validate-xcframework-archive.py GhosttyKit.xcframework.tar.gz
 
+      - name: Upload xcframework workflow artifact
+        if: steps.check-release.outputs.exists == 'false'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ghosttykit-xcframework-${{ steps.ghostty-sha.outputs.sha }}
+          path: GhosttyKit.xcframework.tar.gz
+          if-no-files-found: error
+
       - name: Upload xcframework release
         if: steps.check-release.outputs.exists == 'false'
         env:
@@ -113,12 +134,12 @@ jobs:
         run: |
           set -euo pipefail
           if [ -z "${GH_TOKEN:-}" ]; then
-            echo "GHOSTTY_RELEASE_TOKEN not available (fork PR), skipping upload"
-            exit 0
+            echo "::error::GHOSTTY_RELEASE_TOKEN is required to publish mochiexists/ghostty release assets"
+            exit 1
           fi
           TAG="xcframework-${{ steps.ghostty-sha.outputs.sha }}-${GHOSTTYKIT_BUILD_FLAVOR}"
           gh release create "$TAG" \
-            --repo manaflow-ai/ghostty \
+            --repo mochiexists/ghostty \
             --target "${{ steps.ghostty-sha.outputs.sha }}" \
             --title "GhosttyKit xcframework (${{ steps.ghostty-sha.outputs.sha }}, ${GHOSTTYKIT_BUILD_FLAVOR})" \
             --notes "Pre-built GhosttyKit.xcframework for commit ${{ steps.ghostty-sha.outputs.sha }} with crash-report-subdir=${GHOSTTYKIT_CRASH_REPORT_SUBDIR}" \

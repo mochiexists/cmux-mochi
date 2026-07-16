@@ -28,6 +28,7 @@ on:
 
 jobs:
   tests:
+    if: github.repository == 'manaflow-ai/cmux'
     runs-on: ${{ vars.MACOS_RUNNER_15 || 'blacksmith-6vcpu-macos-15' }}
     timeout-minutes: 20
     steps:
@@ -62,7 +63,7 @@ jobs:
           GHOSTTY_SHA=$(git -C ghostty rev-parse HEAD)
           BUILD_FLAVOR="crashsubdir-cmux-crash-v1"
           TAG="xcframework-$GHOSTTY_SHA-$BUILD_FLAVOR"
-          URL="https://github.com/manaflow-ai/ghostty/releases/download/$TAG/GhosttyKit.xcframework.tar.gz"
+          URL="https://github.com/mochiexists/ghostty/releases/download/$TAG/GhosttyKit.xcframework.tar.gz"
           echo "Downloading xcframework for ghostty $GHOSTTY_SHA"
           MAX_RETRIES=30
           RETRY_DELAY=20

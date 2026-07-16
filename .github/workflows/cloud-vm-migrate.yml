@@ -22,6 +22,7 @@ concurrency:
 
 jobs:
   preflight:
+    if: github.repository == 'manaflow-ai/cmux'
     runs-on: ${{ vars.LINUX_RUNNER || 'blacksmith-4vcpu-ubuntu-2404' }}
     defaults:
       run:
@@ -42,7 +43,9 @@ jobs:
         run: bun run cloud-vm:preflight -- --schema-only .
 
   migrate-staging:
-    if: ${{ inputs.target == 'staging' || inputs.target == 'production' }}
+    if: >-
+      github.repository == 'manaflow-ai/cmux' &&
+      (inputs.target == 'staging' || inputs.target == 'production')
     runs-on: ${{ vars.LINUX_RUNNER || 'blacksmith-4vcpu-ubuntu-2404' }}
     needs: preflight
     environment: cloud-vm-staging
@@ -99,7 +102,9 @@ jobs:
         run: bun run cloud-vm:migrate -- staging
 
   migrate-production:
-    if: ${{ inputs.target == 'production' }}
+    if: >-
+      github.repository == 'manaflow-ai/cmux' &&
+      inputs.target == 'production'
     runs-on: ${{ vars.LINUX_RUNNER || 'blacksmith-4vcpu-ubuntu-2404' }}
     needs: migrate-staging
     environment: cloud-vm-production
