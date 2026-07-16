@@ -76,6 +76,7 @@ enum TerminalDirectoryOpenTarget: String, CaseIterable {
     case terminal
     case tower
     case vscode
+    case vscodeClaudeInline
     case vscodeInline
     case warp
     case windsurf
@@ -132,6 +133,8 @@ enum TerminalDirectoryOpenTarget: String, CaseIterable {
             return String(localized: "menu.openInTower", defaultValue: "Open Current Directory in Tower")
         case .vscode:
             return String(localized: "menu.openInVSCodeDesktop", defaultValue: "Open Current Directory in VS Code")
+        case .vscodeClaudeInline:
+            return String(localized: "menu.openInVSCodeClaude", defaultValue: "Open Current Directory in Claude Code (VS Code)")
         case .vscodeInline:
             return String(localized: "menu.openInVSCode", defaultValue: "Open Current Directory in VS Code (Inline)")
         case .warp:
@@ -170,6 +173,8 @@ enum TerminalDirectoryOpenTarget: String, CaseIterable {
             return common + ["tower", "git", "client"]
         case .vscode:
             return common + ["vs", "code", "visual", "studio", "desktop", "app"]
+        case .vscodeClaudeInline:
+            return common + ["vs", "code", "visual", "studio", "inline", "browser", "serve-web", "claude", "anthropic", "agent"]
         case .vscodeInline:
             return common + ["vs", "code", "visual", "studio", "inline", "browser", "serve-web"]
         case .warp:
@@ -185,12 +190,21 @@ enum TerminalDirectoryOpenTarget: String, CaseIterable {
 
     func isAvailable(in environment: DetectionEnvironment = .live) -> Bool {
         guard let applicationPath = applicationPath(in: environment) else { return false }
-        guard self == .vscodeInline else { return true }
+        guard requiresVSCodeServeWebExecutable else { return true }
         // Keep menu/palette availability cheap. Cached code-server discovery does
         // disk I/O and belongs to the actual launch path on the launch queue.
         let codeTunnelURL = URL(fileURLWithPath: applicationPath, isDirectory: true)
             .appendingPathComponent("Contents/Resources/app/bin/code-tunnel", isDirectory: false)
         return environment.isExecutableFileAtPath(codeTunnelURL.path)
+    }
+
+    private var requiresVSCodeServeWebExecutable: Bool {
+        switch self {
+        case .vscodeClaudeInline, .vscodeInline:
+            return true
+        default:
+            return false
+        }
     }
 
     func applicationURL(in environment: DetectionEnvironment = .live) -> URL? {
@@ -270,6 +284,11 @@ enum TerminalDirectoryOpenTarget: String, CaseIterable {
         case .tower:
             return ["/Applications/Tower.app"]
         case .vscode:
+            return [
+                "/Applications/Visual Studio Code.app",
+                "/Applications/Code.app",
+            ]
+        case .vscodeClaudeInline:
             return [
                 "/Applications/Visual Studio Code.app",
                 "/Applications/Code.app",
