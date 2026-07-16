@@ -38,7 +38,7 @@ PROJECT_DIR = os.path.dirname(SCRIPT_DIR)
 # the connected iPhone. The Open button shells out to it so a stale (or
 # missing) device build is brought current before launch — no manual reload.
 IOS_RELOAD = os.path.join(PROJECT_DIR, "ios", "scripts", "reload.sh")
-IOS_TEAM = os.environ.get("CMUX_IOS_TEAM", "7WLXT3NR37")
+IOS_TEAM = os.environ.get("CMUX_IOS_TEAM", "599WAZ6282")
 # Build can take a couple minutes (xcodebuild incremental + install over the
 # tunnel); give it generous headroom.
 IOS_BUILD_TIMEOUT_SECONDS = 600

@@ -8,7 +8,7 @@
 #   scripts/sign-cmux-bundle.sh \
 #     "build-universal/Build/Products/Release/cmux NIGHTLY.app" \
 #     cmux.nightly.entitlements \
-#     "Developer ID Application: Manaflow, Inc. (7WLXT3NR37)"
+#     "Developer ID Application: Atlas Codes LTD (599WAZ6282)"
 #
 # Optional env:
 #   CMUX_HELPER_ENTITLEMENTS  (default: cmux-helper.entitlements)
