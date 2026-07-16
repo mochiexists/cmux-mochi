@@ -14,11 +14,11 @@ final class CMUXCLISendSubmitWaitTests: XCTestCase {
         let timedOut: Bool
     }
 
-    func testSendHelpDocumentsSubmitFlags() throws {
+    func testSendHelpDocumentsSubmitAndWaitFlags() throws {
         let cli = try BundledCLITestSupport.bundledCLIPath(for: Self.self)
         let result = runCLI(cli, ["send", "--help"], timeout: 15)
         XCTAssertFalse(result.timedOut, "send --help timed out:\n\(result.output)")
-        for token in ["--enter", "--submit"] {
+        for token in ["--enter", "--submit", "--wait", "--wait-timeout", "--wait-settle", "--wait-poll"] {
             XCTAssertTrue(
                 result.output.contains(token),
                 "`cmux send --help` should document \(token). Got:\n\(result.output)"
