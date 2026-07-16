@@ -4918,19 +4918,13 @@ struct CMUXCLI {
         case "send":
             let (wsArg, rem0) = parseOption(commandArgs, name: "--workspace")
             let (sfArg, rem1) = parseOption(rem0, name: "--surface")
-            let (windowOpt, rem2e) = parseOption(rem1, name: "--window")
-            // Pull the boolean --force flag out BEFORE computing the text. Only
-            // honored before a `--` literal separator, so `cmux send -- "--force"`
-            // keeps `--force` as literal message text.
-            let forceSend: Bool
-            let rem2: [String]
-            if let sepIdx = rem2e.firstIndex(of: "--") {
-                forceSend = rem2e[0..<sepIdx].contains("--force")
-                rem2 = Array(rem2e[0..<sepIdx]).filter { $0 != "--force" } + Array(rem2e[sepIdx...])
-            } else {
-                forceSend = rem2e.contains("--force")
-                rem2 = rem2e.filter { $0 != "--force" }
-            }
+            let (windowOpt, rem2d) = parseOption(rem1, name: "--window")
+            // Pull the boolean --force / --enter flags out BEFORE computing the
+            // text. Only honored before a `--` literal separator, so
+            // `cmux send -- "--enter"` stays literal text.
+            let (forceSend, rem2f) = extractBoolFlag(rem2d, names: ["--force"])
+            let (explicitSubmit, rem2) = extractSendSubmitFlag(rem2f)
+            let submitAfterSend = explicitSubmit
             let windowRaw = windowOpt ?? windowId
             let workspaceArg = wsArg ?? Self.callerWorkspaceForSurfaceHandle(sfArg, windowRaw: windowRaw)
             let surfaceArg = sfArg ?? (wsArg == nil && windowRaw == nil ? ProcessInfo.processInfo.environment["CMUX_SURFACE_ID"] : nil)
@@ -4945,7 +4939,34 @@ struct CMUXCLI {
             if let wsId { params["workspace_id"] = wsId }
             let sfId = try normalizeSurfaceHandle(surfaceArg, client: client, workspaceHandle: wsId, windowHandle: winId)
             if let sfId { params["surface_id"] = sfId }
+
+            // Shared surface-target params for the follow-up send_key.
+            var targetParams: [String: Any] = [:]
+            if let winId { targetParams["window_id"] = winId }
+            if let wsId { targetParams["workspace_id"] = wsId }
+            if let sfId { targetParams["surface_id"] = sfId }
+
             let payload = try client.sendV2(method: "surface.send_text", params: params)
+
+            // Pin the follow-up Enter to the surface the text actually landed on.
+            // When no explicit/env surface is given, the request resolves "the
+            // focused surface" — which could differ between calls if focus shifts
+            // — so prefer the concrete surface_id the send_text response resolved,
+            // falling back to the request's.
+            var resolvedTarget = targetParams
+            if let resolvedSurface = payload["surface_id"] as? String {
+                resolvedTarget = ["surface_id": resolvedSurface]
+            }
+
+            if submitAfterSend {
+                // Submit the just-typed text by pressing Enter on the same surface.
+                // This is what `cmux send-key … enter` does, folded into one call so
+                // a driver can't strand an unsent message in the target's composer.
+                var keyParams = resolvedTarget
+                keyParams["key"] = "enter"
+                _ = try client.sendV2(method: "surface.send_key", params: keyParams)
+            }
+
             printV2Payload(payload, jsonOutput: jsonOutput, idFormat: idFormat, fallbackText: v2OKSummary(payload, idFormat: idFormat))
 
         case "send-key":
@@ -16482,16 +16503,20 @@ struct CMUXCLI {
             return """
             Usage: cmux send [flags] [--] <text>
 
-            Send text to a terminal surface. Escape sequences: \\n and \\r send Enter, \\t sends Tab.
+            Send text to a terminal surface. `send` only TYPES the text; use --enter
+            to submit (or a separate `cmux send-key … enter`). Do not rely on a
+            trailing \\n to submit — it is unreliable across shells/agents.
 
             Flags:
               --workspace <id|ref|index>   Target workspace (default: $CMUX_WORKSPACE_ID)
               --surface <id|ref|index>     Target surface (default: $CMUX_SURFACE_ID)
               --window <id|ref|index>      Window context for workspace/surface refs and indexes
+              --enter, --submit            Press Enter after typing (atomic type + submit)
+              --force                      Send even when the pane has a live foreground job
 
             Example:
               cmux send "echo hello"
-              cmux send --surface surface:2 "ls -la\\n"
+              cmux send --surface surface:2 --enter "ls -la"
             """
         case "send-key":
             return """
@@ -17077,6 +17102,26 @@ struct CMUXCLI {
             .replacingOccurrences(of: "\\n", with: "\r")
             .replacingOccurrences(of: "\\r", with: "\r")
             .replacingOccurrences(of: "\\t", with: "\t")
+    }
+
+    /// Extract a boolean flag (any of `names`) from args, honoring it only when
+    /// it appears before a `--` literal separator so `cmux send -- "--enter"`
+    /// keeps `--enter` as literal message text. Returns whether any matched and
+    /// the args with the matches removed.
+    func extractBoolFlag(_ args: [String], names: Set<String>) -> (present: Bool, remaining: [String]) {
+        let separatorIndex = args.firstIndex(of: "--")
+        let flagRange = separatorIndex.map { 0..<$0 } ?? 0..<args.count
+        let present = args[flagRange].contains(where: names.contains)
+        guard present else { return (false, args) }
+        var remaining = Array(args[flagRange]).filter { !names.contains($0) }
+        if let separatorIndex { remaining.append(contentsOf: args[separatorIndex...]) }
+        return (true, remaining)
+    }
+
+    /// `--enter`/`--submit`: type the text then press Enter in one call.
+    func extractSendSubmitFlag(_ args: [String]) -> (submit: Bool, remaining: [String]) {
+        let result = extractBoolFlag(args, names: ["--enter", "--submit"])
+        return (result.present, result.remaining)
     }
 
     private func workspaceFromArgsOrEnv(_ args: [String], windowOverride: String? = nil) -> String? {
