@@ -53,7 +53,7 @@ private struct FixedConsent: AnalyticsConsentProviding {
     @Test func optionsFactoryMatchesMobileContract() {
         let options = MobileCrashReporter().makeOptions()
 
-        #expect(options.dsn == "https://ecba1ec90ecaee02a102fba931b6d2b3@o4507547940749312.ingest.us.sentry.io/4510796264636416")
+        #expect(options.dsn == "https://f1724042a52588425266851138bb2ee8@o4510776019910656.ingest.de.sentry.io/4511385382486096")
         #expect(options.tracesSampleRate?.doubleValue == 0.0)
         #expect(options.sendDefaultPii == false)
         #expect(options.attachStacktrace == true)
