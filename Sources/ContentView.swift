@@ -13082,6 +13082,13 @@ struct VerticalTabsSidebar: View, Equatable {
                 }
                 return result.destinationWorkspaceId
             },
+            springLoadWorkspace: { workspaceId in
+                guard tabManager.selectedTabId != workspaceId,
+                      let workspace = tabManager.tabs.first(where: { $0.id == workspaceId }) else { return }
+                tabManager.selectWorkspace(workspace)
+                selectedTabIds = [workspaceId]
+                lastSidebarSelectionIndex = tabManager.tabs.firstIndex(where: { $0.id == workspaceId })
+            },
             selectedTabIds: $selectedTabIds,
             lastSidebarSelectionIndex: $lastSidebarSelectionIndex,
             dropIndicator: dropIndicatorBinding,
