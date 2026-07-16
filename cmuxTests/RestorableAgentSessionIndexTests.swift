@@ -73,6 +73,33 @@ private func XCTUnwrap<T>(
 
 struct RestorableAgentSessionIndexTests {
     @Test
+    // The fork's `.alias` resume style emits the short baked-in shell aliases
+    // (cx/cxy/cc/ccy) that the cmux shell integration always defines. A yolo codex
+    // launch resumes via `cxy resume <id>`; the alias resolves `command codex`
+    // through the shell integration PATH shim so cmux hooks stay wired.
+    func testCodexAliasResumeStyleEmitsCxyResumeCommand() throws {
+        let command = try XCTUnwrap(
+            AgentResumeCommandBuilder.resumeShellCommand(
+                kind: .codex,
+                sessionId: "codex-alias-session",
+                launchCommand: AgentLaunchCommandSnapshot(
+                    launcher: "codex",
+                    executablePath: "/usr/local/bin/codex",
+                    arguments: ["/usr/local/bin/codex", "--dangerously-bypass-approvals-and-sandbox"],
+                    workingDirectory: "/tmp/repo",
+                    environment: nil,
+                    capturedAt: 10,
+                    source: "process"
+                ),
+                workingDirectory: "/tmp/repo",
+                style: .alias
+            )
+        )
+        XCTAssertEqual(command, "cd '/tmp/repo' && cxy 'resume' 'codex-alias-session'")
+        XCTAssertFalse(command.contains("/usr/local/bin/codex"), "alias resume must not run the captured codex binary path; got: \(command)")
+    }
+
+    @Test
     func testClaudeHookSnapshotRequiresTranscriptFile() throws {
         let fm = FileManager.default
         let root = fm.temporaryDirectory
