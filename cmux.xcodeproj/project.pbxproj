@@ -190,6 +190,8 @@ C0DE71B10000000000000001 /* AppDelegate+AgentChatNotifications.swift in Sources 
 		A7206E010000000000000001 /* AppIconAppearanceObserverTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7206E020000000000000001 /* AppIconAppearanceObserverTests.swift */; };
 		D1320AA0D1320AA0D1320AA1 /* AppIconDockTilePlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1320AA0D1320AA0D1320AA4 /* AppIconDockTilePlugin.swift */; };
 		A5001621 /* AppleScriptSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = A5001620 /* AppleScriptSupport.swift */; };
+		F0AD00000000000000000117 /* AppSentryStartupPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0AD00000000000000000107 /* AppSentryStartupPolicy.swift */; };
+		F0AD00000000000000000118 /* AppSentryStartupPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0AD00000000000000000108 /* AppSentryStartupPolicyTests.swift */; };
 		A5001A02A1B2C3D4E5F60718 /* AppWindowBackdropControllerDependencies.swift in Sources */ = {isa = PBXBuildFile; fileRef = A5001A03A1B2C3D4E5F60718 /* AppWindowBackdropControllerDependencies.swift */; };
 		A5001A00A1B2C3D4E5F60718 /* AppWindowChromeComposition.swift in Sources */ = {isa = PBXBuildFile; fileRef = A5001A01A1B2C3D4E5F60718 /* AppWindowChromeComposition.swift */; };
 		F0AD00000000000000000301 /* artifact-samples in Resources */ = {isa = PBXBuildFile; fileRef = F0AD00000000000000000302 /* artifact-samples */; };
@@ -2337,6 +2339,8 @@ C0DE71B10000000000000002 /* AppDelegate+AgentChatNotifications.swift */ = {isa =
 		A7206E020000000000000001 /* AppIconAppearanceObserverTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppIconAppearanceObserverTests.swift; sourceTree = "<group>"; };
 		D1320AA0D1320AA0D1320AA4 /* AppIconDockTilePlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppIconDockTilePlugin.swift; sourceTree = "<group>"; };
 		A5001620 /* AppleScriptSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleScriptSupport.swift; sourceTree = "<group>"; };
+		F0AD00000000000000000107 /* AppSentryStartupPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppSentryStartupPolicy.swift; sourceTree = "<group>"; };
+		F0AD00000000000000000108 /* AppSentryStartupPolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppSentryStartupPolicyTests.swift; sourceTree = "<group>"; };
 		A5001A03A1B2C3D4E5F60718 /* AppWindowBackdropControllerDependencies.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Windowing/AppWindowBackdropControllerDependencies.swift; sourceTree = "<group>"; };
 		A5001A01A1B2C3D4E5F60718 /* AppWindowChromeComposition.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Windowing/AppWindowChromeComposition.swift; sourceTree = "<group>"; };
 		F0AD00000000000000000302 /* artifact-samples */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = folder; path = "artifact-samples"; sourceTree = "<group>"; };
@@ -4467,6 +4471,7 @@ C0DE71B10000000000000002 /* AppDelegate+AgentChatNotifications.swift */ = {isa =
 			isa = PBXGroup;
 			children = (
 				A11CE0030000000000000001 /* AboutLicenseContent.swift */,
+				F0AD00000000000000000107 /* AppSentryStartupPolicy.swift */,
 				F0AD00000000000000000103 /* CmuxSkillsBundleInstaller.swift */,
 				F0AD00000000000000000101 /* ArtifactExternalPreview.swift */,
 				F0AD00000000000000000120 /* ArtifactPanel.swift */,
@@ -5808,6 +5813,7 @@ C0DE71B10000000000000002 /* AppDelegate+AgentChatNotifications.swift */ = {isa =
 			isa = PBXGroup;
 			children = (
 				A11CE0020000000000000001 /* AboutLicensesResourceTests.swift */,
+				F0AD00000000000000000108 /* AppSentryStartupPolicyTests.swift */,
 				F0AD00000000000000000106 /* CMUXCLISendSubmitWaitTests.swift */,
 				F0AD00000000000000000104 /* CmuxSkillsBundleInstallerTests.swift */,
 				F0AD00000000000000000102 /* ArtifactStoreTests.swift */,
@@ -6956,6 +6962,7 @@ C0DE71B10000000000000002 /* AppDelegate+AgentChatNotifications.swift */ = {isa =
 				D37777040000000000000001 /* AppDelegateSettingsPresentation.swift in Sources */,
 				A11EAB000000000000000000 /* AppearanceSettings.swift in Sources */,
 				A5001621 /* AppleScriptSupport.swift in Sources */,
+				F0AD00000000000000000117 /* AppSentryStartupPolicy.swift in Sources */,
 				A5001A02A1B2C3D4E5F60718 /* AppWindowBackdropControllerDependencies.swift in Sources */,
 				A5001A00A1B2C3D4E5F60718 /* AppWindowChromeComposition.swift in Sources */,
 				F0AD00000000000000000111 /* ArtifactExternalPreview.swift in Sources */,
@@ -8330,6 +8337,7 @@ C0DE71B10000000000000002 /* AppDelegate+AgentChatNotifications.swift */ = {isa =
 				F47126CFDAE244988A92E2D0 /* AppDelegateWindowFrameReconcileTests.swift in Sources */,
 				A11EAA000000000000000000 /* AppearanceSettingsTests.swift in Sources */,
 				A7206E010000000000000001 /* AppIconAppearanceObserverTests.swift in Sources */,
+				F0AD00000000000000000118 /* AppSentryStartupPolicyTests.swift in Sources */,
 				F0AD00000000000000000112 /* ArtifactStoreTests.swift in Sources */,
 				A47E00010000000000000001 /* AuthEnvironmentTests.swift in Sources */,
 				FF068325E8A04E51A30AE9BA /* AutoNamingCodexAdapterTests.swift in Sources */,
