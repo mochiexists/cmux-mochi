@@ -2208,6 +2208,10 @@ class TerminalController {
 
         // App focus (app.focus_override.set/app.simulate_active) handled by ControlCommandCoordinator.
 
+        // Artifacts
+        case "artifact.new":
+            return v2Result(id: id, self.v2ArtifactNew(params: params))
+
         // Browser
         case "browser.open_split":
             return v2Result(id: id, self.v2BrowserOpenSplit(params: params))
@@ -2459,6 +2463,7 @@ class TerminalController {
             "app.simulate_active",
             "file.open",
             "markdown.open",
+            "artifact.new",
             "browser.open_split",
             "browser.navigate",
             "browser.back",
@@ -6470,6 +6475,82 @@ class TerminalController {
                 "browser_disabled": true,
                 "placement_strategy": "external_browser_disabled",
                 "url": url.absoluteString
+            ])
+        }
+        return result
+    }
+
+    /// `artifact.new` — scaffold a new artifact in the global store and open it
+    /// in a split beside the source surface (the conductor "open beside me"
+    /// path). Params: `title?`, `kind?` (react/html/swiftui), `direction?`
+    /// (right/down/left/up), `surface_id?`, `focus?`.
+    private func v2ArtifactNew(params: [String: Any]) -> V2CallResult {
+        guard let tabManager = v2ResolveTabManager(params: params) else {
+            return .err(code: "unavailable", message: "TabManager not available", data: nil)
+        }
+        let title = v2String(params, "title")?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let kind = (v2String(params, "kind")?.lowercased())
+            .flatMap { ArtifactKind(rawValue: $0) } ?? .react
+        let directionStr = v2String(params, "direction")
+
+        var result: V2CallResult = .err(code: "internal_error", message: "Failed to create artifact", data: nil)
+        v2MainSync {
+            guard let ws = v2ResolveWorkspace(params: params, tabManager: tabManager) else {
+                result = .err(code: "not_found", message: "Workspace not found", data: nil)
+                return
+            }
+            v2MaybeFocusWindow(for: tabManager)
+            v2MaybeSelectWorkspace(tabManager, workspace: ws)
+
+            let sourceSurfaceId = v2UUID(params, "surface_id") ?? ws.focusedPanelId
+            guard let sourceSurfaceId, ws.panels[sourceSurfaceId] != nil else {
+                result = .err(code: "not_found", message: "No source surface to open beside", data: nil)
+                return
+            }
+            guard let sourcePane = ws.paneId(forPanelId: sourceSurfaceId) else {
+                result = .err(code: "not_found", message: "Source pane not found", data: nil)
+                return
+            }
+
+            let focus = v2FocusAllowed(requested: v2Bool(params, "focus") ?? false)
+            let originCwd = ws.panelDirectories[sourceSurfaceId]
+            let resolvedTitle = (title?.isEmpty == false) ? title! : "Artifact"
+
+            // direction → split placement; default to a right-hand split.
+            let split: (orientation: SplitOrientation, insertFirst: Bool)
+            if let directionStr, let direction = parseSplitDirection(directionStr) {
+                split = (direction.isHorizontal ? .horizontal : .vertical,
+                         direction == .left || direction == .up)
+            } else {
+                split = (.horizontal, false)
+            }
+
+            guard let panel = ws.createArtifact(
+                title: resolvedTitle,
+                kind: kind,
+                inPane: sourcePane,
+                split: split,
+                originCwd: originCwd,
+                originSurfaceId: sourceSurfaceId.uuidString,
+                focus: focus
+            ) else {
+                result = .err(code: "internal_error", message: "Failed to create artifact", data: nil)
+                return
+            }
+
+            let targetPaneUUID = ws.paneId(forPanelId: panel.id)?.id
+            let windowId = v2ResolveWindowId(tabManager: tabManager)
+            result = .ok([
+                "window_id": v2OrNull(windowId?.uuidString),
+                "window_ref": v2Ref(kind: .window, uuid: windowId),
+                "workspace_id": ws.id.uuidString,
+                "workspace_ref": v2Ref(kind: .workspace, uuid: ws.id),
+                "surface_id": panel.id.uuidString,
+                "surface_ref": v2Ref(kind: .surface, uuid: panel.id),
+                "pane_id": v2OrNull(targetPaneUUID?.uuidString),
+                "pane_ref": v2Ref(kind: .pane, uuid: targetPaneUUID),
+                "file_path": panel.filePath,
+                "kind": panel.kind.rawValue
             ])
         }
         return result
