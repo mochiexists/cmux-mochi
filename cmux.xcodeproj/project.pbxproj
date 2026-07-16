@@ -8975,6 +8975,7 @@ C0DE71B10000000000000002 /* AppDelegate+AgentChatNotifications.swift */ = {isa =
 					Carbon,
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = "com.cmux-mochi.debug";
+				PRODUCT_MODULE_NAME = cmux_DEV;
 				PRODUCT_NAME = "cmux Mochi DEV";
 				OTHER_SWIFT_FLAGS = (
 					"-Xllvm",
