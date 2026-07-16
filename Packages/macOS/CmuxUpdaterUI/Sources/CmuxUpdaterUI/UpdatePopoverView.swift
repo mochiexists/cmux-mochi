@@ -62,6 +62,7 @@ public struct UpdatePopoverView: View {
             }
         }
         .frame(width: 300)
+        .background(Color(nsColor: .windowBackgroundColor))
     }
 }
 
