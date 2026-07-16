@@ -13,6 +13,33 @@ import CmuxTerminal
 #endif
 
 final class SessionPersistenceTests: XCTestCase {
+    // The fork's `.alias` resume style emits the short baked-in shell aliases
+    // (cx/cxy/cc/ccy) the cmux shell integration always defines. A yolo claude
+    // launch (`--dangerously-skip-permissions`) resumes via `ccy --resume <id>`;
+    // the alias resolves `command claude` through the shell integration PATH shim
+    // so cmux hooks stay wired without the verbose wrapper token.
+    func testClaudeAliasResumeStyleEmitsCcyResumeCommand() throws {
+        let command = try XCTUnwrap(
+            AgentResumeCommandBuilder.resumeShellCommand(
+                kind: .claude,
+                sessionId: "claude-alias-session",
+                launchCommand: AgentLaunchCommandSnapshot(
+                    launcher: "claude",
+                    executablePath: "/opt/Claude Code/bin/claude",
+                    arguments: ["/opt/Claude Code/bin/claude", "--dangerously-skip-permissions"],
+                    workingDirectory: "/tmp/repo",
+                    environment: nil,
+                    capturedAt: 10,
+                    source: "process"
+                ),
+                workingDirectory: "/tmp/repo",
+                style: .alias
+            )
+        )
+        XCTAssertEqual(command, "cd '/tmp/repo' && ccy '--resume' 'claude-alias-session'")
+        XCTAssertFalse(command.contains("/opt/Claude Code/bin/claude"), "alias resume must not run the captured claude binary path; got: \(command)")
+    }
+
     private struct LegacyPersistedWindowGeometry: Codable {
         let frame: SessionRectSnapshot
         let display: SessionDisplaySnapshot?
