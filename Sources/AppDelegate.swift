@@ -1306,6 +1306,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
 #endif
         }
 
+        // Sync the bundled cmux agent skills out to ~/.codex/skills so a freshly
+        // installed app carries them with no manual skills.sh step. Hash-guarded
+        // so user-edited skills are never clobbered. Off the main thread; never
+        // under XCTest (the bundle/home dirs are not the test fixtures).
+        if !isRunningUnderXCTest {
+            syncBundledSkillsAtLaunch()
+        }
+
         DistributedNotificationCenter.default().addObserver(
             self,
             selector: #selector(handleThemesReloadNotification(_:)),
@@ -8920,6 +8928,67 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
     @objc func attemptUpdate(_ sender: Any?) {
         updateController.model.setOverrideState(nil)
         updateController.attemptUpdate()
+    }
+
+    /// Sync bundled agent skills to `~/.codex/skills` off the main thread, then
+    /// post a single non-intrusive notification summarizing what changed. Skill
+    /// updates ride the app release; user-edited skills are left untouched and
+    /// surfaced so the user knows their copy is now behind the bundled one.
+    private func syncBundledSkillsAtLaunch() {
+        DispatchQueue.global(qos: .utility).async {
+            let outcome: CmuxSkillsBundleInstaller.SyncOutcome
+            do {
+                outcome = try CmuxSkillsBundleInstaller().sync()
+            } catch {
+                return
+            }
+            guard !outcome.updated.isEmpty || !outcome.skippedUserModified.isEmpty else { return }
+            Task { @MainActor in
+                Self.postBundledSkillsSyncNotification(outcome: outcome)
+            }
+        }
+    }
+
+    /// Post a local notification for a skills sync, but only if notifications are
+    /// already authorized — a launch-time skill refresh must never trigger an
+    /// authorization prompt of its own.
+    private static func postBundledSkillsSyncNotification(
+        outcome: CmuxSkillsBundleInstaller.SyncOutcome
+    ) {
+        var lines: [String] = []
+        if !outcome.updated.isEmpty {
+            lines.append(String(
+                localized: "skills.sync.updated",
+                defaultValue: "Updated: \(outcome.updated.joined(separator: ", "))"
+            ))
+        }
+        if !outcome.skippedUserModified.isEmpty {
+            lines.append(String(
+                localized: "skills.sync.skipped",
+                defaultValue: "Kept your edited copy of: \(outcome.skippedUserModified.joined(separator: ", "))"
+            ))
+        }
+
+        let content = UNMutableNotificationContent()
+        content.title = String(localized: "skills.sync.title", defaultValue: "cmux skills updated")
+        content.body = lines.joined(separator: "\n")
+        content.sound = nil
+
+        let request = UNNotificationRequest(
+            identifier: "skills.sync",
+            content: content,
+            trigger: nil
+        )
+
+        let center = UNUserNotificationCenter.current()
+        center.getNotificationSettings { settings in
+            switch settings.authorizationStatus {
+            case .authorized, .provisional:
+                center.add(request, withCompletionHandler: nil)
+            default:
+                break
+            }
+        }
     }
 
     func isCmuxCLIInstalledInPATH() -> Bool {
