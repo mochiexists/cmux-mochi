@@ -1,0 +1,4 @@
+interface:
+  display_name: "cmux Inline VS Code"
+  short_description: "Open a full VS Code workbench inside cmux"
+  default_prompt: "Use $cmux-inline-vscode to open this project in a full VS Code workbench inside cmux."

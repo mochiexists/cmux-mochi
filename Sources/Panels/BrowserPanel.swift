@@ -2613,25 +2613,24 @@ final class BrowserSearchState: ObservableObject {
 
 enum BrowserPanelContentMode: String, Codable, Sendable, Equatable {
     case normal
-    case vscodeClaudeCode = "vscode_claude_code"
 
-    var prefersHiddenOmnibar: Bool {
-        switch self {
-        case .normal:
-            return false
-        case .vscodeClaudeCode:
-            return true
-        }
+    init(from decoder: Decoder) throws {
+        // Old builds persisted `vscode_claude_code` for the removed extracted
+        // extension view. Restore every browser as the ordinary full workbench.
+        _ = try decoder.singleValueContainer().decode(String.self)
+        self = .normal
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        try container.encode(Self.normal.rawValue)
     }
 
     var sessionSnapshotValue: BrowserPanelContentMode? {
-        self == .normal ? nil : self
+        nil
     }
 
     func resolvedOmnibarVisible(_ restoredValue: Bool?, default defaultValue: Bool) -> Bool {
-        if prefersHiddenOmnibar {
-            return false
-        }
         return restoredValue ?? defaultValue
     }
 }
@@ -2697,345 +2696,6 @@ final class BrowserPanel: Panel, ObservableObject {
     })()
     """
 
-    private static let vscodeClaudeCodeExtractionScriptSource = #"""
-    (() => {
-      const stateKey = "__cmuxVSCodeClaudeCodeExtraction";
-      const className = "cmux-vscode-claude-code-extracted";
-      const styleId = "cmux-vscode-claude-code-extracted-style";
-
-      const state = window[stateKey] || (window[stateKey] = {
-        didCloseOtherEditorTabs: false,
-        fallbackAttempts: 0,
-        installed: false,
-        isApplying: false,
-        scheduledFrame: 0,
-        interval: 0
-      });
-      const observerOptions = {
-        attributes: true,
-        attributeFilter: ["aria-label", "aria-pressed", "aria-selected", "class", "style"],
-        childList: true,
-        subtree: true
-      };
-
-      function elementText(element) {
-        return String(
-          element.getAttribute("aria-label") ||
-          element.getAttribute("title") ||
-          element.textContent ||
-          ""
-        );
-      }
-
-      function clickElement(element) {
-        if (!element) return false;
-        try {
-          element.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true, view: window }));
-          element.dispatchEvent(new MouseEvent("mouseup", { bubbles: true, cancelable: true, view: window }));
-          element.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, view: window }));
-          return true;
-        } catch (_) {
-          try {
-            element.click();
-            return true;
-          } catch (_) {
-            return false;
-          }
-        }
-      }
-
-      function ariaLabelStarts(prefix) {
-        return Array.from(document.querySelectorAll("[aria-label]")).find((element) => {
-          return String(element.getAttribute("aria-label") || "").startsWith(prefix);
-        });
-      }
-
-      function clickCheckedToggle(prefix) {
-        const element = ariaLabelStarts(prefix);
-        if (!element) return false;
-        const ariaPressed = element.getAttribute("aria-pressed");
-        const classNameValue = String(element.className || "");
-        const checked =
-          ariaPressed === "true" ||
-          classNameValue.includes("checked") ||
-          classNameValue.includes("active");
-        return checked ? clickElement(element) : false;
-      }
-
-      function frameExtensionID(frame) {
-        try {
-          const source = frame.getAttribute("src") || "";
-          return (new URL(source, location.href).searchParams.get("extensionId") || "").toLowerCase();
-        } catch (_) {
-          return "";
-        }
-      }
-
-      function claudeFrame() {
-        return Array.from(document.querySelectorAll("iframe.webview.ready, iframe.webview")).find((frame) => {
-          return frameExtensionID(frame) === "anthropic.claude-code";
-        });
-      }
-
-      function isVisible(element, minWidth = 120, minHeight = 180) {
-        if (!element) return false;
-        const style = getComputedStyle(element);
-        if (style.display === "none" || style.visibility === "hidden" || style.opacity === "0") return false;
-        const rect = element.getBoundingClientRect();
-        return rect.width >= minWidth && rect.height >= minHeight;
-      }
-
-      function nearestWorkbenchPart(element) {
-        return element?.closest?.(".part") || null;
-      }
-
-      function targetKindFor(element) {
-        const part = nearestWorkbenchPart(element);
-        if (!part) return "editor";
-        if (part.classList.contains("auxiliarybar")) return "auxiliarybar";
-        if (part.classList.contains("panel")) return "panel";
-        return "editor";
-      }
-
-      function visibleClaudeOrAgentSurface() {
-        const candidates = Array.from(document.querySelectorAll([
-          "iframe.webview.ready",
-          "iframe.webview",
-          ".part.editor",
-          ".part.auxiliarybar",
-          ".pane-body",
-          ".interactive-session",
-          ".chat-controls-container"
-        ].join(",")));
-        return candidates.find((element) => {
-          if (!isVisible(element)) return false;
-          const text = elementText(element).replace(/\s+/g, " ");
-          return (
-            /Claude\s*Code/i.test(text) ||
-            /Esc to focus or unfocus Claude/i.test(text) ||
-            /Ask before edits/i.test(text) ||
-            /Chat Input \(Agent\)/i.test(text) ||
-            /Build with Agent/i.test(text)
-          );
-        });
-      }
-
-      function claudeTarget() {
-        const frame = claudeFrame();
-        if (isVisible(frame)) return frame;
-        return null;
-      }
-
-      function fallbackTarget() {
-        return visibleClaudeOrAgentSurface();
-      }
-
-      function openClaudeIfPossible() {
-        const claudeEditorTab = Array.from(document.querySelectorAll(".tab[role='tab']")).find((tab) => {
-          return /Claude Code/i.test(elementText(tab));
-        });
-        if (clickElement(claudeEditorTab)) return true;
-
-        const openAction = Array.from(document.querySelectorAll("[aria-label]")).find((element) => {
-          const label = String(element.getAttribute("aria-label") || "");
-          return label === "Claude Code: Open" || label === "Claude Code: Open in New Tab";
-        });
-        if (clickElement(openAction)) return true;
-
-        const claudeActivity = Array.from(document.querySelectorAll("[aria-label]")).find((element) => {
-          return String(element.getAttribute("aria-label") || "") === "Claude Code";
-        });
-        return clickElement(claudeActivity);
-      }
-
-      function closeOtherEditorTabsOnce() {
-        if (state.didCloseOtherEditorTabs) return;
-        const tabs = Array.from(document.querySelectorAll(".tab[role='tab']"));
-        const activeClaudeTab =
-          tabs.find((tab) => {
-            const classNameValue = String(tab.className || "");
-            return /Claude Code/i.test(elementText(tab)) &&
-              (classNameValue.includes("active") || classNameValue.includes("selected"));
-          }) ||
-          tabs.find((tab) => /Claude Code/i.test(elementText(tab)));
-        if (!activeClaudeTab) return;
-
-        for (const tab of tabs) {
-          if (tab === activeClaudeTab) continue;
-          const closeButton =
-            tab.querySelector(".action-label.codicon-close") ||
-            Array.from(tab.querySelectorAll("[aria-label]")).find((element) => {
-              return String(element.getAttribute("aria-label") || "").startsWith("Close");
-            });
-          clickElement(closeButton);
-        }
-
-        state.didCloseOtherEditorTabs = true;
-      }
-
-      function ensureStyleElement() {
-        let style = document.getElementById(styleId);
-        if (!style) {
-          style = document.createElement("style");
-          style.id = styleId;
-          document.head.appendChild(style);
-        }
-        return style;
-      }
-
-      function applyClaudeLayout() {
-        if (state.isApplying) return false;
-        state.isApplying = true;
-        if (state.observer) state.observer.disconnect();
-        try {
-          const workbench = document.querySelector(".monaco-workbench");
-          if (!workbench) return false;
-
-          clickCheckedToggle("Toggle Primary Side Bar");
-
-          let target = claudeTarget();
-          if (!target) {
-            openClaudeIfPossible();
-            state.fallbackAttempts += 1;
-            if (state.fallbackAttempts < 20) {
-              return false;
-            }
-            target = fallbackTarget();
-            if (!target) return false;
-          } else {
-            state.fallbackAttempts = 0;
-          }
-
-          const targetKind = targetKindFor(target);
-          if (targetKind !== "auxiliarybar") {
-            clickCheckedToggle("Toggle Secondary Side Bar");
-          }
-          if (targetKind === "editor") {
-            closeOtherEditorTabsOnce();
-          }
-
-          document.body.classList.remove(className);
-          document.body.classList.remove(
-            "cmux-vscode-claude-code-target-editor",
-            "cmux-vscode-claude-code-target-auxiliarybar",
-            "cmux-vscode-claude-code-target-panel"
-          );
-          const style = ensureStyleElement();
-          style.textContent = "";
-          void document.body.offsetHeight;
-
-          target = claudeTarget();
-          if (!target || !isVisible(target, 120, 180)) return false;
-          const resolvedTargetKind = targetKindFor(target);
-          const targetPart = nearestWorkbenchPart(target);
-          const targetPartLeft = Math.max(0, targetPart?.getBoundingClientRect?.().left || 0);
-          document.documentElement.style.setProperty(
-            "--cmux-vscode-claude-code-target-left",
-            `${targetPartLeft}px`
-          );
-
-          style.textContent = `
-            html, body {
-              background: #fff !important;
-              height: 100% !important;
-              margin: 0 !important;
-            }
-            body.${className} .part.activitybar,
-            body.${className} .part.sidebar,
-            body.${className} .part.statusbar,
-            body.${className} .statusbar {
-              display: none !important;
-            }
-            body.${className}:not(.cmux-vscode-claude-code-target-auxiliarybar) .part.auxiliarybar {
-              display: none !important;
-            }
-            body.${className}.cmux-vscode-claude-code-target-auxiliarybar .part.editor,
-            body.${className}.cmux-vscode-claude-code-target-panel .part.editor {
-              display: none !important;
-            }
-            body.${className}.cmux-vscode-claude-code-target-editor .monaco-workbench .part.editor,
-            body.${className}.cmux-vscode-claude-code-target-auxiliarybar .monaco-workbench .part.auxiliarybar,
-            body.${className}.cmux-vscode-claude-code-target-panel .monaco-workbench .part.panel {
-              left: 0 !important;
-              margin-left: calc(-1 * var(--cmux-vscode-claude-code-target-left, 0px)) !important;
-              right: 0 !important;
-              width: calc(100vw + var(--cmux-vscode-claude-code-target-left, 0px)) !important;
-            }
-            body.${className}.cmux-vscode-claude-code-target-editor .monaco-workbench .part.editor > .content,
-            body.${className}.cmux-vscode-claude-code-target-auxiliarybar .monaco-workbench .part.auxiliarybar > .content,
-            body.${className}.cmux-vscode-claude-code-target-panel .monaco-workbench .part.panel > .content {
-              left: 0 !important;
-              width: 100% !important;
-            }
-            body.${className} .monaco-workbench *,
-            body.${className} .monaco-workbench *::before,
-            body.${className} .monaco-workbench *::after {
-              transition: none !important;
-            }
-          `;
-          document.body.classList.add(`cmux-vscode-claude-code-target-${resolvedTargetKind}`);
-          document.body.classList.add(className);
-          return true;
-        } finally {
-          state.isApplying = false;
-          if (state.observer) state.observer.observe(document.documentElement, observerOptions);
-        }
-      }
-
-      function scheduleApply() {
-        if (state.scheduledFrame) return;
-        state.scheduledFrame = requestAnimationFrame(() => {
-          state.scheduledFrame = 0;
-          applyClaudeLayout();
-        });
-      }
-
-      if (!state.installed) {
-        state.installed = true;
-        state.observer = new MutationObserver(scheduleApply);
-        state.observer.observe(document.documentElement, observerOptions);
-        state.scheduleApply = scheduleApply;
-        window.addEventListener("resize", state.scheduleApply, { passive: true });
-
-        let attempts = 0;
-        state.interval = window.setInterval(() => {
-          attempts += 1;
-          const ready = applyClaudeLayout();
-          if (ready || attempts >= 80) {
-            window.clearInterval(state.interval);
-            state.interval = 0;
-          }
-        }, 250);
-      }
-
-      return applyClaudeLayout() ? "ready" : "pending";
-    })()
-    """#
-
-    private static let vscodeClaudeCodeExtractionCleanupScriptSource = #"""
-    (() => {
-      const stateKey = "__cmuxVSCodeClaudeCodeExtraction";
-      const className = "cmux-vscode-claude-code-extracted";
-      const styleId = "cmux-vscode-claude-code-extracted-style";
-      const state = window[stateKey];
-      if (state) {
-        if (state.observer) state.observer.disconnect();
-        if (state.scheduledFrame) cancelAnimationFrame(state.scheduledFrame);
-        if (state.interval) clearInterval(state.interval);
-        window.removeEventListener("resize", state.scheduleApply);
-      }
-      delete window[stateKey];
-      document.body?.classList.remove(className);
-      document.body?.classList.remove(
-        "cmux-vscode-claude-code-target-editor",
-        "cmux-vscode-claude-code-target-auxiliarybar",
-        "cmux-vscode-claude-code-target-panel"
-      );
-      document.documentElement?.style.removeProperty("--cmux-vscode-claude-code-target-left");
-      document.getElementById(styleId)?.remove();
-      return true;
-    })()
-    """#
 
     static let dialogTelemetryHookBootstrapScriptSource = """
     (() => {
@@ -4250,66 +3910,7 @@ final class BrowserPanel: Panel, ObservableObject {
         GlobalSearchCoordinator.shared.captureBrowserPanel(self)
     }
     private func applyContentModeAfterNavigation(reason: String) {
-        switch contentMode {
-        case .normal:
-            break
-        case .vscodeClaudeCode:
-            _ = setOmnibarVisible(false)
-            guard shouldApplyVSCodeClaudeCodeExtraction() else {
-                clearContentModeInjection(reason: "vscodeClaudeCodeURLGate")
-                return
-            }
-            webView.evaluateJavaScript(Self.vscodeClaudeCodeExtractionScriptSource) { result, error in
-#if DEBUG
-                if let error {
-                    cmuxDebugLog(
-                        "browser.contentMode.vscodeClaudeCode.error panel=\(self.id.uuidString.prefix(5)) " +
-                        "reason=\(reason) error=\(error.localizedDescription)"
-                    )
-                } else {
-                    let state = String(describing: result ?? "nil")
-                    cmuxDebugLog(
-                        "browser.contentMode.vscodeClaudeCode.apply panel=\(self.id.uuidString.prefix(5)) " +
-                        "reason=\(reason) state=\(state)"
-                    )
-                }
-#endif
-            }
-        }
-    }
-
-    private func shouldApplyVSCodeClaudeCodeExtraction() -> Bool {
-        let candidateURL = currentURL ?? Self.remoteProxyDisplayURL(for: webView.url)
-        if VSCodeServeWebWorkspaceRegistry.shared.isServeWebURL(candidateURL) {
-            return true
-        }
-        return Self.isLikelyVSCodeServeWebEntryURL(candidateURL)
-    }
-
-    private static func isLikelyVSCodeServeWebEntryURL(_ candidateURL: URL?) -> Bool {
-        guard let candidateURL,
-              candidateURL.scheme?.lowercased() == "http",
-              let host = candidateURL.host?.lowercased(),
-              ["127.0.0.1", "localhost", "::1"].contains(host),
-              candidateURL.path == "/" else {
-            return false
-        }
-        let components = URLComponents(url: candidateURL, resolvingAgainstBaseURL: false)
-        let queryNames = Set((components?.queryItems ?? []).map(\.name))
-        return queryNames.contains("folder") || queryNames.contains("workspace")
-    }
-
-    private func clearContentModeInjection(reason: String) {
-        webView.evaluateJavaScript(Self.vscodeClaudeCodeExtractionCleanupScriptSource) { _, error in
-#if DEBUG
-            if let error {
-                cmuxDebugLog(
-                    "browser.contentMode.cleanup.error panel=\(self.id.uuidString.prefix(5)) " +
-                    "reason=\(reason) error=\(error.localizedDescription)"
-                )
-            }
-#endif
-        }
+        _ = reason
     }
 
     @discardableResult
@@ -4321,11 +3922,6 @@ final class BrowserPanel: Panel, ObservableObject {
         }
 
         contentMode = mode
-        if mode.prefersHiddenOmnibar {
-            _ = setOmnibarVisible(false)
-        } else {
-            clearContentModeInjection(reason: "contentModeNormal")
-        }
         applyContentModeAfterNavigation(reason: "contentModeChanged")
         return true
     }
@@ -4449,7 +4045,7 @@ final class BrowserPanel: Panel, ObservableObject {
         self.browserThemeMode = BrowserThemeSettings.mode()
         self.shouldPreloadInitialNavigationInBackground = preloadInitialNavigationInBackground
         self.contentMode = contentMode
-        self.isOmnibarVisible = contentMode.prefersHiddenOmnibar ? false : omnibarVisible
+        self.isOmnibarVisible = omnibarVisible
         self.usesTransparentBackground = transparentBackground
         let websiteDataStore = isRemoteWorkspace
             ? WKWebsiteDataStore(forIdentifier: remoteWebsiteDataStoreIdentifier ?? workspaceId)

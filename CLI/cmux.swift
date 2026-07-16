@@ -5407,6 +5407,9 @@ struct CMUXCLI {
             print(usage())
 
         // Browser commands
+        case "vscode":
+            try runVSCodeCommand(commandArgs: commandArgs, client: client, jsonOutput: jsonOutput, idFormat: idFormat)
+
         case "browser":
             try runBrowserCommand(commandArgs: commandArgs, client: client, jsonOutput: jsonOutput, idFormat: idFormat)
 
@@ -12987,6 +12990,75 @@ struct CMUXCLI {
         return (result.status, result.stdout, result.stderr)
     }
 
+    private func runVSCodeCommand(
+        commandArgs: [String],
+        client: SocketClient,
+        jsonOutput: Bool,
+        idFormat: CLIIDFormat
+    ) throws {
+        var args = commandArgs
+        if args.first == "open" {
+            args.removeFirst()
+        } else if let first = args.first, first == "help" || first == "--help" || first == "-h" {
+            print(subcommandUsage("vscode") ?? "")
+            return
+        }
+
+        let (workspaceOpt, argsAfterWorkspace) = parseOption(args, name: "--workspace")
+        let (windowOpt, argsAfterWindow) = parseOption(argsAfterWorkspace, name: "--window")
+        let (focusOpt, pathArgs) = parseOption(argsAfterWindow, name: "--focus")
+        if let strayFlag = pathArgs.first(where: { $0.hasPrefix("--") }) {
+            let format = String(
+                localized: "cli.vscode.unsupportedOptionFormat",
+                defaultValue: "vscode open does not support %@"
+            )
+            throw CLIError(message: String(format: format, strayFlag))
+        }
+        guard pathArgs.count <= 1 else {
+            throw CLIError(message: String(
+                localized: "cli.vscode.oneDirectory",
+                defaultValue: "vscode open accepts one directory"
+            ))
+        }
+
+        let rawPath = pathArgs.first ?? FileManager.default.currentDirectoryPath
+        let expandedPath = (rawPath as NSString).expandingTildeInPath
+        let directoryURL: URL
+        if expandedPath.hasPrefix("/") {
+            directoryURL = URL(fileURLWithPath: expandedPath, isDirectory: true).standardizedFileURL
+        } else {
+            directoryURL = URL(
+                fileURLWithPath: expandedPath,
+                isDirectory: true,
+                relativeTo: URL(fileURLWithPath: FileManager.default.currentDirectoryPath, isDirectory: true)
+            ).standardizedFileURL
+        }
+
+        var params: [String: Any] = ["path": directoryURL.path]
+        let workspaceRaw = workspaceOpt ?? (windowOpt == nil ? ProcessInfo.processInfo.environment["CMUX_WORKSPACE_ID"] : nil)
+        if let workspaceRaw,
+           let workspace = try normalizeWorkspaceHandle(workspaceRaw, client: client) {
+            params["workspace_id"] = workspace
+        }
+        if let windowOpt,
+           let window = try normalizeWindowHandle(windowOpt, client: client) {
+            params["window_id"] = window
+        }
+        try applyFocusOption(focusOpt, defaultValue: false, to: &params)
+
+        let payload = try client.sendV2(method: "vscode.open", params: params)
+        if jsonOutput {
+            print(jsonString(formatIDs(payload, mode: idFormat)))
+            return
+        }
+        let workspace = formatHandle(payload, kind: "workspace", idFormat: idFormat) ?? "unknown"
+        let format = String(
+            localized: "cli.vscode.startingFormat",
+            defaultValue: "Starting VS Code workbench for %@ in %@"
+        )
+        print(String(format: format, directoryURL.path, workspace))
+    }
+
     private func runBrowserCommand(
         commandArgs: [String],
         client: SocketClient,
@@ -16901,6 +16973,12 @@ struct CMUXCLI {
               install-hooks     Install cmux hooks into ~/.codex/hooks.json
               uninstall-hooks   Remove cmux hooks from ~/.codex/hooks.json
             """
+        case "vscode":
+            return String(localized: "cli.vscode.usage", defaultValue: """
+            Usage: cmux vscode open [directory] [--workspace <id|ref|index>] [--window <id|ref|index>] [--focus <true|false>]
+
+            Open a full VS Code workbench in cmux. The directory defaults to the caller's current directory and focus defaults to false.
+            """)
         case "browser":
             return """
             Usage: cmux browser [--surface <id|ref|index> | <surface>] <subcommand> [args]
@@ -35281,6 +35359,7 @@ export default CMUXSessionRestore;
           agent-hibernation <on|off>
           restore-session
           open <path-or-url>... [--workspace <id|ref|index>] [--surface <id|ref|index>] [--pane <id|ref|index>] [--window <id|ref|index>] [--focus <true|false>] [--no-focus]
+          vscode open [directory] [--workspace <id|ref|index>] [--window <id|ref|index>] [--focus <true|false>]
           diff [patch-file|-] [--source <unstaged|staged|branch|last-turn>] [--unstaged|--staged|--branch|--last-turn] [--workspace <id|ref|index>] [--surface <id|ref|index>] [--window <id|ref|index>] [--cwd <path>] [--base <ref>] [--focus <true|false>] [--no-focus] [--title <text>] [--layout <split|unified>] [--font-size <points>]
           feedback [--email <email> --body <text> [--image <path> ...]]
           feed tui|clear

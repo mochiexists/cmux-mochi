@@ -3954,11 +3954,12 @@ class TabManager: ObservableObject {
         preferSplitRight: Bool = false,
         preferredProfileID: UUID? = nil,
         contentMode: BrowserPanelContentMode = .normal,
+        focus: Bool = true,
         insertAtEnd: Bool = false
     ) -> UUID? {
         guard BrowserAvailabilitySettings.isEnabled() else { return nil }
         guard let workspace = tabs.first(where: { $0.id == tabId }) else { return nil }
-        if selectedTabId != tabId {
+        if focus, selectedTabId != tabId {
             selectWorkspaceId(tabId, notificationDismissalContext: .explicitWorkspaceResume)
         }
 
@@ -3967,12 +3968,15 @@ class TabManager: ObservableObject {
                let browserPanel = workspace.newBrowserSurface(
                    inPane: targetPaneId,
                    url: url,
-                   focus: true,
+                   focus: focus,
+                   selectWhenNotFocused: focus,
                    insertAtEnd: insertAtEnd,
                    preferredProfileID: preferredProfileID,
                    contentMode: contentMode
                ) {
-                rememberFocusedSurface(tabId: tabId, surfaceId: browserPanel.id)
+                if focus {
+                    rememberFocusedSurface(tabId: tabId, surfaceId: browserPanel.id)
+                }
                 return browserPanel.id
             }
 
@@ -3997,10 +4001,12 @@ class TabManager: ObservableObject {
                    orientation: .horizontal,
                    url: url,
                    preferredProfileID: preferredProfileID,
-                   focus: true,
+                   focus: focus,
                    contentMode: contentMode
                ) {
-                rememberFocusedSurface(tabId: tabId, surfaceId: browserPanel.id)
+                if focus {
+                    rememberFocusedSurface(tabId: tabId, surfaceId: browserPanel.id)
+                }
                 return browserPanel.id
             }
         }
@@ -4009,14 +4015,17 @@ class TabManager: ObservableObject {
               let browserPanel = workspace.newBrowserSurface(
                   inPane: paneId,
                   url: url,
-                  focus: true,
+                  focus: focus,
+                  selectWhenNotFocused: focus,
                   insertAtEnd: insertAtEnd,
                   preferredProfileID: preferredProfileID,
                   contentMode: contentMode
               ) else {
             return nil
         }
-        rememberFocusedSurface(tabId: tabId, surfaceId: browserPanel.id)
+        if focus {
+            rememberFocusedSurface(tabId: tabId, surfaceId: browserPanel.id)
+        }
         return browserPanel.id
     }
 
