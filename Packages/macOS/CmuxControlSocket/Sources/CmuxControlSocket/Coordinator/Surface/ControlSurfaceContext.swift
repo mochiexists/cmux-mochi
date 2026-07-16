@@ -197,12 +197,15 @@ public protocol ControlSurfaceContext: AnyObject {
     ///   - surfaceID: The explicit `surface_id`, or `nil` for the focused surface.
     ///   - hasSurfaceIDParam: Whether a `surface_id` param was present at all.
     ///   - text: The text to send.
+    ///   - force: Whether to bypass the live-foreground-job guard
+    ///     (``ControlSurfaceSendGuard``).
     /// - Returns: The send resolution.
     func controlSurfaceSendText(
         routing: ControlRoutingSelectors,
         surfaceID: UUID?,
         hasSurfaceIDParam: Bool,
-        text: String
+        text: String,
+        force: Bool
     ) -> ControlSurfaceSendResolution
 
     /// Sends a named key for `surface.send_key`. The coordinator selects each

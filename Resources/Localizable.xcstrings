@@ -206954,6 +206954,23 @@
         }
       }
     },
+    "socket.terminal.liveForegroundJob": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The target pane has a live foreground job that would receive this text on its stdin. Send to a fresh pane, or pass force to send anyway."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "対象のペインには実行中のフォアグラウンドジョブがあり、このテキストはそのジョブの標準入力に送られてしまいます。新しいペインに送信するか、force を指定して強制送信してください。"
+          }
+        }
+      }
+    },
     "socket.terminal.processExited": {
       "extractionState": "manual",
       "localizations": {
