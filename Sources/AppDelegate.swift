@@ -2012,7 +2012,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         MobileHostService.shared.stop()
         TerminalController.shared.stop()
         GhosttyApp.terminalPasteboard.cleanupAllOwnedTemporaryImageFiles()
-        VSCodeServeWebController.shared.stop()
+        VSCodeServeWebWorkspaceRegistry.shared.stopAll()
         BrowserProfileStore.shared.flushPendingSaves()
         ghosttyCrashBreadcrumbTask?.cancel()
         ghosttyCrashBreadcrumbTask = nil
@@ -7867,7 +7867,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
             ?? targetTabManager.addWorkspace(select: true).id
         let normalizedDirectoryURL = directoryURL.standardizedFileURL
 
-        VSCodeServeWebController.shared.ensureServeWebURL(vscodeApplicationURL: vscodeApplicationURL) { serveWebURL in
+        VSCodeServeWebWorkspaceRegistry.shared.ensureServeWebURL(
+            forWorkspaceID: targetWorkspaceId,
+            vscodeApplicationURL: vscodeApplicationURL
+        ) { serveWebURL in
             guard let serveWebURL,
                   let openFolderURL = VSCodeServeWebURLBuilder.openFolderURL(
                       baseWebUIURL: serveWebURL,

@@ -326,6 +326,41 @@ enum VSCodeServeWebURLBuilder {
     }
 }
 
+enum VSCodeServeWebProfile: Hashable {
+    case standard
+    case claudeCode
+
+    var serverDataDirectoryURL: URL? {
+        switch self {
+        case .standard:
+            return nil
+        case .claudeCode:
+            return Self.applicationSupportRootURL?
+                .appendingPathComponent("VSCodeServeWeb", isDirectory: true)
+                .appendingPathComponent("ClaudeCode", isDirectory: true)
+        }
+    }
+
+    var preparesClaudeCodeExtension: Bool {
+        switch self {
+        case .standard:
+            return false
+        case .claudeCode:
+            return true
+        }
+    }
+
+    private static var applicationSupportRootURL: URL? {
+        guard let applicationSupportURL = FileManager.default.urls(
+            for: .applicationSupportDirectory,
+            in: .userDomainMask
+        ).first else {
+            return nil
+        }
+        return applicationSupportURL.appendingPathComponent("cmux", isDirectory: true)
+    }
+}
+
 struct VSCodeCLILaunchConfiguration {
     let executableURL: URL
     let argumentsPrefix: [String]
@@ -483,11 +518,11 @@ enum VSCodeCLILaunchConfigurationBuilder {
 }
 
 final class VSCodeServeWebController {
-    static let shared = VSCodeServeWebController()
     private static let serveWebStartupTimeoutSeconds: TimeInterval = 60
 
     private let queue = DispatchQueue(label: "cmux.vscode.serveWeb")
     private let launchQueue = DispatchQueue(label: "cmux.vscode.serveWeb.launch")
+    private let profile: VSCodeServeWebProfile
     private let launchProcessOverride: ((URL, UInt64) -> (process: Process, url: URL)?)?
     private var serveWebProcess: Process?
     private var launchingProcess: Process?
@@ -501,15 +536,20 @@ final class VSCodeServeWebController {
     private var testingTrackedProcesses: [Process] = []
 #endif
 
-    private init(launchProcessOverride: ((URL, UInt64) -> (process: Process, url: URL)?)? = nil) {
+    fileprivate init(
+        profile: VSCodeServeWebProfile = .standard,
+        launchProcessOverride: ((URL, UInt64) -> (process: Process, url: URL)?)? = nil
+    ) {
+        self.profile = profile
         self.launchProcessOverride = launchProcessOverride
     }
 
 #if DEBUG
     static func makeForTesting(
+        profile: VSCodeServeWebProfile = .standard,
         launchProcessOverride: @escaping (URL, UInt64) -> (process: Process, url: URL)?
     ) -> VSCodeServeWebController {
-        VSCodeServeWebController(launchProcessOverride: launchProcessOverride)
+        VSCodeServeWebController(profile: profile, launchProcessOverride: launchProcessOverride)
     }
 
     func trackConnectionTokenFileForTesting(
@@ -691,14 +731,14 @@ final class VSCodeServeWebController {
             return nil
         }
 
+        let serverDataDirectoryURL = preparedServerDataDirectoryURL()
         let process = Process()
         process.executableURL = launchConfiguration.executableURL
-        process.arguments = launchConfiguration.argumentsPrefix + [
-            "--accept-server-license-terms",
-            "--host", "127.0.0.1",
-            "--port", "0",
-            "--connection-token-file", connectionTokenFileURL.path,
-        ]
+        process.arguments = Self.serveWebArguments(
+            argumentsPrefix: launchConfiguration.argumentsPrefix,
+            connectionTokenFileURL: connectionTokenFileURL,
+            serverDataDirectoryURL: serverDataDirectoryURL
+        )
         process.environment = launchConfiguration.environment
 
         let stdoutPipe = Pipe()
@@ -800,6 +840,251 @@ final class VSCodeServeWebController {
         return (process, serveWebURL)
     }
 
+    private static func serveWebArguments(
+        argumentsPrefix: [String],
+        connectionTokenFileURL: URL,
+        serverDataDirectoryURL: URL?
+    ) -> [String] {
+        var arguments = argumentsPrefix + [
+            "--accept-server-license-terms",
+            "--host", "127.0.0.1",
+            "--port", "0",
+            "--connection-token-file", connectionTokenFileURL.path,
+        ]
+        if let serverDataDirectoryURL {
+            arguments.append(contentsOf: ["--server-data-dir", serverDataDirectoryURL.path])
+        }
+        return arguments
+    }
+
+#if DEBUG
+    static func serveWebArgumentsForTesting(
+        argumentsPrefix: [String] = [],
+        connectionTokenFileURL: URL,
+        serverDataDirectoryURL: URL?
+    ) -> [String] {
+        serveWebArguments(
+            argumentsPrefix: argumentsPrefix,
+            connectionTokenFileURL: connectionTokenFileURL,
+            serverDataDirectoryURL: serverDataDirectoryURL
+        )
+    }
+#endif
+
+    private func preparedServerDataDirectoryURL() -> URL? {
+        guard let serverDataDirectoryURL = profile.serverDataDirectoryURL else {
+            return nil
+        }
+
+        do {
+            try FileManager.default.createDirectory(
+                at: serverDataDirectoryURL,
+                withIntermediateDirectories: true
+            )
+        } catch {
+            return nil
+        }
+
+        if profile.preparesClaudeCodeExtension {
+            Self.prepareClaudeCodeProfile(in: serverDataDirectoryURL)
+        }
+
+        return serverDataDirectoryURL
+    }
+
+    private static func prepareClaudeCodeProfile(in serverDataDirectoryURL: URL) {
+        writeClaudeCodeSettings(in: serverDataDirectoryURL)
+        seedClaudeCodeExtensionIfAvailable(in: serverDataDirectoryURL)
+    }
+
+    private static func writeClaudeCodeSettings(in serverDataDirectoryURL: URL) {
+        let userDirectoryURL = serverDataDirectoryURL
+            .appendingPathComponent("data", isDirectory: true)
+            .appendingPathComponent("User", isDirectory: true)
+        let settingsURL = userDirectoryURL.appendingPathComponent("settings.json", isDirectory: false)
+
+        do {
+            try FileManager.default.createDirectory(at: userDirectoryURL, withIntermediateDirectories: true)
+            var settings = readJSONObject(at: settingsURL) ?? [:]
+            settings["claudeCode.preferredLocation"] = "panel"
+            settings["claudeCode.useTerminal"] = false
+            settings["security.workspace.trust.enabled"] = false
+            settings["workbench.startupEditor"] = "none"
+            try writeJSONObject(settings, to: settingsURL)
+        } catch {
+            return
+        }
+    }
+
+    private static func seedClaudeCodeExtensionIfAvailable(in serverDataDirectoryURL: URL) {
+        guard let sourceExtensionURL = newestClaudeCodeExtensionURL() else { return }
+        guard let package = claudeCodePackageMetadata(at: sourceExtensionURL) else { return }
+
+        let extensionsDirectoryURL = serverDataDirectoryURL.appendingPathComponent("extensions", isDirectory: true)
+        let linkedExtensionURL = extensionsDirectoryURL
+            .appendingPathComponent(sourceExtensionURL.lastPathComponent, isDirectory: true)
+        let extensionsJSONURL = extensionsDirectoryURL.appendingPathComponent("extensions.json", isDirectory: false)
+
+        do {
+            try FileManager.default.createDirectory(at: extensionsDirectoryURL, withIntermediateDirectories: true)
+            if !FileManager.default.fileExists(atPath: linkedExtensionURL.path) {
+                try FileManager.default.createSymbolicLink(
+                    at: linkedExtensionURL,
+                    withDestinationURL: sourceExtensionURL
+                )
+            }
+            let descriptor = claudeCodeExtensionDescriptor(
+                extensionURL: linkedExtensionURL,
+                version: package.version,
+                targetPlatform: package.targetPlatform
+            )
+            let existingDescriptors = readJSONArray(at: extensionsJSONURL) ?? []
+            let mergedDescriptors = existingDescriptors
+                .filter { !isClaudeCodeExtensionDescriptor($0) } + [descriptor]
+            try writeJSONObject(mergedDescriptors, to: extensionsJSONURL)
+        } catch {
+            return
+        }
+    }
+
+    private struct ClaudeCodePackageMetadata {
+        let version: String
+        let targetPlatform: String
+    }
+
+    private static func newestClaudeCodeExtensionURL() -> URL? {
+        let homeDirectoryURL = FileManager.default.homeDirectoryForCurrentUser
+        let extensionRoots = [
+            homeDirectoryURL.appendingPathComponent(".vscode/extensions", isDirectory: true),
+        ]
+
+        let candidates = extensionRoots.flatMap { rootURL -> [URL] in
+            guard let children = try? FileManager.default.contentsOfDirectory(
+                at: rootURL,
+                includingPropertiesForKeys: [.contentModificationDateKey],
+                options: [.skipsHiddenFiles]
+            ) else {
+                return []
+            }
+            return children.filter { $0.lastPathComponent.hasPrefix("anthropic.claude-code-") }
+        }
+
+        return candidates.sorted { lhs, rhs in
+            let lhsPackage = claudeCodePackageMetadata(at: lhs)
+            let rhsPackage = claudeCodePackageMetadata(at: rhs)
+            let versionComparison = compareVersion(lhsPackage?.version ?? "", rhsPackage?.version ?? "")
+            if versionComparison != .orderedSame {
+                return versionComparison == .orderedDescending
+            }
+            let lhsDate = (try? lhs.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate
+                ?? .distantPast
+            let rhsDate = (try? rhs.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate
+                ?? .distantPast
+            return lhsDate > rhsDate
+        }.first
+    }
+
+    private static func claudeCodePackageMetadata(at extensionURL: URL) -> ClaudeCodePackageMetadata? {
+        let packageJSONURL = extensionURL.appendingPathComponent("package.json", isDirectory: false)
+        guard let packageJSON = readJSONObject(at: packageJSONURL),
+              let publisher = packageJSON["publisher"] as? String,
+              publisher.caseInsensitiveCompare("Anthropic") == .orderedSame,
+              let name = packageJSON["name"] as? String,
+              name == "claude-code",
+              let version = packageJSON["version"] as? String else {
+            return nil
+        }
+
+        let targetPlatform: String
+        if extensionURL.lastPathComponent.hasSuffix("-darwin-arm64") {
+            targetPlatform = "darwin-arm64"
+        } else {
+            targetPlatform = "undefined"
+        }
+        return ClaudeCodePackageMetadata(version: version, targetPlatform: targetPlatform)
+    }
+
+    private static func claudeCodeExtensionDescriptor(
+        extensionURL: URL,
+        version: String,
+        targetPlatform: String
+    ) -> [String: Any] {
+        [
+            "identifier": [
+                "id": "anthropic.claude-code",
+            ],
+            "version": version,
+            "location": [
+                "$mid": 1,
+                "fsPath": extensionURL.path,
+                "external": extensionURL.absoluteString,
+                "path": extensionURL.path,
+                "scheme": "file",
+            ],
+            "relativeLocation": extensionURL.lastPathComponent,
+            "metadata": [
+                "installedTimestamp": Int(Date().timeIntervalSince1970 * 1000),
+                "pinned": true,
+                "source": "gallery",
+                "id": "3c13ae49-babe-45fe-8c48-5e45077a62bf",
+                "publisherId": "89769da0-cc4b-40b0-8216-93ffb5a96b56",
+                "publisherDisplayName": "Anthropic",
+                "targetPlatform": targetPlatform,
+                "updated": false,
+                "private": false,
+                "isPreReleaseVersion": false,
+                "hasPreReleaseVersion": false,
+            ],
+        ]
+    }
+
+    private static func readJSONObject(at url: URL) -> [String: Any]? {
+        guard let data = try? Data(contentsOf: url),
+              let object = try? JSONSerialization.jsonObject(with: data),
+              let dictionary = object as? [String: Any] else {
+            return nil
+        }
+        return dictionary
+    }
+
+    private static func readJSONArray(at url: URL) -> [[String: Any]]? {
+        guard let data = try? Data(contentsOf: url),
+              let object = try? JSONSerialization.jsonObject(with: data),
+              let array = object as? [[String: Any]] else {
+            return nil
+        }
+        return array
+    }
+
+    private static func isClaudeCodeExtensionDescriptor(_ descriptor: [String: Any]) -> Bool {
+        guard let identifier = descriptor["identifier"] as? [String: Any],
+              let id = identifier["id"] as? String else {
+            return false
+        }
+        return id.caseInsensitiveCompare("anthropic.claude-code") == .orderedSame
+    }
+
+    private static func writeJSONObject(_ object: Any, to url: URL) throws {
+        let data = try JSONSerialization.data(
+            withJSONObject: object,
+            options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
+        )
+        try data.write(to: url, options: .atomic)
+    }
+
+    private static func compareVersion(_ lhs: String, _ rhs: String) -> ComparisonResult {
+        let lhsParts = lhs.split(separator: ".").map { Int($0) ?? 0 }
+        let rhsParts = rhs.split(separator: ".").map { Int($0) ?? 0 }
+        let maxCount = max(lhsParts.count, rhsParts.count)
+        for index in 0..<maxCount {
+            let lhsPart = index < lhsParts.count ? lhsParts[index] : 0
+            let rhsPart = index < rhsParts.count ? rhsParts[index] : 0
+            if lhsPart < rhsPart { return .orderedAscending }
+            if lhsPart > rhsPart { return .orderedDescending }
+        }
+        return .orderedSame
+    }
+
     private static func drainAvailableOutput(from fileHandle: FileHandle, collector: ServeWebOutputCollector) {
         while true {
             switch fileHandle.readAvailableDataOrEndOfFile() {
@@ -855,6 +1140,112 @@ final class VSCodeServeWebController {
         }
         return RemoteLoopbackProxyAlias.isLoopbackHost(lhsHost)
             && RemoteLoopbackProxyAlias.isLoopbackHost(rhsHost)
+    }
+}
+
+final class VSCodeServeWebWorkspaceRegistry {
+    static let shared = VSCodeServeWebWorkspaceRegistry()
+
+    private struct ControllerKey: Hashable {
+        let workspaceID: UUID
+        let profile: VSCodeServeWebProfile
+    }
+
+    private let queue = DispatchQueue(label: "cmux.vscode.serveWeb.workspaces")
+    private let makeController: (VSCodeServeWebProfile) -> VSCodeServeWebController
+    private var controllersByKey: [ControllerKey: VSCodeServeWebController] = [:]
+
+    private init(
+        makeController: @escaping (VSCodeServeWebProfile) -> VSCodeServeWebController = {
+            VSCodeServeWebController(profile: $0)
+        }
+    ) {
+        self.makeController = makeController
+    }
+
+#if DEBUG
+    static func makeForTesting(
+        makeController: @escaping () -> VSCodeServeWebController
+    ) -> VSCodeServeWebWorkspaceRegistry {
+        VSCodeServeWebWorkspaceRegistry { _ in makeController() }
+    }
+
+    static func makeForTesting(
+        makeController: @escaping (VSCodeServeWebProfile) -> VSCodeServeWebController
+    ) -> VSCodeServeWebWorkspaceRegistry {
+        VSCodeServeWebWorkspaceRegistry(makeController: makeController)
+    }
+#endif
+
+    func ensureServeWebURL(
+        forWorkspaceID workspaceID: UUID,
+        vscodeApplicationURL: URL,
+        profile: VSCodeServeWebProfile = .standard,
+        completion: @escaping (URL?) -> Void
+    ) {
+        controller(forWorkspaceID: workspaceID, profile: profile)
+            .ensureServeWebURL(vscodeApplicationURL: vscodeApplicationURL, completion: completion)
+    }
+
+    func stop(workspaceID: UUID) {
+        let controllers = queue.sync {
+            let matchingKeys = controllersByKey.keys.filter { $0.workspaceID == workspaceID }
+            return matchingKeys.compactMap {
+                controllersByKey.removeValue(forKey: $0)
+            }
+        }
+        controllers.forEach { $0.stop() }
+    }
+
+    func stopAll() {
+        let controllers = queue.sync {
+            let controllers = Array(controllersByKey.values)
+            controllersByKey.removeAll()
+            return controllers
+        }
+        controllers.forEach { $0.stop() }
+    }
+
+    @discardableResult
+    func restart(
+        forWorkspaceID workspaceID: UUID,
+        vscodeApplicationURL: URL,
+        profile: VSCodeServeWebProfile = .standard,
+        completion: @escaping (URL?) -> Void
+    ) -> Bool {
+        let controller = queue.sync {
+            controllersByKey[ControllerKey(workspaceID: workspaceID, profile: profile)]
+        }
+        guard let controller else {
+            DispatchQueue.main.async {
+                completion(nil)
+            }
+            return false
+        }
+        controller.restart(vscodeApplicationURL: vscodeApplicationURL, completion: completion)
+        return true
+    }
+
+    func isServeWebURL(_ candidateURL: URL?) -> Bool {
+        let controllers = queue.sync {
+            Array(controllersByKey.values)
+        }
+        return controllers.contains(where: { $0.isServeWebURL(candidateURL) })
+    }
+
+    private func controller(
+        forWorkspaceID workspaceID: UUID,
+        profile: VSCodeServeWebProfile
+    ) -> VSCodeServeWebController {
+        queue.sync {
+            let key = ControllerKey(workspaceID: workspaceID, profile: profile)
+            if let controller = controllersByKey[key] {
+                return controller
+            }
+            let controller = makeController(profile)
+            controllersByKey[key] = controller
+            return controller
+        }
     }
 }
 
