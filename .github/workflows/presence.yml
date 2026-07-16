@@ -22,6 +22,7 @@ permissions:
 
 jobs:
   test:
+    if: github.repository == 'manaflow-ai/cmux'
     runs-on: ${{ vars.LINUX_RUNNER || 'blacksmith-4vcpu-ubuntu-2404' }}
     defaults:
       run:
@@ -57,7 +58,10 @@ jobs:
         run: bunx wrangler deploy --dry-run --outdir dist
 
   deploy:
-    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+    if: >-
+      github.repository == 'manaflow-ai/cmux' &&
+      github.event_name == 'workflow_dispatch' &&
+      github.ref == 'refs/heads/main'
     needs: test
     runs-on: ${{ vars.LINUX_RUNNER || 'blacksmith-4vcpu-ubuntu-2404' }}
     concurrency:

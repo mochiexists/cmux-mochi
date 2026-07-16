@@ -12,7 +12,7 @@ note() {
   printf 'install-app-store-provisioning-profile: %s\n' "$*" >&2
 }
 
-TEAM_ID="${IOS_APPSTORE_TEAM_ID:-7WLXT3NR37}"
+TEAM_ID="${IOS_APPSTORE_TEAM_ID:-599WAZ6282}"
 BUNDLE_IDENTIFIER="${IOS_APPSTORE_BUNDLE_IDENTIFIER:-com.cmux.app}"
 EXPECTED_APP_ID="${TEAM_ID}.${BUNDLE_IDENTIFIER}"
 KEYCHAIN_NAME="${IOS_APPSTORE_KEYCHAIN_NAME:-ios-app-store.keychain}"
