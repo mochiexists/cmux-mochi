@@ -9355,19 +9355,25 @@ struct ContentView: View {
     }
 
     private func stopInlineVSCodeServeWeb() {
-        VSCodeServeWebController.shared.stop()
+        guard let workspaceID = tabManager.selectedWorkspace?.id else { return }
+        VSCodeServeWebWorkspaceRegistry.shared.stop(workspaceID: workspaceID)
     }
 
     private func restartInlineVSCodeServeWeb() -> Bool {
         guard let vscodeApplicationURL = TerminalDirectoryOpenTarget.vscodeInline.applicationURL() else {
             return false
         }
-        VSCodeServeWebController.shared.restart(vscodeApplicationURL: vscodeApplicationURL) { serveWebURL in
+        guard let workspaceID = tabManager.selectedWorkspace?.id else {
+            return false
+        }
+        return VSCodeServeWebWorkspaceRegistry.shared.restart(
+            forWorkspaceID: workspaceID,
+            vscodeApplicationURL: vscodeApplicationURL
+        ) { serveWebURL in
             if serveWebURL == nil {
                 NSSound.beep()
             }
         }
-        return true
     }
 
     private func focusedTerminalDirectoryURL() -> URL? {

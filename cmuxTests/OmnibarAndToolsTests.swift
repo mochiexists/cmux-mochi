@@ -437,6 +437,277 @@ final class VSCodeServeWebControllerTests: XCTestCase {
 
         XCTAssertFalse(FileManager.default.fileExists(atPath: tokenFileURL.path))
     }
+
+    func testServeWebArgumentsIncludeServerDataDirectoryWhenProvided() {
+        let tokenFileURL = URL(fileURLWithPath: "/tmp/cmux-token")
+        let dataDirectoryURL = URL(fileURLWithPath: "/tmp/cmux-claude-profile", isDirectory: true)
+
+        let arguments = VSCodeServeWebController.serveWebArgumentsForTesting(
+            argumentsPrefix: ["serve-web"],
+            connectionTokenFileURL: tokenFileURL,
+            serverDataDirectoryURL: dataDirectoryURL
+        )
+
+        XCTAssertEqual(
+            arguments,
+            [
+                "serve-web",
+                "--accept-server-license-terms",
+                "--host", "127.0.0.1",
+                "--port", "0",
+                "--connection-token-file", "/tmp/cmux-token",
+                "--server-data-dir", "/tmp/cmux-claude-profile",
+            ]
+        )
+    }
+
+    func testServeWebArgumentsOmitServerDataDirectoryWhenUnavailable() {
+        let arguments = VSCodeServeWebController.serveWebArgumentsForTesting(
+            connectionTokenFileURL: URL(fileURLWithPath: "/tmp/cmux-token"),
+            serverDataDirectoryURL: nil
+        )
+
+        XCTAssertFalse(arguments.contains("--server-data-dir"))
+    }
+}
+
+
+final class VSCodeServeWebWorkspaceRegistryTests: XCTestCase {
+    func testRegistryReusesControllerWithinWorkspace() {
+        let factoryLock = NSLock()
+        var factoryCallCount = 0
+        let registry = VSCodeServeWebWorkspaceRegistry.makeForTesting {
+            factoryLock.lock()
+            factoryCallCount += 1
+            let port = 7100 + factoryCallCount
+            factoryLock.unlock()
+
+            return VSCodeServeWebController.makeForTesting { _, _ in
+                (Process(), URL(string: "http://127.0.0.1:\(port)?tkn=test")!)
+            }
+        }
+        let workspaceID = UUID()
+        let vscodeAppURL = URL(fileURLWithPath: "/Applications/Visual Studio Code.app", isDirectory: true)
+
+        let first = expectation(description: "first serve-web URL")
+        let second = expectation(description: "second serve-web URL")
+        var resolvedURLs: [URL?] = []
+
+        registry.ensureServeWebURL(forWorkspaceID: workspaceID, vscodeApplicationURL: vscodeAppURL) { url in
+            resolvedURLs.append(url)
+            first.fulfill()
+        }
+        wait(for: [first], timeout: 1)
+
+        registry.ensureServeWebURL(forWorkspaceID: workspaceID, vscodeApplicationURL: vscodeAppURL) { url in
+            resolvedURLs.append(url)
+            second.fulfill()
+        }
+        wait(for: [second], timeout: 1)
+
+        factoryLock.lock()
+        let calls = factoryCallCount
+        factoryLock.unlock()
+
+        XCTAssertEqual(calls, 1)
+        XCTAssertEqual(resolvedURLs.count, 2)
+        XCTAssertEqual(resolvedURLs[0]?.port, 7101)
+        XCTAssertEqual(resolvedURLs[1]?.port, 7101)
+        registry.stopAll()
+    }
+
+    func testRegistrySeparatesControllersByProfileWithinWorkspace() {
+        let factoryLock = NSLock()
+        var factoryCallCount = 0
+        var requestedProfiles: [VSCodeServeWebProfile] = []
+        let registry = VSCodeServeWebWorkspaceRegistry.makeForTesting { profile in
+            factoryLock.lock()
+            factoryCallCount += 1
+            requestedProfiles.append(profile)
+            let port = 7600 + factoryCallCount
+            factoryLock.unlock()
+
+            return VSCodeServeWebController.makeForTesting(profile: profile) { _, _ in
+                (Process(), URL(string: "http://127.0.0.1:\(port)?tkn=test")!)
+            }
+        }
+        let workspaceID = UUID()
+        let vscodeAppURL = URL(fileURLWithPath: "/Applications/Visual Studio Code.app", isDirectory: true)
+
+        let standard = expectation(description: "standard serve-web URL")
+        let claude = expectation(description: "claude serve-web URL")
+        let standardAgain = expectation(description: "standard serve-web URL reused")
+        var resolvedURLs: [URL?] = []
+
+        registry.ensureServeWebURL(
+            forWorkspaceID: workspaceID,
+            vscodeApplicationURL: vscodeAppURL
+        ) { url in
+            resolvedURLs.append(url)
+            standard.fulfill()
+        }
+        wait(for: [standard], timeout: 1)
+
+        registry.ensureServeWebURL(
+            forWorkspaceID: workspaceID,
+            vscodeApplicationURL: vscodeAppURL,
+            profile: .claudeCode
+        ) { url in
+            resolvedURLs.append(url)
+            claude.fulfill()
+        }
+        wait(for: [claude], timeout: 1)
+
+        registry.ensureServeWebURL(
+            forWorkspaceID: workspaceID,
+            vscodeApplicationURL: vscodeAppURL
+        ) { url in
+            resolvedURLs.append(url)
+            standardAgain.fulfill()
+        }
+        wait(for: [standardAgain], timeout: 1)
+
+        factoryLock.lock()
+        let calls = factoryCallCount
+        let profiles = requestedProfiles
+        factoryLock.unlock()
+
+        XCTAssertEqual(calls, 2)
+        XCTAssertEqual(profiles, [.standard, .claudeCode])
+        XCTAssertEqual(resolvedURLs.map { $0?.port }, [7601, 7602, 7601])
+        registry.stopAll()
+    }
+
+    func testRegistryCreatesSeparateControllersForSeparateWorkspaces() {
+        let factoryLock = NSLock()
+        var factoryCallCount = 0
+        let registry = VSCodeServeWebWorkspaceRegistry.makeForTesting {
+            factoryLock.lock()
+            factoryCallCount += 1
+            let port = 7200 + factoryCallCount
+            factoryLock.unlock()
+
+            return VSCodeServeWebController.makeForTesting { _, _ in
+                (Process(), URL(string: "http://127.0.0.1:\(port)?tkn=test")!)
+            }
+        }
+        let vscodeAppURL = URL(fileURLWithPath: "/Applications/Visual Studio Code.app", isDirectory: true)
+
+        let first = expectation(description: "workspace one serve-web URL")
+        let second = expectation(description: "workspace two serve-web URL")
+        var firstURL: URL?
+        var secondURL: URL?
+
+        registry.ensureServeWebURL(forWorkspaceID: UUID(), vscodeApplicationURL: vscodeAppURL) { url in
+            firstURL = url
+            first.fulfill()
+        }
+        registry.ensureServeWebURL(forWorkspaceID: UUID(), vscodeApplicationURL: vscodeAppURL) { url in
+            secondURL = url
+            second.fulfill()
+        }
+        wait(for: [first, second], timeout: 1)
+
+        XCTAssertEqual(firstURL?.port, 7201)
+        XCTAssertEqual(secondURL?.port, 7202)
+        XCTAssertTrue(registry.isServeWebURL(URL(string: "http://localhost:7201/some/path")))
+        XCTAssertTrue(registry.isServeWebURL(URL(string: "http://127.0.0.1:7202/?folder=/tmp/project")))
+        XCTAssertFalse(registry.isServeWebURL(URL(string: "http://127.0.0.1:7999/")))
+        registry.stopAll()
+    }
+
+    func testStopRemovesOnlySelectedWorkspaceController() {
+        let factoryLock = NSLock()
+        var factoryCallCount = 0
+        let registry = VSCodeServeWebWorkspaceRegistry.makeForTesting {
+            factoryLock.lock()
+            factoryCallCount += 1
+            let port = 7300 + factoryCallCount
+            factoryLock.unlock()
+
+            return VSCodeServeWebController.makeForTesting { _, _ in
+                (Process(), URL(string: "http://127.0.0.1:\(port)?tkn=test")!)
+            }
+        }
+        let vscodeAppURL = URL(fileURLWithPath: "/Applications/Visual Studio Code.app", isDirectory: true)
+        let firstWorkspaceID = UUID()
+        let secondWorkspaceID = UUID()
+        let first = expectation(description: "first workspace serve-web URL")
+        let second = expectation(description: "second workspace serve-web URL")
+
+        registry.ensureServeWebURL(forWorkspaceID: firstWorkspaceID, vscodeApplicationURL: vscodeAppURL) { _ in
+            first.fulfill()
+        }
+        registry.ensureServeWebURL(forWorkspaceID: secondWorkspaceID, vscodeApplicationURL: vscodeAppURL) { _ in
+            second.fulfill()
+        }
+        wait(for: [first, second], timeout: 1)
+
+        registry.stop(workspaceID: firstWorkspaceID)
+
+        XCTAssertFalse(registry.isServeWebURL(URL(string: "http://127.0.0.1:7301/")))
+        XCTAssertTrue(registry.isServeWebURL(URL(string: "http://127.0.0.1:7302/")))
+        registry.stopAll()
+    }
+
+    func testRestartUsesExistingWorkspaceController() {
+        let factoryLock = NSLock()
+        var factoryCallCount = 0
+        let registry = VSCodeServeWebWorkspaceRegistry.makeForTesting {
+            factoryLock.lock()
+            factoryCallCount += 1
+            let port = 7400 + factoryCallCount
+            factoryLock.unlock()
+
+            return VSCodeServeWebController.makeForTesting { _, _ in
+                (Process(), URL(string: "http://127.0.0.1:\(port)?tkn=test")!)
+            }
+        }
+        let workspaceID = UUID()
+        let vscodeAppURL = URL(fileURLWithPath: "/Applications/Visual Studio Code.app", isDirectory: true)
+        let initial = expectation(description: "initial workspace serve-web URL")
+        let restarted = expectation(description: "restarted workspace serve-web URL")
+
+        registry.ensureServeWebURL(forWorkspaceID: workspaceID, vscodeApplicationURL: vscodeAppURL) { _ in
+            initial.fulfill()
+        }
+        wait(for: [initial], timeout: 1)
+
+        registry.restart(forWorkspaceID: workspaceID, vscodeApplicationURL: vscodeAppURL) { url in
+            XCTAssertEqual(url?.port, 7401)
+            restarted.fulfill()
+        }
+        wait(for: [restarted], timeout: 1)
+
+        factoryLock.lock()
+        let calls = factoryCallCount
+        factoryLock.unlock()
+
+        XCTAssertEqual(calls, 1)
+        registry.stopAll()
+    }
+
+    func testRestartDoesNotCreateControllerForUnknownWorkspace() {
+        var factoryCallCount = 0
+        let registry = VSCodeServeWebWorkspaceRegistry.makeForTesting {
+            factoryCallCount += 1
+            return VSCodeServeWebController.makeForTesting { _, _ in
+                (Process(), URL(string: "http://127.0.0.1:7501?tkn=test")!)
+            }
+        }
+        let vscodeAppURL = URL(fileURLWithPath: "/Applications/Visual Studio Code.app", isDirectory: true)
+        let completionCalled = expectation(description: "unknown restart completion")
+
+        let restarted = registry.restart(forWorkspaceID: UUID(), vscodeApplicationURL: vscodeAppURL) { url in
+            XCTAssertNil(url)
+            completionCalled.fulfill()
+        }
+        wait(for: [completionCalled], timeout: 1)
+
+        XCTAssertFalse(restarted)
+        XCTAssertEqual(factoryCallCount, 0)
+        XCTAssertFalse(registry.isServeWebURL(URL(string: "http://127.0.0.1:7501/")))
+    }
 }
 
 final class OmnibarStateMachineTests: XCTestCase {
