@@ -264,6 +264,7 @@ class TerminalController {
         "pane.focus",
         "pane.last",
         "file.open", "workspace.todo.open",
+        "vscode.open",
         "browser.focus_webview",
         "browser.focus",
         "browser.tab.switch",
@@ -2245,6 +2246,8 @@ class TerminalController {
             return v2Result(id: id, self.v2ArtifactNew(params: params))
 
         // Browser
+        case "vscode.open":
+            return v2Result(id: id, self.v2VSCodeOpen(params: params))
         case "browser.open_split":
             return v2Result(id: id, self.v2BrowserOpenSplit(params: params))
         // Browser automation methods that can wait on page JavaScript, WebKit
@@ -2484,6 +2487,7 @@ class TerminalController {
             "file.open",
             "markdown.open",
             "artifact.new",
+            "vscode.open",
             "browser.open_split",
             "browser.navigate",
             "browser.back",
@@ -6508,6 +6512,74 @@ class TerminalController {
 
     // MARK: - Browser
 
+    private func v2VSCodeOpen(params: [String: Any]) -> V2CallResult {
+        guard BrowserAvailabilitySettings.isEnabled() else {
+            return .err(code: "browser_disabled", message: "cmux browser is disabled", data: nil)
+        }
+        guard let tabManager = v2ResolveTabManager(params: params) else {
+            return .err(code: "unavailable", message: "TabManager not available", data: nil)
+        }
+        guard let workspace = v2ResolveWorkspace(params: params, tabManager: tabManager) else {
+            return .err(code: "not_found", message: "Workspace not found", data: nil)
+        }
+
+        let requestedPath = v2String(params, "path")?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let path = (requestedPath?.isEmpty == false ? requestedPath : nil) ?? workspace.currentDirectory
+        let directoryURL = URL(fileURLWithPath: path, isDirectory: true).standardizedFileURL
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: directoryURL.path, isDirectory: &isDirectory),
+              isDirectory.boolValue else {
+            return .err(
+                code: "invalid_path",
+                message: String(
+                    localized: "socket.vscode.invalidPath",
+                    defaultValue: "VS Code workbench path must be an existing directory"
+                ),
+                data: ["path": directoryURL.path]
+            )
+        }
+        guard TerminalDirectoryOpenTarget.vscodeInline.applicationURL() != nil else {
+            return .err(
+                code: "vscode_not_installed",
+                message: String(
+                    localized: "socket.vscode.notInstalled",
+                    defaultValue: "Install Visual Studio Code to use the inline workbench"
+                ),
+                data: ["application": "Visual Studio Code"]
+            )
+        }
+
+        let focus = v2FocusAllowed(requested: v2Bool(params, "focus") ?? false)
+        guard AppDelegate.shared?.openDirectoryInInlineVSCode(
+            directoryURL,
+            tabManager: tabManager,
+            workspaceID: workspace.id,
+            focus: focus
+        ) == true else {
+            return .err(
+                code: "vscode_start_failed",
+                message: String(
+                    localized: "socket.vscode.startFailed",
+                    defaultValue: "Failed to start the inline VS Code workbench"
+                ),
+                data: ["path": directoryURL.path]
+            )
+        }
+
+        let windowID = v2ResolveWindowId(tabManager: tabManager)
+        return .ok([
+            "accepted": true,
+            "status": "starting",
+            "window_id": v2OrNull(windowID?.uuidString),
+            "window_ref": v2Ref(kind: .window, uuid: windowID),
+            "workspace_id": workspace.id.uuidString,
+            "workspace_ref": v2Ref(kind: .workspace, uuid: workspace.id),
+            "path": directoryURL.path,
+            "focus": focus,
+            "placement_strategy": "adaptive_right"
+        ])
+    }
+
     private func v2BrowserDisabledExternalOpenResult(
         rawURL: String? = nil,
         url: URL?,
@@ -6630,6 +6702,16 @@ class TerminalController {
     private func v2BrowserOpenSplit(params: [String: Any]) -> V2CallResult {
         guard let tabManager = v2ResolveTabManager(params: params) else {
             return .err(code: "unavailable", message: "TabManager not available", data: nil)
+        }
+        if let contentMode = v2String(params, "content_mode") {
+            return .err(
+                code: "invalid_params",
+                message: String(
+                    localized: "socket.vscode.contentModeRemoved",
+                    defaultValue: "content_mode is no longer supported; open the full VS Code workbench instead"
+                ),
+                data: ["content_mode": contentMode]
+            )
         }
         let urlStr = v2String(params, "url")
         // Resolve with the same smart logic as browser.navigate (URL, then search fallback)

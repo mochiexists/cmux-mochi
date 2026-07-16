@@ -7896,10 +7896,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
     func openDirectoryInInlineVSCode(
         _ directoryURL: URL,
         tabManager preferredTabManager: TabManager? = nil,
-        contentMode: BrowserPanelContentMode = .normal
+        workspaceID preferredWorkspaceID: UUID? = nil,
+        focus: Bool = true
     ) -> Bool {
-        let target: TerminalDirectoryOpenTarget = contentMode == .vscodeClaudeCode ? .vscodeClaudeInline : .vscodeInline
-        guard let vscodeApplicationURL = target.applicationURL() else {
+        guard let vscodeApplicationURL = TerminalDirectoryOpenTarget.vscodeInline.applicationURL() else {
             return false
         }
 
@@ -7909,16 +7909,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
             return false
         }
 
-        let targetWorkspaceId = targetTabManager.selectedWorkspace?.id
+        let targetWorkspaceId = preferredWorkspaceID
+            ?? targetTabManager.selectedWorkspace?.id
             ?? targetTabManager.tabs.first?.id
-            ?? targetTabManager.addWorkspace(select: true).id
+            ?? targetTabManager.addWorkspace(select: focus).id
+        guard targetTabManager.tabs.contains(where: { $0.id == targetWorkspaceId }) else {
+            return false
+        }
         let normalizedDirectoryURL = directoryURL.standardizedFileURL
-        let serveWebProfile: VSCodeServeWebProfile = contentMode == .vscodeClaudeCode ? .claudeCode : .standard
-
         VSCodeServeWebWorkspaceRegistry.shared.ensureServeWebURL(
             forWorkspaceID: targetWorkspaceId,
-            vscodeApplicationURL: vscodeApplicationURL,
-            profile: serveWebProfile
+            vscodeApplicationURL: vscodeApplicationURL
         ) { serveWebURL in
             guard let serveWebURL,
                   let openFolderURL = VSCodeServeWebURLBuilder.openFolderURL(
@@ -7933,7 +7934,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
                 inWorkspace: targetWorkspaceId,
                 url: openFolderURL,
                 preferSplitRight: true,
-                contentMode: contentMode
+                focus: focus
             ) != nil else {
                 NSSound.beep()
                 return
@@ -7943,32 +7944,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         return true
     }
 
-    @discardableResult
-    func openDirectoryInVSCodeClaude(
-        _ directoryURL: URL,
-        tabManager preferredTabManager: TabManager? = nil
-    ) -> Bool {
-        openDirectoryInInlineVSCode(
-            directoryURL,
-            tabManager: preferredTabManager,
-            contentMode: .vscodeClaudeCode
-        )
-    }
-
     func showOpenFolderInInlineVSCodePanel(tabManager preferredTabManager: TabManager? = nil) {
-        showOpenFolderInVSCodeServeWebPanel(tabManager: preferredTabManager, contentMode: .normal)
-    }
-
-    func showOpenFolderInVSCodeClaudePanel(tabManager preferredTabManager: TabManager? = nil) {
-        showOpenFolderInVSCodeServeWebPanel(tabManager: preferredTabManager, contentMode: .vscodeClaudeCode)
+        showOpenFolderInVSCodeServeWebPanel(tabManager: preferredTabManager)
     }
 
     private func showOpenFolderInVSCodeServeWebPanel(
-        tabManager preferredTabManager: TabManager? = nil,
-        contentMode: BrowserPanelContentMode
+        tabManager preferredTabManager: TabManager? = nil
     ) {
-        let target: TerminalDirectoryOpenTarget = contentMode == .vscodeClaudeCode ? .vscodeClaudeInline : .vscodeInline
-        guard target.isAvailable() else {
+        guard TerminalDirectoryOpenTarget.vscodeInline.isAvailable() else {
             NSSound.beep()
             return
         }
@@ -7984,25 +7967,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         panel.canChooseFiles = false
         panel.canChooseDirectories = true
         panel.allowsMultipleSelection = false
-        if contentMode == .vscodeClaudeCode {
-            panel.title = String(
-                localized: "menu.file.openFolderInVSCodeClaude.panelTitle",
-                defaultValue: "Open Folder in Claude Code (VS Code)"
-            )
-            panel.prompt = String(
-                localized: "menu.file.openFolderInVSCodeClaude.panelPrompt",
-                defaultValue: "Open in Claude Code"
-            )
-        } else {
-            panel.title = String(
-                localized: "menu.file.openFolderInVSCodeInline.panelTitle",
-                defaultValue: "Open Folder in VS Code (Inline)"
-            )
-            panel.prompt = String(
-                localized: "menu.file.openFolderInVSCodeInline.panelPrompt",
-                defaultValue: "Open in VS Code"
-            )
-        }
+        panel.title = String(
+            localized: "menu.file.openFolderInVSCodeInline.panelTitle",
+            defaultValue: "Open Folder in VS Code (Inline)"
+        )
+        panel.prompt = String(
+            localized: "menu.file.openFolderInVSCodeInline.panelPrompt",
+            defaultValue: "Open in VS Code"
+        )
         if let cwd = targetTabManager.selectedWorkspace?.currentDirectory,
            !cwd.isEmpty {
             panel.directoryURL = URL(fileURLWithPath: cwd)
@@ -8010,7 +7982,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
 
         if panel.runModal() == .OK,
            let url = panel.url,
-           !openDirectoryInInlineVSCode(url, tabManager: targetTabManager, contentMode: contentMode) {
+           !openDirectoryInInlineVSCode(url, tabManager: targetTabManager) {
             NSSound.beep()
         }
     }

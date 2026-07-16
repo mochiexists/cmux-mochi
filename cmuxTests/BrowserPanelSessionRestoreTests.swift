@@ -49,8 +49,12 @@ struct BrowserPanelSessionRestoreTests {
     }
 
     @Test
-    func sessionRestorePreservesVSCodeClaudeContentMode() throws {
+    func sessionRestoreMigratesLegacyVSCodeClaudeContentModeToFullWorkbench() throws {
         let url = try #require(URL(string: "http://127.0.0.1:8780/?folder=/tmp/project"))
+        let legacyMode = try JSONDecoder().decode(
+            BrowserPanelContentMode.self,
+            from: Data("\"vscode_claude_code\"".utf8)
+        )
         let panel = BrowserPanel(workspaceId: UUID())
         defer { panel.close() }
 
@@ -61,13 +65,13 @@ struct BrowserPanelSessionRestoreTests {
             pageZoom: 1.0,
             developerToolsVisible: false,
             omnibarVisible: true,
-            contentMode: .vscodeClaudeCode,
+            contentMode: legacyMode,
             backHistoryURLStrings: nil,
             forwardHistoryURLStrings: nil
         ))
 
-        #expect(panel.contentMode == .vscodeClaudeCode)
-        #expect(panel.isOmnibarVisible == false)
+        #expect(panel.contentMode == .normal)
+        #expect(panel.isOmnibarVisible == true)
         #expect(panel.currentURL == url)
     }
 }
