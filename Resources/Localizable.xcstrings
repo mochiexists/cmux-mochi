@@ -80455,7 +80455,7 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Quit cmux?"
+            "value": "Quit cmux Mochi?"
           }
         },
         "es": {
@@ -107976,7 +107976,7 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "About cmux"
+            "value": "About cmux Mochi"
           }
         },
         "es": {
@@ -118706,7 +118706,7 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Quit cmux"
+            "value": "Quit cmux Mochi"
           }
         },
         "es": {
@@ -139182,7 +139182,7 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Restart cmux to apply"
+            "value": "Restart cmux Mochi to apply"
           }
         },
         "es": {
