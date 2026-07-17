@@ -1962,12 +1962,12 @@ _No user-facing changes._
 ## [0.24.0] - 2026-02-09
 
 ### Changed
-- Update bundle identifier to `com.cmuxterm.app` for consistency
+- Update bundle identifier to `com.cmux-mochi` for consistency
 
 ## [0.23.0] - 2026-02-09
 
 ### Changed
-- Rename app to cmux — new app name, socket paths, Homebrew tap, and CLI binary name (bundle ID remains `com.cmuxterm.app` for Sparkle update continuity)
+- Rename app to cmux — new app name, socket paths, Homebrew tap, and CLI binary name (bundle ID remains `com.cmux-mochi` for Sparkle update continuity)
 - Sidebar now shows tab status as text instead of colored dots, with instant git HEAD change detection
 
 ### Fixed
