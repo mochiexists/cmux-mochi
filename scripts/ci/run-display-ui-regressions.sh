@@ -49,7 +49,7 @@ cleanup_display_churn() {
   release_lock "$DRC_DISPLAY_LOCK_DIR" "$DRC_DISPLAY_LOCK_TOKEN"
   DRC_DISPLAY_LOCK_DIR=""
   DRC_DISPLAY_LOCK_TOKEN=""
-  pkill -x "cmux DEV" 2>/dev/null || true
+  pkill -x "cmux Mochi DEV" 2>/dev/null || true
   rm -f "$DRC_DIAG_PATH" "$DRC_DISPLAY_READY" "$DRC_DISPLAY_ID_PATH" "$DRC_DISPLAY_START" "$DRC_DISPLAY_DONE" "$DRC_HELPER_LOG" "$DRC_XCODEBUILD_LOG"
   rm -f /tmp/cmux-ui-test-prelaunch.json /tmp/cmux-ui-test-display-harness.json
 }
@@ -90,7 +90,7 @@ enable_xctest_automation_mode() {
 }
 
 find_app_binary() {
-  find "$CMUX_DERIVED_DATA_PATH" -path "*/Build/Products/Debug/cmux DEV.app/Contents/MacOS/cmux DEV" -print -quit 2>/dev/null || true
+  find "$CMUX_DERIVED_DATA_PATH" -path "*/Build/Products/Debug/cmux Mochi DEV.app/Contents/MacOS/cmux Mochi DEV" -print -quit 2>/dev/null || true
 }
 
 run_display_resolution_churn() {
@@ -197,7 +197,7 @@ run_display_resolution_churn() {
 
     if [ "$app_ready" != "true" ]; then
       echo "Attempt $attempt: App not ready after 15s"
-      pkill -x "cmux DEV" 2>/dev/null || true
+      pkill -x "cmux Mochi DEV" 2>/dev/null || true
       kill "$DRC_HELPER_PID" 2>/dev/null || true
       if [ "$attempt" -eq 2 ]; then
         echo "Display resolution UI regression failed after 2 attempts" >&2
