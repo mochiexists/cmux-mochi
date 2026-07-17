@@ -71,7 +71,7 @@ image currently carries Xcode 26 only and cannot build the SDK 15 helper.
 Check current values:
 
 ```bash
-gh variable list --repo manaflow-ai/cmux
+gh variable list --repo mochiexists/cmux-mochi
 ```
 
 ## Manual runs
