@@ -5536,7 +5536,7 @@ struct CMUXCLI {
 
     // MARK: - Markdown Commands
 
-    /// `cmux artifact new [--title <t>] [--kind react|html] [--direction <dir>]
+    /// `cmux artifact new [--title <t>] [--kind react|html|svg|mermaid|code] [--direction <dir>]
     /// [--surface <id>] [--workspace <id>] [--window <id>] [--focus <bool>]`
     /// — scaffold a new artifact in the global store and open it beside the
     /// (current or named) surface.
@@ -5549,20 +5549,124 @@ struct CMUXCLI {
         var args = commandArgs
         let (titleOpt, argsAfterTitle) = parseOption(args, name: "--title")
         let (kindOpt, argsAfterKind) = parseOption(argsAfterTitle, name: "--kind")
-        let (workspaceOpt, argsAfterWorkspace) = parseOption(argsAfterKind, name: "--workspace")
+        let (templateOpt, argsAfterTemplate) = parseOption(argsAfterKind, name: "--template")
+        let (repoOpt, argsAfterRepo) = parseOption(argsAfterTemplate, name: "--repo")
+        let (limitOpt, argsAfterLimit) = parseOption(argsAfterRepo, name: "--limit")
+        let (workspaceOpt, argsAfterWorkspace) = parseOption(argsAfterLimit, name: "--workspace")
         let (windowOpt, argsAfterWindow) = parseOption(argsAfterWorkspace, name: "--window")
         let (surfaceOpt, argsAfterSurface) = parseOption(argsAfterWindow, name: "--surface")
         let (directionOpt, argsAfterDirection) = parseOption(argsAfterSurface, name: "--direction")
         let (focusOpt, argsAfterFocus) = parseOption(argsAfterDirection, name: "--focus")
         args = argsAfterFocus
 
-        // Only "new" is supported today; allow it explicitly or implicitly.
-        if let first = args.first, first.lowercased() == "new" {
+        let subcommand: String
+        if let first = args.first {
+            let lower = first.lowercased()
+            if ["new", "open", "list"].contains(lower) {
+                subcommand = lower
+                args = Array(args.dropFirst())
+            } else if first.hasPrefix("-") {
+                throw CLIError(message: "artifact: unknown flag '\(first)'. Usage: cmux artifact <new|open|list> [options]")
+            } else {
+                subcommand = "open"
+            }
+        } else {
+            subcommand = "new"
+        }
+
+        if subcommand == "list" {
+            if let unknown = args.first {
+                throw CLIError(message: "artifact list: unexpected argument '\(unknown)'. Usage: cmux artifact list [--repo <path>] [--limit N]")
+            }
+            var params: [String: Any] = [:]
+            if let repoOpt, !repoOpt.isEmpty {
+                let expanded = (repoOpt as NSString).expandingTildeInPath
+                params["repo"] = FileManager.default.fileExists(atPath: expanded) ? resolvePath(repoOpt) : expanded
+            }
+            if let limitOpt, !limitOpt.isEmpty {
+                guard let limit = Int(limitOpt), limit >= 0 else {
+                    throw CLIError(message: "artifact list: --limit must be a non-negative integer")
+                }
+                params["limit"] = limit
+            }
+            let payload = try client.sendV2(method: "artifact.list", params: params)
+            if jsonOutput {
+                print(jsonString(formatIDs(payload, mode: idFormat)))
+            } else {
+                let records = payload["records"] as? [[String: Any]] ?? []
+                if records.isEmpty {
+                    print("No artifacts")
+                } else {
+                    for record in records {
+                        let id = record["id"] as? String ?? ""
+                        let kind = record["kind"] as? String ?? ""
+                        let createdAt = record["created_at"] as? String ?? ""
+                        let title = record["title"] as? String ?? ""
+                        let path = record["file_path"] as? String ?? ""
+                        print("\(id)\t\(kind)\t\(createdAt)\t\(title)\t\(path)")
+                    }
+                }
+            }
+            return
+        }
+
+        if subcommand == "open" {
+            guard let rawTarget = args.first, !rawTarget.isEmpty else {
+                throw CLIError(message: "artifact open requires an id or path. Usage: cmux artifact open <id|path> [options]")
+            }
+            let trailing = Array(args.dropFirst())
+            if let extra = trailing.first {
+                throw CLIError(message: "artifact open: unexpected argument '\(extra)'. Usage: cmux artifact open <id|path> [options]")
+            }
+
+            var params: [String: Any] = ["direction": directionOpt ?? "right"]
+            let expandedTarget = (rawTarget as NSString).expandingTildeInPath
+            let absoluteTarget = resolvePath(rawTarget)
+            if FileManager.default.fileExists(atPath: expandedTarget) || FileManager.default.fileExists(atPath: absoluteTarget) {
+                params["path"] = absoluteTarget
+            } else {
+                params["target"] = rawTarget
+            }
+            if let kindOpt, !kindOpt.isEmpty {
+                params["kind"] = kindOpt.lowercased()
+            }
+            let surfaceRaw = surfaceOpt ?? ProcessInfo.processInfo.environment["CMUX_SURFACE_ID"]
+            if let surfaceRaw {
+                if let surface = try normalizeSurfaceHandle(surfaceRaw, client: client) {
+                    params["surface_id"] = surface
+                }
+            }
+            let workspaceRaw = workspaceOpt ?? (windowOpt == nil ? ProcessInfo.processInfo.environment["CMUX_WORKSPACE_ID"] : nil)
+            if let workspaceRaw {
+                if let workspace = try normalizeWorkspaceHandle(workspaceRaw, client: client) {
+                    params["workspace_id"] = workspace
+                }
+            }
+            if let windowRaw = windowOpt {
+                if let window = try normalizeWindowHandle(windowRaw, client: client) {
+                    params["window_id"] = window
+                }
+            }
+            try applyFocusOption(focusOpt, defaultValue: false, to: &params)
+
+            let payload = try client.sendV2(method: "artifact.open", params: params)
+            if jsonOutput {
+                print(jsonString(formatIDs(payload, mode: idFormat)))
+            } else {
+                let surfaceText = formatHandle(payload, kind: "surface", idFormat: idFormat) ?? "unknown"
+                let paneText = formatHandle(payload, kind: "pane", idFormat: idFormat) ?? "unknown"
+                let filePath = (payload["file_path"] as? String) ?? ""
+                print("OK surface=\(surfaceText) pane=\(paneText) path=\(filePath)")
+            }
+            return
+        }
+
+        if subcommand == "new", let first = args.first, first.lowercased() == "new" {
             args = Array(args.dropFirst())
         }
         if let unknown = args.first {
             throw CLIError(
-                message: "artifact: unexpected argument '\(unknown)'. Usage: cmux artifact new [--title <t>] [--kind react|html] [--direction right|down|left|up] [--surface <id>] [--focus <true|false>]"
+                message: "artifact new: unexpected argument '\(unknown)'. Usage: cmux artifact new [--title <t>] [--kind react|html|svg|mermaid|code] [--direction right|down|left|up] [--surface <id>] [--focus <true|false>]"
             )
         }
 
@@ -5572,6 +5676,9 @@ struct CMUXCLI {
         }
         if let kindOpt, !kindOpt.isEmpty {
             params["kind"] = kindOpt.lowercased()
+        }
+        if let templateOpt, !templateOpt.isEmpty {
+            params["template"] = templateOpt
         }
         let surfaceRaw = surfaceOpt ?? ProcessInfo.processInfo.environment["CMUX_SURFACE_ID"]
         if let surfaceRaw {
@@ -17430,15 +17537,22 @@ struct CMUXCLI {
         case "artifact":
             return """
             Usage: cmux artifact new [options]
+                   cmux artifact open <id|path> [options]
+                   cmux artifact list [options]
 
-            Scaffold a new live artifact (a Claude-artifacts-style React/HTML pane)
+            Scaffold a new live artifact (a Claude-artifacts-style rendered pane)
             in the global store (~/.config/cmux/artifacts/) and open it beside the
             current surface. The artifact file hot-reloads in the pane as you (or an
-            agent) edit it.
+            agent) edit it. Existing artifacts can be reopened by short id,
+            store-relative path, absolute path, or filename.
 
             Options:
               --title <text>               Artifact title (used for the filename + heading)
-              --kind <react|html>          Artifact kind (default: react)
+              --kind <react|html|svg|mermaid|code|file>
+                                            Artifact kind (default: react)
+              --template <name>            Seed from a bundled sample (e.g. 'showcase', 'live-events')
+              --repo <path>                Filter list to artifacts from a repo
+              --limit N                    Limit list results
               --workspace <id|ref|index>   Target workspace (default: $CMUX_WORKSPACE_ID)
               --surface <id|ref|index>     Surface to open beside (default: $CMUX_SURFACE_ID / focused)
               --window <id|ref|index>      Target window
@@ -17448,7 +17562,13 @@ struct CMUXCLI {
             Examples:
               cmux artifact new
               cmux artifact new --title "Pricing table" --kind react
-              cmux artifact new --direction down --focus true
+              cmux artifact new --title "Flow" --kind mermaid
+              cmux artifact new --template showcase --focus true
+              cmux artifact new --template live-events --focus true
+              cmux artifact open ./diagram.svg --focus true
+              cmux artifact open ./report.pdf --focus true
+              cmux artifact open f6b2ef0a --focus true
+              cmux artifact list --repo . --limit 10
             """
         default:
             return nil
@@ -35415,7 +35535,7 @@ export default CMUXSessionRestore;
         print("  \(mochi)•\(reset) Conductor — drive visible Codex and Claude worker panes from cmux")
         print("    \(mochi)-\(reset) bundled Conductor skill, cmux whoami / identify routing, and workspace capture")
         print("    \(mochi)-\(reset) surface-attributed lifecycle events plus send guard for live non-agent jobs")
-        print("  \(mochi)•\(reset) Artifact panes — cmux artifact new for React, HTML, SVG, Mermaid, code, and file artifacts")
+        print("  \(mochi)•\(reset) Artifact panes — cmux artifact new/open/list for React, HTML, SVG, Mermaid, code, and file artifacts")
         print("  \(mochi)•\(reset) File-backed tabs — Reveal in Finder, Copy File, and Copy Path for markdown, artifact, file-preview, local-file browser, and code tabs")
         print("  \(mochi)•\(reset) Navigation polish — Cmd+Shift+T restores closed tabs/workspaces, plus sidebar spring-load switching while dragging")
         print("  \(mochi)•\(reset) Privacy Frost — blur sensitive workspaces or groups from the sidebar to redact them on screen")

@@ -171,6 +171,7 @@ Environment:
 | `focus-webview` | Legacy alias for `browser focus-webview`. |
 | `is-webview-focused` | Legacy alias for `browser is-webview-focused`. |
 | `markdown` | Open a markdown file in a formatted viewer panel with live reload. |
+| `artifact` | Create, open, and list Claude-style artifact panes. `artifact new` scaffolds React/HTML/SVG/Mermaid/code artifacts in `~/.config/cmux/artifacts/`; `artifact open <id\|path>` opens indexed artifacts or compatible existing files. Code artifacts render read-only with syntax highlighting. Generated document files such as PDF/DOCX/XLSX/PPTX open as file artifacts with Open File and Save to Downloads actions. Artifact iframe storage persists under the artifact store; source revisions are snapshotted for history. Markdown remains under `cmux markdown`. |
 | `vm-pty-attach` | Internal VM PTY attach command. |
 | `vm-ssh-attach` | Hidden compatibility alias for older VM workspaces. |
 | `vm-pty-connect` | Internal helper that connects to a VM PTY from a config file. |
