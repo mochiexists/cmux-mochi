@@ -1800,6 +1800,7 @@ C0DE71B10000000000000001 /* AppDelegate+AgentChatNotifications.swift in Sources 
 		C0DE00000000000000000C84 /* TerminalController+WorkspaceCreate.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE00000000000000000C83 /* TerminalController+WorkspaceCreate.swift */; };
 		C0DE00000000000000000C8B /* TerminalController+WorkspaceGroupAction.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE00000000000000000C8A /* TerminalController+WorkspaceGroupAction.swift */; };
 		C0DE00000000000000000C89 /* TerminalController+WorkspaceMove.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE00000000000000000C88 /* TerminalController+WorkspaceMove.swift */; };
+		F0AD00000000000000000119 /* TerminalController+WorkspaceScreenshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0AD00000000000000000109 /* TerminalController+WorkspaceScreenshot.swift */; };
 		A5001007 /* TerminalController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A5001019 /* TerminalController.swift */; };
 		C0DE00000000000000000C32 /* TerminalControllerControlCommandContext.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE00000000000000000C31 /* TerminalControllerControlCommandContext.swift */; };
 		C7A50A000000000000000002 /* TerminalControllerPaneResizeSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7A50A000000000000000001 /* TerminalControllerPaneResizeSupport.swift */; };
@@ -3866,6 +3867,7 @@ C0DE71B10000000000000002 /* AppDelegate+AgentChatNotifications.swift */ = {isa =
 		C0DE00000000000000000C83 /* TerminalController+WorkspaceCreate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TerminalController+WorkspaceCreate.swift"; sourceTree = "<group>"; };
 		C0DE00000000000000000C8A /* TerminalController+WorkspaceGroupAction.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TerminalController+WorkspaceGroupAction.swift"; sourceTree = "<group>"; };
 		C0DE00000000000000000C88 /* TerminalController+WorkspaceMove.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TerminalController+WorkspaceMove.swift"; sourceTree = "<group>"; };
+		F0AD00000000000000000109 /* TerminalController+WorkspaceScreenshot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TerminalController+WorkspaceScreenshot.swift"; sourceTree = "<group>"; };
 		A5001019 /* TerminalController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalController.swift; sourceTree = "<group>"; };
 		C0DE00000000000000000C31 /* TerminalControllerControlCommandContext.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalControllerControlCommandContext.swift; sourceTree = "<group>"; };
 		C7A50A000000000000000001 /* TerminalControllerPaneResizeSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalControllerPaneResizeSupport.swift; sourceTree = "<group>"; };
@@ -4471,6 +4473,7 @@ C0DE71B10000000000000002 /* AppDelegate+AgentChatNotifications.swift */ = {isa =
 			isa = PBXGroup;
 			children = (
 				A11CE0030000000000000001 /* AboutLicenseContent.swift */,
+				F0AD00000000000000000109 /* TerminalController+WorkspaceScreenshot.swift */,
 				F0AD00000000000000000107 /* AppSentryStartupPolicy.swift */,
 				F0AD00000000000000000103 /* CmuxSkillsBundleInstaller.swift */,
 				F0AD00000000000000000101 /* ArtifactExternalPreview.swift */,
@@ -7928,6 +7931,7 @@ C0DE71B10000000000000002 /* AppDelegate+AgentChatNotifications.swift */ = {isa =
 				C0DE00000000000000000C84 /* TerminalController+WorkspaceCreate.swift in Sources */,
 				C0DE00000000000000000C8B /* TerminalController+WorkspaceGroupAction.swift in Sources */,
 				C0DE00000000000000000C89 /* TerminalController+WorkspaceMove.swift in Sources */,
+				F0AD00000000000000000119 /* TerminalController+WorkspaceScreenshot.swift in Sources */,
 				A5001007 /* TerminalController.swift in Sources */,
 				C0DE00000000000000000C32 /* TerminalControllerControlCommandContext.swift in Sources */,
 				C7A50A000000000000000002 /* TerminalControllerPaneResizeSupport.swift in Sources */,

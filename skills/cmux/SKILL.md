@@ -37,6 +37,12 @@ cmux reorder-surface --surface surface:7 --before surface:3
 cmux trigger-flash --surface surface:7
 ```
 
+To capture one image of the whole visible workspace (its panes plus the tab bar, with a per-pane rect map in the JSON payload; the left sidebar is excluded by default, `--sidebar include` to keep it):
+
+```bash
+cmux capture-workspace --workspace "${CMUX_WORKSPACE_ID:-}" --out /tmp/workspace.png
+```
+
 ## Settings and Docs
 
 Use `cmux docs settings` before changing cmux-owned settings. It prints the docs URL, schema URL, raw GitHub resources, cmux.json paths, and reload command.
