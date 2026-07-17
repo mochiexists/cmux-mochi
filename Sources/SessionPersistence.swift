@@ -1754,6 +1754,9 @@ struct SessionWorkspaceSnapshot: Codable, Sendable {
     var customDescription: String?
     var customColor: String?
     var isPinned: Bool
+    /// Temporary visual privacy mode for redacting a workspace row and blocking selection.
+    /// Optional so older session manifests decode unchanged.
+    var isPrivacyBlurred: Bool? = nil
     var groupId: UUID? = nil
     var isManuallyUnread: Bool? = nil
     var hasUnreadIndicator: Bool? = nil
@@ -1807,6 +1810,9 @@ struct SessionWorkspaceGroupSnapshot: Codable, Sendable, Equatable {
     /// this field fall back to "first member by tab order".
     var anchorMemberIndex: Int? = nil
     var isPinned: Bool? = nil
+    /// Temporary visual privacy mode for redacting a group and blocking selection.
+    /// Optional so older session manifests decode unchanged.
+    var isPrivacyBlurred: Bool? = nil
     var customColor: String? = nil
     var iconSymbol: String? = nil
 }

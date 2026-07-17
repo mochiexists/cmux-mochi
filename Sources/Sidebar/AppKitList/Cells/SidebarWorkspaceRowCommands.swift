@@ -40,7 +40,10 @@ struct SidebarWorkspaceRowCommands {
 #if DEBUG
         cmuxDebugLog("sidebar.select.enter workspace=\(tab.id.uuidString.prefix(5)) hasTabManager=\(tabManager != nil)")
 #endif
-        guard let tabManager else { return }
+        guard let tabManager,
+              !tabManager.isWorkspaceEffectivelyPrivacyBlurred(tab) else {
+            return
+        }
         let isCommand = modifiers.contains(.command)
         let isShift = modifiers.contains(.shift)
         let wasSelected = tabManager.selectedTabId == tab.id
@@ -73,6 +76,7 @@ struct SidebarWorkspaceRowCommands {
                 uniqueKeysWithValues: tabManager.workspaceGroups.map { ($0.id, $0.anchorWorkspaceId) }
             )
             let rangeIds = tabManager.tabs[lower...upper].compactMap { tab -> UUID? in
+                guard !tabManager.isWorkspaceEffectivelyPrivacyBlurred(tab) else { return nil }
                 if let gid = tab.groupId,
                    collapsedGroupIds.contains(gid),
                    anchorIdsByGroup[gid] != tab.id {

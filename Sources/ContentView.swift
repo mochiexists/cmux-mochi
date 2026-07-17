@@ -11570,6 +11570,7 @@ struct VerticalTabsSidebar: View, Equatable {
             index: input.index,
             snapshot: input.workspace,
             settings: input.settings,
+            isPrivacyBlurred: input.isPrivacyBlurred,
             isActive: input.isActive,
             isMultiSelected: input.isMultiSelected,
             canCloseWorkspace: input.canCloseWorkspace,
@@ -13632,6 +13633,10 @@ struct VerticalTabsSidebar: View, Equatable {
                 showsAgentActivity: renderContext.showsAgentActivity
             )
         }
+        let groupIsPrivacyBlurred = tab.groupId.flatMap {
+            renderContext.workspaceGroupById[$0]?.isPrivacyBlurred
+        } ?? false
+        let isPrivacyBlurred = workspaceSnapshot.isPrivacyBlurred || groupIsPrivacyBlurred
 
         let todoStatusResolution = WorkspaceTaskStatusOverride.effectiveStatus(
             override: tab.todoState.statusOverride,
@@ -13650,6 +13655,7 @@ struct VerticalTabsSidebar: View, Equatable {
             index: index,
             workspaceCount: renderContext.workspaceCount,
             workspace: workspaceSnapshot,
+            isPrivacyBlurred: isPrivacyBlurred,
             isActive: tabManager.selectedTabId == tab.id,
             isMultiSelected: selectedTabIds.contains(tab.id),
             hasUserCustomTitle: tab.effectiveCustomTitleSource == .user,
@@ -13835,6 +13841,9 @@ struct VerticalTabsSidebar: View, Equatable {
                 )
                 syncWorkspaceRowSelectionAfterMutation()
             },
+            setPrivacyBlurred: { targetIds, isBlurred in
+                tabManager.setWorkspacePrivacyBlurred(targetIds, isBlurred: isBlurred)
+            },
             createEmptyGroup: {
                 _ = AppDelegate.shared?.createEmptyWorkspaceGroup(tabManager: tabManager)
             },
@@ -13933,6 +13942,7 @@ struct VerticalTabsSidebar: View, Equatable {
             },
             checklist: checklistActions,
             onDragStart: {
+                guard !input.isPrivacyBlurred else { return NSItemProvider() }
 #if DEBUG
                 cmuxDebugLog("sidebar.onDrag tab=\(tabId.uuidString.prefix(5))")
 #endif
@@ -14581,6 +14591,7 @@ struct TabItemView: View, Equatable {
     var workspaceSnapshot: SidebarWorkspaceSnapshotBuilder.Snapshot { snapshot.workspace }
     var workspaceId: UUID { snapshot.workspaceId }
     var index: Int { snapshot.index }
+    var isPrivacyBlurred: Bool { snapshot.isPrivacyBlurred }
     var isActive: Bool { snapshot.isActive }
     var isMultiSelected: Bool { snapshot.isMultiSelected }
     var workspaceShortcutDigit: Int? { snapshot.workspaceShortcutDigit }
@@ -14902,13 +14913,22 @@ struct TabItemView: View, Equatable {
         let rowBackgroundColor = backgroundColor(for: workspaceSnapshot)
         let rowRailColor = railColor(for: workspaceSnapshot)
         let accessibilityTitle = accessibilityTitle(for: workspaceSnapshot)
+        let privacyBlurredTitle = String(
+            localized: "sidebar.workspace.privacyBlurred",
+            defaultValue: "Private Workspace"
+        )
         let closeWorkspaceTooltip = String(localized: "sidebar.closeWorkspace.tooltip", defaultValue: "Close Workspace")
         let protectedWorkspaceTooltip = String(
             localized: "sidebar.pinnedWorkspaceProtected.tooltip",
             defaultValue: "Pinned workspace. Closing requires confirmation."
         )
         let closeButtonTooltip = workspaceSnapshot.isPinned ? protectedWorkspaceTooltip : KeyboardShortcutSettings.Action.closeWorkspace.tooltip(closeWorkspaceTooltip)
-        let accessibilityHintText = String(localized: "sidebar.workspace.accessibilityHint", defaultValue: "Activate to focus this workspace. Drag to reorder, or use Move Up and Move Down actions.")
+        let accessibilityHintText = isPrivacyBlurred
+            ? String(
+                localized: "sidebar.workspace.privacyBlurred.accessibilityHint",
+                defaultValue: "Right-click for workspace actions."
+            )
+            : String(localized: "sidebar.workspace.accessibilityHint", defaultValue: "Activate to focus this workspace. Drag to reorder, or use Move Up and Move Down actions.")
         let moveUpActionText = String(localized: "sidebar.workspace.moveUpAction", defaultValue: "Move Up")
         let moveDownActionText = String(localized: "sidebar.workspace.moveDownAction", defaultValue: "Move Down")
         let latestNotificationSubtitle = latestNotificationText
@@ -14921,7 +14941,7 @@ struct TabItemView: View, Equatable {
         let displayedSubtitle = effectiveSubtitle?.sidebarBoundedDisplayString(maxDisplayedLines: subtitleLineLimit, maxDisplayedCharacters: 4096)
         let detailVisibility = visibleAuxiliaryDetails
         let titleLineLimit = settings.wrapsWorkspaceTitles ? Self.maxWrappedTitleLines : 1
-        let displayedTitle = workspaceSnapshot.title.sidebarBoundedDisplayString(
+        let displayedTitle = (isPrivacyBlurred ? privacyBlurredTitle : workspaceSnapshot.title).sidebarBoundedDisplayString(
             maxDisplayedLines: titleLineLimit,
             maxDisplayedCharacters: Self.maxDisplayedTitleCharacters
         )
@@ -15355,7 +15375,18 @@ struct TabItemView: View, Equatable {
         .shortcutHintVisibilityAnimation(value: showsWorkspaceShortcutHint)
         .padding(.horizontal, SidebarWorkspaceListMetrics.rowOuterHorizontalPadding)
         .contentShape(Rectangle())
+        .disabled(isPrivacyBlurred)
         .opacity(isBeingDragged ? 0.6 : 1)
+        .overlay {
+            if isPrivacyBlurred {
+                SidebarPrivacyFrostedSurface(
+                    cornerRadius: 6,
+                    tint: Color.secondary.opacity(0.12),
+                    stroke: Color.secondary.opacity(0.24)
+                )
+                .allowsHitTesting(false)
+            }
+        }
         .overlay(alignment: .top) {
             SidebarWorkspaceTopDropIndicator(
                 isVisible: topDropIndicatorVisible,
@@ -15388,15 +15419,15 @@ struct TabItemView: View, Equatable {
             selectTargetAfterDrop: actions.selectAfterBonsplitDrop
         ))
         .onTapGesture {
-            if !isEditing { updateSelection() }
+            if !isEditing, !isPrivacyBlurred { updateSelection() }
         }
         .simultaneousGesture(
             TapGesture(count: 2).onEnded {
-                guard !isEditing else { return }
+                guard !isEditing, !isPrivacyBlurred else { return }
                 beginInlineRename()
             }
         )
-        .safeHelp(workspaceSnapshot.title)
+        .safeHelp(isPrivacyBlurred ? privacyBlurredTitle : workspaceSnapshot.title)
         .modifier(SidebarRowAccessibilityModifier(
             isEditing: isEditing,
             label: accessibilityTitle,
@@ -15424,6 +15455,7 @@ struct TabItemView: View, Equatable {
         rowView
     }
     private func beginInlineRename() {
+        guard !isPrivacyBlurred else { return }
         updateSelection()
         renameDraft = workspaceSnapshot.title
         renameBaselineHadUserCustomTitle = snapshot.hasUserCustomTitle
@@ -15475,7 +15507,10 @@ struct TabItemView: View, Equatable {
     private func accessibilityTitle(
         for workspaceSnapshot: SidebarWorkspaceSnapshotBuilder.Snapshot
     ) -> String {
-        String(localized: "accessibility.workspacePosition", defaultValue: "\(workspaceSnapshot.title), workspace \(index + 1) of \(accessibilityWorkspaceCount)")
+        let title = isPrivacyBlurred
+            ? String(localized: "sidebar.workspace.privacyBlurred", defaultValue: "Private Workspace")
+            : workspaceSnapshot.title
+        return String(localized: "accessibility.workspacePosition", defaultValue: "\(title), workspace \(index + 1) of \(accessibilityWorkspaceCount)")
     }
 
     func moveBy(_ delta: Int) {
@@ -15483,6 +15518,7 @@ struct TabItemView: View, Equatable {
     }
 
     private func updateSelection() {
+        guard !isPrivacyBlurred else { return }
         actions.select(NSEvent.modifierFlags)
     }
 

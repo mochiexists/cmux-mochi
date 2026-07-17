@@ -268,6 +268,9 @@ extension TerminalController: ControlSurfaceContext {
         guard let ws = resolveSurfaceWorkspace(routing: routing, tabManager: tabManager) else {
             return .workspaceNotFound
         }
+        guard tabManager.canSelectWorkspace(ws) else {
+            return .workspaceNotFound
+        }
         switch ws.remoteTmuxControlSurfaceTarget(surfaceID: surfaceID) {
         case .pane(let location):
             guard focusRemoteTmuxControlPane(

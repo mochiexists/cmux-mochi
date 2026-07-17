@@ -15,6 +15,7 @@ struct SidebarWorkspaceGroupRowSnapshot {
     let tintHex: String?
     let isCollapsed: Bool
     let isPinned: Bool
+    let isPrivacyBlurred: Bool
     let isAnchorActive: Bool
     let memberCount: Int
     let anchorUnreadCount: Int

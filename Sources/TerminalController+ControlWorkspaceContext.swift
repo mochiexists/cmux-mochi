@@ -107,6 +107,9 @@ extension TerminalController: ControlWorkspaceContext {
         guard let ws = tabManager.tabs.first(where: { $0.id == workspaceID }) else {
             return .notFound
         }
+        guard tabManager.canSelectWorkspace(ws) else {
+            return .notFound
+        }
         // If this workspace belongs to another window, bring it forward so focus
         // is visible.
         let windowId = AppDelegate.shared?.windowId(for: tabManager)
@@ -149,10 +152,14 @@ extension TerminalController: ControlWorkspaceContext {
         guard let dstTM = AppDelegate.shared?.tabManagerFor(windowId: windowID) else {
             return .windowNotFound
         }
+        guard let sourceWorkspace = srcTM.tabs.first(where: { $0.id == workspaceID }) else {
+            return .workspaceNotFound
+        }
+        let canFocusMovedWorkspace = srcTM.canSelectWorkspace(sourceWorkspace)
         guard let ws = srcTM.detachWorkspace(tabId: workspaceID) else {
             return .workspaceNotFound
         }
-        let focus = v2FocusAllowed(requested: focusRequested)
+        let focus = v2FocusAllowed(requested: focusRequested) && canFocusMovedWorkspace
         dstTM.attachWorkspace(ws, select: focus)
         if focus {
             _ = AppDelegate.shared?.focusMainWindow(windowId: windowID)

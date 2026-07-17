@@ -150,6 +150,9 @@ extension TerminalController: ControlPaneContext {
         guard let ws = resolveWorkspace(routing: routing, tabManager: tabManager) else {
             return .workspaceNotFound
         }
+        guard tabManager.canSelectWorkspace(ws) else {
+            return .workspaceNotFound
+        }
         return controlPaneFocus(workspace: ws, paneID: paneID, tabManager: tabManager)
     }
 

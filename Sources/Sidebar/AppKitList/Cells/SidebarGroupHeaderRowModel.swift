@@ -14,6 +14,7 @@ struct SidebarGroupHeaderRowModel: Equatable {
     let tintHex: String?
     let isCollapsed: Bool
     let isPinned: Bool
+    let isPrivacyBlurred: Bool
     let isAnchorActive: Bool
     let memberCount: Int
     let anchorUnreadCount: Int
@@ -46,6 +47,7 @@ struct SidebarGroupHeaderRowActions {
     let onRunResolvedItem: (CmuxResolvedConfigMenuAction) -> Void
     let onRename: () -> Void
     let onTogglePinned: () -> Void
+    let onTogglePrivacyBlurred: () -> Void
     let onMarkRead: () -> Void
     let onMarkUnread: () -> Void
     let onClearLatestNotifications: () -> Void

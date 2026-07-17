@@ -25,6 +25,7 @@ final class SidebarGroupHeaderTableCellView: NSTableCellView {
     private let topDropIndicator = NSView()
     private let bottomDropIndicator = NSView()
     private let hintPill = SidebarShortcutHintPillView()
+    private let privacyFrostView = SidebarPrivacyFrostedEffectView()
 
     private var model: SidebarGroupHeaderRowModel?
     private var actions: SidebarGroupHeaderRowActions?
@@ -85,6 +86,7 @@ final class SidebarGroupHeaderTableCellView: NSTableCellView {
         addSubview(bottomDropIndicator)
 
         addSubview(hintPill)
+        addSubview(privacyFrostView)
         installFocusClickRecognizer()
     }
 
@@ -151,7 +153,10 @@ final class SidebarGroupHeaderTableCellView: NSTableCellView {
         )
         iconImageView.contentTintColor = model.tintHex.flatMap { NSColor(hex: $0) } ?? .secondaryLabelColor
 
-        nameField.stringValue = model.name
+        let displayedName = model.isPrivacyBlurred
+            ? String(localized: "workspaceGroup.privacyBlurred", defaultValue: "Private Group")
+            : model.name
+        nameField.stringValue = displayedName
         nameField.font = .systemFont(
             ofSize: GlobalFontMagnification.scaledSize(metrics.nameFontSize, percent: percent),
             weight: .semibold
@@ -198,20 +203,26 @@ final class SidebarGroupHeaderTableCellView: NSTableCellView {
         bottomDropIndicator.isHidden = !model.bottomDropIndicatorVisible
 
         hintPill.configure(
-            text: model.shortcutHintText,
+            text: model.isPrivacyBlurred ? nil : model.shortcutHintText,
             fontSize: GlobalFontMagnification.scaledSize(10, percent: percent),
             emphasis: model.isAnchorActive ? 1.0 : 0.9
         )
+        privacyFrostView.isHidden = !model.isPrivacyBlurred
 
         alphaValue = model.isBeingDragged ? 0.6 : 1
         updatePlusVisibility()
         setAccessibilityIdentifier("sidebarWorkspaceGroup.\(model.groupId.uuidString)")
-        setAccessibilityLabel(model.name)
+        setAccessibilityLabel(displayedName)
     }
 
     private func updatePlusVisibility() {
         let showsHint = model?.shortcutHintText != nil
-        plusButton.setRevealed(isPointerHovering && !contextMenuVisible && !showsHint)
+        plusButton.setRevealed(
+            isPointerHovering
+                && !contextMenuVisible
+                && !showsHint
+                && model?.isPrivacyBlurred != true
+        )
     }
 
     /// Authoritative hover enforcement: the controller sweeps visible cells
@@ -227,7 +238,7 @@ final class SidebarGroupHeaderTableCellView: NSTableCellView {
     /// instantly (group clicks focus the anchor workspace); the next
     /// authoritative configure reconciles.
     func showOptimisticAnchorActive() {
-        guard let model, !model.isAnchorActive else { return }
+        guard let model, !model.isAnchorActive, !model.isPrivacyBlurred else { return }
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         backgroundView.layer?.backgroundColor = NSColor.labelColor.withAlphaComponent(0.08).cgColor
@@ -248,7 +259,8 @@ final class SidebarGroupHeaderTableCellView: NSTableCellView {
     /// True when a press at this view should not repaint selection (chevron
     /// toggles collapse, plus creates a workspace — neither selects).
     func selectionPreviewShouldIgnore(_ hitView: NSView) -> Bool {
-        hitView === chevronButton || hitView.isDescendant(of: chevronButton)
+        model?.isPrivacyBlurred == true
+            || hitView === chevronButton || hitView.isDescendant(of: chevronButton)
             || hitView === plusButton || hitView.isDescendant(of: plusButton)
     }
 
@@ -279,6 +291,7 @@ final class SidebarGroupHeaderTableCellView: NSTableCellView {
         let outerPad = SidebarWorkspaceListMetrics.rowOuterHorizontalPadding
         let bgFrame = NSRect(x: outerPad, y: 0, width: bounds.width - outerPad * 2, height: bounds.height)
         backgroundView.frame = bgFrame
+        privacyFrostView.frame = bgFrame
         let contentMaxX = bgFrame.maxX - SidebarWorkspaceListMetrics.rowContentHorizontalPadding
         let midY = bounds.height / 2
         var x = bgFrame.minX
@@ -366,6 +379,7 @@ final class SidebarGroupHeaderTableCellView: NSTableCellView {
     }
 
     @objc private func didClickFocusArea(_ recognizer: NSClickGestureRecognizer) {
+        guard model?.isPrivacyBlurred != true else { return }
         let point = recognizer.location(in: self)
         // Chevron/plus are buttons and take their own hits before this runs.
         let innerRect = NSRect(
@@ -469,6 +483,12 @@ final class SidebarGroupHeaderTableCellView: NSTableCellView {
                 : String(localized: "workspaceGroup.contextMenu.pin", defaultValue: "Pin Group"),
             action: actions.onTogglePinned
         ))
+        menu.addItem(menuItem(
+            model.isPrivacyBlurred
+                ? String(localized: "workspaceGroup.contextMenu.unblur", defaultValue: "Unblur Group")
+                : String(localized: "workspaceGroup.contextMenu.blur", defaultValue: "Blur Group"),
+            action: actions.onTogglePrivacyBlurred
+        ))
         menu.addItem(.separator())
         menu.addItem(menuItem(
             String(localized: "workspaceGroup.contextMenu.markRead", defaultValue: "Mark Group as Read"),
@@ -508,6 +528,29 @@ final class SidebarGroupHeaderTableCellView: NSTableCellView {
             action: actions.onDelete
         ))
         return menu
+    }
+}
+
+@MainActor
+final class SidebarPrivacyFrostedEffectView: NSVisualEffectView {
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        material = .popover
+        blendingMode = .withinWindow
+        state = .active
+        wantsLayer = true
+        layer?.cornerRadius = 6
+        layer?.cornerCurve = .continuous
+        layer?.borderWidth = 1
+        layer?.borderColor = NSColor.secondaryLabelColor.withAlphaComponent(0.24).cgColor
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        nil
     }
 }
 

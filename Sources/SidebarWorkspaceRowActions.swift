@@ -26,6 +26,7 @@ struct SidebarWorkspaceRowActions {
     let closeTargetsBelow: () -> Void
     let closeTargetsAbove: () -> Void
     let performPin: () -> Void
+    let setPrivacyBlurred: ([UUID], Bool) -> Void
     let createEmptyGroup: () -> Void
     let createGroup: ([UUID]) -> Void
     let addTargetsToGroup: ([UUID], UUID) -> Void

@@ -15,6 +15,7 @@ struct SidebarWorkspaceRowInput {
     let index: Int
     let workspaceCount: Int
     let workspace: SidebarWorkspaceSnapshotBuilder.Snapshot
+    let isPrivacyBlurred: Bool
     let isActive: Bool
     let isMultiSelected: Bool
     let hasUserCustomTitle: Bool
@@ -54,6 +55,7 @@ struct SidebarWorkspaceRowInput {
             index: index,
             workspaceCount: workspaceCount,
             workspace: workspace,
+            isPrivacyBlurred: isPrivacyBlurred,
             isActive: isActive,
             isMultiSelected: isMultiSelected,
             hasUserCustomTitle: hasUserCustomTitle,
@@ -82,6 +84,7 @@ struct SidebarWorkspaceRowInput {
                 remoteTargetWorkspaceIds: targetAggregate.remoteTargetWorkspaceIds,
                 allRemoteTargetsConnecting: targetAggregate.allRemoteTargetsConnecting,
                 allRemoteTargetsDisconnected: targetAggregate.allRemoteTargetsDisconnected,
+                shouldPrivacyBlur: targetAggregate.shouldPrivacyBlur,
                 pinState: contextMenuPinState,
                 groupMenuSnapshot: list.workspaceGroupMenuSnapshot,
                 canCreateEmptyGroup: list.canCreateEmptyGroup,

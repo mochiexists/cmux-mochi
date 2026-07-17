@@ -137,6 +137,7 @@ extension Workspace {
             customDescription: customDescription,
             customColor: customColor,
             isPinned: isPinned,
+            isPrivacyBlurred: isPrivacyBlurred,
             groupId: groupId,
             isManuallyUnread: isWorkspaceManuallyUnread,
             hasUnreadIndicator: hasWorkspaceUnreadIndicator,
@@ -242,6 +243,7 @@ extension Workspace {
         setCustomDescription(snapshot.customDescription)
         setCustomColor(snapshot.customColor)
         isPinned = snapshot.isPinned
+        isPrivacyBlurred = snapshot.isPrivacyBlurred ?? false
         groupId = snapshot.groupId
         restoreTodoState(from: snapshot)
 
@@ -2012,6 +2014,9 @@ final class Workspace: Identifiable, ObservableObject {
     @Published var customTitleSource: CustomTitleSource?
     @Published var customDescription: String?
     @Published var isPinned: Bool = false
+    // TODO: Promote this presentation-only flag into a lock coordinator with
+    // auth-backed unlock policy before adding password-protected sessions.
+    @Published var isPrivacyBlurred: Bool = false
     /// Identifier of the WorkspaceGroup this workspace belongs to, or nil if ungrouped.
     /// The group entity itself lives in `TabManager.workspaceGroups`.
     @Published var groupId: UUID?

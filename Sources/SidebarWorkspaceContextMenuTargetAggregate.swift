@@ -11,6 +11,7 @@ struct SidebarWorkspaceContextMenuTargetAggregate: Equatable {
     let remoteTargetWorkspaceIds: [UUID]
     let allRemoteTargetsConnecting: Bool
     let allRemoteTargetsDisconnected: Bool
+    let shouldPrivacyBlur: Bool
     let eligibleGroupTargetIds: [UUID]
     let allEligibleTargetsGroupId: UUID?
     let hasGroupedEligibleTarget: Bool
@@ -39,6 +40,9 @@ struct SidebarWorkspaceContextMenuTargetAggregate: Equatable {
             && remoteTargetWorkspaceIds.allSatisfy {
                 workspaceRowsById[$0]?.remoteConnectionState == .disconnected
             }
+        shouldPrivacyBlur = targetWorkspaceIds.contains {
+            workspaceRowsById[$0]?.isPrivacyBlurred != true
+        }
         eligibleGroupTargetIds = targetWorkspaceIds.filter {
             !anchorWorkspaceIds.contains($0) && workspaceRowsById[$0] != nil
         }

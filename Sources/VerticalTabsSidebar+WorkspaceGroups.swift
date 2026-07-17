@@ -72,6 +72,7 @@ extension VerticalTabsSidebar {
             tintHex: effectiveColor,
             isCollapsed: group.isCollapsed,
             isPinned: group.isPinned,
+            isPrivacyBlurred: group.isPrivacyBlurred,
             isAnchorActive: isAnchorActive,
             memberCount: memberWorkspaceIds.count,
             anchorUnreadCount: anchorUnreadCount,
@@ -96,7 +97,8 @@ extension VerticalTabsSidebar {
             onToggleCollapsed: { [weak tabManager, groupId = group.id] in
                 tabManager?.toggleWorkspaceGroupCollapsed(groupId: groupId)
             },
-            onFocusAnchor: { [weak tabManager, anchorId = group.anchorWorkspaceId, selectedTabIds = $selectedTabIds, lastSidebarSelectionIndex = $lastSidebarSelectionIndex] in
+            onFocusAnchor: { [weak tabManager, anchorId = group.anchorWorkspaceId, isPrivacyBlurred = group.isPrivacyBlurred, selectedTabIds = $selectedTabIds, lastSidebarSelectionIndex = $lastSidebarSelectionIndex] in
+                guard !isPrivacyBlurred else { return }
                 guard let tabManager else { return }
                 guard let anchorTab = tabManager.tabs.first(where: { $0.id == anchorId }) else { return }
                 tabManager.selectWorkspace(anchorTab)
@@ -131,6 +133,9 @@ extension VerticalTabsSidebar {
             },
             onTogglePinned: { [weak tabManager, groupId = group.id] in
                 tabManager?.toggleWorkspaceGroupPinned(groupId: groupId)
+            },
+            onTogglePrivacyBlurred: { [weak tabManager, groupId = group.id] in
+                tabManager?.toggleWorkspaceGroupPrivacyBlurred(groupId: groupId)
             },
             onMarkRead: { [weak notificationStore, anchorId = group.anchorWorkspaceId] in
                 notificationStore?.markRead(forTabId: anchorId)
@@ -274,6 +279,7 @@ extension VerticalTabsSidebar {
             tintHex: effectiveColor,
             isCollapsed: group.isCollapsed,
             isPinned: group.isPinned,
+            isPrivacyBlurred: group.isPrivacyBlurred,
             isAnchorActive: isAnchorActive,
             memberCount: memberWorkspaceIds.count,
             anchorUnreadCount: anchorUnreadCount,
@@ -307,7 +313,9 @@ extension VerticalTabsSidebar {
         snapshot: SidebarWorkspaceGroupRowSnapshot
     ) -> SidebarWorkspaceGroupRowView {
         let rowId = SidebarWorkspaceRenderItemID.group(snapshot.groupId)
-        let onDragStart: () -> NSItemProvider = { [anchorId = snapshot.anchorWorkspaceId] in
+        let onDragStart: () -> NSItemProvider = {
+            [anchorId = snapshot.anchorWorkspaceId, isPrivacyBlurred = snapshot.isPrivacyBlurred] in
+            guard !isPrivacyBlurred else { return NSItemProvider() }
 #if DEBUG
             cmuxDebugLog("sidebar.onDrag groupAnchor=\(anchorId.uuidString.prefix(5))")
 #endif
@@ -322,6 +330,7 @@ extension VerticalTabsSidebar {
             tintHex: snapshot.tintHex,
             isCollapsed: snapshot.isCollapsed,
             isPinned: snapshot.isPinned,
+            isPrivacyBlurred: snapshot.isPrivacyBlurred,
             isAnchorActive: snapshot.isAnchorActive,
             memberCount: snapshot.memberCount,
             anchorUnreadCount: snapshot.anchorUnreadCount,
@@ -348,7 +357,8 @@ extension VerticalTabsSidebar {
             onToggleCollapsed: { [weak tabManager, groupId = snapshot.groupId] in
                 tabManager?.toggleWorkspaceGroupCollapsed(groupId: groupId)
             },
-            onFocusAnchor: { [weak tabManager, anchorId = snapshot.anchorWorkspaceId, selectedTabIds = $selectedTabIds, lastSidebarSelectionIndex = $lastSidebarSelectionIndex] in
+            onFocusAnchor: { [weak tabManager, anchorId = snapshot.anchorWorkspaceId, isPrivacyBlurred = snapshot.isPrivacyBlurred, selectedTabIds = $selectedTabIds, lastSidebarSelectionIndex = $lastSidebarSelectionIndex] in
+                guard !isPrivacyBlurred else { return }
                 guard let tabManager else { return }
                 guard let anchorTab = tabManager.tabs.first(where: { $0.id == anchorId }) else { return }
                 tabManager.selectWorkspace(anchorTab)
@@ -383,6 +393,9 @@ extension VerticalTabsSidebar {
             },
             onTogglePinned: { [weak tabManager, groupId = snapshot.groupId] in
                 tabManager?.toggleWorkspaceGroupPinned(groupId: groupId)
+            },
+            onTogglePrivacyBlurred: { [weak tabManager, groupId = snapshot.groupId] in
+                tabManager?.toggleWorkspaceGroupPrivacyBlurred(groupId: groupId)
             },
             onMarkRead: { [weak notificationStore, anchorId = snapshot.anchorWorkspaceId] in
                 guard let notificationStore,
