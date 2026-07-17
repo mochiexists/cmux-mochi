@@ -3,7 +3,7 @@ import Darwin
 import XCTest
 
 final class CommandPaletteIdentifierClipboardUITests: XCTestCase {
-    private let debugDefaultsDomain = "com.cmuxterm.app.debug"
+    private let debugDefaultsDomain = "com.cmux-mochi.debug"
 
     override func setUp() {
         super.setUp()
