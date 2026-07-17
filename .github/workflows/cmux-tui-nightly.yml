@@ -1,8 +1,9 @@
 name: cmux-tui nightly
 
 on:
-  schedule:
-    - cron: "23 9 * * *"
+  # schedule:
+  #   # Nightly at 09:23 UTC (disabled on the fork — upstream's TUI nightly lane).
+  #   - cron: "23 9 * * *"
   workflow_dispatch:
 
 permissions: {}
