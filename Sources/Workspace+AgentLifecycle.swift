@@ -180,9 +180,19 @@ extension Workspace {
     ) {
         let targetPanelId = panelId ?? focusedPanelId
         guard let targetPanelId, panels[targetPanelId] != nil else { return }
+        let previous = agentLifecycleStatesByPanelId[targetPanelId]?[key]
         agentLifecycleStatesByPanelId[targetPanelId, default: [:]][key] = lifecycle
         if !AgentHibernationLifecycleStatusKeys.isManualKey(key) {
             recordAgentLifecycleChange(panelId: targetPanelId)
+        }
+        if previous != lifecycle {
+            CmuxEventBus.shared.publishAgentStateChanged(
+                workspaceId: id,
+                surfaceId: targetPanelId,
+                agentKey: key,
+                previousState: previous?.rawValue,
+                state: lifecycle.rawValue
+            )
         }
     }
 

@@ -189,7 +189,7 @@ cmux surface resume clear --checkpoint work`}</CodeBlock>
       <p>{t("disableDesc")}</p>
       <CodeBlock title="~/.config/cmux/cmux.json" lang="json">{`{
   "terminal": {
-    "autoResumeAgentSessions": false
+    "agentResumeMode": "medium"
   }
 }`}</CodeBlock>
       <p>{t("disableNote")}</p>

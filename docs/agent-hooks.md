@@ -113,23 +113,23 @@ Use `cmux surface resume set --shell <command>` to attach a resume command to th
 
 Approvals are prefix-based and signed by cmux. They also bind the working directory and exact environment values when present. A process can propose a command, but it cannot make that command sticky without the user choosing Auto-Restore or Ask Each Time in cmux.
 
-## Disable automatic resume
+## Choose restore behavior
 
-To restore panes without automatically restarting saved agent sessions, turn off
-**Settings > Terminal > Resume Agent Sessions on Reopen**.
+Use **Settings > Terminal > Agent Resume on Reopen** to choose Off, Medium, or Full.
+Off starts fresh, Medium restores scrollback and prefills the resume command without
+submitting it, and Full submits the resume command without replaying scrollback.
 
-You can also set the same preference in `~/.config/cmux/cmux.json`:
+You can set the same preference in `~/.config/cmux/cmux.json`:
 
 ```json
 {
   "terminal": {
-    "autoResumeAgentSessions": false
+    "agentResumeMode": "medium"
   }
 }
 ```
 
-When this is off, cmux still restores the saved window, workspace, pane, scrollback,
-and browser state. Restored agent terminals stay idle until you resume them manually.
+Legacy `autoResumeAgentSessions: false` migrates to Off; `true` migrates to Full.
 
 ## Environment overrides
 

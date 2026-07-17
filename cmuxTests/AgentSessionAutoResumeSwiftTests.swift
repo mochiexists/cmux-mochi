@@ -71,7 +71,7 @@ struct AgentSessionAutoResumeSwiftTests {
     @Test func claudeAgentHookResumeBindingRestoresFromLaunchCwdWhenRuntimeCwdDrifted() throws {
         try withRestoredDefaults(key: AgentSessionAutoResumeSettings.autoResumeAgentSessionsKey) {
             let defaults = UserDefaults.standard
-            defaults.removeObject(forKey: AgentSessionAutoResumeSettings.autoResumeAgentSessionsKey)
+            defaults.set(true, forKey: AgentSessionAutoResumeSettings.autoResumeAgentSessionsKey)
 
             let source = Workspace()
             let sourcePanelId = try #require(source.focusedPanelId)
@@ -493,6 +493,10 @@ struct AgentSessionAutoResumeSwiftTests {
             let secondRestore = Workspace()
             secondRestore.restoreSessionSnapshot(clobberedSnapshot)
             let secondRestoredPanelId = try #require(secondRestore.focusedPanelId)
+            secondRestore.updatePanelShellActivityState(
+                panelId: secondRestoredPanelId,
+                state: .commandRunning
+            )
             try #require(
                 secondRestore.restoredAgentResumeStatesByPanelId[secondRestoredPanelId] == .autoResumeCommandRunning
             )
@@ -593,6 +597,7 @@ struct AgentSessionAutoResumeSwiftTests {
             let restored = Workspace()
             restored.restoreSessionSnapshot(snapshot)
             let restoredPanelId = try #require(restored.focusedPanelId)
+            restored.updatePanelShellActivityState(panelId: restoredPanelId, state: .commandRunning)
             try #require(
                 restored.restoredAgentResumeStatesByPanelId[restoredPanelId] == .autoResumeCommandRunning
             )
@@ -980,6 +985,7 @@ struct AgentSessionAutoResumeSwiftTests {
         let restored = Workspace()
         restored.restoreSessionSnapshot(snapshot)
         let restoredPanelId = try #require(restored.focusedPanelId)
+        restored.updatePanelShellActivityState(panelId: restoredPanelId, state: .commandRunning)
 
         #expect(restored.currentDirectory == savedDirectory)
         #expect(restored.panelDirectories[restoredPanelId] == savedDirectory)
@@ -1036,7 +1042,7 @@ struct AgentSessionAutoResumeSwiftTests {
     @Test func claudeAgentHookResumeBindingIgnoresStaleRestoredAgentSnapshot() throws {
         try withRestoredDefaults(key: AgentSessionAutoResumeSettings.autoResumeAgentSessionsKey) {
             let defaults = UserDefaults.standard
-            defaults.removeObject(forKey: AgentSessionAutoResumeSettings.autoResumeAgentSessionsKey)
+            defaults.set(true, forKey: AgentSessionAutoResumeSettings.autoResumeAgentSessionsKey)
 
             let source = Workspace()
             let sourcePanelId = try #require(source.focusedPanelId)
@@ -1102,7 +1108,7 @@ struct AgentSessionAutoResumeSwiftTests {
     @Test func crossKindAgentHookResumeBindingDoesNotRetainStaleClaudeSnapshot() throws {
         try withRestoredDefaults(key: AgentSessionAutoResumeSettings.autoResumeAgentSessionsKey) {
             let defaults = UserDefaults.standard
-            defaults.removeObject(forKey: AgentSessionAutoResumeSettings.autoResumeAgentSessionsKey)
+            defaults.set(true, forKey: AgentSessionAutoResumeSettings.autoResumeAgentSessionsKey)
 
             let source = Workspace()
             let sourcePanelId = try #require(source.focusedPanelId)
@@ -1165,7 +1171,7 @@ struct AgentSessionAutoResumeSwiftTests {
     @Test func crossKindAgentHookResumeBindingIgnoresStaleClaudeHibernation() throws {
         try withRestoredDefaults(key: AgentSessionAutoResumeSettings.autoResumeAgentSessionsKey) {
             let defaults = UserDefaults.standard
-            defaults.removeObject(forKey: AgentSessionAutoResumeSettings.autoResumeAgentSessionsKey)
+            defaults.set(true, forKey: AgentSessionAutoResumeSettings.autoResumeAgentSessionsKey)
 
             let source = Workspace()
             let sourcePanelId = try #require(source.focusedPanelId)
@@ -1219,11 +1225,7 @@ struct AgentSessionAutoResumeSwiftTests {
             let restoredPanelId = try #require(restored.focusedPanelId)
             let restoredPanel = try #require(restored.terminalPanel(for: restoredPanelId))
 
-            try assertAgentAutoResumeUsesStartupCommand(
-                restoredPanel,
-                scriptContains: ["codex", "resume", codexSessionId],
-                scriptDoesNotContain: [claudeSessionId, "claude-opus-4-8"]
-            )
+            #expect(restoredPanel.surface.debugInitialCommand() == nil)
         }
     }
 
@@ -1272,7 +1274,7 @@ struct AgentSessionAutoResumeSwiftTests {
         )
         #expect(snapshot.sessionId == sessionId)
         #expect(snapshot.workingDirectory == launchCwd.path)
-        #expect(snapshot.resumeCommand?.contains("cd -- '\(launchCwd.path)'") == true)
+        #expect(snapshot.resumeCommand?.contains("cd '\(launchCwd.path)'") == true)
     }
 
     @Test func claudeRestorableIndexMapsNestedTranscriptPathToProjectCwd() throws {
@@ -1319,7 +1321,7 @@ struct AgentSessionAutoResumeSwiftTests {
                 .snapshot(workspaceId: workspaceId, panelId: panelId)
         )
         #expect(snapshot.workingDirectory == transcriptCwd.path)
-        #expect(snapshot.resumeCommand?.contains("cd -- '\(transcriptCwd.path)'") == true)
+        #expect(snapshot.resumeCommand?.contains("cd '\(transcriptCwd.path)'") == true)
         #expect(snapshot.resumeCommand?.contains(staleLaunchCwd.path) == false)
     }
 
@@ -1392,11 +1394,23 @@ struct AgentSessionAutoResumeSwiftTests {
         body: () throws -> T
     ) rethrows -> T {
         let previous = defaults.object(forKey: key)
+        let modeKey = AgentSessionAutoResumeSettings.modeKey
+        let previousMode = key == modeKey ? nil : defaults.object(forKey: modeKey)
+        if key != modeKey {
+            defaults.removeObject(forKey: modeKey)
+        }
         defer {
             if let previous {
                 defaults.set(previous, forKey: key)
             } else {
                 defaults.removeObject(forKey: key)
+            }
+            if key != modeKey {
+                if let previousMode {
+                    defaults.set(previousMode, forKey: modeKey)
+                } else {
+                    defaults.removeObject(forKey: modeKey)
+                }
             }
         }
         return try body()

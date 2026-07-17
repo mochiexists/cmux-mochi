@@ -439,19 +439,47 @@ enum CommandPaletteSettingsToggleCommands {
             ),
             CommandPaletteSettingToggleDescriptor(
                 commandId: commandIdPrefix + "autoResumeAgentSessions",
-                settingsKey: "terminal.autoResumeAgentSessions",
+                settingsKey: "terminal.agentResumeMode",
                 title: {
                     String(
-                        localized: "settings.terminal.agentAutoResume",
-                        defaultValue: "Resume Agent Sessions on Reopen"
+                        localized: "settings.terminal.agentResumeMode",
+                        defaultValue: "Agent Resume on Reopen"
                     )
                 },
                 sectionTitle: terminal,
-                keywords: ["terminal.autoResumeAgentSessions", "terminal", "agent", "resume", "sessions", "reopen", "restore"],
-                isOn: { defaults in AgentSessionAutoResumeSettings.isEnabled(defaults: defaults) },
+                keywords: ["terminal.agentResumeMode", "terminal.autoResumeAgentSessions", "terminal", "agent", "resume", "sessions", "reopen", "restore"],
+                isOn: { defaults in AgentSessionAutoResumeSettings.mode(defaults: defaults).submitsResumeCommand },
                 setOn: { newValue, defaults, notificationCenter in
-                    AgentSessionAutoResumeSettings.setEnabled(
-                        newValue,
+                    AgentSessionAutoResumeSettings.setMode(
+                        newValue ? .full : .medium,
+                        defaults: defaults,
+                        notificationCenter: notificationCenter
+                    )
+                }
+            ),
+            CommandPaletteSettingToggleDescriptor(
+                commandId: commandIdPrefix + "autosaveTerminalScrollback",
+                settingsKey: "terminal.autosaveScrollback",
+                title: {
+                    String(localized: "settings.terminal.autosaveScrollback", defaultValue: "Autosave Terminal Scrollback")
+                },
+                sectionTitle: terminal,
+                keywords: ["terminal.autosaveScrollback", "terminal", "autosave", "scrollback", "crash", "force", "quit", "kill", "restore"],
+                defaultValue: TerminalScrollbackAutosaveSettings.defaultEnabled,
+                defaultsKey: TerminalScrollbackAutosaveSettings.enabledKey
+            ),
+            CommandPaletteSettingToggleDescriptor(
+                commandId: commandIdPrefix + "agentResumeUsesFullCommand",
+                settingsKey: AgentResumeCommandStyleSettings.styleKey,
+                title: {
+                    String(localized: "settings.terminal.agentResumeStyle.useFullCommand", defaultValue: "Resume Agents With Full Command")
+                },
+                sectionTitle: terminal,
+                keywords: [AgentResumeCommandStyleSettings.styleKey, "terminal", "agent", "resume", "alias", "verbose", "full", "command"],
+                isOn: { defaults in AgentResumeCommandStyleSettings.style(defaults: defaults) == .verbose },
+                setOn: { newValue, defaults, notificationCenter in
+                    AgentResumeCommandStyleSettings.setStyle(
+                        newValue ? .verbose : .alias,
                         defaults: defaults,
                         notificationCenter: notificationCenter
                     )

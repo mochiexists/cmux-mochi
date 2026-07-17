@@ -42,7 +42,7 @@ extension SessionRestorableAgentSnapshot {
         )
     }
 
-    var resumeCommand: String? {
+    func resolvedResumeCommand(style: AgentResumeCommandStyle) -> String? {
         if kind.restoreMode == .relaunchCommand {
             return AgentRelaunchCommandBuilder().shellCommand(
                 kind: kind,
@@ -56,8 +56,13 @@ extension SessionRestorableAgentSnapshot {
             launchCommand: launchCommand,
             workingDirectory: workingDirectory,
             registrationOverride: registration,
-            observedPermissionMode: permissionMode
+            observedPermissionMode: permissionMode,
+            style: style
         )
+    }
+
+    var resumeCommand: String? {
+        resolvedResumeCommand(style: .alias)
     }
 
     var forkCommand: String? {

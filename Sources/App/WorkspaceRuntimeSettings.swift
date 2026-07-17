@@ -212,16 +212,86 @@ enum TerminalManagedGhosttySettings {
     }
 }
 
-enum AgentSessionAutoResumeSettings {
-    static let autoResumeAgentSessionsKey = "terminal.autoResumeAgentSessions"
-    static let defaultAutoResumeAgentSessions = true
-    static let didChangeNotification = Notification.Name("cmux.agentSessionAutoResumeSettingsDidChange")
+enum TerminalScrollbackAutosaveSettings {
+    static let enabledKey = "terminal.autosaveScrollback"
+    static let defaultEnabled = true
 
     static func isEnabled(defaults: UserDefaults = .standard) -> Bool {
-        guard defaults.object(forKey: autoResumeAgentSessionsKey) != nil else {
-            return defaultAutoResumeAgentSessions
+        defaults.object(forKey: enabledKey) as? Bool ?? defaultEnabled
+    }
+}
+
+/// How restored agent terminals behave when cmux Mochi reopens after a quit.
+/// Off: no scrollback replay and no resume command prefill.
+/// Medium: replay scrollback and prefill the resume command without submitting it.
+/// Full: submit the resume command without replaying scrollback.
+enum AgentSessionResumeMode: String, CaseIterable, Identifiable {
+    case off
+    case medium
+    case full
+
+    var id: String { rawValue }
+
+    var replaysScrollback: Bool { self == .medium }
+    var prefillsResumeCommand: Bool { self == .medium || self == .full }
+    var submitsResumeCommand: Bool { self == .full }
+
+    var displayName: String {
+        switch self {
+        case .off:
+            return String(localized: "settings.terminal.agentResumeMode.off", defaultValue: "Off")
+        case .medium:
+            return String(localized: "settings.terminal.agentResumeMode.medium", defaultValue: "Medium")
+        case .full:
+            return String(localized: "settings.terminal.agentResumeMode.full", defaultValue: "Full")
         }
-        return defaults.bool(forKey: autoResumeAgentSessionsKey)
+    }
+
+    var settingsSubtitle: String {
+        switch self {
+        case .off:
+            return String(
+                localized: "settings.terminal.agentResumeMode.off.subtitle",
+                defaultValue: "Restored agent terminals start fresh — no scrollback and no resume command."
+            )
+        case .medium:
+            return String(
+                localized: "settings.terminal.agentResumeMode.medium.subtitle",
+                defaultValue: "Restored agent terminals show their previous scrollback and leave the resume command ready to run."
+            )
+        case .full:
+            return String(
+                localized: "settings.terminal.agentResumeMode.full.subtitle",
+                defaultValue: "Restored agent terminals immediately run their resume command."
+            )
+        }
+    }
+}
+
+enum AgentSessionAutoResumeSettings {
+    static let modeKey = "terminal.agentResumeMode"
+    static let legacyAutoResumeAgentSessionsKey = "terminal.autoResumeAgentSessions"
+    static let autoResumeAgentSessionsKey = legacyAutoResumeAgentSessionsKey
+    static let defaultMode: AgentSessionResumeMode = .medium
+    static let didChangeNotification = Notification.Name("cmux.agentSessionAutoResumeSettingsDidChange")
+
+    static func mode(defaults: UserDefaults = .standard) -> AgentSessionResumeMode {
+        if let raw = defaults.string(forKey: modeKey),
+           let mode = AgentSessionResumeMode(rawValue: raw) {
+            return mode
+        }
+        if defaults.object(forKey: legacyAutoResumeAgentSessionsKey) != nil {
+            return defaults.bool(forKey: legacyAutoResumeAgentSessionsKey) ? .full : .off
+        }
+        return defaultMode
+    }
+
+    static var defaultModeRawValueForStorage: String {
+        mode().rawValue
+    }
+
+    static func isEnabled(defaults: UserDefaults = .standard) -> Bool {
+        mode(defaults: defaults) != .off
     }
 
     static func setEnabled(
@@ -229,9 +299,22 @@ enum AgentSessionAutoResumeSettings {
         defaults: UserDefaults = .standard,
         notificationCenter: NotificationCenter = .default
     ) {
-        let wasEnabled = isEnabled(defaults: defaults)
-        defaults.set(enabled, forKey: autoResumeAgentSessionsKey)
-        if wasEnabled != enabled {
+        let previous = mode(defaults: defaults)
+        defaults.removeObject(forKey: modeKey)
+        defaults.set(enabled, forKey: legacyAutoResumeAgentSessionsKey)
+        if previous != mode(defaults: defaults) {
+            notifyDidChange(notificationCenter: notificationCenter)
+        }
+    }
+
+    static func setMode(
+        _ mode: AgentSessionResumeMode,
+        defaults: UserDefaults = .standard,
+        notificationCenter: NotificationCenter = .default
+    ) {
+        let previous = self.mode(defaults: defaults)
+        defaults.set(mode.rawValue, forKey: modeKey)
+        if previous != mode {
             notifyDidChange(notificationCenter: notificationCenter)
         }
     }
@@ -241,9 +324,10 @@ enum AgentSessionAutoResumeSettings {
         defaults: UserDefaults = .standard,
         notificationCenter: NotificationCenter = .default
     ) -> Bool {
-        let wasEnabled = isEnabled(defaults: defaults)
-        defaults.removeObject(forKey: autoResumeAgentSessionsKey)
-        let didChange = wasEnabled != isEnabled(defaults: defaults)
+        let previous = mode(defaults: defaults)
+        defaults.removeObject(forKey: modeKey)
+        defaults.removeObject(forKey: legacyAutoResumeAgentSessionsKey)
+        let didChange = previous != mode(defaults: defaults)
         if didChange {
             notifyDidChange(notificationCenter: notificationCenter)
         }

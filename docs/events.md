@@ -330,6 +330,7 @@ Feed and agent hooks:
 | `feed.item.completed` | `feed.push` returned a hook decision, timeout, or no-op result. |
 | `feed.item.resolved` | A Feed reply command resolved a permission, question, or plan item. |
 | `agent.hook.<HookEventName>` | Agent hook event received through Feed. Examples include Claude Code and Codex permission requests when their hooks are installed. |
+| `agent.state.changed` | An agent's lifecycle state transitioned (`running`, `idle`, `needsInput`, `unknown`) for a specific surface. Payload carries `agent_key`, `previous_state`, and `state`. Repeated reports of the same state do not re-fire. |
 
 App, browser, and config:
 
@@ -353,10 +354,12 @@ plugin bridge. The event stream publishes both agent and Feed events:
   "category": "agent",
   "source": "codex",
   "workspace_id": "9B6920C1-6C29-4C27-A069-78CF285F932A",
+  "surface_id": "3E1B9A44-0C61-4F0E-8D3E-2B1F62F0A9D1",
   "payload": {
     "session_id": "session-123",
     "hook_event_name": "PermissionRequest",
     "_source": "codex",
+    "surface_id": "3E1B9A44-0C61-4F0E-8D3E-2B1F62F0A9D1",
     "tool_name": "exec_command",
     "_opencode_request_id": "request-456",
     "phase": "received"
@@ -364,8 +367,20 @@ plugin bridge. The event stream publishes both agent and Feed events:
 }
 ```
 
+`surface_id` identifies the pane hosting the agent; hooks resolve it from the
+pane's `CMUX_SURFACE_ID` environment, so events sent by older CLIs or from
+outside a cmux terminal carry `null`.
+
 The `feed.item.completed` event contains the same workstream payload plus a
 `result` object matching the `feed.push` socket response.
+
+To watch a specific worker pane for completion, filter `agent.state.changed`
+by `surface_id` and wait for `"state": "idle"`:
+
+```bash
+cmux events --reconnect --no-heartbeat --name agent.state.changed \
+  | jq -c 'select(.surface_id == "<surface-uuid>" and .payload.state == "idle")'
+```
 
 ## Privacy
 
