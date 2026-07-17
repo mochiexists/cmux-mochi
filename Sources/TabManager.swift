@@ -287,15 +287,9 @@ class TabManager: ObservableObject {
         var changed = false
         for workspace in tabs where targetIds.contains(workspace.id) && workspace.isPrivacyBlurred != isBlurred {
             workspace.isPrivacyBlurred = isBlurred
-            if isBlurred {
-                VSCodeServeWebWorkspaceRegistry.shared.stop(workspaceID: workspace.id)
-            }
             changed = true
         }
-        guard changed,
-              let currentSelectedTabId = selectedTabId,
-              targetIds.contains(currentSelectedTabId),
-              isBlurred else { return }
+        guard changed, let currentSelectedTabId = selectedTabId, targetIds.contains(currentSelectedTabId), isBlurred else { return }
         selectedTabId = tabs.first(where: { !isWorkspaceEffectivelyPrivacyBlurred($0) })?.id
     }
 
@@ -1898,14 +1892,8 @@ class TabManager: ObservableObject {
 
     func setWorkspaceGroupPrivacyBlurred(groupId: UUID, isBlurred: Bool) {
         let changed = workspaceGrouping.setWorkspaceGroupPrivacyBlurred(groupId: groupId, isBlurred: isBlurred)
-        guard changed else { return }
-        if isBlurred {
-            for workspace in tabs where workspace.groupId == groupId {
-                VSCodeServeWebWorkspaceRegistry.shared.stop(workspaceID: workspace.id)
-            }
-        }
-        guard isBlurred,
-              let currentSelectedTabId = selectedTabId,
+        guard changed, isBlurred else { return }
+        guard let currentSelectedTabId = selectedTabId,
               tabs.contains(where: { $0.id == currentSelectedTabId && $0.groupId == groupId }) else { return }
         selectedTabId = tabs.first(where: { !isWorkspaceEffectivelyPrivacyBlurred($0) })?.id
     }
