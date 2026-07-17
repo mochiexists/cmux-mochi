@@ -50,6 +50,15 @@ require_file_contains "cmux.xcodeproj/project.pbxproj" 'SPARKLE_PUBLIC_KEY = "zu
 require_file_contains "cmux.xcodeproj/project.pbxproj" "CURRENT_PROJECT_VERSION = "
 require_file_contains "cmux.xcodeproj/project.pbxproj" "MARKETING_VERSION = "
 
+# Runtime identity constants: tagged debug/staging/nightly socket isolation and
+# push routing break silently if these revert to upstream com.cmuxterm values
+# (caught live 2026-07-17: tagged DEV build bound the shared /tmp/cmux-debug.sock).
+require_file_contains "Packages/macOS/CmuxSettings/Sources/CmuxSettings/SocketControl/SocketPathMarkerFiles.swift" 'nightlyBundleIdentifier = "com.cmux-mochi.nightly"'
+require_file_contains "Packages/macOS/CmuxSettings/Sources/CmuxSettings/SocketControl/SocketPathMarkerFiles.swift" 'stagingBundleIdentifier = "com.cmux-mochi.staging"'
+require_file_contains "Packages/macOS/CmuxSettings/Sources/CmuxSettings/SocketControl/SocketPathMarkerFiles.swift" 'defaultBaseDebugBundleIdentifier = "com.cmux-mochi.debug"'
+require_file_contains "Packages/macOS/CmuxSettings/Sources/CmuxSettings/SocketControl/SocketControlSettings.swift" 'baseDebugBundleIdentifier = "com.cmux-mochi.debug"'
+require_file_contains "web/services/apns/routePolicy.ts" 'PROD_BUNDLE_IDS = new Set(["com.cmux-mochi", "dev.cmux.app.beta"])'
+
 require_file_contains "Resources/Info.plist" "https://github.com/mochiexists/cmux-mochi/releases/latest/download/appcast.xml"
 require_file_contains "Resources/Info.plist" '$(SPARKLE_PUBLIC_KEY)'
 
