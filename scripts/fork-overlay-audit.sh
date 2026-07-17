@@ -59,6 +59,12 @@ require_file_contains "Packages/macOS/CmuxSettings/Sources/CmuxSettings/SocketCo
 require_file_contains "Packages/macOS/CmuxSettings/Sources/CmuxSettings/SocketControl/SocketControlSettings.swift" 'baseDebugBundleIdentifier = "com.cmux-mochi.debug"'
 require_file_contains "web/services/apns/routePolicy.ts" 'PROD_BUNDLE_IDS = new Set(["com.cmux-mochi", "dev.cmux.app.beta"])'
 
+# Upstream's scheduled TUI nightly must stay cron-disabled on the fork
+# (workflow_dispatch only); a rebase can silently restore the schedule.
+if grep -Eq '^[[:space:]]+schedule:' .github/workflows/cmux-tui-nightly.yml; then
+  fail "cmux-tui-nightly.yml has an active schedule trigger; keep the cron commented out on the fork"
+fi
+
 require_file_contains "Resources/Info.plist" "https://github.com/mochiexists/cmux-mochi/releases/latest/download/appcast.xml"
 require_file_contains "Resources/Info.plist" '$(SPARKLE_PUBLIC_KEY)'
 
