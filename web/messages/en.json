@@ -1719,10 +1719,10 @@
           "globalFontMagnification": "Scales cmux-owned terminals, tab titles, sidebars, settings, overlays, and app chrome by this percentage. Rendered browser page content is excluded."
         },
         "terminal": {
-          "agentResumeMode": "How restored agent terminals behave after quit: off starts fresh, medium restores scrollback and prefills without submitting, and full submits without replaying scrollback.",
+          "agentResumeMode": "How restored agent terminals behave when cmux reopens after quit. 'off': start fresh with no scrollback and no resume command. 'medium': restore the previous scrollback and prefill the resume command without running it, so you can hit enter to continue. 'full': immediately run the resume command (no scrollback).",
           "autoResumeAgentSessions": "Deprecated: use agentResumeMode. Legacy true maps to full and false maps to off.",
-          "agentResumeCommandStyle": "Shell command form used when resuming an agent session: alias uses the short fork alias; verbose preserves the original model, --add-dir, and environment flags.",
-          "autosaveScrollback": "Persist terminal scrollback periodically so a force-quit or crash can restore recent terminal contents.",
+          "agentResumeCommandStyle": "Shell command form used when resuming an agent session. 'alias': the short fork alias (e.g. `cxy resume <id>`), which the cmux shell integration always defines — relies on the session id to re-attach. 'verbose': the full command, preserving the original model, --add-dir, and environment flags.",
+          "autosaveScrollback": "Persist terminal scrollback on a periodic timer so a force-quit or crash can restore the most recent terminal contents (including running TUIs) on reopen.",
           "copyOnSelect": "When true, copy selected terminal text to the system clipboard when the selection is committed. When false, cmux does not emit a Ghostty copy-on-select override; Ghostty config and defaults control selection-clipboard behavior.",
           "scrollSpeed": "Multiplier applied to terminal scroll wheel and trackpad deltas. Higher values scroll faster; lower values scroll slower.",
           "sessionContentMaxWidth": "Optional maximum width, in points, for terminal and built-in agent chat content. Set false to use the full pane width.",
