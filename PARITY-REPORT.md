@@ -1,10 +1,19 @@
 # cmux Mochi v0.64.19 parity report
 
-Date: 2026-07-17
+Date: 2026-07-17 (addendum: same day, post-dogfood)
 
 ## Result
 
 The source port from upstream `v0.64.19` to the shipped Mochi behavior at `v0.64.173` is complete. Every feature marked `port` in the replay ledger is present on `mochi/on-v0.64.19`; no source-parity item is blocked.
+
+**Post-dogfood addendum (2026-07-17, commits `7b73e616b2..13e27aa4fd`):** the first
+live dogfood of the parity-review build caught a real gap this report's original
+validation missed — `ops.fork-identity` was only partially ported. The tagged debug
+app bound the shared `/tmp/cmux-debug.sock` because `SocketPathMarkerFiles` (and
+~300 other identity references) still carried upstream `com.cmuxterm.*` values.
+A follow-up release-values audit found five fork release-lane guards silently
+reverted to upstream versions. Both are now fixed and validated; see
+"Dogfood and identity addendum" below.
 
 This work is prepared but not shipped. No push, tag, workflow dispatch, release, publication, or version bump was performed. The project remains at `MARKETING_VERSION = 0.64.19` and `CURRENT_PROJECT_VERSION = 99` in every build configuration.
 
@@ -167,6 +176,55 @@ These are validation limits, not blocked source ports:
 - No live workspace screenshot/socket CLI dogfood because the final tagged app was not launched.
 - No signed passkeys, notarization, appcast, or public nightly proof.
 - No push, tag, workflow dispatch, version bump, release, or other shipping-lane execution, per the hard rule.
+
+## Dogfood and identity addendum (2026-07-17)
+
+Live dogfood of the tagged parity-review build verified end-to-end:
+
+- Agent resume (Medium): full scrollback replay, resume command prefilled with the
+  `cc` alias and not submitted, session resumed with transcript and context intact
+  after quit/relaunch.
+- First-run Welcome catalog, the live-job send guard, workspace/session restore,
+  and `capture-workspace` all exercised live.
+- After the identity fix: the tagged app binds `/tmp/cmux-debug-parity-review.sock`
+  (shared `/tmp/cmux-debug.sock` no longer used) and `scripts/cmux-debug-cli.sh`
+  works as designed.
+
+Identity fix (`7b73e616b2`, `6a4dd05d9f`): 222 Swift + 73 non-Swift identity
+references renamed; every rename either byte-matches the v0.64.173 oracle or is a
+functional no-oracle site (updater dev/staging gating, stable-defaults device-id
+inheritance, client-capability fallback, APNs prod routing). 109 references the
+shipped tag deliberately keeps on upstream ids were left unchanged.
+
+Release-lane restores (`5bfdc74607`, `53f466c38b`, `13e27aa4fd`):
+`release-pretag-guard.sh` (fork-overlay audit + exact-HEAD CI check + `--build`),
+`bump-version.sh` (patch-by-default + appcast marketing baseline),
+`verify-app-bundle-channel-metadata.sh` (cmux Mochi names),
+`test_ci_sparkle_build_monotonic.sh` (fork appcast URL; correctly red on build
+99 < published 118 until the pre-release bump),
+`test_nightly_universal_build.sh` (dispatch-only + m4pro runner invariants),
+upstream's scheduled `cmux-tui-nightly.yml` cron disabled fork-side, and the
+fork-overlay audit now asserts the runtime identity constants.
+
+Validation of the addendum: CmuxSettings 252/252, CmuxControlSocket 254/254,
+CmuxUpdater 77/77, web APNs 28/28, `tests/test_cli_socket_autodiscovery.py` all
+PASS, fork-overlay audit green, tagged Debug rebuild + live socket dogfood green.
+App-suite triage on this machine (macOS 26.5): 26 failures shared with the
+v0.64.173 baseline tree, 6 upstream-new Freestyle-sshd restore tests failing
+identically pre-fix, 0 regressions attributable to the identity fix.
+
+New known issues catalogued (not parity gaps):
+
+- First-run `cmux welcome` leaves `PanelShellActivityState` stuck at
+  `commandRunning` until the next command, so the first automated `send` to a
+  fresh install's first terminal is refused by the live-job guard. All wiring is
+  byte-identical to the shipped tag; likely a shipped bug — pending empirical
+  confirmation on a shipped build.
+- `tests_v2/test_config_settings_sources_and_sync.py` cannot compile its probe on
+  this base (`ConfigSource.swift` now imports `CmuxFoundation`); pre-existing
+  upstream harness breakage, fails identically without the identity fix.
+- Local machine only: cold-cache zig builds fail against Xcode 26's SDK
+  (libSystem.tbd lacks `arm64-macos`); workaround recorded in agent memory.
 
 ## Known baseline failures retained
 
