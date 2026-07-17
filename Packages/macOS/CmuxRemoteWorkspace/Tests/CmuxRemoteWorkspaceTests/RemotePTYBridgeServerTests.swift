@@ -178,7 +178,7 @@ struct TestPTYBridgeStrings: RemotePTYBridgeStrings {
     var attachFailed: String { "test-attach-failed" }
 }
 
-@Suite("RemotePTYBridgeServer")
+@Suite("RemotePTYBridgeServer", .serialized)
 struct RemotePTYBridgeServerTests {
     private func makeServer(
         client: any RemotePTYBridgeRPCClient,

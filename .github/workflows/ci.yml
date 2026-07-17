@@ -1216,6 +1216,26 @@ jobs:
             CmuxAgentChat|CmuxAuthRuntime|CmuxIrohTransport)
               ./scripts/ci/run-swift-testing-suites.sh "$pkgdir"
               ;;
+            CmuxRemoteSession)
+              # Xcode 26.3 can deadlock before emitting its first test event
+              # when this target's serialized real-subprocess suites share one
+              # Swift Testing process. Discover every suite from SwiftPM, then
+              # run each in its own process so the full target remains covered.
+              suite_list="$(
+                swift test --package-path "$pkgdir" list \
+                  | sed -n "s#^\([^/]*\)/.*#\1#p" \
+                  | sort -u
+              )"
+              if [ -z "$suite_list" ]; then
+                echo "::error::no Swift Testing suites found for $pkg"
+                exit 1
+              fi
+              while IFS= read -r suite; do
+                [ -n "$suite" ] || continue
+                echo "swift test $pkgdir --skip-build --filter ${suite}/"
+                swift test --package-path "$pkgdir" --skip-build --filter "${suite}/"
+              done <<< "$suite_list"
+              ;;
             CmuxTerminal|CmuxTerminalCore)
               test_status=0
               output="$(swift test --package-path "$pkgdir" 2>&1)" || test_status=$?
