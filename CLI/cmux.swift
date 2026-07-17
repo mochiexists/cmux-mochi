@@ -3225,11 +3225,11 @@ struct CMUXCLI {
             return
         }
 
-        // Check for --help/-h on subcommands before resolving sockets,
+        // Check for help/--help/-h on subcommands before resolving sockets,
         // so help text is available even when cmux is not running.
         let preSeparatorArgs = commandArgs.firstIndex(of: "--").map { commandArgs[..<$0] } ?? commandArgs[...]
         if command != "__tmux-compat",
-           preSeparatorArgs.contains(where: { $0 == "--help" || $0 == "-h" }) {
+           Self.requestsSubcommandHelp(preSeparatorArgs) {
             if dispatchSubcommandHelp(command: command, commandArgs: commandArgs) {
                 return
             }
@@ -17457,7 +17457,8 @@ struct CMUXCLI {
 
     /// Dispatch help for a subcommand. Returns true if help was printed.
     private func dispatchSubcommandHelp(command: String, commandArgs: [String]) -> Bool {
-        guard commandArgs.contains("--help") || commandArgs.contains("-h") else { return false }
+        let preSeparatorArgs = commandArgs.firstIndex(of: "--").map { commandArgs[..<$0] } ?? commandArgs[...]
+        guard Self.requestsSubcommandHelp(preSeparatorArgs) else { return false }
         guard let text = subcommandUsage(command) else { return false }
         print("cmux \(command)")
         print("")
@@ -35329,6 +35330,7 @@ export default CMUXSessionRestore;
     private func printWelcome() {
         let reset = "\u{001B}[0m"
         let bold = "\u{001B}[1m"
+        let italic = "\u{001B}[3m"
         func trueColor(_ red: Int, _ green: Int, _ blue: Int) -> String {
             "\u{001B}[38;2;\(red);\(green);\(blue)m"
         }
@@ -35369,6 +35371,7 @@ export default CMUXSessionRestore;
 
           \(bold)\u{2318}N\(reset)\(subdued)                  New workspace\(reset)
           \(bold)\u{2318}T\(reset)\(subdued)                  New tab\(reset)
+          \(bold)\u{2318}\u{21E7}T\(reset)\(subdued)                 Reopen last closed tab/workspace\(reset)
           \(bold)\u{2318}P\(reset)\(subdued)                  Go to workspace\(reset)
           \(bold)\u{2318}B\(reset)\(subdued)                  Toggle Left Sidebar\(reset)
           \(bold)\u{2318}\u{2325}B\(reset)\(subdued)                 Toggle Right Sidebar\(reset)
@@ -35391,6 +35394,39 @@ export default CMUXSessionRestore;
         print("  \(bold)GitHub\(reset)\(subdued)              https://github.com/manaflow-ai/cmux (please leave a star ⭐)\(reset)")
         print("  \(bold)Email\(reset)\(subdued)               founders@manaflow.com\(reset)")
         print()
+
+        // --- Mochi fork section ---
+        let mochi = trueColor(124, 111, 156)
+        print("  \(subdued)\(String(repeating: "\u{2500}", count: 58))\(reset)")
+        print()
+        print("  \(mochi) /\\_/\\\(reset)     \(bold)This is the Mochi fork of cmux\(reset)")
+        print("  \(mochi)( ^.^ )\(reset)    \(subdued)https://github.com/mochiexists/cmux-mochi (please leave a star ⭐)\(reset)")
+        print("  \(mochi) > ^ <\(reset)     \(tagline)practical upgrades for agent-driven workflows\(reset)")
+        print()
+        print("  \(tagline)Spawn agents fast — yolo aliases, baked into every cmux shell\(reset)")
+        print("  \(bold)cxy\(reset)\(subdued)                 codex  --yolo\(reset)")
+        print("  \(bold)ccy\(reset)\(subdued)                 claude --yolo\(reset)")
+        print("  \(bold)Standalone\(reset)\(subdued)          curl -fsSL https://mochiexists.com/yolo/install.sh | sh\(reset)")
+        print("  \(bold)Also see\(reset)\(subdued)            ovm · https://github.com/mochiexists/ovm\(reset)")
+        print()
+        print("  \(tagline)Added in this fork\(reset)")
+        print("  \(mochi)•\(reset) Session continuity — Medium resume pre-types saved agent resume commands, with scrollback, pane zoom, and crash/quit restore preserved")
+        print("  \(mochi)•\(reset) Resource Monitor — an always-on CPU/memory glance in the sidebar footer opens the full Task Manager")
+        print("  \(mochi)•\(reset) Conductor — drive visible Codex and Claude worker panes from cmux")
+        print("    \(mochi)-\(reset) bundled Conductor skill, cmux whoami / identify routing, and workspace capture")
+        print("    \(mochi)-\(reset) surface-attributed lifecycle events plus send guard for live non-agent jobs")
+        print("  \(mochi)•\(reset) Artifact panes — cmux artifact new for React, HTML, SVG, Mermaid, code, and file artifacts")
+        print("  \(mochi)•\(reset) File-backed tabs — Reveal in Finder, Copy File, and Copy Path for markdown, artifact, file-preview, local-file browser, and code tabs")
+        print("  \(mochi)•\(reset) Navigation polish — Cmd+Shift+T restores closed tabs/workspaces, plus sidebar spring-load switching while dragging")
+        print("  \(mochi)•\(reset) Privacy Frost — blur sensitive workspaces or groups from the sidebar to redact them on screen")
+        print("  \(mochi)•\(reset) Sidebar stability — render-storm and lazy-layout fixes keep busy agent workspaces responsive")
+        print("  \(mochi)•\(reset) Browser control — one-click \"Open in External Browser\" toggle")
+        print("  \(mochi)•\(reset) Copy / Show IDs with workspace, pane, surface, agent session, and resume command details")
+        print()
+        print("  \(subdued)\(String(repeating: "\u{2500}", count: 58))\(reset)")
+        print("  \(italic)\(subdued)Passkeys/WebAuthn are temporarily disabled in current Developer ID builds.\(reset)")
+        print()
+
         print("  \(subdued)Run \(reset)\(bold)cmux --help\(reset)\(subdued) for all commands.\(reset)")
         print("  \(subdued)Run \(reset)\(bold)cmux shortcuts\(reset)\(subdued) to edit shortcuts.\(reset)")
         print("  \(subdued)Run \(reset)\(bold)cmux feedback\(reset)\(subdued) to report a bug.\(reset)")
