@@ -6,7 +6,7 @@
 #
 # Example:
 #   scripts/sign-cmux-bundle.sh \
-#     "build-universal/Build/Products/Release/cmux NIGHTLY.app" \
+#     "build-universal/Build/Products/Release/cmux Mochi NIGHTLY.app" \
 #     cmux.nightly.entitlements \
 #     "Developer ID Application: Atlas Codes LTD (599WAZ6282)"
 #

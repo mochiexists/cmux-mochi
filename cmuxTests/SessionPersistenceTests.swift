@@ -51,7 +51,7 @@ final class SessionPersistenceTests: XCTestCase {
     /// at construction, so each test constructs the store with the same
     /// scoping it previously passed per call.
     private func sessionStore(
-        bundleIdentifier: String? = "com.cmuxterm.tests",
+        bundleIdentifier: String? = "com.cmux-mochi.tests",
         appSupportDirectory: URL? = nil
     ) -> SessionSnapshotRepository<AppSessionSnapshot> {
         SessionSnapshotRepository(

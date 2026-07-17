@@ -140,27 +140,35 @@ import Testing
     /// never be pointed at a stable download as the fix for a nightly install failure.
     @Test func manualDownloadRoutesToTheActiveChannel() throws {
         let didNotStart = NSError(domain: UpdateStateModel.updateErrorDomain, code: UpdateStateModel.installDidNotStartCode)
-        let nightlyFeed = "https://github.com/manaflow-ai/cmux/releases/download/nightly/appcast.xml"
+        let nightlyFeed = "https://github.com/mochiexists/cmux-mochi/releases/download/nightly/appcast.xml"
         let recovery = UpdateManualDownloadRecovery()
 
         let nightlyURL = try #require(recovery.url(for: didNotStart, feedURLString: nightlyFeed))
-        #expect(nightlyURL.absoluteString.hasSuffix("/releases/download/nightly/cmux-nightly-macos.dmg"))
-        #expect(!nightlyURL.absoluteString.contains("latest/download"))
+        #expect(
+            nightlyURL.absoluteString ==
+                "https://github.com/mochiexists/cmux-mochi/releases/download/nightly/cmux-nightly-macos.dmg"
+        )
 
         let stableURL = try #require(recovery.url(for: didNotStart, feedURLString: "https://cmux.com/appcast.xml"))
-        #expect(stableURL.absoluteString.contains("latest/download"))
+        #expect(
+            stableURL.absoluteString ==
+                "https://github.com/mochiexists/cmux-mochi/releases/latest/download/cmux-macos.dmg"
+        )
 
         // Sparkle's own install failures route by channel the same way.
         let sparkleInstallFailure = NSError(domain: SUSparkleErrorDomain, code: 4005)
         let sparkleNightlyURL = try #require(recovery.url(for: sparkleInstallFailure, feedURLString: nightlyFeed))
-        #expect(sparkleNightlyURL.absoluteString.hasSuffix("/releases/download/nightly/cmux-nightly-macos.dmg"))
+        #expect(
+            sparkleNightlyURL.absoluteString ==
+                "https://github.com/mochiexists/cmux-mochi/releases/download/nightly/cmux-nightly-macos.dmg"
+        )
     }
 
     /// The watchdog can fire before Sparkle asks its delegate for a feed URL; in that passive path
     /// the driver still needs to recover the build's appcast channel so NIGHTLY installs offer the
     /// nightly DMG instead of downgrading to stable.
     @Test func unresolvedDelegateFeedStillRoutesWatchdogRecoveryToNightly() throws {
-        let nightlyFeed = "https://github.com/manaflow-ai/cmux/releases/download/nightly/appcast.xml"
+        let nightlyFeed = "https://github.com/mochiexists/cmux-mochi/releases/download/nightly/appcast.xml"
         let driver = UpdateDriver(
             model: UpdateStateModel(),
             log: NoopUpdateLog(),
@@ -176,7 +184,7 @@ import Testing
             for: didNotStart,
             feedURLString: driver.resolvedFeedURLString()
         ))
-        #expect(recoveryURL.absoluteString == "https://github.com/manaflow-ai/cmux/releases/download/nightly/cmux-nightly-macos.dmg")
+        #expect(recoveryURL.absoluteString == "https://github.com/mochiexists/cmux-mochi/releases/download/nightly/cmux-nightly-macos.dmg")
 
         let recordedFeed = "https://example.com/other/appcast.xml"
         driver.recordFeedURLString(recordedFeed, usedFallback: false)

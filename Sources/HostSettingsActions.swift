@@ -8,7 +8,7 @@ import Foundation
 import OSLog
 import SwiftUI
 
-private let hostSettingsLogger = Logger(subsystem: "com.cmuxterm.app", category: "Settings")
+private let hostSettingsLogger = Logger(subsystem: "com.cmux-mochi", category: "Settings")
 
 /// App-side implementation of the package's `SettingsHostActions`
 /// protocol. Routes UI-triggered actions to the existing host
@@ -104,7 +104,7 @@ final class HostSettingsActions: SettingsHostActions {
     }
 
     func sendFeedback() {
-        guard let url = URL(string: "https://github.com/manaflow-ai/cmux/issues/new") else { return }
+        guard let url = URL(string: "https://github.com/mochiexists/cmux-mochi/issues/new") else { return }
         NSWorkspace.shared.open(url)
     }
 

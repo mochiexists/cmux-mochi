@@ -350,11 +350,11 @@ extension CMUXCLI {
         case "cmux.sock":
             return Self.cmuxThemeOverrideBundleIdentifier
         case "cmux-debug.sock":
-            return "com.cmuxterm.app.debug"
+            return "com.cmux-mochi.debug"
         case "cmux-nightly.sock":
-            return "com.cmuxterm.app.nightly"
+            return "com.cmux-mochi.nightly"
         case "cmux-staging.sock":
-            return "com.cmuxterm.app.staging"
+            return "com.cmux-mochi.staging"
         default:
             break
         }
@@ -364,13 +364,13 @@ extension CMUXCLI {
         }
 
         if let slug = themeReloadSocketSlug(name, prefix: "cmux-debug-", suffix: ".sock") {
-            return "com.cmuxterm.app.debug.\(slug)"
+            return "com.cmux-mochi.debug.\(slug)"
         }
         if let slug = themeReloadSocketSlug(name, prefix: "cmux-nightly-", suffix: ".sock") {
-            return "com.cmuxterm.app.nightly.\(slug)"
+            return "com.cmux-mochi.nightly.\(slug)"
         }
         if let slug = themeReloadSocketSlug(name, prefix: "cmux-staging-", suffix: ".sock") {
-            return "com.cmuxterm.app.staging.\(slug)"
+            return "com.cmux-mochi.staging.\(slug)"
         }
         return nil
     }
