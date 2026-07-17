@@ -1,4 +1,5 @@
 import AppKit
+import CmuxControlSocket
 import CmuxCore
 import Darwin
 import Foundation
@@ -117,6 +118,21 @@ private func XCTFail(
 @Suite(.serialized)
 final class TerminalControllerSocketSecurityTests {
     private var teardownBlocks: [() -> Void] = []
+
+    private func routing(
+        workspaceID: UUID? = nil,
+        surfaceID: UUID? = nil,
+        paneID: UUID? = nil
+    ) -> ControlRoutingSelectors {
+        ControlRoutingSelectors(
+            hasWindowIDParam: false,
+            windowID: nil,
+            groupID: nil,
+            workspaceID: workspaceID,
+            surfaceID: surfaceID,
+            paneID: paneID
+        )
+    }
 
     @Test func browserDownloadQueueKeepsCompletionAfterPromptReadyEvent() {
         let controller = TerminalController.shared
@@ -286,6 +302,50 @@ final class TerminalControllerSocketSecurityTests {
         XCTAssertEqual(wrongAuthThenPing.count, 2)
         XCTAssertTrue(wrongAuthThenPing[0].hasPrefix("ERROR:"))
         XCTAssertTrue(wrongAuthThenPing[1].hasPrefix("ERROR:"))
+    }
+
+    @Test func testV2ControlFocusRoutesRejectPrivacyBlurredWorkspace() throws {
+        let socketPath = makeSocketPath("privacy-routes")
+        let tabManager = TabManager()
+        let visibleWorkspace = tabManager.tabs[0]
+        let privateWorkspace = tabManager.addWorkspace(select: false)
+        let privatePaneId = try XCTUnwrap(privateWorkspace.bonsplitController.allPaneIds.first?.id)
+        let privateSurfaceId = try XCTUnwrap(privateWorkspace.panels.keys.first)
+
+        TerminalController.shared.start(
+            tabManager: tabManager,
+            socketPath: socketPath,
+            accessMode: .cmuxOnly
+        )
+
+        tabManager.setWorkspacePrivacyBlurred([privateWorkspace.id], isBlurred: true)
+
+        XCTAssertEqual(
+            TerminalController.shared.controlSelectWorkspace(
+                routing: routing(workspaceID: privateWorkspace.id),
+                workspaceID: privateWorkspace.id
+            ),
+            .notFound
+        )
+        XCTAssertEqual(tabManager.selectedTabId, visibleWorkspace.id)
+
+        XCTAssertEqual(
+            TerminalController.shared.controlPaneFocus(
+                routing: routing(workspaceID: privateWorkspace.id),
+                paneID: privatePaneId
+            ),
+            .workspaceNotFound
+        )
+        XCTAssertEqual(tabManager.selectedTabId, visibleWorkspace.id)
+
+        XCTAssertEqual(
+            TerminalController.shared.controlSurfaceFocus(
+                routing: routing(workspaceID: privateWorkspace.id),
+                surfaceID: privateSurfaceId
+            ),
+            .workspaceNotFound
+        )
+        XCTAssertEqual(tabManager.selectedTabId, visibleWorkspace.id)
     }
 
     @Test func testSocketCommandPolicyDistinguishesFocusIntent() throws {

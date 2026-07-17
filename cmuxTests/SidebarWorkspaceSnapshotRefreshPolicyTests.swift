@@ -103,6 +103,23 @@ import Testing
         #expect(decision.pendingWorkspaceSnapshot == next)
         #expect(decision.hasDeferredWorkspaceObservationInvalidation)
     }
+    @Test func contextMenuPrivacyBlurChangeUpdatesDisplayedRedactionImmediately() {
+        let current = Self.snapshot(isPrivacyBlurred: false)
+        let next = Self.snapshot(isPrivacyBlurred: true)
+
+        let decision = SidebarWorkspaceSnapshotRefreshPolicy().decision(
+            current: current,
+            next: next,
+            force: false,
+            contextMenuVisible: true
+        )
+
+        #expect(decision.workspaceSnapshotStorage?.isPrivacyBlurred == true)
+        #expect(decision.workspaceSnapshotStorage == next)
+        #expect(decision.pendingWorkspaceSnapshot == nil)
+        #expect(!decision.hasDeferredWorkspaceObservationInvalidation)
+    }
+
     @Test func closedContextMenuStoresNextAndClearsPending() {
         let current = Self.snapshot(title: "old", isPinned: false)
         let next = Self.snapshot(title: "new", isPinned: true)
@@ -124,6 +141,7 @@ import Testing
         title: String = "workspace",
         customDescription: String? = nil,
         isPinned: Bool = false,
+        isPrivacyBlurred: Bool = false,
         customColorHex: String? = nil,
         remoteConnectionStatusText: String = "Disconnected",
         latestConversationMessage: String? = nil,
@@ -137,6 +155,7 @@ import Testing
             title: title,
             customDescription: customDescription,
             isPinned: isPinned,
+            isPrivacyBlurred: isPrivacyBlurred,
             customColorHex: customColorHex,
             remoteWorkspaceSidebarText: nil,
             remoteConnectionStatusText: remoteConnectionStatusText,

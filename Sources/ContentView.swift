@@ -12259,7 +12259,10 @@ struct VerticalTabsSidebar: View {
             tabIds: sidebarReorderIds,
             indicatorScope: dragState.dropIndicatorScope
         )
-        let onDragStart: () -> NSItemProvider = { [tabId = tab.id] in
+        let isGroupPrivacyBlurred = tab.groupId.flatMap { renderContext.workspaceGroupById[$0]?.isPrivacyBlurred } ?? false
+        let isPrivacyBlurred = tab.isPrivacyBlurred || isGroupPrivacyBlurred
+        let onDragStart: () -> NSItemProvider = { [tabId = tab.id, isPrivacyBlurred] in
+            guard !isPrivacyBlurred else { return NSItemProvider() }
             #if DEBUG
             cmuxDebugLog("sidebar.onDrag tab=\(tabId.uuidString.prefix(5))")
             #endif
@@ -12307,6 +12310,7 @@ struct VerticalTabsSidebar: View {
             tabManager: tabManager,
             notificationStore: notificationStore,
             tab: tab,
+            isPrivacyBlurredSnapshot: isPrivacyBlurred,
             index: index,
             workspaceShortcutDigit: WorkspaceShortcutMapper.digitForWorkspace(
                 at: index,
@@ -12905,6 +12909,7 @@ struct TabItemView: View, Equatable {
     // because they're recreated every parent eval but don't affect rendering.
     nonisolated static func == (lhs: TabItemView, rhs: TabItemView) -> Bool {
         lhs.tab === rhs.tab &&
+        lhs.isPrivacyBlurredSnapshot == rhs.isPrivacyBlurredSnapshot &&
         lhs.index == rhs.index &&
         lhs.workspaceShortcutDigit == rhs.workspaceShortcutDigit &&
         lhs.workspaceShortcutModifierSymbol == rhs.workspaceShortcutModifierSymbol &&
@@ -12953,6 +12958,7 @@ struct TabItemView: View, Equatable {
     @Environment(\.sidebarLazyContractProbe) private var sidebarLazyContractProbe
 #endif
     let tab: Tab
+    let isPrivacyBlurredSnapshot: Bool
     let index: Int
     let workspaceShortcutDigit: Int?
     let workspaceShortcutModifierSymbol: String
@@ -13082,6 +13088,10 @@ struct TabItemView: View, Equatable {
         let snapshot = makeWorkspaceSnapshot()
         workspaceSnapshotScratch.value = snapshot
         return snapshot
+    }
+
+    private var isPrivacyBlurred: Bool {
+        isPrivacyBlurredSnapshot
     }
 
     private var activeTabIndicatorStyle: WorkspaceIndicatorStyle {
@@ -13367,13 +13377,23 @@ struct TabItemView: View, Equatable {
 #endif
         let signpost = SidebarProfilingSignposts.begin("sidebar-tab-item-body", "index=\(index) workspace=\(sidebarShortTabId(tab.id)) active=\(isActive) unread=\(unreadCount)")
         let workspaceSnapshot = self.workspaceSnapshot
+        let isPrivacyBlurred = self.isPrivacyBlurred
+        let privacyBlurredTitle = String(
+            localized: "sidebar.workspace.privacyBlurred",
+            defaultValue: "Private Workspace"
+        )
         let closeWorkspaceTooltip = String(localized: "sidebar.closeWorkspace.tooltip", defaultValue: "Close Workspace")
         let protectedWorkspaceTooltip = String(
             localized: "sidebar.pinnedWorkspaceProtected.tooltip",
             defaultValue: "Pinned workspace. Closing requires confirmation."
         )
         let closeButtonTooltip = workspaceSnapshot.isPinned ? protectedWorkspaceTooltip : KeyboardShortcutSettings.Action.closeWorkspace.tooltip(closeWorkspaceTooltip)
-        let accessibilityHintText = String(localized: "sidebar.workspace.accessibilityHint", defaultValue: "Activate to focus this workspace. Drag to reorder, or use Move Up and Move Down actions.")
+        let accessibilityHintText = isPrivacyBlurred
+            ? String(
+                localized: "sidebar.workspace.privacyBlurred.accessibilityHint",
+                defaultValue: "Right-click for workspace actions."
+            )
+            : String(localized: "sidebar.workspace.accessibilityHint", defaultValue: "Activate to focus this workspace. Drag to reorder, or use Move Up and Move Down actions.")
         let moveUpActionText = String(localized: "sidebar.workspace.moveUpAction", defaultValue: "Move Up")
         let moveDownActionText = String(localized: "sidebar.workspace.moveDownAction", defaultValue: "Move Down")
         let latestNotificationSubtitle = latestNotificationText
@@ -13386,7 +13406,7 @@ struct TabItemView: View, Equatable {
         let displayedSubtitle = effectiveSubtitle?.sidebarBoundedDisplayString(maxDisplayedLines: subtitleLineLimit, maxDisplayedCharacters: 4096)
         let detailVisibility = visibleAuxiliaryDetails
         let titleLineLimit = settings.wrapsWorkspaceTitles ? Self.maxWrappedTitleLines : 1
-        let displayedTitle = workspaceSnapshot.title.sidebarBoundedDisplayString(
+        let displayedTitle = (isPrivacyBlurred ? privacyBlurredTitle : workspaceSnapshot.title).sidebarBoundedDisplayString(
             maxDisplayedLines: titleLineLimit,
             maxDisplayedCharacters: Self.maxDisplayedTitleCharacters
         )
@@ -13776,6 +13796,7 @@ struct TabItemView: View, Equatable {
         .shortcutHintVisibilityAnimation(value: showsWorkspaceShortcutHint)
         .padding(.horizontal, SidebarWorkspaceListMetrics.rowOuterHorizontalPadding)
         .contentShape(Rectangle())
+        .disabled(isPrivacyBlurred)
         .sidebarWorkspaceRowHoverTracking($rowInteractionState)
         .opacity(isBeingDragged ? 0.6 : 1)
         .overlay {
@@ -13814,6 +13835,16 @@ struct TabItemView: View, Equatable {
                 rowSpacing: rowSpacing,
                 isBottomEdge: true
             )
+        }
+        .overlay {
+            if isPrivacyBlurred {
+                SidebarPrivacyFrostedSurface(
+                    cornerRadius: 6,
+                    tint: activeSecondaryColor(0.10),
+                    stroke: activeSecondaryColor(0.22)
+                )
+                .allowsHitTesting(false)
+            }
         }
         .onAppear {
             updateObservedActiveState(tabManager.selectedTabId == tab.id)
@@ -13884,15 +13915,15 @@ struct TabItemView: View, Equatable {
             selectedTabIds: $selectedTabIds
         ))
         .onTapGesture {
-            if !isEditing { updateSelection() }
+            if !isEditing, !isPrivacyBlurred { updateSelection() }
         }
         .simultaneousGesture(
             TapGesture(count: 2).onEnded {
-                guard !isEditing else { return }
+                guard !isEditing, !isPrivacyBlurred else { return }
                 beginInlineRename()
             }
         )
-        .safeHelp(workspaceSnapshot.title)
+        .safeHelp(isPrivacyBlurred ? privacyBlurredTitle : workspaceSnapshot.title)
         .modifier(SidebarRowAccessibilityModifier(
             isEditing: isEditing,
             label: accessibilityTitle,
@@ -13923,6 +13954,7 @@ struct TabItemView: View, Equatable {
         rowView
     }
     private func beginInlineRename() {
+        guard !isPrivacyBlurred else { return }
         updateSelection()
         renameDraft = workspaceSnapshot.title
         renameBaselineHadUserCustomTitle = tab.effectiveCustomTitleSource == .user
@@ -14001,7 +14033,10 @@ struct TabItemView: View, Equatable {
     }
 
     private var accessibilityTitle: String {
-        String(localized: "accessibility.workspacePosition", defaultValue: "\(workspaceSnapshot.title), workspace \(index + 1) of \(accessibilityWorkspaceCount)")
+        let title = isPrivacyBlurred
+            ? String(localized: "sidebar.workspace.privacyBlurred", defaultValue: "Private Workspace")
+            : workspaceSnapshot.title
+        return String(localized: "accessibility.workspacePosition", defaultValue: "\(title), workspace \(index + 1) of \(accessibilityWorkspaceCount)")
     }
 
     func moveBy(_ delta: Int) {
@@ -14015,6 +14050,7 @@ struct TabItemView: View, Equatable {
     }
 
     private func updateSelection() {
+        guard !isPrivacyBlurred else { return }
         let modifiers = NSEvent.modifierFlags
         let isCommand = modifiers.contains(.command)
         let isShift = modifiers.contains(.shift)
@@ -14055,6 +14091,9 @@ struct TabItemView: View, Equatable {
                 uniqueKeysWithValues: tabManager.workspaceGroups.map { ($0.id, $0.anchorWorkspaceId) }
             )
             let rangeIds = tabManager.tabs[lower...upper].compactMap { tab -> UUID? in
+                if tabManager.isWorkspaceEffectivelyPrivacyBlurred(tab) {
+                    return nil
+                }
                 if let gid = tab.groupId,
                    collapsedGroupIds.contains(gid),
                    anchorIdsByGroup[gid] != tab.id {
@@ -14285,6 +14324,7 @@ struct TabItemView: View, Equatable {
             title: tab.title,
             customDescription: settings.showsWorkspaceDescription ? sidebarVisibleCustomDescription : nil,
             isPinned: tab.isPinned,
+            isPrivacyBlurred: isPrivacyBlurredSnapshot,
             customColorHex: tab.customColor,
             remoteWorkspaceSidebarText: remoteWorkspaceSidebarText,
             remoteConnectionStatusText: remoteConnectionStatusText,

@@ -235,7 +235,74 @@ class TabManager: ObservableObject {
     static var nextPortOrdinal: Int = 0
     var selectedTabId: UUID? {
         get { workspaces.selectedTabId }
-        set { workspaces.selectedTabId = newValue }
+        set { workspaces.selectedTabId = selectableWorkspaceId(for: newValue) }
+    }
+
+    private func selectableWorkspaceId(for requestedId: UUID?) -> UUID? {
+        guard let requestedId else { return nil }
+        guard let workspace = tabs.first(where: { $0.id == requestedId }) else {
+            return requestedId
+        }
+        guard isWorkspaceEffectivelyPrivacyBlurred(workspace) else { return requestedId }
+        return tabs.first(where: { !isWorkspaceEffectivelyPrivacyBlurred($0) })?.id
+    }
+
+    private func selectableWorkspaceId(startingAt index: Int) -> UUID? {
+        guard !tabs.isEmpty else { return nil }
+        let startIndex = max(0, min(index, tabs.count - 1))
+        for offset in 0..<tabs.count {
+            let candidate = tabs[(startIndex + offset) % tabs.count]
+            if !isWorkspaceEffectivelyPrivacyBlurred(candidate) {
+                return candidate.id
+            }
+        }
+        return nil
+    }
+
+    private func nextSelectableWorkspaceId(after currentIndex: Int, direction: Int) -> UUID? {
+        guard !tabs.isEmpty else { return nil }
+        for offset in 1...tabs.count {
+            let rawIndex = currentIndex + (offset * direction)
+            let index = ((rawIndex % tabs.count) + tabs.count) % tabs.count
+            let candidate = tabs[index]
+            if !isWorkspaceEffectivelyPrivacyBlurred(candidate) {
+                return candidate.id
+            }
+        }
+        return nil
+    }
+
+    func canSelectWorkspace(_ workspace: Workspace) -> Bool {
+        !isWorkspaceEffectivelyPrivacyBlurred(workspace)
+    }
+
+    func canSelectWorkspace(id workspaceId: UUID) -> Bool {
+        guard let workspace = tabs.first(where: { $0.id == workspaceId }) else { return false }
+        return canSelectWorkspace(workspace)
+    }
+
+    func setWorkspacePrivacyBlurred(_ workspaceIds: [UUID], isBlurred: Bool) {
+        let targetIds = Set(workspaceIds)
+        guard !targetIds.isEmpty else { return }
+        var changed = false
+        for workspace in tabs where targetIds.contains(workspace.id) && workspace.isPrivacyBlurred != isBlurred {
+            workspace.isPrivacyBlurred = isBlurred
+            if isBlurred {
+                VSCodeServeWebWorkspaceRegistry.shared.stop(workspaceID: workspace.id)
+            }
+            changed = true
+        }
+        guard changed,
+              let currentSelectedTabId = selectedTabId,
+              targetIds.contains(currentSelectedTabId),
+              isBlurred else { return }
+        selectedTabId = tabs.first(where: { !isWorkspaceEffectivelyPrivacyBlurred($0) })?.id
+    }
+
+    func isWorkspaceEffectivelyPrivacyBlurred(_ workspace: Workspace) -> Bool {
+        if workspace.isPrivacyBlurred { return true }
+        guard let groupId = workspace.groupId else { return false }
+        return workspaceGroups.first(where: { $0.id == groupId })?.isPrivacyBlurred ?? false
     }
 
     // MARK: - WorkspacesHosting hooks (legacy @Published property observers)
@@ -1824,6 +1891,25 @@ class TabManager: ObservableObject {
         workspaceGrouping.setWorkspaceGroupPinned(groupId: groupId, isPinned: isPinned)
     }
 
+    func toggleWorkspaceGroupPrivacyBlurred(groupId: UUID) {
+        let isCurrentlyBlurred = workspaceGroups.first(where: { $0.id == groupId })?.isPrivacyBlurred ?? false
+        setWorkspaceGroupPrivacyBlurred(groupId: groupId, isBlurred: !isCurrentlyBlurred)
+    }
+
+    func setWorkspaceGroupPrivacyBlurred(groupId: UUID, isBlurred: Bool) {
+        let changed = workspaceGrouping.setWorkspaceGroupPrivacyBlurred(groupId: groupId, isBlurred: isBlurred)
+        guard changed else { return }
+        if isBlurred {
+            for workspace in tabs where workspace.groupId == groupId {
+                VSCodeServeWebWorkspaceRegistry.shared.stop(workspaceID: workspace.id)
+            }
+        }
+        guard isBlurred,
+              let currentSelectedTabId = selectedTabId,
+              tabs.contains(where: { $0.id == currentSelectedTabId && $0.groupId == groupId }) else { return }
+        selectedTabId = tabs.first(where: { !isWorkspaceEffectivelyPrivacyBlurred($0) })?.id
+    }
+
     func setWorkspaceGroupColor(groupId: UUID, hex: String?) {
         workspaceGrouping.setWorkspaceGroupColor(groupId: groupId, hex: hex)
     }
@@ -2022,6 +2108,7 @@ class TabManager: ObservableObject {
         }
         sidebarGitMetadataService.clearWorkspaceGitProbes(workspaceId: workspace.id)
         pullRequestProbing.clearWorkspacePullRequestTracking(workspaceId: workspace.id)
+        VSCodeServeWebWorkspaceRegistry.shared.stop(workspaceID: workspace.id)
         sidebarMultiSelection.removeFromSelection(workspace.id)
         invalidateFocusHistoryTarget(workspaceId: workspace.id, panelId: nil)
 
@@ -2048,7 +2135,7 @@ class TabManager: ObservableObject {
                 // - If we closed workspace i and there is still a workspace at index i, focus it (the one that moved up).
                 // - Otherwise (we closed the last workspace), focus the new last workspace (i-1).
                 let newIndex = min(index, max(0, tabs.count - 1))
-                selectedTabId = tabs[newIndex].id
+                selectedTabId = selectableWorkspaceId(startingAt: newIndex)
             }
         }
         publishCmuxWorkspaceClosed(workspace)
@@ -2086,7 +2173,7 @@ class TabManager: ObservableObject {
 
         if selectedTabId == removed.id {
             let nextIndex = min(index, max(0, tabs.count - 1))
-            selectedTabId = tabs[nextIndex].id
+            selectedTabId = selectableWorkspaceId(startingAt: nextIndex)
         }
 
         return removed
@@ -2295,6 +2382,7 @@ class TabManager: ObservableObject {
     }
 
     func selectWorkspace(_ workspace: Workspace) {
+        guard canSelectWorkspace(workspace) else { return }
 #if DEBUG
         debugPrimeWorkspaceSwitchTrigger("select", to: workspace.id)
 #endif
@@ -3219,6 +3307,10 @@ class TabManager: ObservableObject {
         _ tabId: UUID,
         notificationDismissalContext: NotificationDismissalContext?
     ) {
+        guard canSelectWorkspace(id: tabId) else {
+            notificationDismissal.setPendingSelectionContext(nil)
+            return
+        }
         guard selectedTabId != tabId else {
             notificationDismissal.setPendingSelectionContext(nil)
             if let notificationDismissalContext {
@@ -3426,37 +3518,35 @@ class TabManager: ObservableObject {
     func selectNextTab() {
         guard let currentId = selectedTabId,
               let currentIndex = tabs.firstIndex(where: { $0.id == currentId }) else { return }
-        let nextIndex = (currentIndex + 1) % tabs.count
+        guard let nextId = nextSelectableWorkspaceId(after: currentIndex, direction: 1) else { return }
 #if DEBUG
-        let nextId = tabs[nextIndex].id
         debugPrepareWorkspaceSwitch("next", from: currentId, to: nextId)
 #endif
         activateWorkspaceCycleHotWindow()
         selectWorkspaceId(
-            tabs[nextIndex].id,
+            nextId,
             notificationDismissalContext: .explicitWorkspaceResume
         )
         // Keyboard nav is an explicit "focus one workspace" gesture, so drop
         // any stale sidebar multi-selection (Shift-click range) so subsequent
         // batch actions don't operate on workspaces the user thought they
         // had unselected by moving on.
-        clearSidebarMultiSelection(except: tabs[nextIndex].id)
+        clearSidebarMultiSelection(except: nextId)
     }
 
     func selectPreviousTab() {
         guard let currentId = selectedTabId,
               let currentIndex = tabs.firstIndex(where: { $0.id == currentId }) else { return }
-        let prevIndex = (currentIndex - 1 + tabs.count) % tabs.count
+        guard let prevId = nextSelectableWorkspaceId(after: currentIndex, direction: -1) else { return }
 #if DEBUG
-        let prevId = tabs[prevIndex].id
         debugPrepareWorkspaceSwitch("prev", from: currentId, to: prevId)
 #endif
         activateWorkspaceCycleHotWindow()
         selectWorkspaceId(
-            tabs[prevIndex].id,
+            prevId,
             notificationDismissalContext: .explicitWorkspaceResume
         )
-        clearSidebarMultiSelection(except: tabs[prevIndex].id)
+        clearSidebarMultiSelection(except: prevId)
     }
 
     /// Reduce sidebar multi-selection to a single workspace (or clear if
@@ -3596,6 +3686,7 @@ class TabManager: ObservableObject {
 
     func selectTab(at index: Int) {
         guard index >= 0 && index < tabs.count else { return }
+        guard canSelectWorkspace(tabs[index]) else { return }
 #if DEBUG
         debugPrimeWorkspaceSwitchTrigger("select_index", to: tabs[index].id)
 #endif
@@ -3603,7 +3694,7 @@ class TabManager: ObservableObject {
     }
 
     func selectLastTab() {
-        guard let lastTab = tabs.last else { return }
+        guard let lastTab = tabs.last(where: { !isWorkspaceEffectivelyPrivacyBlurred($0) }) else { return }
         selectWorkspaceId(lastTab.id, notificationDismissalContext: .explicitWorkspaceResume)
     }
 
@@ -5570,6 +5661,7 @@ extension TabManager {
             hasher.combine(group.name)
             hasher.combine(group.isCollapsed)
             hasher.combine(group.isPinned)
+            hasher.combine(group.isPrivacyBlurred)
             hasher.combine(group.anchorWorkspaceId)
             hasher.combine(group.customColor ?? "")
             hasher.combine(group.iconSymbol ?? "")
@@ -5582,6 +5674,7 @@ extension TabManager {
             hasher.combine(workspace.customTitle ?? "")
             hasher.combine(workspace.customDescription ?? "")
             hasher.combine(workspace.customColor ?? "")
+            hasher.combine(workspace.isPrivacyBlurred)
             hasher.combine(workspace.isPinned)
             hasher.combine(workspace.panels.count)
             hasher.combine(workspace.statusEntries.count)
@@ -5869,6 +5962,7 @@ extension TabManager {
                         anchorWorkspaceId: group.anchorWorkspaceId,
                         anchorMemberIndex: anchorIndex,
                         isPinned: group.isPinned,
+                        isPrivacyBlurred: group.isPrivacyBlurred,
                         customColor: group.customColor,
                         iconSymbol: group.iconSymbol
                     )
@@ -6059,6 +6153,7 @@ extension TabManager {
                     name: groupSnapshot.name,
                     isCollapsed: groupSnapshot.isCollapsed,
                     isPinned: groupSnapshot.isPinned ?? false,
+                    isPrivacyBlurred: groupSnapshot.isPrivacyBlurred ?? false,
                     anchorWorkspaceId: anchorId,
                     customColor: groupSnapshot.customColor,
                     iconSymbol: groupSnapshot.iconSymbol

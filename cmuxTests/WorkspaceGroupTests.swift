@@ -958,6 +958,7 @@ struct WorkspaceGroupTests {
         manager.toggleWorkspaceGroupCollapsed(groupId: groupId)
         manager.setWorkspaceGroupColor(groupId: groupId, hex: "#123456")
         manager.setWorkspaceGroupIcon(groupId: groupId, symbol: "leaf.fill")
+        manager.setWorkspaceGroupPrivacyBlurred(groupId: groupId, isBlurred: true)
 
         let snapshot = manager.sessionSnapshot(includeScrollback: false)
         let groups = try #require(snapshot.workspaceGroups)
@@ -965,6 +966,7 @@ struct WorkspaceGroupTests {
         #expect(g.name == "Round Trip")
         #expect(g.isCollapsed == true)
         #expect(g.isPinned == true)
+        #expect(g.isPrivacyBlurred == true)
         #expect(g.customColor == "#123456")
         #expect(g.iconSymbol == "leaf.fill")
 
@@ -974,6 +976,7 @@ struct WorkspaceGroupTests {
         #expect(restoredGroup.name == "Round Trip")
         #expect(restoredGroup.isCollapsed == true)
         #expect(restoredGroup.isPinned == true)
+        #expect(restoredGroup.isPrivacyBlurred == true)
         #expect(restoredGroup.customColor == "#123456")
         #expect(restoredGroup.iconSymbol == "leaf.fill")
     }

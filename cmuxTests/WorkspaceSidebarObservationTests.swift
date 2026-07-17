@@ -13,6 +13,42 @@ import CmuxSidebar
 
 @MainActor
 struct WorkspaceSidebarObservationTests {
+    @Test func privacyBlurredChangeUsesImmediateObservationPublisher() {
+        let workspace = Workspace()
+
+        var publishCount = 0
+        let cancellable = workspace.sidebarImmediateObservationPublisher.sink {
+            publishCount += 1
+        }
+        defer { cancellable.cancel() }
+        publishCount = 0
+
+        workspace.isPrivacyBlurred = true
+
+        #expect(
+            publishCount == 1,
+            "Privacy blur changes should refresh stable row affordances immediately."
+        )
+    }
+
+    @Test func privacyBlurredChangeDoesNotUseHeavySidebarObservationPublisher() {
+        let workspace = Workspace()
+
+        var publishCount = 0
+        let cancellable = workspace.sidebarObservationPublisher.sink {
+            publishCount += 1
+        }
+        defer { cancellable.cancel() }
+        publishCount = 0
+
+        workspace.isPrivacyBlurred = true
+
+        #expect(
+            publishCount == 0,
+            "Privacy blur changes should not schedule the heavier telemetry/detail row refresh path."
+        )
+    }
+
     @Test func sidebarObservationPublisherEmitsForLateStatusSubscriber() {
         let workspace = Workspace()
         workspace.statusEntries["test_probe"] = SidebarStatusEntry(
