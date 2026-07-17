@@ -3519,6 +3519,7 @@ class GhosttyNSView: NSView, NSUserInterfaceValidations {
            let surface {
             reselectKeyboardCopyModeVisualLineSelection(surface: surface)
         }
+        AppDelegate.shared?.markTerminalScrollbackAutosaveDirty()
         NotificationCenter.default.post(
             name: .ghosttyDidUpdateScrollbar,
             object: self,

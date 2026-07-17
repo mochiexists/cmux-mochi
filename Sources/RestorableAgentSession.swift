@@ -852,14 +852,25 @@ struct SessionRestorableAgentSnapshot: Codable, Sendable {
     /// user-owned claude resume/fork when no explicit launch flag covers it.
     var permissionMode: String? = nil
 
+    func resumePreparedStartupInput(
+        style: AgentResumeCommandStyle = AgentResumeCommandStyleSettings.style()
+    ) -> String? {
+        guard let command = resolvedResumeCommand(style: style),
+              command.utf8.count <= Self.maxInlineStartupInputBytes else {
+            return nil
+        }
+        return command
+    }
+
     func resumeStartupInput(
+        style: AgentResumeCommandStyle = AgentResumeCommandStyleSettings.style(),
         fileManager: FileManager = .default,
         temporaryDirectory: URL = FileManager.default.temporaryDirectory,
         allowLauncherScript: Bool = true,
         allowOversizedInlineInput: Bool = false
     ) -> String? {
         startupInput(
-            command: resumeCommand,
+            command: resolvedResumeCommand(style: style),
             fileManager: fileManager,
             temporaryDirectory: temporaryDirectory,
             allowLauncherScript: allowLauncherScript,

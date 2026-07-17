@@ -14,9 +14,10 @@ extension AppDelegate {
     #endif
 
     nonisolated static func shouldSaveSessionSnapshotOnRestoreCompletion(
-        isManualReopen: Bool
+        isManualReopen: Bool,
+        restoredSnapshotContainsScrollback: Bool
     ) -> Bool {
-        !isManualReopen
+        !isManualReopen && !restoredSnapshotContainsScrollback
     }
 
     nonisolated static func shouldSkipSessionSaveDuringRestore(

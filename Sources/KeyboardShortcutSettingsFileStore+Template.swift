@@ -92,7 +92,7 @@ extension CmuxSettingsFileStore {
                     "showScrollBar": TerminalScrollBarSettings.defaultShowScrollBar,
                     "scrollSpeed": TerminalScrollSpeedSettings.defaultMultiplier,
                     "copyOnSelect": TerminalCopyOnSelectSettings.defaultCopyOnSelect,
-                    "autoResumeAgentSessions": AgentSessionAutoResumeSettings.defaultAutoResumeAgentSessions,
+                    "agentResumeMode": AgentSessionAutoResumeSettings.defaultMode.rawValue,
                     "showTextBoxOnNewTerminals": TerminalTextBoxInputSettings.defaultShowOnNewTerminals,
                     "focusTextBoxOnNewTerminals": TerminalTextBoxInputSettings.defaultFocusOnNewTerminals,
                     "textBoxDefaultSubmitAction": TerminalTextBoxInputSettings.defaultSubmitActionID,
@@ -109,6 +109,8 @@ extension CmuxSettingsFileStore {
                     ],
                     "textBoxMaxLines": TerminalTextBoxInputSettings.defaultMaxLines,
                     "resumeCommands": [],
+                    "agentResumeCommandStyle": AgentResumeCommandStyleSettings.defaultStyle.rawValue,
+                    "autosaveScrollback": TerminalScrollbackAutosaveSettings.defaultEnabled,
                 ],
             ],
             [

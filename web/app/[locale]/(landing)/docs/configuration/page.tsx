@@ -76,7 +76,9 @@ function buildSettingsFileExample(t: ConfigurationTranslation) {
   // "terminal": {
   //   "showScrollBar": false,
   //   "copyOnSelect": true,
-  //   "autoResumeAgentSessions": true,
+  //   "agentResumeMode": "medium",
+  //   "agentResumeCommandStyle": "alias",
+  //   "autosaveScrollback": true,
   //   "showTextBoxOnNewTerminals": false,
   //   "focusTextBoxOnNewTerminals": false,
   //   "agentHibernation": {

@@ -243,6 +243,34 @@ struct AgentHibernationTests {
 
     @MainActor
     @Test
+    func testSetAgentLifecyclePublishesSurfaceAttributedStateChangeOnce() throws {
+        CmuxEventBus.shared.resetForTesting()
+        let workspace = Workspace()
+        let panelId = try #require(workspace.focusedPanelId)
+
+        workspace.setAgentLifecycle(key: "codex", panelId: panelId, lifecycle: .running)
+        workspace.setAgentLifecycle(key: "codex", panelId: panelId, lifecycle: .idle)
+        workspace.setAgentLifecycle(key: "codex", panelId: panelId, lifecycle: .idle)
+
+        let snapshot = CmuxEventBus.shared.subscribe(
+            afterSequence: 0,
+            names: ["agent.state.changed"],
+            categories: []
+        )
+        defer { CmuxEventBus.shared.unsubscribe(snapshot.subscription) }
+
+        #expect(snapshot.replay.count == 2)
+        let idleEvent = try #require(snapshot.replay.last)
+        #expect(idleEvent["surface_id"] as? String == panelId.uuidString)
+        #expect(idleEvent["workspace_id"] as? String == workspace.id.uuidString)
+        let payload = try #require(idleEvent["payload"] as? [String: Any])
+        #expect(payload["agent_key"] as? String == "codex")
+        #expect(payload["previous_state"] as? String == "running")
+        #expect(payload["state"] as? String == "idle")
+    }
+
+    @MainActor
+    @Test
     func testClearingAgentPIDByPanelClearsLifecycleWithoutOwnedPID() throws {
         let workspace = Workspace()
         let panelId = try #require(workspace.focusedPanelId)

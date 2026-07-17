@@ -893,13 +893,158 @@ final class SessionPersistenceTests: XCTestCase {
     func testRestoreCompletionSavePolicySkipsManualReopen() {
         XCTAssertTrue(
             AppDelegate.shouldSaveSessionSnapshotOnRestoreCompletion(
-                isManualReopen: false
+                isManualReopen: false,
+                restoredSnapshotContainsScrollback: false
             )
         )
         XCTAssertFalse(
             AppDelegate.shouldSaveSessionSnapshotOnRestoreCompletion(
-                isManualReopen: true
+                isManualReopen: true,
+                restoredSnapshotContainsScrollback: false
             )
+        )
+        XCTAssertFalse(
+            AppDelegate.shouldSaveSessionSnapshotOnRestoreCompletion(
+                isManualReopen: false,
+                restoredSnapshotContainsScrollback: true
+            )
+        )
+    }
+
+    func testClaudeResumeCommandDefaultsToYoloAliasWhenLaunchArgumentsUnknown() {
+        let snapshot = SessionRestorableAgentSnapshot(
+            kind: .claude,
+            sessionId: "claude-session-456",
+            workingDirectory: "/tmp/cmux project",
+            launchCommand: nil
+        )
+
+        XCTAssertEqual(
+            snapshot.resumeCommand,
+            "cd '/tmp/cmux project' && ccy '--resume' 'claude-session-456'"
+        )
+    }
+
+    func testClaudeResumeCommandUsesNonYoloAliasWhenNoSkipPermissionsFlag() {
+        let snapshot = SessionRestorableAgentSnapshot(
+            kind: .claude,
+            sessionId: "claude-session-123",
+            workingDirectory: "/tmp/cmux project",
+            launchCommand: AgentLaunchCommandSnapshot(
+                launcher: "claude",
+                executablePath: "/opt/Claude Code/bin/claude",
+                arguments: ["claude", "--permission-mode", "auto"],
+                workingDirectory: "/tmp/cmux project"
+            )
+        )
+
+        XCTAssertEqual(
+            snapshot.resumeCommand,
+            "cd '/tmp/cmux project' && cc '--resume' 'claude-session-123'"
+        )
+    }
+
+    func testClaudeResumeCommandUsesYoloAliasWhenSkipPermissionsFlagPresent() {
+        let snapshot = SessionRestorableAgentSnapshot(
+            kind: .claude,
+            sessionId: "24ec0052-450c-4914-b1dd-2ee80d4bc84b",
+            workingDirectory: "/Users/lawrence/fun",
+            launchCommand: AgentLaunchCommandSnapshot(
+                launcher: "claude",
+                executablePath: "/Users/lawrence/.local/bin/claude",
+                arguments: ["claude", "--dangerously-skip-permissions"],
+                workingDirectory: "/Users/lawrence/fun"
+            )
+        )
+
+        XCTAssertEqual(
+            snapshot.resumeCommand,
+            "cd '/Users/lawrence/fun' && ccy '--resume' '24ec0052-450c-4914-b1dd-2ee80d4bc84b'"
+        )
+    }
+
+    func testCodexResumeCommandUsesNonYoloAliasWhenNoBypassFlag() {
+        let snapshot = SessionRestorableAgentSnapshot(
+            kind: .codex,
+            sessionId: "019dad34-d218-7943-b81a-eddac5c87951",
+            workingDirectory: "/Users/example/repo",
+            launchCommand: AgentLaunchCommandSnapshot(
+                launcher: "codex",
+                executablePath: "/Users/example/.bun/bin/codex",
+                arguments: [
+                    "codex", "--sandbox", "danger-full-access",
+                    "--ask-for-approval", "never"
+                ],
+                workingDirectory: "/Users/example/repo"
+            )
+        )
+
+        XCTAssertEqual(
+            snapshot.resumeCommand,
+            "cd '/Users/example/repo' && cxy 'resume' '019dad34-d218-7943-b81a-eddac5c87951'"
+        )
+    }
+
+    func testCodexResumeCommandUsesYoloAliasWhenBypassFlagPresent() {
+        let snapshot = SessionRestorableAgentSnapshot(
+            kind: .codex,
+            sessionId: "019dad34-d218-7943-b81a-eddac5c87951",
+            workingDirectory: "/Users/example/repo",
+            launchCommand: AgentLaunchCommandSnapshot(
+                launcher: "codex",
+                executablePath: "/Users/example/.bun/bin/codex",
+                arguments: ["codex", "--dangerously-bypass-approvals-and-sandbox"],
+                workingDirectory: "/Users/example/repo"
+            )
+        )
+
+        XCTAssertEqual(
+            snapshot.resumeCommand,
+            "cd '/Users/example/repo' && cxy 'resume' '019dad34-d218-7943-b81a-eddac5c87951'"
+        )
+    }
+
+    func testRestorableAgentStartupInputUsesShortInlineAliasEvenWhenLaunchArgsAreOversized() throws {
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("cmux-agent-resume-test-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let longPath = "/tmp/" + String(repeating: "nested-path-", count: 120)
+        let snapshot = SessionRestorableAgentSnapshot(
+            kind: .codex,
+            sessionId: "019dad34-d218-7943-b81a-eddac5c87951",
+            workingDirectory: "/tmp/repo",
+            launchCommand: AgentLaunchCommandSnapshot(
+                launcher: "codex",
+                executablePath: "/Users/example/.bun/bin/codex",
+                arguments: ["codex", "--add-dir", longPath],
+                workingDirectory: "/tmp/repo"
+            )
+        )
+
+        let input = try XCTUnwrap(snapshot.resumeStartupInput(style: .alias, temporaryDirectory: tempDir))
+        XCTAssertFalse(input.hasPrefix("/bin/zsh '"))
+        XCTAssertFalse(input.contains(longPath))
+        XCTAssertEqual(
+            input,
+            "cd '/tmp/repo' && cx 'resume' '019dad34-d218-7943-b81a-eddac5c87951'\n"
+        )
+    }
+
+    func testAppSessionSnapshotDetectsTerminalScrollback() {
+        XCTAssertFalse(makeSnapshot(version: SessionSnapshotSchema.currentVersion).containsTerminalScrollback)
+        XCTAssertTrue(
+            makeSnapshot(
+                version: SessionSnapshotSchema.currentVersion,
+                scrollback: "restored scrollback"
+            ).containsTerminalScrollback
+        )
+        XCTAssertFalse(
+            makeSnapshot(
+                version: SessionSnapshotSchema.currentVersion,
+                scrollback: ""
+            ).containsTerminalScrollback
         )
     }
 
@@ -933,12 +1078,13 @@ final class SessionPersistenceTests: XCTestCase {
         )
     }
 
-    func testUnchangedAutosaveFingerprintNeverSkipsTerminatingOrScrollbackWrites() {
+    func testUnchangedAutosaveFingerprintDoesNotSkipTerminatingOrDirtyScrollbackWrites() {
         let now = Date()
         XCTAssertFalse(
             AppDelegate.shouldSkipSessionAutosaveForUnchangedFingerprint(
                 isTerminatingApp: true,
                 includeScrollback: false,
+                scrollbackDirty: false,
                 previousFingerprint: 1234,
                 currentFingerprint: 1234,
                 lastPersistedAt: now.addingTimeInterval(-1),
@@ -949,12 +1095,49 @@ final class SessionPersistenceTests: XCTestCase {
             AppDelegate.shouldSkipSessionAutosaveForUnchangedFingerprint(
                 isTerminatingApp: false,
                 includeScrollback: true,
+                scrollbackDirty: true,
                 previousFingerprint: 1234,
                 currentFingerprint: 1234,
                 lastPersistedAt: now.addingTimeInterval(-1),
                 now: now
             )
         )
+    }
+
+    func testCleanScrollbackAutosaveSkipsUnchangedFingerprint() {
+        let now = Date()
+        XCTAssertTrue(
+            AppDelegate.shouldSkipSessionAutosaveForUnchangedFingerprint(
+                isTerminatingApp: false,
+                includeScrollback: true,
+                scrollbackDirty: false,
+                previousFingerprint: 1234,
+                currentFingerprint: 1234,
+                lastPersistedAt: now.addingTimeInterval(-120),
+                now: now
+            )
+        )
+        XCTAssertFalse(
+            AppDelegate.shouldSkipSessionAutosaveForUnchangedFingerprint(
+                isTerminatingApp: false,
+                includeScrollback: true,
+                scrollbackDirty: false,
+                previousFingerprint: 1234,
+                currentFingerprint: 5678,
+                lastPersistedAt: now.addingTimeInterval(-120),
+                now: now
+            )
+        )
+    }
+
+    func testSessionAutosaveScrollbackSettingControlsAutosaveSnapshotMode() throws {
+        let suiteName = "cmux-session-autosave-scrollback-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        XCTAssertTrue(AppDelegate.shouldIncludeScrollbackInSessionAutosave(defaults: defaults))
+        defaults.set(false, forKey: TerminalScrollbackAutosaveSettings.enabledKey)
+        XCTAssertFalse(AppDelegate.shouldIncludeScrollbackInSessionAutosave(defaults: defaults))
     }
 
     func testSessionAutosaveFingerprintIncludesRestorableAgentMetadata() throws {
@@ -1353,7 +1536,43 @@ final class SessionPersistenceTests: XCTestCase {
         )
 
         XCTAssertFalse(Workspace.shouldReplaySessionScrollback(restorableAgent: agent))
+        XCTAssertTrue(Workspace.shouldReplaySessionScrollback(restorableAgent: agent, resumeMode: .medium))
+        XCTAssertFalse(Workspace.shouldReplaySessionScrollback(restorableAgent: agent, resumeMode: .off))
+        XCTAssertFalse(Workspace.shouldReplaySessionScrollback(restorableAgent: agent, resumeMode: .full))
         XCTAssertTrue(Workspace.shouldReplaySessionScrollback(restorableAgent: nil))
+    }
+
+    func testSessionScrollbackPersistenceKeepsLiveTUIs() {
+        XCTAssertTrue(
+            Workspace.shouldPersistSessionScrollbackForRestore(
+                restorableAgent: nil,
+                tmuxStartCommand: nil
+            )
+        )
+    }
+
+    func testSessionScrollbackPersistenceAllowsActiveRestorableAgent() {
+        let agent = SessionRestorableAgentSnapshot(
+            kind: .codex,
+            sessionId: "codex-session-active-tui",
+            workingDirectory: "/tmp/repo",
+            launchCommand: nil
+        )
+        XCTAssertTrue(
+            Workspace.shouldPersistSessionScrollbackForRestore(
+                restorableAgent: agent,
+                tmuxStartCommand: nil
+            )
+        )
+    }
+
+    func testSessionScrollbackPersistenceSuppressedForOMXHudRestart() {
+        XCTAssertFalse(
+            Workspace.shouldPersistSessionScrollbackForRestore(
+                restorableAgent: nil,
+                tmuxStartCommand: "omx hud --foo"
+            )
+        )
     }
 
     @MainActor
@@ -1858,16 +2077,40 @@ final class SessionPersistenceTests: XCTestCase {
         return RestorableAgentSessionIndex.load(homeDirectory: home.path)
     }
 
-    private func makeSnapshot(version: Int) -> AppSessionSnapshot {
+    private func makeSnapshot(version: Int, scrollback: String? = nil) -> AppSessionSnapshot {
+        let panelId = UUID()
         let workspace = SessionWorkspaceSnapshot(
             processTitle: "Terminal",
             customTitle: "Restored",
             customColor: nil,
             isPinned: true,
             currentDirectory: "/tmp",
-            focusedPanelId: nil,
-            layout: .pane(SessionPaneLayoutSnapshot(panelIds: [], selectedPanelId: nil)),
-            panels: [],
+            focusedPanelId: panelId,
+            layout: .pane(SessionPaneLayoutSnapshot(panelIds: [panelId], selectedPanelId: panelId)),
+            panels: [
+                SessionPanelSnapshot(
+                    id: panelId,
+                    type: .terminal,
+                    title: "Terminal",
+                    customTitle: nil,
+                    directory: "/tmp",
+                    isPinned: false,
+                    isManuallyUnread: false,
+                    gitBranch: nil,
+                    listeningPorts: [],
+                    ttyName: nil,
+                    terminal: SessionTerminalPanelSnapshot(
+                        workingDirectory: "/tmp",
+                        scrollback: scrollback,
+                        agent: nil,
+                        tmuxStartCommand: nil
+                    ),
+                    browser: nil,
+                    markdown: nil,
+                    filePreview: nil,
+                    rightSidebarTool: nil
+                ),
+            ],
             statusEntries: [],
             logEntries: [],
             progress: nil,

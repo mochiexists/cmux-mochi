@@ -148,6 +148,29 @@ extension CmuxEventBus {
         )
     }
 
+    func publishAgentStateChanged(
+        workspaceId: UUID,
+        surfaceId: UUID,
+        agentKey: String,
+        previousState: String?,
+        state: String
+    ) {
+        publish(
+            name: "agent.state.changed",
+            category: "agent",
+            source: "agent.lifecycle",
+            workspaceId: workspaceId.uuidString,
+            surfaceId: surfaceId.uuidString,
+            payload: [
+                "workspace_id": workspaceId.uuidString,
+                "surface_id": surfaceId.uuidString,
+                "agent_key": agentKey,
+                "previous_state": previousState ?? NSNull(),
+                "state": state
+            ]
+        )
+    }
+
     func publishPaneCreated(
         workspaceId: UUID,
         paneId: UUID,
