@@ -1,10 +1,19 @@
 # cmux Mochi v0.64.19 parity report
 
-Date: 2026-07-17
+Date: 2026-07-17 (addendum: same day, post-dogfood)
 
 ## Result
 
 The source port from upstream `v0.64.19` to the shipped Mochi behavior at `v0.64.173` is complete. Every feature marked `port` in the replay ledger is present on `mochi/on-v0.64.19`; no source-parity item is blocked.
+
+**Post-dogfood addendum (2026-07-17):** the first live dogfood of the
+parity-review build caught a real gap this report's original validation missed —
+`ops.fork-identity` was only partially ported. The tagged debug app bound the shared
+`/tmp/cmux-debug.sock` because `SocketPathMarkerFiles` (and ~300 other identity
+references) still carried upstream `com.cmuxterm.*` values. A follow-up
+release-values audit found five fork release-lane guards silently reverted to
+upstream versions. The resulting review rounds are consolidated into the two
+implementation commits described below.
 
 This work is prepared but not shipped. No push, tag, workflow dispatch, release, publication, or version bump was performed. The project remains at `MARKETING_VERSION = 0.64.19` and `CURRENT_PROJECT_VERSION = 99` in every build configuration.
 
@@ -167,6 +176,91 @@ These are validation limits, not blocked source ports:
 - No live workspace screenshot/socket CLI dogfood because the final tagged app was not launched.
 - No signed passkeys, notarization, appcast, or public nightly proof.
 - No push, tag, workflow dispatch, version bump, release, or other shipping-lane execution, per the hard rule.
+
+## Dogfood and identity addendum (2026-07-17)
+
+Live dogfood of the tagged parity-review build verified end-to-end:
+
+- Agent resume (Medium): full scrollback replay, resume command prefilled with the
+  `cc` alias and not submitted, session resumed with transcript and context intact
+  after quit/relaunch.
+- First-run Welcome catalog, the live-job send guard, workspace/session restore,
+  and `capture-workspace` all exercised live.
+- After the identity fix: the tagged app binds `/tmp/cmux-debug-parity-review.sock`
+  (shared `/tmp/cmux-debug.sock` no longer used) and `scripts/cmux-debug-cli.sh`
+  works as designed.
+
+Fork identity and ownership (`bcb65dc479`): the runtime, updater, URL,
+display-name, automation, APNs, and localization fix waves are consolidated into
+one commit. Every renamed identity either byte-matches the v0.64.173 oracle or is
+a functional no-oracle site (updater dev/staging gating, stable-defaults device-id
+inheritance, client-capability fallback, APNs prod routing). References the shipped
+tag deliberately keeps on upstream ids remain unchanged. Manual update recovery
+coverage now pins the complete Mochi stable/nightly URLs, and the restored app-name
+strings include Japanese `cmux Mochi` translations.
+
+CI and release overlay (`fd4f25b992`): `release-pretag-guard.sh` (fork-overlay
+audit + exact-HEAD CI check + `--build`), `bump-version.sh` (patch-by-default +
+appcast marketing baseline), `verify-app-bundle-channel-metadata.sh` (cmux Mochi
+names), the fork CI runner/helper topology, and the UI-regressions lane are restored
+as one commit. Upstream's scheduled `cmux-tui-nightly.yml` cron remains disabled
+fork-side. The fork-overlay audit asserts runtime identity constants, both nightly
+landing-page implementations, and resolves repository paths independently of the
+caller's working directory. `test_ci_sparkle_build_monotonic.sh` points at the fork
+appcast and correctly remains red on build 99 < published 118 until an explicitly
+approved pre-release bump.
+
+Validation of the addendum: CmuxSettings 252/252, CmuxControlSocket 254/254,
+CmuxUpdater 77/77, web APNs 28/28, `tests/test_cli_socket_autodiscovery.py` all
+PASS, fork-overlay audit green, tagged Debug rebuild + live socket dogfood green.
+App-suite triage on this machine (macOS 26.5): 26 failures shared with the
+v0.64.173 baseline tree, 6 upstream-new Freestyle-sshd restore tests failing
+identically pre-fix, 0 regressions attributable to the identity fix.
+
+Codex adversarial validation (rounds 1–3, visible cmux pane, tag-grounded)
+drove three further fix waves that are now folded into the two commits above:
+
+- Round 1: repo-URL identity class (36 sites incl. the updater fallback appcast
+  feed pointing at upstream) and the workflow-guard BLOCKER — upstream guard
+  tests plus a stripped actionlint runner label guaranteed red CI against the
+  fork's workflows. Fixed by re-porting the fork ci.yml overlay (fork app names
+  in release-build/tests-build-and-lag, the ui-regressions job, main-push
+  cancel), restoring the tag guard tests adapted to upstream's relocated helper
+  build (swift-package-tests), and restoring actionlint.yaml (+ upstream's
+  tart-canary).
+- Round 2: app display-name class inside CI-called scripts (37 sites;
+  run-display-ui-regressions.sh and verify-main-thread-ca-transactions.sh
+  would have aborted tests-build-and-lag), docs/ci-runners.md URLs, APNs
+  host-grouping fixtures, guard hardening (tart-* forbidden in runner
+  selection; sdk-lane re-asserts SDK-15 slices, artifact name, producer
+  dependency).
+- Round 3: UpdateManualDownloadRecovery stable/nightly downloads pointed at
+  upstream's releases (BLOCKER), the nightly web landing page likewise, four
+  reverted "cmux Mochi" UI strings in Localizable.xcstrings, and the
+  remaining ci-runners break-glass commands.
+
+Rewritten-tip validation: `InstallWatchdogTests` 11/11, CmuxSettings socket
+control 29/29, APNs 28/28, self-hosted runner guard, release SDK lane, nightly
+universal guard, fork-overlay audit, profiling launcher, and CLI socket
+autodiscovery all pass. The tagged `fork-cleanup` Debug build succeeded from the
+rewritten commits. A standalone full-workflow actionlint run still reports inherited
+shellcheck findings in byte-identical workflow content (plus unrelated workflows);
+the cleanup introduced no workflow delta relative to the pre-squash backup. The
+Sparkle monotonic guard intentionally reports build 99 <= published 118 until a
+separately approved version bump.
+
+New known issues catalogued (not parity gaps):
+
+- First-run `cmux welcome` leaves `PanelShellActivityState` stuck at
+  `commandRunning` until the next command, so the first automated `send` to a
+  fresh install's first terminal is refused by the live-job guard. All wiring is
+  byte-identical to the shipped tag; likely a shipped bug — pending empirical
+  confirmation on a shipped build.
+- `tests_v2/test_config_settings_sources_and_sync.py` cannot compile its probe on
+  this base (`ConfigSource.swift` now imports `CmuxFoundation`); pre-existing
+  upstream harness breakage, fails identically without the identity fix.
+- Local machine only: cold-cache zig builds fail against Xcode 26's SDK
+  (libSystem.tbd lacks `arm64-macos`); workaround recorded in agent memory.
 
 ## Known baseline failures retained
 

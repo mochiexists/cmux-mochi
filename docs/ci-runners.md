@@ -45,24 +45,24 @@ too long, set the affected variable to a paid provider. Restore Tart after the
 fleet recovers.
 
 ```bash
-gh variable set LINUX_RUNNER          --repo manaflow-ai/cmux -b blacksmith-4vcpu-ubuntu-2404
-gh variable set MACOS_RUNNER_15         --repo manaflow-ai/cmux -b blacksmith-6vcpu-macos-15
-gh variable set MACOS_RUNNER_DUAL_XCODE --repo manaflow-ai/cmux -b blacksmith-6vcpu-macos-15
-gh variable set MACOS_RUNNER_26         --repo manaflow-ai/cmux -b blacksmith-6vcpu-macos-26
-gh variable set MACOS_RUNNER_26_RELEASE --repo manaflow-ai/cmux -b blacksmith-6vcpu-macos-26
-gh variable set MACOS_RUNNER_DISPLAY    --repo manaflow-ai/cmux -b depot-macos-latest
-gh variable set MACOS_RUNNER_IOS        --repo manaflow-ai/cmux -b blacksmith-6vcpu-macos-26
+gh variable set LINUX_RUNNER          --repo mochiexists/cmux-mochi -b blacksmith-4vcpu-ubuntu-2404
+gh variable set MACOS_RUNNER_15         --repo mochiexists/cmux-mochi -b blacksmith-6vcpu-macos-15
+gh variable set MACOS_RUNNER_DUAL_XCODE --repo mochiexists/cmux-mochi -b blacksmith-6vcpu-macos-15
+gh variable set MACOS_RUNNER_26         --repo mochiexists/cmux-mochi -b blacksmith-6vcpu-macos-26
+gh variable set MACOS_RUNNER_26_RELEASE --repo mochiexists/cmux-mochi -b blacksmith-6vcpu-macos-26
+gh variable set MACOS_RUNNER_DISPLAY    --repo mochiexists/cmux-mochi -b depot-macos-latest
+gh variable set MACOS_RUNNER_IOS        --repo mochiexists/cmux-mochi -b blacksmith-6vcpu-macos-26
 ```
 
 Restore the self-hosted pool with explicit labels:
 
 ```bash
-gh variable set MACOS_RUNNER_15         --repo manaflow-ai/cmux -b tart-macos-15
-gh variable set MACOS_RUNNER_DUAL_XCODE --repo manaflow-ai/cmux -b blacksmith-6vcpu-macos-15
-gh variable set MACOS_RUNNER_26         --repo manaflow-ai/cmux -b blacksmith-6vcpu-macos-26
-gh variable set MACOS_RUNNER_26_RELEASE --repo manaflow-ai/cmux -b blacksmith-6vcpu-macos-26
-gh variable set MACOS_RUNNER_DISPLAY    --repo manaflow-ai/cmux -b tart-gui
-gh variable set MACOS_RUNNER_IOS        --repo manaflow-ai/cmux -b tart-ios
+gh variable set MACOS_RUNNER_15         --repo mochiexists/cmux-mochi -b tart-macos-15
+gh variable set MACOS_RUNNER_DUAL_XCODE --repo mochiexists/cmux-mochi -b blacksmith-6vcpu-macos-15
+gh variable set MACOS_RUNNER_26         --repo mochiexists/cmux-mochi -b blacksmith-6vcpu-macos-26
+gh variable set MACOS_RUNNER_26_RELEASE --repo mochiexists/cmux-mochi -b blacksmith-6vcpu-macos-26
+gh variable set MACOS_RUNNER_DISPLAY    --repo mochiexists/cmux-mochi -b tart-gui
+gh variable set MACOS_RUNNER_IOS        --repo mochiexists/cmux-mochi -b tart-ios
 ```
 
 `MACOS_RUNNER_DUAL_XCODE` remains on Blacksmith because the Tart macOS 15
@@ -71,7 +71,7 @@ image currently carries Xcode 26 only and cannot build the SDK 15 helper.
 Check current values:
 
 ```bash
-gh variable list --repo manaflow-ai/cmux
+gh variable list --repo mochiexists/cmux-mochi
 ```
 
 ## Manual runs
