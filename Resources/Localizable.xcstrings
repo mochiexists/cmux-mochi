@@ -85270,7 +85270,7 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Quit cmux?"
+            "value": "Quit cmux Mochi?"
           }
         },
         "es": {
@@ -85294,7 +85294,7 @@
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "cmux を終了しますか？"
+            "value": "cmux Mochi を終了しますか？"
           }
         },
         "ko": {
@@ -113035,7 +113035,7 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "About cmux"
+            "value": "About cmux Mochi"
           }
         },
         "es": {
@@ -113059,7 +113059,7 @@
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "cmuxについて"
+            "value": "cmux Mochiについて"
           }
         },
         "ko": {
@@ -123765,7 +123765,7 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Quit cmux"
+            "value": "Quit cmux Mochi"
           }
         },
         "es": {
@@ -123789,7 +123789,7 @@
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "cmux を終了"
+            "value": "cmux Mochi を終了"
           }
         },
         "ko": {
@@ -144292,7 +144292,7 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Restart cmux to apply"
+            "value": "Restart cmux Mochi to apply"
           }
         },
         "es": {
@@ -144316,7 +144316,7 @@
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "cmuxを再起動して適用"
+            "value": "cmux Mochiを再起動して適用"
           }
         },
         "ko": {

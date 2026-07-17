@@ -4,7 +4,7 @@ import CmuxSettings
 import Foundation
 import os
 
-nonisolated private let cmuxSettingsFileStoreLogger = Logger(subsystem: "com.cmuxterm.app", category: "SettingsStore")
+nonisolated private let cmuxSettingsFileStoreLogger = Logger(subsystem: "com.cmux-mochi", category: "SettingsStore")
 
 /// Publishes keyboard-shortcut revisions and owns the right-sidebar matcher snapshot.
 @MainActor
@@ -53,9 +53,9 @@ final class KeyboardShortcutSettingsObserver: ObservableObject {
 
 final class CmuxSettingsFileStore {
     static let currentSchemaVersion = 1
-    static let schemaURLString = "https://raw.githubusercontent.com/manaflow-ai/cmux/main/web/data/cmux.schema.json"
-    private static let legacySchemaURLString = "https://raw.githubusercontent.com/manaflow-ai/cmux/main/web/data/cmux-settings.schema.json"
-    private static let releaseBundleIdentifier = "com.cmuxterm.app"
+    static let schemaURLString = "https://raw.githubusercontent.com/mochiexists/cmux-mochi/main/web/data/cmux.schema.json"
+    private static let legacySchemaURLString = "https://raw.githubusercontent.com/mochiexists/cmux-mochi/main/web/data/cmux-settings.schema.json"
+    private static let releaseBundleIdentifier = "com.cmux-mochi"
     private static let backupsDefaultsKey = "cmux.settingsFile.backups.v1"
     private static let importedManagedDefaultsDefaultsKey = "cmux.settingsFile.importedManagedDefaults.v1"
     fileprivate static let socketPasswordBackupIdentifier = "automation.socketPassword"

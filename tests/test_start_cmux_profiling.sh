@@ -27,10 +27,10 @@ EOF
 }
 
 stable_app="$TMP_DIR/cmux.app"
-nightly_app="$TMP_DIR/cmux NIGHTLY.app"
+nightly_app="$TMP_DIR/cmux Mochi NIGHTLY.app"
 dev_app="$TMP_DIR/cmux DEV dog.app"
 make_app "$stable_app" "com.cmuxterm.app" "cmux"
-make_app "$nightly_app" "com.cmuxterm.app.nightly" "cmux NIGHTLY"
+make_app "$nightly_app" "com.cmuxterm.app.nightly" "cmux Mochi NIGHTLY"
 make_app "$dev_app" "com.cmuxterm.app.debug.dog" "cmux DEV dog"
 
 plist_buddy="$TMP_DIR/plistbuddy"

@@ -123,7 +123,7 @@ public final class UpdateController {
         self.isDevLikeBundle = isDevLikeBundle
         settings.apply(to: defaults)
         if isDevLikeBundle {
-            // DEV (`com.cmuxterm.app.debug[.<tag>]`) and staging (`com.cmuxterm.app.staging[.<tag>]`)
+            // DEV (`com.cmux-mochi.debug[.<tag>]`) and staging (`com.cmux-mochi.staging[.<tag>]`)
             // builds are produced from local source and are not on the public release train, so
             // they must never query the public appcast. Turning off Sparkle's automatic checks
             // stops the passive vectors: Sparkle never schedules its own background checks, and
@@ -370,8 +370,8 @@ public final class UpdateController {
 }
 
 extension UpdateController {
-    /// Whether `bundleIdentifier` is a cmux DEV (`com.cmuxterm.app.debug[.<tag>]`) or staging
-    /// (`com.cmuxterm.app.staging[.<tag>]`) build.
+    /// Whether `bundleIdentifier` is a cmux DEV (`com.cmux-mochi.debug[.<tag>]`) or staging
+    /// (`com.cmux-mochi.staging[.<tag>]`) build.
     ///
     /// Such builds are produced from local source and are not on the public release train, so
     /// they must never be compared against the public Sparkle appcast (#6292).
@@ -382,9 +382,9 @@ extension UpdateController {
     /// dependency edge for a small string check.
     static func isDevLikeBundleIdentifier(_ bundleIdentifier: String?) -> Bool {
         guard let bundleIdentifier else { return false }
-        return bundleIdentifier == "com.cmuxterm.app.debug"
-            || bundleIdentifier.hasPrefix("com.cmuxterm.app.debug.")
-            || bundleIdentifier == "com.cmuxterm.app.staging"
-            || bundleIdentifier.hasPrefix("com.cmuxterm.app.staging.")
+        return bundleIdentifier == "com.cmux-mochi.debug"
+            || bundleIdentifier.hasPrefix("com.cmux-mochi.debug.")
+            || bundleIdentifier == "com.cmux-mochi.staging"
+            || bundleIdentifier.hasPrefix("com.cmux-mochi.staging.")
     }
 }

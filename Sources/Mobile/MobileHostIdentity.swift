@@ -4,7 +4,7 @@ import Foundation
 enum MobileHostIdentity {
     private static let deviceIDKey = "mobileHost.deviceID"
     private static let sharedDeviceIDFileName = "mobile-host-device-id"
-    private static let stableBundleIdentifier = "com.cmuxterm.app"
+    private static let stableBundleIdentifier = "com.cmux-mochi"
     private static let maximumDisplayNameUTF16Length = 128
     private static let maximumDisplayedBuildTagUTF16Length = 64
 
