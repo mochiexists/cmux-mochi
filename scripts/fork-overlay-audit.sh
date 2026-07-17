@@ -50,6 +50,21 @@ require_file_contains "cmux.xcodeproj/project.pbxproj" 'SPARKLE_PUBLIC_KEY = "zu
 require_file_contains "cmux.xcodeproj/project.pbxproj" "CURRENT_PROJECT_VERSION = "
 require_file_contains "cmux.xcodeproj/project.pbxproj" "MARKETING_VERSION = "
 
+# Runtime identity constants: tagged debug/staging/nightly socket isolation and
+# push routing break silently if these revert to upstream com.cmuxterm values
+# (caught live 2026-07-17: tagged DEV build bound the shared /tmp/cmux-debug.sock).
+require_file_contains "Packages/macOS/CmuxSettings/Sources/CmuxSettings/SocketControl/SocketPathMarkerFiles.swift" 'nightlyBundleIdentifier = "com.cmux-mochi.nightly"'
+require_file_contains "Packages/macOS/CmuxSettings/Sources/CmuxSettings/SocketControl/SocketPathMarkerFiles.swift" 'stagingBundleIdentifier = "com.cmux-mochi.staging"'
+require_file_contains "Packages/macOS/CmuxSettings/Sources/CmuxSettings/SocketControl/SocketPathMarkerFiles.swift" 'defaultBaseDebugBundleIdentifier = "com.cmux-mochi.debug"'
+require_file_contains "Packages/macOS/CmuxSettings/Sources/CmuxSettings/SocketControl/SocketControlSettings.swift" 'baseDebugBundleIdentifier = "com.cmux-mochi.debug"'
+require_file_contains "web/services/apns/routePolicy.ts" 'PROD_BUNDLE_IDS = new Set(["com.cmux-mochi", "dev.cmux.app.beta"])'
+
+# Upstream's scheduled TUI nightly must stay cron-disabled on the fork
+# (workflow_dispatch only); a rebase can silently restore the schedule.
+if grep -Eq '^[[:space:]]+schedule:' "$ROOT_DIR/.github/workflows/cmux-tui-nightly.yml"; then
+  fail "cmux-tui-nightly.yml has an active schedule trigger; keep the cron commented out on the fork"
+fi
+
 require_file_contains "Resources/Info.plist" "https://github.com/mochiexists/cmux-mochi/releases/latest/download/appcast.xml"
 require_file_contains "Resources/Info.plist" '$(SPARKLE_PUBLIC_KEY)'
 
@@ -82,9 +97,12 @@ require_file_contains "web/data/cmux.schema.json" "raw.githubusercontent.com/moc
 require_file_contains "web/data/cmux-settings.schema.json" "raw.githubusercontent.com/mochiexists/cmux-mochi/main/web/data/cmux.schema.json"
 require_file_contains "web/app/[locale]/nightly/page.tsx" "https://github.com/mochiexists/cmux-mochi/releases/download/nightly/cmux-nightly-macos.dmg"
 require_file_contains "web/app/[locale]/nightly/page.tsx" "https://github.com/mochiexists/cmux-mochi/issues"
+require_file_contains "web/app/[locale]/(landing)/nightly/page.tsx" "https://github.com/mochiexists/cmux-mochi/releases/download/nightly/cmux-nightly-macos.dmg"
+require_file_contains "web/app/[locale]/(landing)/nightly/page.tsx" "https://github.com/mochiexists/cmux-mochi/issues"
 require_file_absent "web/data/cmux.schema.json" "manaflow-ai/cmux"
 require_file_absent "web/data/cmux-settings.schema.json" "manaflow-ai/cmux"
 require_file_absent "web/app/[locale]/nightly/page.tsx" "manaflow-ai/cmux"
+require_file_absent "web/app/[locale]/(landing)/nightly/page.tsx" "manaflow-ai/cmux"
 
 require_file_contains ".github/workflows/update-homebrew.yml" "auto-trigger disabled"
 require_file_contains ".github/workflows/update-homebrew.yml" "mochiexists/cmux-mochi"

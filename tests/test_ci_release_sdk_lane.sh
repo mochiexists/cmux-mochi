@@ -4,11 +4,12 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 CI_FILE="$ROOT_DIR/.github/workflows/ci.yml"
 RELEASE_FILE="$ROOT_DIR/.github/workflows/release.yml"
+BUILD_SCRIPT="$ROOT_DIR/scripts/build-release-universal.sh"
 
 # nightly.yml is intentionally not covered here. It has its own helper-build
 # model and guards via test_ci_nightly_xcode_selection.sh plus
-# test_nightly_universal_build.sh. This lane guards the release artifact-download
-# model and the CI package-lane helper handoff model.
+# test_nightly_universal_build.sh. This lane guards the release/CI
+# artifact-download model.
 
 job_section() {
   local file="$1" job="$2"
@@ -32,14 +33,47 @@ require_job_contains() {
 require_job_contains \
   "$RELEASE_FILE" \
   "build-ghostty-cli-helper" \
-  'runs-on: ${{ vars.MACOS_RUNNER_15 || '\''blacksmith-6vcpu-macos-15'\'' }}' \
-  "release must build the real Ghostty CLI helper on macOS 15"
+  'runs-on: macos-15' \
+  "release must build the real Ghostty CLI helper on GitHub-hosted macOS 15"
 
 require_job_contains \
   "$RELEASE_FILE" \
   "build-sign-notarize" \
-  'runs-on: ${{ vars.MACOS_RUNNER_26 || '\''blacksmith-6vcpu-macos-26'\'' }}' \
-  "release must sign+notarize on the macOS 26 runner variable after importing the Developer ID intermediate chain"
+  'runs-on: [self-hosted, cmux-mochi-m4pro]' \
+  "release must sign+notarize on the M4 self-hosted GitHub Actions runner after importing the Developer ID intermediate chain"
+
+# Upstream v0.64.19 folded the universal helper build into swift-package-tests;
+# the invariant is unchanged: CI builds the real universal helper on a paid
+# macOS 15 runner and release-build installs that artifact.
+require_job_contains \
+  "$CI_FILE" \
+  "swift-package-tests" \
+  'runs-on: ${{ vars.MACOS_RUNNER_DUAL_XCODE || '\''blacksmith-6vcpu-macos-15'\'' }}' \
+  "CI must build the real Ghostty CLI helper on a paid macOS 15 runner (swift-package-tests)"
+
+require_job_contains \
+  "$CI_FILE" \
+  "swift-package-tests" \
+  './scripts/build-ghostty-cli-helper.sh --universal' \
+  "CI must build the real universal Ghostty CLI helper (no stub)"
+
+require_job_contains \
+  "$CI_FILE" \
+  "swift-package-tests" \
+  '[[ "$HELPER_SDK_VERSION" == 15.* ]]' \
+  "CI must verify the helper slices were linked against a macOS 15 SDK"
+
+require_job_contains \
+  "$CI_FILE" \
+  "swift-package-tests" \
+  'name: cmux-ghostty-cli-helper' \
+  "CI helper producer must upload the cmux-ghostty-cli-helper artifact release-build downloads"
+
+require_job_contains \
+  "$CI_FILE" \
+  "release-build" \
+  '- swift-package-tests' \
+  "CI release-build must depend on the helper producer so the artifact download cannot race"
 
 require_job_contains \
   "$CI_FILE" \
@@ -47,9 +81,17 @@ require_job_contains \
   'runs-on: ${{ vars.MACOS_RUNNER_26_RELEASE || '\''blacksmith-6vcpu-macos-26'\'' }}' \
   "CI release-build must compile the app on macOS 26 using the release-specific runner variable"
 
+# ci.yml release-build uses the upstream inline universal xcodebuild (same
+# ARCHS/ONLY_ACTIVE_ARCH shape); release.yml still builds through the fork
+# script.
+if ! grep -Fq "./scripts/build-release-universal.sh" "$RELEASE_FILE"; then
+  echo "FAIL: release.yml must call scripts/build-release-universal.sh for the app build" >&2
+  exit 1
+fi
+
 for workflow in "$CI_FILE" "$RELEASE_FILE"; do
-  if ! grep -Fq "CMUX_SKIP_ZIG_BUILD=1 xcodebuild" "$workflow"; then
-    echo "FAIL: $(basename "$workflow") must skip the in-build Zig helper on macOS 26" >&2
+  if ! grep -Fq "actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0" "$workflow"; then
+    echo "FAIL: $(basename "$workflow") must download the macOS 15-built helper artifact" >&2
     exit 1
   fi
 
@@ -64,82 +106,17 @@ for workflow in "$CI_FILE" "$RELEASE_FILE"; do
   fi
 done
 
-if ! grep -Fq "actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0" "$RELEASE_FILE"; then
-  echo "FAIL: release.yml must download the macOS 15-built helper artifact" >&2
-  exit 1
-fi
+for needle in \
+  "CMUX_SKIP_ZIG_BUILD=1" \
+  "-jobs 1" \
+  "SWIFT_COMPILATION_MODE=singlefile" \
+  'ARCHS="arm64 x86_64"' \
+  "CODE_SIGNING_ALLOWED=NO"
+do
+  if ! grep -Fq -- "$needle" "$BUILD_SCRIPT"; then
+    echo "FAIL: build-release-universal.sh must preserve release build flag: $needle" >&2
+    exit 1
+  fi
+done
 
-swift_package_section="$(job_section "$CI_FILE" "swift-package-tests")"
-if [[ "$swift_package_section" != *'runs-on: ${{ vars.MACOS_RUNNER_DUAL_XCODE || '\''blacksmith-6vcpu-macos-15'\'' }}'* ]]; then
-  echo "FAIL: CI swift-package-tests must use the dual-Xcode runner lane" >&2
-  exit 1
-fi
-
-if [[ "$swift_package_section" != *"timeout-minutes: 40"* ]]; then
-  echo "FAIL: CI swift-package-tests must have enough timeout budget for helper build plus package tests" >&2
-  exit 1
-fi
-
-if [[ "$swift_package_section" != *"CMUX_CI_HELPER_XCODE_APP"* ]]; then
-  echo "FAIL: CI swift-package-tests must use a helper-specific Xcode pin" >&2
-  exit 1
-fi
-
-if [[ "$swift_package_section" == *"/Applications/Xcode_16.4.app"* ]]; then
-  echo "FAIL: CI swift-package-tests must scan for a macOS 15 SDK when the helper Xcode override is unset" >&2
-  exit 1
-fi
-
-if [[ "$swift_package_section" != *"./scripts/build-ghostty-cli-helper.sh --universal --output ghostty-cli-helper/ghostty"* ]]; then
-  echo "FAIL: CI swift-package-tests must build the universal Ghostty CLI helper on the macOS 15 lane" >&2
-  exit 1
-fi
-
-if [[ "$swift_package_section" != *"actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1"* ]]; then
-  echo "FAIL: CI swift-package-tests must upload the macOS 15-built Ghostty helper artifact" >&2
-  exit 1
-fi
-
-swift_package_before_xcode="${swift_package_section%%- name: Select Xcode*}"
-if [[ "$swift_package_before_xcode" != *"CMUX_CI_REQUIRED_MACOS_SDK_MAJOR=15"* ]]; then
-  echo "FAIL: CI swift-package-tests must require a macOS 15 SDK for the helper build" >&2
-  exit 1
-fi
-
-if [[ "$swift_package_before_xcode" != *"./scripts/build-ghostty-cli-helper.sh --universal --output ghostty-cli-helper/ghostty"* ]]; then
-  echo "FAIL: CI swift-package-tests must build the Ghostty helper before selecting the Xcode 26 SDK" >&2
-  exit 1
-fi
-
-if [[ "$swift_package_before_xcode" != *"actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1"* ]]; then
-  echo "FAIL: CI swift-package-tests must upload the Ghostty helper before selecting the Xcode 26 SDK" >&2
-  exit 1
-fi
-
-if [[ "$swift_package_section" != *'[[ "$HELPER_SDK_VERSION" == 15.* ]]'* ]]; then
-  echo "FAIL: CI swift-package-tests must validate the uploaded Ghostty helper was built with a macOS 15 SDK" >&2
-  exit 1
-fi
-
-release_build_section="$(job_section "$CI_FILE" "release-build")"
-if [[ "$release_build_section" != *"actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0"* ]]; then
-  echo "FAIL: CI release-build must download the macOS 15-built Ghostty helper artifact" >&2
-  exit 1
-fi
-
-if [[ "$release_build_section" != *"- swift-package-tests"* ]]; then
-  echo "FAIL: CI release-build must wait for the helper-producing swift-package-tests lane" >&2
-  exit 1
-fi
-
-if [[ "$release_build_section" == *"./scripts/build-ghostty-cli-helper.sh --universal --output ghostty-cli-helper/ghostty"* ]]; then
-  echo "FAIL: CI release-build must not build the Ghostty helper on macOS 26" >&2
-  exit 1
-fi
-
-if grep -Fq "release-ghostty-cli-helper:" "$CI_FILE"; then
-  echo "FAIL: CI must not define a separate release-ghostty-cli-helper job" >&2
-  exit 1
-fi
-
-echo "PASS: release uses artifact helper handoff; CI release-build downloads the helper from the existing macOS 15 package lane"
+echo "PASS: release and CI app builds use macOS 26 SDK with a macOS 15-built Ghostty CLI helper"
