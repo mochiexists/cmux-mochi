@@ -120,6 +120,14 @@ public enum ControlCommandExecutionPolicy: Sendable, Equatable {
         "workspace.remote.pty_detach",
         "workspace.remote.pty_bridge",
         "workspace.remote.pty_resize",
+        "surface.ingest",
+        "surface.screenshot",
+        // `workspace.screenshot` waits on WebKit snapshot callbacks for
+        // browser/agent/artifact panes, so it follows the same worker-lane
+        // contract as `surface.screenshot` (UI reads hop to main via
+        // v2MainSync).
+        "workspace.screenshot",
+        "surface.text",
         "remote.tmux.sessions",
         "remote.tmux.attach",
         "remote.tmux.detach",

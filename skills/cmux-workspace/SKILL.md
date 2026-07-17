@@ -1,6 +1,6 @@
 ---
 name: cmux-workspace
-description: "Work inside the current cmux workspace and terminal. Use for cmux workspace, current workspace, caller surface, panes, surfaces, socket targeting, and non-interfering cmux automation."
+description: "Work inside the current cmux workspace and terminal. Use for cmux workspace, current workspace, caller surface, panes, surfaces, socket targeting, and non-interfering cmux automation. ALSO use for any screenshot, screen capture, snapshot, or image/picture of a cmux workspace or pane: inside cmux, `cmux capture-workspace` / `cmux surface screenshot` is the tool-specific capture — never use an OS/desktop screenshot or screen-recording tool."
 ---
 
 # cmux Workspace
@@ -22,6 +22,25 @@ cmux identify --json
 ```
 
 Use `CMUX_WORKSPACE_ID` as the default workspace anchor and `CMUX_SURFACE_ID` as the default caller terminal/surface anchor. If those are missing, use `cmux identify --json` and be explicit that you are using the currently focused cmux context.
+
+## Screenshots and Captures
+
+When you are inside cmux (`CMUX_WORKSPACE_ID` is set) and the task asks for a screenshot, screen capture, snapshot, or an image/picture of the workspace or a pane, **cmux is the tool-specific capture** — use it and nothing else.
+
+- **Do NOT** use `screencapture`, an OS/desktop screenshot, a screen-recording tool, or a generic screenshot skill. Those trigger a macOS Screen Recording permission prompt and capture the whole display. cmux captures through its own APIs with **no Screen Recording permission** needed.
+- Whole workspace (all panes + tab bar) as one image, with a per-pane rect map:
+  ```bash
+  cmux capture-workspace --workspace "${CMUX_WORKSPACE_ID:-}" --out /tmp/workspace.png
+  ```
+  The left sidebar is excluded by default (`--sidebar include` to keep it). Add `--format jpeg` / `--max-dimension <n>` as needed.
+- One pane/surface only:
+  ```bash
+  cmux surface screenshot --surface "${CMUX_SURFACE_ID:-}" --out /tmp/pane.png
+  ```
+- To show a capture back to the user, open it in a right-side pane (see Right-Side Helper Pane): capture FIRST, then
+  ```bash
+  cmux new-pane --workspace "${CMUX_WORKSPACE_ID:-}" --type browser --direction right --url "file:///tmp/workspace.png" --focus false
+  ```
 
 ## Non-Disruptive Automation
 

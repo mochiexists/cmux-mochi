@@ -4649,6 +4649,15 @@ struct CMUXCLI {
                 windowOverride: windowId
             )
 
+        case "capture-workspace", "workspace-screenshot":
+            try runWorkspaceScreenshotCommand(
+                commandArgs: commandArgs,
+                client: client,
+                jsonOutput: jsonOutput,
+                idFormat: idFormat,
+                windowOverride: windowId
+            )
+
         case "surface-resume":
             try runSurfaceResumeCommand(
                 commandArgs: commandArgs,
@@ -6718,9 +6727,33 @@ struct CMUXCLI {
         windowOverride: String?
     ) throws {
         guard let subcommand = commandArgs.first?.lowercased() else {
-            throw CLIError(message: "surface requires a subcommand. Try: cmux surface resume show --json")
+            throw CLIError(message: "surface requires a subcommand. Try: cmux surface screenshot --json")
         }
         switch subcommand {
+        case "screenshot", "snapshot":
+            try runSurfaceScreenshotCommand(
+                commandArgs: Array(commandArgs.dropFirst()),
+                client: client,
+                jsonOutput: jsonOutput,
+                idFormat: idFormat,
+                windowOverride: windowOverride
+            )
+        case "text", "read-text", "read_text":
+            try runSurfaceTextCommand(
+                commandArgs: Array(commandArgs.dropFirst()),
+                client: client,
+                jsonOutput: jsonOutput,
+                idFormat: idFormat,
+                windowOverride: windowOverride
+            )
+        case "ingest", "capture":
+            try runSurfaceIngestCommand(
+                commandArgs: Array(commandArgs.dropFirst()),
+                client: client,
+                jsonOutput: jsonOutput,
+                idFormat: idFormat,
+                windowOverride: windowOverride
+            )
         case "resume":
             try runSurfaceResumeCommand(
                 commandArgs: Array(commandArgs.dropFirst()),
@@ -6731,6 +6764,267 @@ struct CMUXCLI {
             )
         default:
             throw CLIError(message: "Unsupported surface subcommand: \(subcommand)")
+        }
+    }
+
+    private func surfaceCommandTargetParams(
+        _ commandArgs: [String],
+        client: SocketClient,
+        windowOverride: String?
+    ) throws -> [String: Any] {
+        var params: [String: Any] = [:]
+        let windowRaw = optionValue(commandArgs, name: "--window") ?? windowOverride
+        let workspaceRaw = optionValue(commandArgs, name: "--workspace")
+            ?? optionValue(commandArgs, name: "--tab")
+        let paneRaw = optionValue(commandArgs, name: "--pane")
+        let surfaceRaw = optionValue(commandArgs, name: "--surface")
+            ?? optionValue(commandArgs, name: "--panel")
+            ?? optionValue(commandArgs, name: "--tab-id")
+            ?? ProcessInfo.processInfo.environment["CMUX_SURFACE_ID"]
+
+        let winId = try normalizeWindowHandle(windowRaw, client: client)
+        if let winId { params["window_id"] = winId }
+        let wsId = try normalizeWorkspaceHandle(workspaceRaw, client: client, windowHandle: winId)
+        if let wsId { params["workspace_id"] = wsId }
+        let paneId = try normalizePaneHandle(paneRaw, client: client, workspaceHandle: wsId, windowHandle: winId)
+        if let paneId { params["pane_id"] = paneId }
+        let sfId = try normalizeSurfaceHandle(surfaceRaw, client: client, workspaceHandle: wsId, windowHandle: winId)
+        if let sfId { params["surface_id"] = sfId }
+        return params
+    }
+
+    private func applySurfaceImageOptions(_ commandArgs: [String], to params: inout [String: Any]) throws {
+        if let format = optionValue(commandArgs, name: "--format") ?? optionValue(commandArgs, name: "--image-format") {
+            let normalized = format.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            guard ["png", "jpg", "jpeg"].contains(normalized) else {
+                throw CLIError(message: "--format must be png or jpeg")
+            }
+            params["format"] = normalized
+        }
+        if let quality = optionValue(commandArgs, name: "--jpeg-quality") ?? optionValue(commandArgs, name: "--quality") {
+            guard let value = Double(quality), value.isFinite else {
+                throw CLIError(message: "--jpeg-quality must be numeric")
+            }
+            params["jpeg_quality"] = value
+        }
+        if let maxDimension = optionValue(commandArgs, name: "--max-dimension") ?? optionValue(commandArgs, name: "--max-image-dimension") {
+            let normalized = maxDimension.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            if normalized == "none" || normalized == "0" {
+                params["max_dimension"] = "none"
+            } else if let value = Int(normalized), value > 0 {
+                params["max_dimension"] = value
+            } else {
+                throw CLIError(message: "--max-dimension must be a positive integer or none")
+            }
+        }
+        if let profile = optionValue(commandArgs, name: "--profile") {
+            params["profile"] = profile
+        }
+        if hasFlag(commandArgs, name: "--include-base64") {
+            params["include_base64"] = true
+        }
+        if hasFlag(commandArgs, name: "--audit") {
+            params["audit"] = true
+        }
+        if hasFlag(commandArgs, name: "--no-audit") {
+            params["audit"] = false
+        }
+        if let auditReason = optionValue(commandArgs, name: "--audit-reason") {
+            params["audit_reason"] = auditReason
+        }
+    }
+
+    private func runSurfaceScreenshotCommand(
+        commandArgs: [String],
+        client: SocketClient,
+        jsonOutput: Bool,
+        idFormat: CLIIDFormat,
+        windowOverride: String?
+    ) throws {
+        var params = try surfaceCommandTargetParams(commandArgs, client: client, windowOverride: windowOverride)
+        try applySurfaceImageOptions(commandArgs, to: &params)
+        let payload = try client.sendV2(method: "surface.screenshot", params: params)
+        try emitScreenshotPayload(
+            payload,
+            commandArgs: commandArgs,
+            jsonOutput: jsonOutput,
+            idFormat: idFormat,
+            missingImageMessage: "surface screenshot missing image data"
+        )
+    }
+
+    private func runWorkspaceScreenshotCommand(
+        commandArgs: [String],
+        client: SocketClient,
+        jsonOutput: Bool,
+        idFormat: CLIIDFormat,
+        windowOverride: String?
+    ) throws {
+        var params: [String: Any] = [:]
+        let windowRaw = optionValue(commandArgs, name: "--window") ?? windowOverride
+        let workspaceRaw = workspaceFromArgsOrEnv(commandArgs, windowOverride: windowOverride)
+        let winId = try normalizeWindowHandle(windowRaw, client: client)
+        if let winId { params["window_id"] = winId }
+        let wsId = try normalizeWorkspaceHandle(workspaceRaw, client: client, windowHandle: winId)
+        if let wsId { params["workspace_id"] = wsId }
+        try applySurfaceImageOptions(commandArgs, to: &params)
+        if let sidebar = optionValue(commandArgs, name: "--sidebar") {
+            let normalized = sidebar.lowercased()
+            guard normalized == "include" || normalized == "exclude" else {
+                throw CLIError(message: "--sidebar must be include or exclude")
+            }
+            params["sidebar"] = normalized
+        }
+        let payload = try client.sendV2(method: "workspace.screenshot", params: params)
+        try emitScreenshotPayload(
+            payload,
+            commandArgs: commandArgs,
+            jsonOutput: jsonOutput,
+            idFormat: idFormat,
+            missingImageMessage: "workspace screenshot missing image data"
+        )
+    }
+
+    private func emitScreenshotPayload(
+        _ payloadIn: [String: Any],
+        commandArgs: [String],
+        jsonOutput: Bool,
+        idFormat: CLIIDFormat,
+        missingImageMessage: String
+    ) throws {
+        var payload = payloadIn
+        let (outPathOpt, _) = parseOption(commandArgs, name: "--out")
+        let includeBase64 = hasFlag(commandArgs, name: "--include-base64")
+
+        func hasText(_ value: String?) -> Bool {
+            guard let value else { return false }
+            return !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
+
+        func writeScreenshot(to destinationURL: URL) throws {
+            if let sourcePath = payload["path"] as? String, hasText(sourcePath) {
+                let sourceURL = URL(fileURLWithPath: sourcePath).standardizedFileURL
+                if sourceURL.path != destinationURL.path {
+                    try FileManager.default.createDirectory(
+                        at: destinationURL.deletingLastPathComponent(),
+                        withIntermediateDirectories: true
+                    )
+                    try? FileManager.default.removeItem(at: destinationURL)
+                    try FileManager.default.copyItem(at: sourceURL, to: destinationURL)
+                }
+                return
+            }
+            let format = (payload["format"] as? String)?.lowercased()
+            let base64Key = format == "jpeg" || format == "jpg" ? "jpeg_base64" : "png_base64"
+            guard let b64 = payload[base64Key] as? String ?? payload["png_base64"] as? String ?? payload["jpeg_base64"] as? String,
+                  let data = Data(base64Encoded: b64) else {
+                throw CLIError(message: missingImageMessage)
+            }
+            try FileManager.default.createDirectory(
+                at: destinationURL.deletingLastPathComponent(),
+                withIntermediateDirectories: true
+            )
+            try data.write(to: destinationURL, options: .atomic)
+        }
+
+        if let outPathOpt {
+            let outputURL = URL(fileURLWithPath: resolvePath(outPathOpt)).standardizedFileURL
+            try writeScreenshot(to: outputURL)
+            payload["path"] = outputURL.path
+            payload["url"] = outputURL.absoluteString
+        }
+
+        if jsonOutput {
+            var formatted = formatIDs(payload, mode: idFormat) as? [String: Any] ?? payload
+            if includeBase64 == false && (hasText(formatted["path"] as? String) || hasText(formatted["url"] as? String)) {
+                formatted.removeValue(forKey: "png_base64")
+                formatted.removeValue(forKey: "jpeg_base64")
+            }
+            print(jsonString(formatted))
+            return
+        }
+
+        if let outPathOpt {
+            print("OK \(outPathOpt)")
+        } else if let path = payload["path"] as? String, hasText(path) {
+            print("OK \(path)")
+        } else if let url = payload["url"] as? String, hasText(url) {
+            print("OK \(url)")
+        } else {
+            print("OK")
+        }
+    }
+
+    private func runSurfaceIngestCommand(
+        commandArgs: [String],
+        client: SocketClient,
+        jsonOutput: Bool,
+        idFormat: CLIIDFormat,
+        windowOverride: String?
+    ) throws {
+        var params = try surfaceCommandTargetParams(commandArgs, client: client, windowOverride: windowOverride)
+        try applySurfaceImageOptions(commandArgs, to: &params)
+        if hasFlag(commandArgs, name: "--no-text") {
+            params["include_text"] = false
+        }
+        if hasFlag(commandArgs, name: "--no-screenshot") {
+            params["include_screenshot"] = false
+        }
+        if hasFlag(commandArgs, name: "--scrollback") {
+            params["scrollback"] = true
+        }
+        if let lines = optionValue(commandArgs, name: "--lines") ?? optionValue(commandArgs, name: "--line-limit") {
+            guard let value = Int(lines), value > 0 else {
+                throw CLIError(message: "--lines must be a positive integer")
+            }
+            params["lines"] = value
+        }
+        if let selector = optionValue(commandArgs, name: "--selector") {
+            params["selector"] = selector
+        }
+        if let mode = optionValue(commandArgs, name: "--mode") ?? optionValue(commandArgs, name: "--text-mode") {
+            params["mode"] = mode
+        }
+
+        let payload = try client.sendV2(method: "surface.ingest", params: params)
+        if jsonOutput {
+            print(jsonString(formatIDs(payload, mode: idFormat)))
+        } else {
+            print((payload["prompt"] as? String) ?? jsonString(formatIDs(payload, mode: idFormat)))
+        }
+    }
+
+    private func runSurfaceTextCommand(
+        commandArgs: [String],
+        client: SocketClient,
+        jsonOutput: Bool,
+        idFormat: CLIIDFormat,
+        windowOverride: String?
+    ) throws {
+        var params = try surfaceCommandTargetParams(commandArgs, client: client, windowOverride: windowOverride)
+        if hasFlag(commandArgs, name: "--scrollback") {
+            params["scrollback"] = true
+        }
+        if let lines = optionValue(commandArgs, name: "--lines") ?? optionValue(commandArgs, name: "--line-limit") {
+            guard let value = Int(lines), value > 0 else {
+                throw CLIError(message: "--lines must be a positive integer")
+            }
+            params["lines"] = value
+        }
+        if let selector = optionValue(commandArgs, name: "--selector") {
+            params["selector"] = selector
+        }
+        if let mode = optionValue(commandArgs, name: "--mode") ?? optionValue(commandArgs, name: "--text-mode") {
+            params["mode"] = mode
+        }
+
+        let payload = try client.sendV2(method: "surface.text", params: params)
+        if jsonOutput {
+            print(jsonString(formatIDs(payload, mode: idFormat)))
+        } else if hasFlag(commandArgs, name: "--base64") {
+            print((payload["base64"] as? String) ?? "")
+        } else {
+            print((payload["text"] as? String) ?? "")
         }
     }
 
@@ -16437,19 +16731,35 @@ struct CMUXCLI {
             """
         case "surface", "surface-resume":
             return """
-            Usage: cmux surface resume set [flags] -- <argv...>
+            Usage: cmux surface ingest [--json] [flags]
+                   cmux surface screenshot [--out <path>] [--json] [flags]
+                   cmux surface text [--json] [--base64] [flags]
+                   cmux surface resume set [flags] -- <argv...>
                    cmux surface resume set [flags] --shell <command>
                    cmux surface resume show [--json] [flags]
                    cmux surface resume get [--json] [flags]
                    cmux surface resume clear [flags]
 
-            Attach restart command metadata to a terminal surface.
-            Public CLI bindings are stored for inspection and manual restore.
+            Inspect or capture a surface, or attach restart metadata to a terminal surface.
 
             Flags:
               --workspace <id|ref|index>   Workspace context (default: $CMUX_WORKSPACE_ID)
               --surface <id|ref|index>     Surface context (default: $CMUX_SURFACE_ID)
               --window <id|ref|index>      Window context for workspace and surface refs/indexes
+              --pane <id|ref|index>         Pane context; defaults to the pane's selected surface
+              --out <path>                  Screenshot output path
+              --lines <n>                   Limit text output to the last n lines
+              --scrollback                  Include terminal scrollback for text output
+              --selector <css>              Browser text selector
+              --mode <source|rendered>      Artifact text mode (default: source)
+              --format <png|jpeg>           Screenshot encoding format
+              --jpeg-quality <0.1-1.0>      JPEG quality when --format jpeg
+              --max-dimension <n|none>      Downscale longest image side before encoding
+              --profile <name>              Capture profile label (ingest defaults to llm)
+              --include-base64              Keep image bytes in JSON output
+              --audit / --no-audit          Write or skip conductor audit files
+              --no-text                     Ingest screenshot only
+              --no-screenshot               Ingest text only
               --cwd <path>             Working directory for restore (default: $PWD)
               --name <name>            Display name for the binding
               --kind <kind>            Binding kind, for example agent or tmux
@@ -16458,6 +16768,10 @@ struct CMUXCLI {
               --source <source>        Binding source label
 
             Examples:
+              cmux surface ingest --surface surface:2 --json
+              cmux surface screenshot --surface surface:2 --out /tmp/pane.png
+              cmux surface screenshot --surface surface:2 --format jpeg --jpeg-quality 0.9 --max-dimension 2048
+              cmux surface text --surface surface:2 --lines 200
               cmux surface resume set --kind tmux --shell "tmux attach -t work"
               cmux surface resume set --kind opencode --checkpoint ses_123 -- opencode --session ses_123
               cmux surface resume show --json
@@ -16577,6 +16891,32 @@ struct CMUXCLI {
 
             Example:
               cmux capture-pane --workspace workspace:2 --surface surface:1 --scrollback --lines 200
+            """
+        case "capture-workspace", "workspace-screenshot":
+            return """
+            Usage: cmux capture-workspace [--workspace <id|ref|index>] [--window <id|ref|index>] [flags]
+                   cmux workspace-screenshot [--workspace <id|ref|index>] [--window <id|ref|index>] [flags]
+
+            Capture one visible workspace (its panes plus the tab bar) as a single image.
+            The workspace must be the selected workspace in its window; this command never
+            changes focus. The JSON payload includes a `panes` array mapping each captured
+            pane to its rect in the image (top-left origin, original image pixels). The left
+            sidebar is excluded by default (it is window chrome, not workspace content, and
+            its behind-window vibrancy captures empty); pass --sidebar include to keep it.
+
+            Flags:
+              --workspace <id|ref|index>   Workspace to capture (default: $CMUX_WORKSPACE_ID)
+              --window <id|ref|index>      Window context for workspace refs and indexes
+              --out <file>                 Write the image to a file
+              --format <png|jpeg>          Image format (default png)
+              --jpeg-quality <0.1-1.0>     JPEG quality (default 0.92)
+              --max-dimension <n|none>     Downscale so the longest side is at most n pixels
+              --sidebar <include|exclude>  Include or exclude the left sidebar (default exclude)
+              --include-base64             Keep base64 image data in --json output
+
+            Example:
+              cmux capture-workspace --workspace "$CMUX_WORKSPACE_ID" --out /tmp/workspace.png
+              cmux capture-workspace --json --max-dimension 1568
             """
         case "resize-pane":
             return """
@@ -35495,6 +35835,8 @@ export default CMUXSessionRestore;
           Use printed curl commands to fetch the latest docs/schema; prefer Ghostty config for terminal behavior Ghostty already supports.
           Ghostty config lives at ~/.config/ghostty/config (terminal transparency, blur, font, theme, keybinds, etc.).
           `cmux reload-config` reloads BOTH Ghostty config and ~/.config/cmux/cmux.json, then refreshes terminals in place. No app restart needed.
+          To grab one image of the whole visible workspace (all panes + chrome) with per-pane rects, use:
+            cmux capture-workspace --workspace "$CMUX_WORKSPACE_ID" --out /tmp/workspace.png
 
         Commands:
           welcome
@@ -35564,6 +35906,9 @@ export default CMUXSessionRestore;
           split-off --surface <id|ref|index> <left|right|up|down> [--workspace <id|ref|index>] [--window <id|ref|index>] [--focus <true|false>]
           reorder-surface --surface <id|ref|index> (--index <n> | --before <id|ref|index> | --after <id|ref|index>) [--workspace <id|ref|index>] [--window <id|ref|index>] [--focus <true|false>]
           tab-action --action <name> [--tab <id|ref|index>] [--surface <id|ref|index>] [--workspace <id|ref|index>] [--window <id|ref|index>] [--title <text>] [--url <url>] [--focus <true|false>]
+          surface ingest [--workspace <id|ref|index>] [--surface <id|ref|index>] [--pane <id|ref|index>] [--window <id|ref|index>] [--lines <n>] [--format <png|jpeg>] [--max-dimension <n|none>] [--audit|--no-audit] [--json]
+          surface screenshot [--workspace <id|ref|index>] [--surface <id|ref|index>] [--pane <id|ref|index>] [--window <id|ref|index>] [--out <path>] [--format <png|jpeg>] [--max-dimension <n|none>] [--json]
+          surface text [--workspace <id|ref|index>] [--surface <id|ref|index>] [--pane <id|ref|index>] [--window <id|ref|index>] [--lines <n>] [--scrollback] [--selector <css>] [--mode <source|rendered>] [--json]
           surface resume <set|show|get|clear> [--workspace <id|ref|index>] [--surface <id|ref|index>] [--window <id|ref|index>]
           rename-tab [--workspace <id|ref|index>] [--tab <id|ref|index>] [--surface <id|ref|index>] [--window <id|ref|index>] <title>
           drag-surface-to-split --surface <id|ref|index> <left|right|up|down> [--workspace <id|ref|index>] [--window <id|ref|index>] [--focus <true|false>]
@@ -35580,6 +35925,7 @@ export default CMUXSessionRestore;
           rename-window [--workspace <id|ref|index>] [--window <id|ref|index>] <title>
           current-workspace [--window <id|ref|index>]
           read-screen [--workspace <id|ref|index>] [--surface <id|ref|index>] [--window <id|ref|index>] [--scrollback] [--lines <n>]
+          capture-workspace|workspace-screenshot [--workspace <id|ref|index>] [--window <id|ref|index>] [--out <file>] [--format <png|jpeg>] [--max-dimension <n|none>] [--sidebar <include|exclude>]
           send [--workspace <id|ref|index>] [--surface <id|ref|index>] [--window <id|ref|index>] [--force] <text>
           send-key [--workspace <id|ref|index>] [--surface <id|ref|index>] [--window <id|ref|index>] <key>
           send-panel --panel <id|ref|index> [--workspace <id|ref|index>] [--window <id|ref|index>] <text>

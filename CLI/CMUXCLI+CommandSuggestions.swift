@@ -67,6 +67,7 @@ extension CMUXCLI {
         "browser-status",
         "capabilities",
         "capture-pane",
+        "capture-workspace",
         "claude-hook",
         "claude-teams",
         "clear-history",
@@ -211,5 +212,6 @@ extension CMUXCLI {
         "workspace",
         "workspace-action",
         "workspace-group",
+        "workspace-screenshot",
     ]
 }
