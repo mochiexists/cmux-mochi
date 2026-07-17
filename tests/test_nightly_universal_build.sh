@@ -5,6 +5,53 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 WORKFLOW_FILE="$ROOT_DIR/.github/workflows/nightly.yml"
 
+if grep -Eq '^  push:' "$WORKFLOW_FILE"; then
+  echo "FAIL: nightly workflow must be ad-hoc only; push trigger should stay disabled"
+  exit 1
+fi
+
+if grep -Eq '^  schedule:' "$WORKFLOW_FILE"; then
+  echo "FAIL: nightly workflow must be ad-hoc only; scheduled triggers should stay disabled"
+  exit 1
+fi
+
+if ! grep -Fq 'workflow_dispatch:' "$WORKFLOW_FILE"; then
+  echo "FAIL: nightly workflow must keep a manual workflow_dispatch trigger"
+  exit 1
+fi
+
+if ! awk '
+  /^      runner:/ { in_runner=1; next }
+  in_runner && /^      [^[:space:]]/ { in_runner=0 }
+  in_runner && /default: m4-signing-runner/ { saw_default=1 }
+  in_runner && /- m4-signing-runner/ { saw_m4=1 }
+  in_runner && /- hosted-macos-15/ { saw_hosted=1 }
+  END { exit !(saw_default && saw_m4 && saw_hosted) }
+' "$WORKFLOW_FILE"; then
+  echo "FAIL: nightly workflow must expose an M4-default runner toggle with a hosted macOS 15 fallback"
+  exit 1
+fi
+
+if ! grep -Fq '["self-hosted","cmux-mochi-m4pro"]' "$WORKFLOW_FILE"; then
+  echo "FAIL: nightly M4 lane must target the Mochi self-hosted signing runner label"
+  exit 1
+fi
+
+if ! grep -Fq "vars.MACOS_RUNNER_15 || 'blacksmith-6vcpu-macos-15'" "$WORKFLOW_FILE"; then
+  echo "FAIL: nightly hosted lane must keep the repo-variable macOS 15 fallback"
+  exit 1
+fi
+
+if ! awk '
+  /^  build-sign-notarize-nightly:/ { in_job=1; next }
+  in_job && /^  [^[:space:]#][^:]*:/ { in_job=0 }
+  in_job && /timeout-minutes:/ { timeout=$2 }
+  END { exit !(timeout >= 75) }
+' "$WORKFLOW_FILE"; then
+  echo "FAIL: nightly build/sign/notarize timeout must allow universal Release build plus Apple notarization"
+  exit 1
+fi
+
 if ! awk '
   /^      - name: Build universal nightly app \(Release\)/ { in_universal=1; next }
   in_universal && /^      - name:/ { in_universal=0 }
@@ -43,27 +90,6 @@ if ! awk '
   exit 1
 fi
 
-if ! grep -Fq 'cron: "17 */6 * * *"' "$WORKFLOW_FILE"; then
-  echo "FAIL: nightly workflow must refresh the shared Release cache four times daily"
-  exit 1
-fi
-
-if ! grep -Fq 'cron: "47 8 * * *"' "$WORKFLOW_FILE"; then
-  echo "FAIL: nightly workflow must publish once daily at 08:47 UTC"
-  exit 1
-fi
-
-if ! awk '
-  /^  push:/ { in_push=1; next }
-  in_push && /^  [a-zA-Z0-9_-]+:/ { in_push=0 }
-  in_push && /^    branches:/ { saw_branches=1 }
-  in_push && /^      - main$/ { saw_main=1 }
-  END { exit !(saw_branches && saw_main) }
-' "$WORKFLOW_FILE"; then
-  echo "FAIL: every push to main must trigger a Nightly publication attempt"
-  exit 1
-fi
-
 if ! grep -Fq 'const headSha = context.sha;' "$WORKFLOW_FILE"; then
   echo "FAIL: each Nightly run must build the exact revision that triggered it"
   exit 1
@@ -71,33 +97,6 @@ fi
 
 if grep -Fq 'github.rest.repos.getBranch' "$WORKFLOW_FILE"; then
   echo "FAIL: queued Nightly runs must not replace their triggering revision with a newer main HEAD"
-  exit 1
-fi
-
-if ! awk '
-  /^  refresh-compilation-cache:/ { in_refresh=1; next }
-  in_refresh && /^  [a-zA-Z0-9_-]+:/ { in_refresh=0 }
-  in_refresh && /timeout-minutes: 45/ { saw_cold_build_timeout=1 }
-  in_refresh && /if: github\.event_name == '\''schedule'\'' && github\.event\.schedule == '\''17 \*\/6 \* \* \*'\''/ { saw_schedule_gate=1 }
-  in_refresh && /runs-on: \$\{\{ vars\.MACOS_RUNNER_26_RELEASE/ { saw_release_runner=1 }
-  in_refresh && /CMUX_CI_XCODE_APP_MACOS_26/ { saw_release_xcode=1 }
-  in_refresh && /select-ci-xcode\.sh/ { saw_xcode_selection=1 }
-  in_refresh && /^      - name: Look up Xcode compilation cache/ { saw_lookup=1 }
-  in_refresh && /uses: actions\/cache\/restore@/ { saw_restore_action=1 }
-  in_refresh && /lookup-only: true/ { saw_lookup_only=1 }
-  in_refresh && /^      - name: Cache Xcode compilation results/ { saw_cache=1 }
-  in_refresh && /^      - name: Refresh universal nightly compilation cache/ { saw_refresh=1 }
-  in_refresh && /if: steps\.compilation-cache-lookup\.outputs\.cache-hit != '\''true'\''/ { saw_change_gate=1 }
-  in_refresh && /-showBuildTimingSummary/ { saw_timing_summary=1 }
-  in_refresh && /-quiet/ { saw_quiet=1 }
-  END { exit !(saw_cold_build_timeout && saw_schedule_gate && saw_release_runner && saw_release_xcode && saw_xcode_selection && saw_lookup && saw_restore_action && saw_lookup_only && saw_cache && saw_refresh && saw_change_gate && saw_timing_summary && !saw_quiet) }
-' "$WORKFLOW_FILE"; then
-  echo "FAIL: the six-hour schedule must allow 45 minutes for a cold cache build and use the matching runner, Xcode, and visible timing output"
-  exit 1
-fi
-
-if ! grep -Fq "if: needs.decide.outputs.should_build == 'true' && (github.event_name != 'schedule' || github.event.schedule == '47 8 * * *')" "$WORKFLOW_FILE"; then
-  echo "FAIL: manual runs and the daily publish schedule must sign, notarize, and publish Nightly"
   exit 1
 fi
 
@@ -113,13 +112,6 @@ fi
 
 if grep -Eq 'current_head_(prebuild|postbuild)|still_current' "$WORKFLOW_FILE"; then
   echo "FAIL: main advancing after dispatch must not skip a fixed Nightly candidate or report false-green publication"
-  exit 1
-fi
-
-R2_UPLOAD_LINE="$(grep -nF -- '- name: Upload nightly appcast to R2' "$WORKFLOW_FILE" | cut -d: -f1)"
-TAG_MOVE_LINE="$(grep -nF -- '- name: Move nightly tag to built commit' "$WORKFLOW_FILE" | cut -d: -f1)"
-if [ -z "$R2_UPLOAD_LINE" ] || [ -z "$TAG_MOVE_LINE" ] || [ "$TAG_MOVE_LINE" -le "$R2_UPLOAD_LINE" ]; then
-  echo "FAIL: the nightly tag completion marker must move only after GitHub and R2 publication succeed"
   exit 1
 fi
 
@@ -168,7 +160,7 @@ if ! awk '
   job == "app" && /CMUX_CI_XCODE_APP_MACOS_26/ { saw_app_xcode=1 }
   job == "app" && /select-ci-xcode\.sh/ { saw_app_selection=1 }
   job == "app" && /name: cmux-nightly-unsigned-app/ { saw_app_artifact=1 }
-  job == "app" && /tar -C "\$products" -czf "\$RUNNER_TEMP\/cmux-nightly-unsigned\.tar\.gz" cmux\.app/ { saw_app_only_archive=1 }
+  job == "app" && /tar -C "\$products" -czf "\$RUNNER_TEMP\/cmux-nightly-unsigned\.tar\.gz" "cmux Mochi\.app"/ { saw_app_only_archive=1 }
   job == "app" && /^      - name: Upload dSYMs to Sentry/ { saw_app_dsym_upload=1 }
   job == "publish" && /build-nightly-ghostty-cli-helper/ { saw_publish_needs_helper=1 }
   job == "publish" && /build-nightly-app/ { saw_publish_needs_app=1 }
@@ -187,10 +179,11 @@ fi
 if ! awk '
   /^      - name: Inject universal Ghostty CLI helper/ { in_inject=1; next }
   in_inject && /^      - name:/ { in_inject=0 }
+  in_inject && /APP_DIR="build-universal\/Build\/Products\/Release\/cmux Mochi\.app"/ { saw_mochi_app=1 }
   in_inject && /install -m 755 nightly-inputs\/ghostty\/ghostty "\$DEST"/ { saw_install=1 }
-  END { exit !saw_install }
+  END { exit !(saw_mochi_app && saw_install) }
 ' "$WORKFLOW_FILE"; then
-  echo "FAIL: nightly workflow must inject the verified universal Ghostty helper into the app"
+  echo "FAIL: nightly workflow must inject the verified universal Ghostty helper into the built Mochi app"
   exit 1
 fi
 
@@ -210,19 +203,31 @@ fi
 if ! awk '
   /^      - name: Verify nightly binary architectures/ { in_verify=1; next }
   in_verify && /^      - name:/ { in_verify=0 }
+  in_verify && /cmux Mochi\.app\/Contents\/MacOS\/cmux Mochi/ { saw_mochi_binary=1 }
   in_verify && /lipo -archs "\$APP_BINARY"/ { saw_app=1 }
   in_verify && /lipo -archs "\$CLI_BINARY"/ { saw_cli=1 }
   in_verify && /lipo -archs "\$HELPER_BINARY"/ { saw_helper=1 }
   in_verify && /\[\[ "\$APP_ARCHS" == \*arm64\* && "\$APP_ARCHS" == \*x86_64\* \]\]/ { saw_app_assert=1 }
   in_verify && /\[\[ "\$CLI_ARCHS" == \*arm64\* && "\$CLI_ARCHS" == \*x86_64\* \]\]/ { saw_cli_assert=1 }
   in_verify && /\[\[ "\$HELPER_ARCHS" == \*arm64\* && "\$HELPER_ARCHS" == \*x86_64\* \]\]/ { saw_helper_assert=1 }
-  END { exit !(saw_app && saw_cli && saw_helper && saw_app_assert && saw_cli_assert && saw_helper_assert) }
+  END { exit !(saw_mochi_binary && saw_app && saw_cli && saw_helper && saw_app_assert && saw_cli_assert && saw_helper_assert) }
 ' "$WORKFLOW_FILE"; then
-  echo "FAIL: nightly workflow must verify universal app, CLI, and helper slices with lipo"
+  echo "FAIL: nightly workflow must verify universal app, CLI, and helper slices from the built Mochi app with lipo"
   exit 1
 fi
 
-if ! grep -Fq 'bundle ID `com.cmuxterm.app.nightly`' "$WORKFLOW_FILE"; then
+if ! awk '
+  /^      - name: Inject nightly identities and metadata/ { in_inject=1; next }
+  in_inject && /^      - name:/ { in_inject=0 }
+  in_inject && /cmux Mochi\.app\/Contents\/Info\.plist/ { saw_mochi_plist=1 }
+  in_inject && /mv "\$app_dir\/cmux Mochi\.app" "\$app_dir\/cmux Mochi NIGHTLY\.app"/ { saw_rename=1 }
+  END { exit !(saw_mochi_plist && saw_rename) }
+' "$WORKFLOW_FILE"; then
+  echo "FAIL: nightly identity injection must mutate and rename the built Mochi app into the NIGHTLY app"
+  exit 1
+fi
+
+if ! grep -Fq 'bundle ID `com.cmux-mochi.nightly`' "$WORKFLOW_FILE"; then
   echo "FAIL: nightly workflow must publish the unified nightly bundle ID"
   exit 1
 fi
@@ -234,6 +239,16 @@ fi
 
 if ! grep -Fq './scripts/sparkle_generate_appcast.sh "$NIGHTLY_DMG_IMMUTABLE" nightly appcast.xml' "$WORKFLOW_FILE"; then
   echo "FAIL: nightly workflow must generate the unified nightly appcast"
+  exit 1
+fi
+
+if ! grep -Fq 'https://github.com/mochiexists/cmux-mochi/releases/download/nightly/appcast.xml' "$WORKFLOW_FILE"; then
+  echo "FAIL: nightly app must use the fork GitHub Release appcast as its Sparkle feed"
+  exit 1
+fi
+
+if grep -Fq 'files.cmux.com' "$WORKFLOW_FILE"; then
+  echo "FAIL: nightly workflow must not publish or point Sparkle at files.cmux.com"
   exit 1
 fi
 
@@ -252,16 +267,6 @@ if ! awk '
   END { exit !(saw_if && saw_upload && saw_arm_artifacts && saw_universal_appcast) }
 ' "$WORKFLOW_FILE"; then
   echo "FAIL: non-main nightly runs must upload nightly artifacts and compatibility appcasts"
-  exit 1
-fi
-
-if ! awk '
-  /^      - name: Move nightly tag to built commit/ { in_move=1; next }
-  in_move && /^      - name:/ { in_move=0 }
-  in_move && /if: needs\.decide\.outputs\.should_publish == '\''true'\''/ { saw_move_if=1 }
-  END { exit !saw_move_if }
-' "$WORKFLOW_FILE"; then
-  echo "FAIL: moving the nightly tag must be gated to main nightly publishes"
   exit 1
 fi
 
