@@ -225,9 +225,9 @@ enum TerminalScrollbackAutosaveSettings {
 }
 
 /// How restored agent terminals behave when cmux Mochi reopens after a quit.
-/// Off: no scrollback replay and no resume command prefill.
-/// Medium: replay scrollback and prefill the resume command without submitting it.
-/// Full: submit the resume command without replaying scrollback.
+/// Off:    no scrollback replay, no resume command prefill (fresh terminal).
+/// medium: replay scrollback and prefill the resume command without submitting it.
+/// full:   immediately run the resume command (no scrollback replay).
 enum AgentSessionResumeMode: String, CaseIterable, Identifiable {
     case off
     case medium
@@ -235,8 +235,13 @@ enum AgentSessionResumeMode: String, CaseIterable, Identifiable {
 
     var id: String { rawValue }
 
+    /// Replay the previous terminal scrollback for agent terminals on restore.
     var replaysScrollback: Bool { self == .medium }
+
+    /// Prefill the resume command into the terminal input on restore.
     var prefillsResumeCommand: Bool { self == .medium || self == .full }
+
+    /// Submit (auto-run) the prefilled resume command on restore.
     var submitsResumeCommand: Bool { self == .full }
 
     var displayName: String {
