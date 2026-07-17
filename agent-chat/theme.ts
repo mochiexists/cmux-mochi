@@ -55,7 +55,7 @@ const THEME_DIRS = [
 
 const MANAGED_CONFIGS = [
   `${homedir()}/Library/Application Support/com.mitchellh.ghostty/config`,
-  `${homedir()}/Library/Application Support/com.cmuxterm.app/config.ghostty`,
+  `${homedir()}/Library/Application Support/com.cmux-mochi/config.ghostty`,
 ];
 
 let cached: { theme: GhosttyTheme; at: number } | null = null;
