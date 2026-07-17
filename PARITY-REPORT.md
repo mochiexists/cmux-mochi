@@ -213,6 +213,33 @@ App-suite triage on this machine (macOS 26.5): 26 failures shared with the
 v0.64.173 baseline tree, 6 upstream-new Freestyle-sshd restore tests failing
 identically pre-fix, 0 regressions attributable to the identity fix.
 
+Codex adversarial validation (rounds 1–3, visible cmux pane, tag-grounded)
+drove three further fix waves (`da59e456cf..c4af66c913`):
+
+- Round 1: repo-URL identity class (36 sites incl. the updater fallback appcast
+  feed pointing at upstream) and the workflow-guard BLOCKER — upstream guard
+  tests plus a stripped actionlint runner label guaranteed red CI against the
+  fork's workflows. Fixed by re-porting the fork ci.yml overlay (fork app names
+  in release-build/tests-build-and-lag, the ui-regressions job, main-push
+  cancel), restoring the tag guard tests adapted to upstream's relocated helper
+  build (swift-package-tests), and restoring actionlint.yaml (+ upstream's
+  tart-canary).
+- Round 2: app display-name class inside CI-called scripts (37 sites;
+  run-display-ui-regressions.sh and verify-main-thread-ca-transactions.sh
+  would have aborted tests-build-and-lag), docs/ci-runners.md URLs, APNs
+  host-grouping fixtures, guard hardening (tart-* forbidden in runner
+  selection; sdk-lane re-asserts SDK-15 slices, artifact name, producer
+  dependency).
+- Round 3: UpdateManualDownloadRecovery stable/nightly downloads pointed at
+  upstream's releases (BLOCKER), the nightly web landing page likewise, four
+  reverted "cmux Mochi" UI strings in Localizable.xcstrings, and the
+  remaining ci-runners break-glass commands.
+
+Final state: all fork gates green on fresh binaries (self-hosted guard, sdk
+lane, nightly universal, fork-overlay audit, profiling, CLI autodiscovery,
+APNs 28/28, CmuxUpdater 77/77, actionlint), and the rebuilt tagged app binds
+its isolated socket with the tag-bound debug helper working.
+
 New known issues catalogued (not parity gaps):
 
 - First-run `cmux welcome` leaves `PanelShellActivityState` stuck at
