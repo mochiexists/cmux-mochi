@@ -59,6 +59,24 @@ require_job_contains \
 
 require_job_contains \
   "$CI_FILE" \
+  "swift-package-tests" \
+  '[[ "$HELPER_SDK_VERSION" == 15.* ]]' \
+  "CI must verify the helper slices were linked against a macOS 15 SDK"
+
+require_job_contains \
+  "$CI_FILE" \
+  "swift-package-tests" \
+  'name: cmux-ghostty-cli-helper' \
+  "CI helper producer must upload the cmux-ghostty-cli-helper artifact release-build downloads"
+
+require_job_contains \
+  "$CI_FILE" \
+  "release-build" \
+  '- swift-package-tests' \
+  "CI release-build must depend on the helper producer so the artifact download cannot race"
+
+require_job_contains \
+  "$CI_FILE" \
   "release-build" \
   'runs-on: ${{ vars.MACOS_RUNNER_26_RELEASE || '\''blacksmith-6vcpu-macos-26'\'' }}' \
   "CI release-build must compile the app on macOS 26 using the release-specific runner variable"
