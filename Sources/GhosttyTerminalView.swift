@@ -11121,6 +11121,7 @@ final class GhosttySurfaceScrollView: NSView {
             (uniqueQuantized <= 6 && modeFraction > 0.95)
         }
     }
+#endif
 
     /// Create a CGImage from the terminal's IOSurface-backed layer contents.
     ///
@@ -11168,6 +11169,7 @@ final class GhosttySurfaceScrollView: NSView {
         )
     }
 
+#if DEBUG
     /// Sample the IOSurface backing the terminal layer (if any) to detect a transient blank frame
     /// without using screenshots/screen recording permissions.
     func debugSampleIOSurface(normalizedCrop: CGRect) -> DebugFrameSample? {
