@@ -1318,13 +1318,24 @@ final class MobileHostService {
         guard Self.requiresAuthorization(method: request.method) else {
             return nil
         }
-        // Stack auth is the SOLE authorization gate for the mobile data plane.
-        // The attach ticket is route-discovery and workspace-selection only; it
-        // never authorizes on its own. Every operation must present the Mac
-        // owner's same-account Stack access token. Consequences: a leaked or
-        // photographed QR is useless without the owner's signed-in account, and
-        // pairing is bound to "who is signed in on this Mac" rather than a stored
-        // ticket, so it survives Mac restarts and ticket expiry.
+        // Fork (cmux Mochi): a valid, unexpired attach ticket authorizes ON ITS OWN.
+        //
+        // Upstream makes Stack auth the SOLE gate — every operation must present the
+        // Mac owner's same-account Stack access token, so two of the operator's own
+        // devices cannot talk over their own tailnet without a third-party identity
+        // service (manaflow's Stack project). This fork accepts the attach ticket as
+        // the credential: it is minted only over the LOCAL control socket (by whoever
+        // already controls this Mac), it is short-lived, and `validAuthorization`
+        // re-checks expiry on EVERY request (pruning expired records), so revocation
+        // is a matter of the ticket lapsing rather than an account lookup.
+        //
+        // Security note vs upstream: a leaked/photographed pairing URL is now usable
+        // by whoever holds it until the ticket expires — but only from inside the
+        // tailnet, since that is the only route the ticket advertises. Keep TTLs
+        // short. Stack auth remains accepted below, so signed-in users are unaffected.
+        if attachTicketAuthorized(request) {
+            return ticketAuthorizationResultIfNeeded(for: request)
+        }
         if devStackTokenAuthorized(request) {
             return ticketAuthorizationResultIfNeeded(for: request)
         }
@@ -1348,6 +1359,22 @@ final class MobileHostService {
                 message: "Mobile sync authorization failed."
             ))
         }
+    }
+
+    /// Fork (cmux Mochi): whether a live attach ticket authorizes this request on
+    /// its own, with no Stack account involved.
+    ///
+    /// Only the token's validity is decided here; per-request SCOPE (which
+    /// workspaces/terminals the ticket may touch) is still enforced by
+    /// ``ticketAuthorizationResultIfNeeded(for:)``, which the caller applies after
+    /// this returns true. `validAuthorization` prunes and re-checks expiry on every
+    /// call, so an expired ticket stops authorizing immediately.
+    private func attachTicketAuthorized(_ request: MobileHostRPCRequest) -> Bool {
+        guard let attachToken = request.auth?.attachToken?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !attachToken.isEmpty else {
+            return false
+        }
+        return ticketStore.validAuthorization(authToken: attachToken) != nil
     }
 
     private func ticketAuthorizationResultIfNeeded(for request: MobileHostRPCRequest) -> MobileHostRPCResult? {

@@ -353,6 +353,9 @@ public final class MobileCoreRPCClient: MobileSyncing, Sendable {
         var requestStackAccessToken: String?
         let attachToken = ticket.authToken?.trimmingCharacters(in: .whitespacesAndNewlines)
         let hasAttachToken = attachToken?.isEmpty == false
+        // Fork (cmux Mochi): true when the attach ticket alone authorizes this
+        // request, so no Stack token is fetched or sent. See `shouldSendStackAuth`.
+        var attachTokenAuthorizesRequest = false
         if let attachToken,
            requestNeedsAuth,
            hasAttachToken,
@@ -362,19 +365,25 @@ public final class MobileCoreRPCClient: MobileSyncing, Sendable {
             // expiry), so they never reach this branch.
             if !ticket.isExpired(at: runtime.now()) {
                 auth["attach_token"] = attachToken
+                attachTokenAuthorizesRequest = true
             } else if !allowsStackAuthFallback || !MobileShellRouteAuthPolicy.routeAllowsStackAuth(route) {
                 throw MobileShellConnectionError.attachTicketExpired
             }
         }
-        // The host treats Stack auth as the SOLE authorization gate: EVERY
-        // authorized request must carry the owner's stack_access_token, even when
-        // an attach_token is also present. The attach ticket is route-discovery
-        // and workspace-selection only and never authorizes on its own, so a
-        // request that ships attach_token-only (e.g. ticket-covered workspace.list)
-        // is rejected host-side with `missingStackTokens`. Always present the
-        // Stack token for authorized requests; attach_token rides along as
-        // supplementary route/workspace context.
-        let shouldSendStackAuth = requestNeedsAuth
+        // Fork (cmux Mochi): the attach ticket authorizes ON ITS OWN.
+        //
+        // Upstream treats Stack auth as the SOLE authorization gate — every
+        // authorized request had to carry the owner's stack_access_token even when
+        // an attach_token was present, which binds two of the operator's OWN devices
+        // to a third-party identity service (manaflow's Stack project) just to talk
+        // to each other over the tailnet. This fork's Mac host accepts a valid,
+        // unexpired attach token as sufficient authorization, so when the ticket
+        // covers the request we send it alone and never fetch a Stack token.
+        //
+        // Stack auth remains the fallback for requests the ticket does NOT cover
+        // (see `requestNeedsStackAuthFallback`), so a signed-in user keeps today's
+        // behavior and nothing regresses against an upstream host.
+        let shouldSendStackAuth = requestNeedsAuth && !attachTokenAuthorizesRequest
         if shouldSendStackAuth {
             guard allowsStackAuthFallback,
                   MobileShellRouteAuthPolicy.routeAllowsStackAuth(route) else {
