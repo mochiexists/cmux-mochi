@@ -12,6 +12,12 @@ import AppKit
 #endif
 
 struct SignInView: View {
+    /// Fork (cmux Mochi): invoked by "Continue without an account", which drops
+    /// straight to pairing. This fork's Mac host accepts a valid attach ticket as
+    /// authorization on its own, and the transport is the tailnet, so the account is
+    /// a convenience, not the security boundary. `nil` restores upstream behavior
+    /// (no skip affordance).
+    var onSkipSignIn: (() -> Void)?
     @Environment(AuthCoordinator.self) private var authManager
     @Environment(\.analytics) private var analytics
     @State private var email = ""
@@ -108,6 +114,28 @@ struct SignInView: View {
                     .disabled(email.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isAuthInProgress)
                     .mobileGlassProminentButton()
                     .accessibilityIdentifier("signin.emailCode")
+                }
+
+                // Fork (cmux Mochi): pair over the tailnet, no account. The Mac host
+                // accepts a valid attach ticket as authorization on its own; skipping
+                // only forgoes account-scoped extras (push notification forwarding,
+                // cross-device sync) — which is the point for an operator who wants
+                // no sign-ins and no third-party identity service in the loop.
+                if let onSkipSignIn {
+                    Button {
+                        onSkipSignIn()
+                    } label: {
+                        Text(L10n.string(
+                            "mobile.signIn.skip",
+                            defaultValue: "Continue without an account"
+                        ))
+                        .font(.footnote.weight(.semibold))
+                        .frame(maxWidth: .infinity)
+                        .contentShape(.rect)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(isAuthInProgress)
+                    .accessibilityIdentifier("signin.skip")
                 }
 
                 if let error {

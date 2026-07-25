@@ -32,6 +32,12 @@ struct CMUXMobileRootView: View {
     #endif
     @State private var pendingAttachURL: String?
     @State private var didAuthenticateWithAttachTicket = false
+    /// Fork (cmux Mochi): the operator chose "continue without an account" on the
+    /// sign-in screen. This fork's Mac host accepts a valid attach ticket as
+    /// authorization on its own, so an account is a convenience — not a security
+    /// boundary. Persisted so the choice survives relaunch: a skipped user lands on
+    /// pairing, never back at the wall.
+    @AppStorage("mochi.mobile.skippedSignIn") private var didSkipSignIn = false
     @State private var isShowingAddDeviceSheet = false
     #if os(iOS)
     @State private var addDeviceSheetDetent: PresentationDetent = .large
@@ -225,7 +231,7 @@ struct CMUXMobileRootView: View {
         } else if shouldShowStreamingChatPreview {
             streamingChatPreview
         } else if !isAuthenticated {
-            SignInView()
+            SignInView(onSkipSignIn: { didSkipSignIn = true })
         } else if store.connectionState != .connected && shouldShowRestoringStoredMac {
             RestoringStoredMacWorkspaceShell(
                 store: store,
@@ -349,7 +355,9 @@ struct CMUXMobileRootView: View {
     #endif
 
     private var isAuthenticated: Bool {
-        MobileRootAuthGate.isAuthenticated(
+        // Fork: a skipped sign-in opens the same door an attach ticket does.
+        if didSkipSignIn { return true }
+        return MobileRootAuthGate.isAuthenticated(
             stackAuthenticated: authManager.isAuthenticated,
             attachTicketAuthenticated: hasActiveAttachTicketAuthentication
         )
