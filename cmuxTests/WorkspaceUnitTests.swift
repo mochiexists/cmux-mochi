@@ -5887,6 +5887,32 @@ final class WorkspacePanelGitBranchTests: XCTestCase {
         XCTAssertEqual(workspace.focusedPanelId, firstPanel.id)
     }
 
+    func testOpenOrFocusTaskManagerSurfaceCreatesDetailedTabAndReusesIt() {
+        let workspace = Workspace()
+        guard let paneId = workspace.bonsplitController.focusedPaneId else {
+            XCTFail("Expected focused pane")
+            return
+        }
+
+        guard let firstPanel = workspace.openOrFocusTaskManagerSurface(inPane: paneId, focus: true) else {
+            XCTFail("Expected Task Manager surface to be created")
+            return
+        }
+        guard let secondPanel = workspace.openOrFocusTaskManagerSurface(inPane: paneId, focus: true) else {
+            XCTFail("Expected existing Task Manager surface to be focused")
+            return
+        }
+
+        XCTAssertTrue(firstPanel.model.includesProcesses)
+        XCTAssertEqual(firstPanel.id, secondPanel.id)
+        XCTAssertEqual(workspace.panels.values.compactMap { $0 as? TaskManagerPanel }.count, 1)
+        XCTAssertEqual(workspace.focusedPanelId, firstPanel.id)
+        XCTAssertEqual(
+            workspace.surfaceIdFromPanelId(firstPanel.id).flatMap { workspace.bonsplitController.tab($0)?.kind },
+            SurfaceKind.taskManager.rawValue
+        )
+    }
+
     func testClosingFocusedSplitRestoresBranchForRemainingFocusedPanel() {
         let workspace = Workspace()
         guard let firstPanelId = workspace.focusedPanelId else {

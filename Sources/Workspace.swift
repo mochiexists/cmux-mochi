@@ -698,6 +698,7 @@ extension Workspace {
             return nil
         case .artifact:
             // TODO(artifacts): persist filePath + kind so artifact panes restore.
+            return nil
         case .taskManager:
             // Task Manager surfaces are ephemeral and intentionally not persisted.
             return nil
@@ -1584,10 +1585,9 @@ extension Workspace {
                 surfaceResumeBindingsByPanelId.removeValue(forKey: terminalPanel.id)
             }
             // A terminal whose startup command cds itself (agent resume, tmux attach, agent-hook)
-            // is spawned without a working directory, so its shell starts in the default directory
-            // and shell integration reports that directory (typically home) before the startup
-            // command cds into the saved one. Remember the saved directory so the spurious initial
-            // report is ignored instead of overwriting the restored workspace cwd (#6617).
+            // can briefly report its default directory (typically home) before the startup command
+            // cds into the saved one. Remember the saved directory so that spurious initial report
+            // cannot overwrite the restored workspace cwd (#6617).
             // `shouldIgnoreRestoredGuardedDirectoryReport` decides how long to guard: once while
             // the saved directory still exists, persistently while it is on an unmounted volume,
             // and not at all once it has been deleted (the shell's reported cwd is then the real
@@ -1601,7 +1601,6 @@ extension Workspace {
                 restoredRemotePTYSessionID == nil &&
                 snapshot.terminal?.isRemoteTerminal != true
             if startupHandlesWorkingDirectory,
-               localWorkingDirectory == nil,
                restoredDirectoryIsLocalPath,
                let guardedWorkingDirectory = resumeSessionWorkingDirectory?.trimmingCharacters(in: .whitespacesAndNewlines),
                !guardedWorkingDirectory.isEmpty {
@@ -1739,6 +1738,7 @@ extension Workspace {
             return nil
         case .artifact:
             // TODO(artifacts): restore filePath + kind once artifacts persist.
+            return nil
         case .taskManager:
             // Task Manager surfaces are ephemeral and intentionally not persisted.
             return nil

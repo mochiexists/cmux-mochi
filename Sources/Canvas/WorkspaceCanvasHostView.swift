@@ -103,6 +103,7 @@ struct WorkspaceCanvasHostView: View {
         case .workspaceTodo: return "checklist"
         case .cloudVMLoading: return "cloud.fill"
         case .artifact: return "sparkles.rectangle.stack"
+        case .taskManager: return "gauge.with.dots.needle.33percent"
         }
     }
 
