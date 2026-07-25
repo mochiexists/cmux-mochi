@@ -216,7 +216,8 @@ jobs:
     if: needs.decide.outputs.should_build == 'true' && (github.event_name != 'schedule' || github.event.schedule == '47 8 * * *')
     # Zig 0.15.2 cannot link the real helper on macOS 26. Match the stable
     # release workflow by building and verifying it on macOS 15 instead.
-    runs-on: ${{ vars.MACOS_RUNNER_15 || 'blacksmith-6vcpu-macos-15' }}
+    # Fork: `macos-15` (GitHub-hosted) rather than a third-party lane.
+    runs-on: ${{ vars.MACOS_RUNNER_15 || 'macos-15' }}
     timeout-minutes: 20
     steps:
       - name: Clear stale git locks (self-hosted reused workspace)
@@ -265,7 +266,13 @@ jobs:
     if: needs.decide.outputs.should_build == 'true' && (github.event_name != 'schedule' || github.event.schedule == '47 8 * * *')
     # Match the cache warmer and stable release app build exactly. Keeping the
     # runner and pinned Xcode identical makes their compilation caches reusable.
-    runs-on: ${{ vars.MACOS_RUNNER_26_NIGHTLY_BUILD || 'blacksmith-12vcpu-macos-26' }}
+    #
+    # Fork (cmux Mochi): default to the operator's OWN macOS 26 signing box, not
+    # a third-party hosted lane. The v0.64.20 uplift introduced this variable with
+    # a Blacksmith default; because the repo never defined it, nightlies silently
+    # queued forever waiting for a runner that never came (2026-07-25). The fork
+    # builds on its own hardware — override with the variable if that ever changes.
+    runs-on: ${{ vars.MACOS_RUNNER_26_NIGHTLY_BUILD || 'cmux-mochi-m4pro' }}
     timeout-minutes: 45
     env:
       CMUX_CI_XCODE_APP: ${{ vars.CMUX_CI_XCODE_APP_MACOS_26 }}
