@@ -204,6 +204,26 @@ EOF
   xcrun clang -target "$clang_target" -mmacosx-version-min=14.0 "$source" -o "$output"
 }
 
+# Fork (cmux Mochi): consume a helper built elsewhere.
+#
+# Zig 0.15.2 (ghostty's pin) CANNOT link this helper on macOS 26 — upstream hits
+# the same wall and works around it by building the helper on a macOS 15 runner
+# and injecting the artifact. This hook lets a macOS 26 machine cut a real
+# release using such a binary (from CI, or from a macOS 15 machine on the
+# tailnet) instead of a stub. Unlike CMUX_SKIP_ZIG_BUILD this ships the REAL
+# helper, so it is release-safe.
+if [[ -n "${CMUX_PREBUILT_GHOSTTY_HELPER:-}" ]]; then
+  if [[ ! -f "${CMUX_PREBUILT_GHOSTTY_HELPER}" ]]; then
+    echo "error: CMUX_PREBUILT_GHOSTTY_HELPER not found: ${CMUX_PREBUILT_GHOSTTY_HELPER}" >&2
+    exit 1
+  fi
+  echo "Using prebuilt Ghostty CLI helper: ${CMUX_PREBUILT_GHOSTTY_HELPER}"
+  mkdir -p "$(dirname "$OUTPUT_PATH")"
+  cp "${CMUX_PREBUILT_GHOSTTY_HELPER}" "$OUTPUT_PATH"
+  chmod +x "$OUTPUT_PATH"
+  exit 0
+fi
+
 # Allow CI to skip the Zig helper build where only a valid app bundle shape is
 # required. The stub is a Mach-O binary so architecture validation still checks
 # the bundle layout and slices instead of accepting a shell script placeholder.

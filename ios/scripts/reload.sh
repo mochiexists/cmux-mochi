@@ -681,7 +681,12 @@ reload_device() {
     build_args+=(-allowProvisioningDeviceRegistration)
   fi
 
-  build_args+=("${XCODE_AUTH_ARGS[@]}")
+  # macOS ships bash 3.2, where "${arr[@]}" on an EMPTY array trips `set -u`
+  # ("unbound variable") instead of expanding to nothing. Device builds with no
+  # ASC API credentials leave XCODE_AUTH_ARGS empty, so guard the expansion.
+  if [[ ${#XCODE_AUTH_ARGS[@]} -gt 0 ]]; then
+    build_args+=("${XCODE_AUTH_ARGS[@]}")
+  fi
 
   build_args+=(
     PRODUCT_BUNDLE_IDENTIFIER="$BUNDLE_ID"

@@ -85,14 +85,34 @@ xcrun notarytool history --keychain-profile "$NOTARY_PROFILE" >/dev/null 2>&1 \
   || { echo "MISSING: notarytool keychain profile '$NOTARY_PROFILE' (run: xcrun notarytool store-credentials)" >&2; exit 1; }
 echo "Pre-flight checks passed"
 
-# --- Build GhosttyKit ---
-echo "Building GhosttyKit..."
-rm -rf GhosttyKit.xcframework ghostty/macos/GhosttyKit.xcframework
-(
-  cd ghostty
-  zig build -Dcrash-report-subdir="$GHOSTTYKIT_CRASH_REPORT_SUBDIR" -Demit-xcframework=true -Demit-macos-app=false -Dxcframework-target=universal -Doptimize=ReleaseFast
-)
-cp -R ghostty/macos/GhosttyKit.xcframework GhosttyKit.xcframework
+# --- Build (or fetch) GhosttyKit ---
+# Fork (cmux Mochi): zig 0.15.2 (ghostty's pin) cannot link on macOS 26, so a
+# from-source build only works on macOS 15. CI never builds it here either — the
+# nightly/app jobs run ./scripts/download-prebuilt-ghosttykit.sh. Do the same by
+# default so a macOS 26 machine can cut a release; set CMUX_BUILD_GHOSTTYKIT=1 to
+# force the old from-source path (macOS 15 only).
+if [[ "${CMUX_BUILD_GHOSTTYKIT:-}" == "1" ]]; then
+  echo "Building GhosttyKit from source..."
+  rm -rf GhosttyKit.xcframework ghostty/macos/GhosttyKit.xcframework
+  (
+    cd ghostty
+    zig build -Dcrash-report-subdir="$GHOSTTYKIT_CRASH_REPORT_SUBDIR" -Demit-xcframework=true -Demit-macos-app=false -Dxcframework-target=universal -Doptimize=ReleaseFast
+  )
+  cp -R ghostty/macos/GhosttyKit.xcframework GhosttyKit.xcframework
+elif [[ -d "$HOME/.cache/cmux/ghosttykit/$(git -C ghostty rev-parse HEAD)-crashsubdir-cmux-crash-v1/GhosttyKit.xcframework" ]]; then
+  # Reuse the locally cached xcframework for this exact ghostty SHA (what
+  # reload.sh builds/downloads). Avoids a network fetch and works when the
+  # xcframework release for this SHA has not been published yet.
+  CACHED_KIT="$HOME/.cache/cmux/ghosttykit/$(git -C ghostty rev-parse HEAD)-crashsubdir-cmux-crash-v1/GhosttyKit.xcframework"
+  echo "Using cached GhosttyKit: $CACHED_KIT"
+  rm -rf GhosttyKit.xcframework ghostty/macos/GhosttyKit.xcframework
+  mkdir -p ghostty/macos
+  ditto "$CACHED_KIT" GhosttyKit.xcframework
+  ditto "$CACHED_KIT" ghostty/macos/GhosttyKit.xcframework
+else
+  echo "Fetching prebuilt GhosttyKit (same path CI uses)..."
+  ./scripts/download-prebuilt-ghosttykit.sh
+fi
 
 # --- Build app (Release, unsigned) ---
 echo "Building app..."
