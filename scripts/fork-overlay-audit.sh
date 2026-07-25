@@ -130,9 +130,9 @@ require_file_absent ".github/workflows/nightly.yml" "SENTRY_PROJECT: cmux-atlas"
 require_command_output "https://github.com/mochiexists/bonsplit.git" \
   git -C "$ROOT_DIR" config --file .gitmodules --get submodule.vendor/bonsplit.url
 
-bonsplit_status="$(git -C "$ROOT_DIR" submodule status vendor/bonsplit)"
-if [[ "$bonsplit_status" != " f647ae39b34383808648b68dd43090143c6cd7cb vendor/bonsplit"* ]]; then
-  fail "vendor/bonsplit is not pinned to f647ae39b34383808648b68dd43090143c6cd7cb: $bonsplit_status"
+bonsplit_pointer="$(git -C "$ROOT_DIR" ls-tree HEAD vendor/bonsplit | awk '{print $3}')"
+if [[ "$bonsplit_pointer" != "033ba4cb8e0c3373d82edc0a82e2d5b3cc7ce959" ]]; then
+  fail "vendor/bonsplit is not pinned to 033ba4cb8e0c3373d82edc0a82e2d5b3cc7ce959: $bonsplit_pointer"
 fi
 
 require_file_contains "scripts/reload.sh" 'APP_NAME="cmux Mochi DEV"'

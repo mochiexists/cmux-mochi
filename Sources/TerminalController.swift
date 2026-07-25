@@ -6170,13 +6170,6 @@ class TerminalController {
         return .success(outcome.0)
     }
 
-    nonisolated func v2AwaitCallback<T>(
-        timeout: TimeInterval,
-        start: (@escaping (T) -> Void) -> Void
-    ) -> T? {
-        socketAwaitCallback(timeout: timeout, start: start)
-    }
-
     private nonisolated func v2WaitForBrowserCondition(
         _ webView: WKWebView,
         browserPanel: BrowserPanel,
@@ -8986,6 +8979,8 @@ class TerminalController {
             switch v2RunJavaScript(browserWebView, script: script, timeout: 5.0, world: .page) {
             case .failure(let message):
                 return .err(code: "js_error", message: message, data: nil)
+            case .timedOut:
+                return .err(code: "timeout", message: "Timed out reading browser text", data: nil)
             case .success(let value):
                 guard let dict = value as? [String: Any],
                       let ok = dict["ok"] as? Bool,

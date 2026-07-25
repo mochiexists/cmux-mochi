@@ -125,6 +125,32 @@ enum FileExternalOpenAction {
     static func revealInFinder(fileURL: URL) {
         NSWorkspace.shared.activateFileViewerSelecting([fileURL])
     }
+
+    static func revealInFinder(path: String, isFile: Bool) {
+        if isFile {
+            NSWorkspace.shared.selectFile(
+                path,
+                inFileViewerRootedAtPath: (path as NSString).deletingLastPathComponent
+            )
+        } else {
+            NSWorkspace.shared.selectFile(nil, inFileViewerRootedAtPath: path)
+        }
+    }
+
+    static func copyPath(_ path: String) {
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setString(path, forType: .string)
+    }
+
+    /// Writes a Finder-compatible file object plus a plain-path fallback.
+    static func copyFile(fileURL: URL) {
+        let standardizedURL = fileURL.standardizedFileURL
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.writeObjects([standardizedURL as NSURL])
+        pasteboard.setString(standardizedURL.path, forType: .string)
+    }
 }
 
 enum FileExternalOpenText {
@@ -143,6 +169,15 @@ enum FileExternalOpenText {
 
     static var revealInFinder: String {
         String(localized: "fileExplorer.contextMenu.revealInFinder", defaultValue: "Reveal in Finder")
+    }
+
+    static func copyFileLabel(fileURL: URL) -> String {
+        let pathExtension = fileURL.pathExtension.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !pathExtension.isEmpty else {
+            return String(localized: "file.contextMenu.copyFile", defaultValue: "Copy File")
+        }
+        let format = String(localized: "file.contextMenu.copyFileWithExtension", defaultValue: "Copy .%@ File")
+        return String(format: format, locale: .current, pathExtension.lowercased())
     }
 }
 
@@ -976,7 +1011,7 @@ enum FilePreviewTextSaver {
 }
 
 @MainActor
-final class FilePreviewPanel: Panel, ObservableObject, FilePreviewTextEditingPanel {
+final class FilePreviewPanel: Panel, ObservableObject, FileBackedPanel, FilePreviewTextEditingPanel {
     let id: UUID
     let stableSurfaceIdentity = PanelStableSurfaceIdentity()
     let panelType: PanelType = .filePreview
