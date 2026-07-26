@@ -369,7 +369,16 @@ struct CMUXMobileRootView: View {
             connectionState: store.connectionState,
             isReconnectingStoredMac: store.isReconnectingStoredMac,
             hasKnownPairedMac: store.hasKnownPairedMac,
-            pairedMacHintUndetermined: store.pairedMacHintUndetermined,
+            // Fork (cmux Mochi): "hint undetermined" means the paired-Mac hint key
+            // was never written, which covers installs that predate it — but a
+            // BRAND NEW install looks identical. Upstream can afford to assume the
+            // optimistic case because a paired Mac may still arrive from the
+            // account-scoped backup restore. With no account there is no backup to
+            // restore from, so the assumption is never right: it just parks a
+            // first-run user on "Still loading…" over placeholder workspaces
+            // instead of the add-device flow. Only trust the hint when a Stack
+            // session could actually be hiding a Mac from us.
+            pairedMacHintUndetermined: store.pairedMacHintUndetermined && authManager.isAuthenticated,
             didFinishStoredMacReconnectAttempt: store.didFinishStoredMacReconnectAttempt
         )
     }
@@ -395,9 +404,17 @@ struct CMUXMobileRootView: View {
     /// sign-in that completes after mount) so the restoring gate always resolves
     /// even when the auth state never transitions while this view is mounted.
     private func reconnectStoredMacIfNeeded() {
-        guard isAuthenticated, !authManager.isRestoringSession else { return }
+        guard !authManager.isRestoringSession else { return }
+        // Fork (cmux Mochi): an INJECTED attach URL authorizes on its own, exactly
+        // like a scanned one (see the attach branch in `onOpenURL`), so it must be
+        // consumed before the Stack-auth gate below. Leaving it behind
+        // `isAuthenticated` made the dogfood/dev auto-pair path unreachable for the
+        // no-account journey this fork exists to support: a signed-out phone
+        // silently ignored CMUX_DOGFOOD_ATTACH_URL. The stored-Mac reconnect that
+        // follows is account-scoped and keeps its own `isAuthenticated` gate.
         let startedUITestAttachURL = connectUITestAttachURLIfNeeded()
         guard !startedUITestAttachURL,
+              isAuthenticated,
               MobileRootAuthGate.shouldReconnectStoredMac(
                 stackAuthenticated: authManager.isAuthenticated,
                 attachTicketAuthenticated: hasActiveAttachTicketAuthentication,
@@ -519,8 +536,10 @@ struct CMUXMobileRootView: View {
         //     kept intact for the XCUITest harness.
         // No-op unless one of those env vars is set, so normal launches are
         // unaffected.
-        guard isAuthenticated,
-              let attachURL = UITestConfig.dogfoodAttachURL ?? UITestConfig.attachURL else {
+        // Fork (cmux Mochi): deliberately NOT gated on `isAuthenticated`. The
+        // attach ticket in the URL is itself the credential, so requiring a Stack
+        // session here would make the no-account path untestable and unusable.
+        guard let attachURL = UITestConfig.dogfoodAttachURL ?? UITestConfig.attachURL else {
             return false
         }
         // The configured launch route owns startup even after it is consumed.
@@ -529,6 +548,10 @@ struct CMUXMobileRootView: View {
         guard let startupAttempt = startupConnectionCoordinator.claimInjectedAttach() else {
             return true
         }
+        // Mirror the scanned-URL path: mark the shell authenticated by ticket so
+        // the UI leaves the signed-out placeholder while the attach runs.
+        didAuthenticateWithAttachTicket = true
+        syncShellAuthentication(true)
         Task {
             await dogfoodAttachPreparation.run {
                 await store.connectPairingURL(attachURL)
