@@ -19,6 +19,19 @@ struct CompactAttachTicket: Codable {
     let av: String?
     let ab: String?
     let r: [CompactAttachRoute]
+    /// Fork (cmux Mochi): the attach token, and the moment it dies.
+    ///
+    /// Upstream strips both, because there the token "never authorizes anything
+    /// on the host (Stack auth is the sole gate)" and a pairing QR never expires.
+    /// This fork inverts that: the host authorizes on the ticket alone, so the QR
+    /// must actually CARRY the credential or a signed-out phone has nothing to
+    /// present — it dials the route and hangs.
+    ///
+    /// That makes the QR bearer-grade, which is why it is paired with a short TTL
+    /// (`x`, enforced host-side on every request) and, in Release, a tailnet-only
+    /// listener. Treat a photographed QR as a live credential until it expires.
+    let k: String?
+    let x: Date?
 
     init(
         _ ticket: CmxAttachTicket,
@@ -39,6 +52,8 @@ struct CompactAttachTicket: Codable {
         av = ticket.macAppVersion.flatMap { $0.isEmpty ? nil : $0 }
         ab = ticket.macAppBuild.flatMap { $0.isEmpty ? nil : $0 }
         r = disclosedRoutes.compacted()
+        k = ticket.authToken.flatMap { $0.isEmpty ? nil : $0 }
+        x = ticket.expiresAt
     }
 
     func ticket() throws -> CmxAttachTicket {
@@ -54,7 +69,8 @@ struct CompactAttachTicket: Codable {
             macAppVersion: av,
             macAppBuild: ab,
             routes: try r.expanded(),
-            expiresAt: nil
+            expiresAt: x,
+            authToken: k
         )
     }
 }

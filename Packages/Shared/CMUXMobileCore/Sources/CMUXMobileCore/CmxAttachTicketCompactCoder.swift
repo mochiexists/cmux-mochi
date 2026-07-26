@@ -46,12 +46,19 @@ public struct CmxAttachTicketCompactCoder: Sendable {
 
     /// Encode a ticket into the compact JSON grammar.
     ///
-    /// Any `authToken`, `macDisplayName`, and `expiresAt` on the ticket are
-    /// intentionally not encoded: the token never authorizes anything on the
-    /// host (Stack auth is the sole gate), the name is read post-handshake
-    /// from `mobile.host.status`, and a pairing QR never expires. Callers must
-    /// explicitly select identity-only disclosure or the temporary released-
-    /// client compatibility mode.
+    /// `macDisplayName` is intentionally not encoded: it is read post-handshake
+    /// from `mobile.host.status`.
+    ///
+    /// Fork (cmux Mochi): `authToken` and `expiresAt` ARE encoded (`k`, `x`).
+    /// Upstream drops them because there "the token never authorizes anything on
+    /// the host (Stack auth is the sole gate)" and a pairing QR never expires.
+    /// This fork's host authorizes on the ticket alone, so the QR has to carry the
+    /// credential — otherwise a signed-out phone dials the route with nothing to
+    /// present and hangs. The QR is therefore bearer-grade: short TTL, expiry
+    /// enforced on every request, and a tailnet-only listener in Release.
+    ///
+    /// Callers must explicitly select identity-only disclosure or the temporary
+    /// released-client compatibility mode.
     public func encode(
         _ ticket: CmxAttachTicket,
         routeDisclosureMode: CmxPairingRouteDisclosureMode
