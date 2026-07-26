@@ -310,7 +310,24 @@ final class MobileHostService {
 
     private let callbackQueue = DispatchQueue(label: "dev.cmux.mobile.host-listener")
     private let routeResolver = MobileRouteResolver()
-    private let ticketStore = MobileAttachTicketStore()
+    /// Fork (cmux Mochi): shared so non-main-actor code (event delivery on a
+    /// connection) can re-validate an attach ticket. `MobileAttachTicketStore` is
+    /// lock-protected internally, so concurrent access is safe.
+    nonisolated static let sharedTicketStore = MobileAttachTicketStore()
+    private var ticketStore: MobileAttachTicketStore { Self.sharedTicketStore }
+
+    /// Whether an attach token is still valid RIGHT NOW.
+    ///
+    /// A `nil`/empty token means the caller was authorized by Stack auth rather
+    /// than a ticket, so there is nothing ticket-shaped to expire — report valid
+    /// and leave that path unchanged.
+    nonisolated static func attachTokenStillValid(_ token: String?) -> Bool {
+        guard let token = token?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !token.isEmpty else {
+            return true
+        }
+        return sharedTicketStore.validAuthorization(authToken: token) != nil
+    }
     private var listener: NWListener?
     private var listenerGeneration = UUID()
     private var listenerUsesEphemeralFallback = false
@@ -996,6 +1013,18 @@ final class MobileHostService {
                 connection.cancel()
                 return
             }
+
+            // Fork (cmux Mochi): tickets authorize on their own here, so the
+            // tailnet is the outer security boundary — enforce it rather than
+            // merely advertising tailnet routes in the ticket. The listener binds
+            // all interfaces, so without this a LAN peer holding a leaked bearer
+            // could drive terminal input (i.e. run commands) from hotel wifi.
+            // DEBUG keeps every interface so the Simulator and LAN dogfood work.
+            if !Self.isTailnetConnection(connection) {
+                mobileHostLog.error("mobile host rejected non-tailnet connection in release build")
+                connection.cancel()
+                return
+            }
             #endif
 
             let transport = CmxNetworkByteTransport(acceptedConnection: connection)
@@ -1215,6 +1244,64 @@ final class MobileHostService {
         }
     }
 
+    /// Fork (cmux Mochi): whether a peer is on the tailnet.
+    ///
+    /// This fork lets an attach ticket authorize on its own (no third-party
+    /// identity service), which makes the NETWORK the outer boundary. Tickets
+    /// only ever advertise Tailscale routes, but the listener binds all
+    /// interfaces — so without this check a peer on the same LAN (hotel wifi,
+    /// café, conference) could replay a stolen bearer against the Mac. Enforce
+    /// host-side what the ticket already implies.
+    ///
+    /// Tailscale's CGNAT range is 100.64.0.0/10 and its IPv6 ULA prefix is
+    /// fd7a:115c:a1e0::/48.
+    nonisolated static func isTailnetEndpoint(_ endpoint: NWEndpoint?) -> Bool {
+        guard case let .hostPort(host, _)? = endpoint else { return false }
+        switch host {
+        case let .ipv4(address):
+            let bytes = Array(address.rawValue)
+            guard bytes.count == 4 else { return false }
+            // 100.64.0.0/10
+            return bytes[0] == 100 && bytes[1] >= 64 && bytes[1] <= 127
+        case let .ipv6(address):
+            let bytes = Array(address.rawValue)
+            guard bytes.count == 16 else { return false }
+            // fd7a:115c:a1e0::/48
+            if bytes[0] == 0xfd, bytes[1] == 0x7a, bytes[2] == 0x11, bytes[3] == 0x5c,
+               bytes[4] == 0xa1, bytes[5] == 0xe0 {
+                return true
+            }
+            // IPv4-mapped tailnet address ::ffff:100.64.0.0/10
+            if bytes[0..<10].allSatisfy({ $0 == 0 }), bytes[10] == 0xff, bytes[11] == 0xff,
+               bytes[12] == 100, bytes[13] >= 64, bytes[13] <= 127 {
+                return true
+            }
+            return false
+        case .name:
+            // Names are not resolved here; refuse rather than guess.
+            return false
+        @unknown default:
+            return false
+        }
+    }
+
+    /// Whether this connection actually arrived over the tailnet.
+    ///
+    /// Checks BOTH ends, and requires the LOCAL one to be a tailnet address:
+    /// the peer's address alone proves nothing, because `100.64.0.0/10` is the
+    /// shared CGNAT range that carriers and some hotel/ISP networks also hand out
+    /// (Codex review, 2026-07-26). A connection that landed on our Tailscale
+    /// address did traverse the tailnet; one that landed on the LAN address did
+    /// not, whatever the peer calls itself.
+    ///
+    /// Both endpoints come from Network.framework, not from RPC input, so neither
+    /// is attacker-supplied. Missing/unresolved endpoints fail closed.
+    nonisolated static func isTailnetConnection(_ connection: NWConnection) -> Bool {
+        guard let path = connection.currentPath else { return false }
+        guard isTailnetEndpoint(path.localEndpoint) else { return false }
+        return isTailnetEndpoint(path.remoteEndpoint) || isTailnetEndpoint(connection.endpoint)
+    }
+
     private func removeConnection(id: UUID) {
         MobileHostConnectionRegistry.shared.remove(id: id)
         activeConnections.removeValue(forKey: id)
@@ -1333,8 +1420,12 @@ final class MobileHostService {
         // by whoever holds it until the ticket expires — but only from inside the
         // tailnet, since that is the only route the ticket advertises. Keep TTLs
         // short. Stack auth remains accepted below, so signed-in users are unaffected.
-        if attachTicketAuthorized(request) {
-            return ticketAuthorizationResultIfNeeded(for: request)
+        if let authorization = attachTicketAuthorization(request) {
+            // Scope is applied against THIS lookup — no second, racy one.
+            if let error = Self.ticketAuthorizationError(authorization: authorization, request: request) {
+                return .failure(error)
+            }
+            return nil
         }
         if devStackTokenAuthorized(request) {
             return ticketAuthorizationResultIfNeeded(for: request)
@@ -1364,17 +1455,17 @@ final class MobileHostService {
     /// Fork (cmux Mochi): whether a live attach ticket authorizes this request on
     /// its own, with no Stack account involved.
     ///
-    /// Only the token's validity is decided here; per-request SCOPE (which
-    /// workspaces/terminals the ticket may touch) is still enforced by
-    /// ``ticketAuthorizationResultIfNeeded(for:)``, which the caller applies after
-    /// this returns true. `validAuthorization` prunes and re-checks expiry on every
-    /// call, so an expired ticket stops authorizing immediately.
-    private func attachTicketAuthorized(_ request: MobileHostRPCRequest) -> Bool {
+    /// Returns the live authorization so the caller can apply SCOPE against the
+    /// SAME lookup. Doing two independent lookups was a fail-open TOCTOU: if the
+    /// ticket expired between them the second returned nil, which most methods
+    /// read as "no ticket constraints" — i.e. allowed. `validAuthorization` prunes
+    /// and re-checks expiry on every call.
+    private func attachTicketAuthorization(_ request: MobileHostRPCRequest) -> MobileAttachTicketAuthorization? {
         guard let attachToken = request.auth?.attachToken?.trimmingCharacters(in: .whitespacesAndNewlines),
               !attachToken.isEmpty else {
-            return false
+            return nil
         }
-        return ticketStore.validAuthorization(authToken: attachToken) != nil
+        return ticketStore.validAuthorization(authToken: attachToken)
     }
 
     private func ticketAuthorizationResultIfNeeded(for request: MobileHostRPCRequest) -> MobileHostRPCResult? {
@@ -1664,6 +1755,12 @@ actor MobileHostConnection {
     private struct EventSubscription: Sendable {
         let topics: Set<String>
         let transport: MobileHostEventTransport
+        /// Fork (cmux Mochi): the attach ticket that authorized this subscription,
+        /// re-checked before every delivery. Without it a subscription established
+        /// with a valid ticket kept streaming raw terminal bytes forever, because
+        /// delivery only ever matched on topic — expiry never reached it.
+        /// `nil` when Stack auth authorized the subscription.
+        let authToken: String?
     }
 
     private struct QueuedEvent: Sendable {
@@ -2037,7 +2134,12 @@ actor MobileHostConnection {
             subscribe(
                 streamID: streamID,
                 topics: topics,
-                transport: selectedTransport
+                transport: selectedTransport,
+                // Only bind the subscription's lifetime to a ticket when the ticket
+                // is what authorized it. A Stack-authorized request may also carry a
+                // stale attach token; recording that would make ticket expiry kill a
+                // subscription Stack auth still entitles.
+                authToken: request.auth?.stackAccessToken == nil ? request.auth?.attachToken : nil
             )
             #if DEBUG
             cmuxDebugLog("mobile.subscribe streamID=\(streamID) topics=\(topics.sorted()) existing=\(alreadySubscribed) connID=\(self.id.uuidString)")
@@ -2079,12 +2181,14 @@ actor MobileHostConnection {
     func subscribe(
         streamID: String,
         topics: Set<String>,
-        transport: MobileHostEventTransport = .control
+        transport: MobileHostEventTransport = .control,
+        authToken: String? = nil
     ) {
         let previousTopics = subscriptions[streamID]?.topics
         subscriptions[streamID] = EventSubscription(
             topics: topics,
-            transport: transport
+            transport: transport,
+            authToken: authToken
         )
         MobileHostEventSubscriptionTracker.replace(
             previousTopics: previousTopics,
@@ -2225,6 +2329,16 @@ actor MobileHostConnection {
     }
 
     private func deliverQueuedEvent(_ event: QueuedEvent) async -> Bool {
+        // Fork (cmux Mochi): an expired ticket must stop the stream it authorized.
+        // Delivery used to match on topic alone, so a subscription outlived its
+        // ticket indefinitely — and subscriptions also cancel the idle timeout, so
+        // nothing else closed it either.
+        await dropSubscriptionsWithExpiredTickets()
+        guard subscriptions.values.contains(where: { $0.topics.contains(event.topic) }) else {
+            // No live subscription for this topic any more; treat as delivered so
+            // the queue drains instead of wedging.
+            return true
+        }
         let prefersIndependent = subscriptions.values.contains {
             $0.transport == .irohServerEvents && $0.topics.contains(event.topic)
         }
@@ -2244,12 +2358,42 @@ actor MobileHostConnection {
         return await sendControlFrame(event.frame)
     }
 
+    /// Fork (cmux Mochi): drop any subscription whose attach ticket has expired or
+    /// been pruned, so ticket expiry actually ends the stream it authorized.
+    private func dropSubscriptionsWithExpiredTickets() async {
+        var dropped = false
+        for (streamID, subscription) in subscriptions
+        where !MobileHostService.attachTokenStillValid(subscription.authToken) {
+            subscriptions.removeValue(forKey: streamID)
+            MobileHostEventSubscriptionTracker.replace(
+                previousTopics: subscription.topics,
+                nextTopics: nil
+            )
+            dropped = true
+            mobileHostLog.error("mobile host dropped event subscription: attach ticket no longer valid")
+        }
+        guard dropped else { return }
+        // Mirror the normal unsubscribe teardown: without this an expiry-dropped
+        // subscription leaves the independent event writer live and the idle
+        // timeout cancelled, so the connection lingers with nothing authorizing it.
+        if !subscriptions.values.contains(where: { $0.transport == .irohServerEvents }) {
+            await resetIndependentEventWriter()
+        }
+        if subscriptions.isEmpty {
+            startIdleTimeout()
+        }
+    }
+
     private func downgradeIndependentSubscriptionsToControl() {
         for (streamID, subscription) in subscriptions
         where subscription.transport == .irohServerEvents {
             subscriptions[streamID] = EventSubscription(
                 topics: subscription.topics,
-                transport: .control
+                transport: .control,
+                // Carry the authorizing ticket across the transport downgrade —
+                // dropping it here would silently exempt the subscription from
+                // expiry re-validation.
+                authToken: subscription.authToken
             )
         }
     }

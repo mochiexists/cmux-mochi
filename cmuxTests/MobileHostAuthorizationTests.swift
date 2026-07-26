@@ -413,13 +413,34 @@ struct MobileHostAuthorizationTests {
         let error = MobileHostService.ticketAuthorizationError(ticket: ticket, request: request)
         #expect(error == nil)
     }
-    @Test func testAttachTicketAcceptsTerminalCreateForPairedDevice() throws {
+    /// Fork (cmux Mochi): a workspace-scoped ticket must NOT create a terminal in
+    /// an unrelated workspace. Upstream allowed this because Stack same-account
+    /// auth was always the outer gate; this fork authorizes on the ticket alone,
+    /// so creating a shell outside the ticket's pin is privilege escalation.
+    @Test func testAttachTicketRejectsTerminalCreateInUnscopedWorkspace() throws {
         let ticket = try scopedAttachTicket(workspaceID: "workspace", terminalID: "terminal")
         let request = MobileHostRPCRequest(
             id: "terminal-create",
             method: "terminal.create",
             params: [
                 "workspace_id": "other-workspace",
+            ],
+            auth: MobileHostRPCAuth(
+                attachToken: ticket.authToken,
+                stackAccessToken: nil
+            )
+        )
+        let error = MobileHostService.ticketAuthorizationError(ticket: ticket, request: request)
+        #expect(error != nil)
+    }
+
+    @Test func testAttachTicketAcceptsTerminalCreateInScopedWorkspace() throws {
+        let ticket = try scopedAttachTicket(workspaceID: "workspace", terminalID: "terminal")
+        let request = MobileHostRPCRequest(
+            id: "terminal-create",
+            method: "terminal.create",
+            params: [
+                "workspace_id": "workspace",
             ],
             auth: MobileHostRPCAuth(
                 attachToken: ticket.authToken,

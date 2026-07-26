@@ -61,7 +61,15 @@ extension MobileHostService {
             // same-account gate in `authorizationError` remains authoritative.
             return nil
         case "mobile.terminal.create", "terminal.create":
-            return nil
+            // Fork (cmux Mochi): honor the ticket's workspace pin. Upstream let this
+            // through unconditionally because Stack same-account auth was always the
+            // outer gate; this fork authorizes on the ticket alone, so a
+            // workspace-scoped ticket must not spawn a terminal (i.e. a shell) in an
+            // unrelated workspace. Mac-scoped tickets are unaffected.
+            return ticketWorkspaceAuthorizationError(
+                authorization: authorization,
+                workspaceSelection: workspaceSelection.value
+            )
         case "mobile.terminal.input", "terminal.input",
              "mobile.terminal.paste", "terminal.paste",
              "mobile.terminal.paste_image", "terminal.paste_image",
