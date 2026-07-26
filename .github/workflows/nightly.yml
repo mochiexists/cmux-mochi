@@ -25,8 +25,14 @@ on:
 
 concurrency:
   group: nightly-build-${{ github.ref_name }}
-  # Queue concurrent runs instead of canceling them so no build is lost.
-  cancel-in-progress: false
+  # Fork (cmux Mochi): supersede rather than queue.
+  #
+  # Upstream queues so no scheduled snapshot is lost. This fork cuts nightlies
+  # ad-hoc while iterating, where a newer commit on the same ref REPLACES the
+  # older one — queueing just spends ~20 minutes of the signing box building a
+  # commit nobody wants, and delays the build that matters (2026-07-26: a
+  # superseded run had to be cancelled by hand to free the runner).
+  cancel-in-progress: true
 
 permissions:
   contents: write
