@@ -297,6 +297,27 @@ final class MobileHostService {
     /// picks it up later). A flood of unique garbage tokens therefore cannot
     /// queue unbounded Stack lookups behind this verb.
     nonisolated static func networkStatusResult(for request: MobileHostRPCRequest) async -> MobileHostRPCResult {
+        // Fork (cmux Mochi): a caller presenting a VALID attach token minted by
+        // this Mac also gets identity. This is not a widening of disclosure: the
+        // ticket that carries the token already contains this Mac's device id and
+        // display name, so its holder learns nothing new — it only learns the
+        // instance tag, which it needs to key its paired-Mac record.
+        //
+        // Withholding identity here is what actually broke account-free pairing:
+        // the iOS build-compatibility policy fails CLOSED on a missing instance
+        // tag (`MobileMacBuildCompatibilityPolicy.allows`), so a ticket-only
+        // phone dialed successfully, got an identity-free status, and rejected
+        // its own Mac as "build incompatible".
+        //
+        // DoS posture is unchanged: this is an in-memory, expiry-checked store
+        // read with no network round trip, unlike Stack verification below.
+        let trimmedAttachToken = request.auth?.attachToken?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if let trimmedAttachToken,
+           !trimmedAttachToken.isEmpty,
+           sharedTicketStore.validAuthorization(authToken: trimmedAttachToken) != nil {
+            return MobileHostPublicStatusCache.result(includeIdentity: true)
+        }
         let trimmedToken = request.auth?.stackAccessToken?.trimmingCharacters(in: .whitespacesAndNewlines)
         guard trimmedToken?.isEmpty == false else {
             return MobileHostPublicStatusCache.result(includeIdentity: false)
