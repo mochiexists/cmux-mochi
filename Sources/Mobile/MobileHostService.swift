@@ -321,6 +321,21 @@ final class MobileHostService {
     /// A `nil`/empty token means the caller was authorized by Stack auth rather
     /// than a ticket, so there is nothing ticket-shaped to expire — report valid
     /// and leave that path unchanged.
+    /// The attach token a subscription's lifetime should be bound to, or `nil` when
+    /// the request was not ticket-authorized.
+    ///
+    /// Ticket auth takes precedence in ``authorizationError(for:)``, so a valid
+    /// ticket is what authorized the request regardless of any accompanying
+    /// stack_access_token (which is never verified once a ticket passes).
+    nonisolated static func ticketBindingToken(for auth: MobileHostRPCAuth?) -> String? {
+        guard let token = auth?.attachToken?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !token.isEmpty,
+              sharedTicketStore.validAuthorization(authToken: token) != nil else {
+            return nil
+        }
+        return token
+    }
+
     nonisolated static func attachTokenStillValid(_ token: String?) -> Bool {
         guard let token = token?.trimmingCharacters(in: .whitespacesAndNewlines),
               !token.isEmpty else {
@@ -1297,9 +1312,16 @@ final class MobileHostService {
     /// Both endpoints come from Network.framework, not from RPC input, so neither
     /// is attacker-supplied. Missing/unresolved endpoints fail closed.
     nonisolated static func isTailnetConnection(_ connection: NWConnection) -> Bool {
-        guard let path = connection.currentPath else { return false }
-        guard isTailnetEndpoint(path.localEndpoint) else { return false }
-        return isTailnetEndpoint(path.remoteEndpoint) || isTailnetEndpoint(connection.endpoint)
+        // `currentPath` is nil until the connection is STARTED, and the transport
+        // starts it after this runs — so requiring the path here rejected every
+        // legitimate connection (Codex round 3). Use the peer endpoint, which is
+        // populated at accept time, and additionally require the LOCAL endpoint to
+        // be a tailnet address whenever the path happens to be available.
+        if let path = connection.currentPath {
+            guard isTailnetEndpoint(path.localEndpoint) else { return false }
+            return isTailnetEndpoint(path.remoteEndpoint) || isTailnetEndpoint(connection.endpoint)
+        }
+        return isTailnetEndpoint(connection.endpoint)
     }
 
     private func removeConnection(id: UUID) {
@@ -2135,11 +2157,14 @@ actor MobileHostConnection {
                 streamID: streamID,
                 topics: topics,
                 transport: selectedTransport,
-                // Only bind the subscription's lifetime to a ticket when the ticket
-                // is what authorized it. A Stack-authorized request may also carry a
-                // stale attach token; recording that would make ticket expiry kill a
-                // subscription Stack auth still entitles.
-                authToken: request.auth?.stackAccessToken == nil ? request.auth?.attachToken : nil
+                // Bind the subscription's lifetime to the credential that actually
+                // WON authorization. A ticket takes precedence in
+                // `authorizationError`, so a currently-valid ticket is what
+                // authorized this request no matter what else the caller attached —
+                // presence of a stack_access_token proves nothing, since an invalid
+                // one is never verified when a ticket already passed (Codex round 3).
+                // A stale/absent ticket means Stack authorized it: leave it unbound.
+                authToken: MobileHostService.ticketBindingToken(for: request.auth)
             )
             #if DEBUG
             cmuxDebugLog("mobile.subscribe streamID=\(streamID) topics=\(topics.sorted()) existing=\(alreadySubscribed) connID=\(self.id.uuidString)")
