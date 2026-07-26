@@ -48,7 +48,8 @@ public struct CmxNetworkByteTransportFactory: CmxRouteAwareByteTransportFactory 
         guard case let .hostPort(host, port) = route.endpoint else {
             throw CmxNetworkByteTransportError.unsupportedEndpoint(route.endpoint)
         }
-        guard request.authorizationMode == .stackBearer else {
+        guard request.authorizationMode == .stackBearer
+                || request.authorizationMode == .attachTicket else {
             throw CmxNetworkByteTransportError.unsupportedAuthorizationMode(
                 request.authorizationMode
             )
@@ -59,7 +60,20 @@ public struct CmxNetworkByteTransportFactory: CmxRouteAwareByteTransportFactory 
             // Network.framework exposes only a generic packet-tunnel interface.
             // It cannot prove that the tunnel belongs to Tailscale's authenticated
             // control plane, so plaintext TCP must never carry a Stack bearer.
-            throw CmxNetworkByteTransportError.tailscaleAuthorizationUnavailable
+            //
+            // Fork (cmux Mochi): an attach-ticket request carries no account
+            // bearer, so that reasoning does not apply — see
+            // ``CmxTransportAuthorizationMode/attachTicket``. Stack-bearer
+            // requests keep failing closed exactly as upstream.
+            guard request.authorizationMode == .attachTicket else {
+                throw CmxNetworkByteTransportError.tailscaleAuthorizationUnavailable
+            }
+            return try CmxNetworkByteTransport(
+                host: host,
+                port: port,
+                maximumReceiveLength: maximumReceiveLength,
+                connectTimeoutNanoseconds: connectTimeoutNanoseconds
+            )
         case .debugLoopback:
             guard CmxLoopbackHost().matches(route) else {
                 throw CmxNetworkByteTransportError.tailscaleAuthorizationUnavailable

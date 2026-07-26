@@ -49,10 +49,31 @@ public final class MobileCoreRPCClient: MobileSyncing, Sendable {
         self.runtime = runtime
         self.route = route
         self.ticket = ticket
+        // Fork (cmux Mochi): a ticket carrying its own attach token authorizes on
+        // its own, so declare `.attachTicket` and never put an account bearer on
+        // the wire. This is what lets a plaintext Tailscale route build a
+        // transport at all — see `CmxNetworkByteTransportFactory`, which still
+        // refuses `.stackBearer` on that route kind exactly as upstream does.
+        let hasAttachToken = ticket.authToken?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .isEmpty == false
+        // Scoped to `.tailscale` on purpose. That is the ONLY route kind upstream
+        // refuses to build a transport for, and the only one whose refusal blocks
+        // account-free pairing. Every other kind keeps its existing mode so the
+        // Stack-fallback behaviour they rely on (e.g. a scoped ticket over
+        // `debugLoopback` topping up with an account token) is untouched.
+        let authorizationMode: CmxTransportAuthorizationMode
+        if route.kind == .iroh {
+            authorizationMode = .transportAdmission
+        } else if route.kind == .tailscale, hasAttachToken {
+            authorizationMode = .attachTicket
+        } else {
+            authorizationMode = .stackBearer
+        }
         let transportRequest = CmxByteTransportRequest(
             route: route,
             expectedPeerDeviceID: ticket.macDeviceID,
-            authorizationMode: route.kind == .iroh ? .transportAdmission : .stackBearer
+            authorizationMode: authorizationMode
         )
         self.transportRequest = transportRequest
         self.allowsStackAuthFallback = allowsStackAuthFallback
@@ -356,17 +377,28 @@ public final class MobileCoreRPCClient: MobileSyncing, Sendable {
         // Fork (cmux Mochi): true when the attach ticket alone authorizes this
         // request, so no Stack token is fetched or sent. See `shouldSendStackAuth`.
         var attachTokenAuthorizesRequest = false
+        // Fork (cmux Mochi): deliberately NOT gated on `requestNeedsAuth`.
+        // `mobile.host.status` is the one exempt verb, but the Mac only discloses
+        // its identity (device id, instance tag, display name) to a caller that
+        // proves ownership — upstream via a Stack token, here via the attach
+        // token. Withholding the token from status therefore made the phone
+        // receive an identity-free reply and then reject its own Mac as
+        // "build incompatible", because the iOS build-compatibility policy fails
+        // closed on a missing instance tag. Sending it costs nothing: the token
+        // already authorizes every other verb on this connection.
         if let attachToken,
-           requestNeedsAuth,
            hasAttachToken,
            requestIsCoveredByAttachTicket {
             // Expiry is enforced only here, where the RPC-minted attach token
-            // is actually used. QR-decoded tickets carry no token (and no
-            // expiry), so they never reach this branch.
+            // is actually used.
             if !ticket.isExpired(at: runtime.now()) {
                 auth["attach_token"] = attachToken
-                attachTokenAuthorizesRequest = true
-            } else if !allowsStackAuthFallback || !MobileShellRouteAuthPolicy.routeAllowsStackAuth(route) {
+                // Only an auth-requiring request is *authorized* by the ticket;
+                // status merely carries it to unlock identity, so it must not
+                // suppress the Stack fallback decision below.
+                attachTokenAuthorizesRequest = requestNeedsAuth
+            } else if requestNeedsAuth,
+                      !allowsStackAuthFallback || !MobileShellRouteAuthPolicy.routeAllowsStackAuth(route) {
                 throw MobileShellConnectionError.attachTicketExpired
             }
         }
@@ -385,6 +417,15 @@ public final class MobileCoreRPCClient: MobileSyncing, Sendable {
         // behavior and nothing regresses against an upstream host.
         let shouldSendStackAuth = requestNeedsAuth && !attachTokenAuthorizesRequest
         if shouldSendStackAuth {
+            // Fork (cmux Mochi): this transport was only permitted to exist
+            // because the connection declared `.attachTicket` — i.e. that no
+            // account credential would travel over an unverifiable packet
+            // tunnel. Honour that declaration: if a request the ticket does not
+            // cover reaches here, fail closed rather than quietly upgrading the
+            // connection to carry a Stack bearer after the fact.
+            guard transportRequest.authorizationMode != .attachTicket else {
+                throw MobileShellConnectionError.insecureManualRoute
+            }
             guard allowsStackAuthFallback,
                   MobileShellRouteAuthPolicy.routeAllowsStackAuth(route) else {
                 throw MobileShellConnectionError.insecureManualRoute
