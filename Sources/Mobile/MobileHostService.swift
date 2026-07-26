@@ -298,10 +298,16 @@ final class MobileHostService {
     /// queue unbounded Stack lookups behind this verb.
     nonisolated static func networkStatusResult(for request: MobileHostRPCRequest) async -> MobileHostRPCResult {
         // Fork (cmux Mochi): a caller presenting a VALID attach token minted by
-        // this Mac also gets identity. This is not a widening of disclosure: the
-        // ticket that carries the token already contains this Mac's device id and
-        // display name, so its holder learns nothing new — it only learns the
-        // instance tag, which it needs to key its paired-Mac record.
+        // this Mac also gets identity (device id, instance tag, display name,
+        // build identity, and the authenticated route list).
+        //
+        // This IS a real widening, so state it honestly rather than claiming the
+        // ticket already carried it: the legacy v1 payload does carry the device
+        // id and display name, but the v2 QR grammar decodes to an empty id and a
+        // nil name, so a v2 holder genuinely learns something new here. It is
+        // proportionate because the same token already authorizes terminal input
+        // on this Mac — a holder who could learn nothing would also be a holder
+        // who could already run commands.
         //
         // Withholding identity here is what actually broke account-free pairing:
         // the iOS build-compatibility policy fails CLOSED on a missing instance

@@ -458,6 +458,11 @@ public final class MobileCoreRPCClient: MobileSyncing, Sendable {
         if !requestNeedsAuth,
            isHostStatusRequest(request),
            allowsStackAuthFallback,
+           // Fork (cmux Mochi): never mint an account token for a status probe on
+           // a connection that was admitted on the promise of carrying none.
+           // `routeAllowsStackAuth` already refuses .tailscale today, so this is
+           // belt-and-braces against that policy loosening later.
+           transportRequest.authorizationMode != .attachTicket,
            MobileShellRouteAuthPolicy.routeAllowsStackAuth(route) {
             let stackAccessToken: String?
             if let hostStatusStackToken {
@@ -471,6 +476,15 @@ public final class MobileCoreRPCClient: MobileSyncing, Sendable {
         }
         if !auth.isEmpty {
             request["auth"] = auth
+        } else if transportRequest.authorizationMode == .attachTicket {
+            // Fork (cmux Mochi): `sendRequest` takes caller-built JSON, and an
+            // `auth` block already in it is otherwise passed through untouched
+            // whenever this function adds nothing of its own (e.g. an expired
+            // ticket on `mobile.host.status`, which does not throw because status
+            // needs no auth). On an `.attachTicket` connection that would put a
+            // caller-supplied Stack bearer on a plaintext transport that only
+            // exists because no account credential would cross it. Drop it.
+            request.removeValue(forKey: "auth")
         }
         return AuthenticatedRequestPayload(
             data: try JSONSerialization.data(withJSONObject: request),
