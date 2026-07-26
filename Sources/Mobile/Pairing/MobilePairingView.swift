@@ -75,10 +75,21 @@ struct MobilePairingView: View {
     }
 
     private var signInRow: some View {
+        // Fork (cmux Mochi): an account is optional. The host authorizes pairing
+        // with the attach ticket in the QR code, so a signed-out Mac pairs fine;
+        // signing in only adds account-scoped extras (push forwarding, sync).
         requirementRow(
-            title: String(localized: "mobile.pairing.req.signIn.title", defaultValue: "Signed in to cmux"),
+            title: model.signedInEmail == nil
+                ? String(
+                    localized: "mobile.pairing.req.account.optional.title",
+                    defaultValue: "No account needed"
+                )
+                : String(localized: "mobile.pairing.req.signIn.title", defaultValue: "Signed in to cmux"),
             subtitle: model.signedInEmail
-                ?? String(localized: "mobile.pairing.req.signIn.subtitle", defaultValue: "Sign in to authorize this Mac for pairing.")
+                ?? String(
+                    localized: "mobile.pairing.req.account.optional.subtitle",
+                    defaultValue: "This code authorizes your iPhone over your private network. Sign in only if you want push notifications and cross-device sync."
+                )
         ) {
             EmptyView()
         }

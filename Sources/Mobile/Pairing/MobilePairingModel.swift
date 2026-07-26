@@ -152,12 +152,18 @@ final class MobilePairingModel {
         }
         await coordinator.awaitBootstrapped()
         guard generation == refreshGeneration else { return }
-        guard coordinator.isAuthenticated else {
-            signedInEmail = nil
-            state = .signedOut
-            return
-        }
-        signedInEmail = coordinator.currentUser?.primaryEmail
+        // Fork (cmux Mochi): NO ACCOUNT REQUIRED to pair.
+        //
+        // Upstream stops here when signed out, because its host demands a Stack
+        // access token bound to the signed-in user on every mobile request. This
+        // fork's host authorizes on the attach ticket alone — minted locally by
+        // whoever controls this Mac, short-lived, and (in Release) only usable over
+        // the tailnet. So the rest of this flow (enable host, await listener, mint
+        // ticket, render QR) works signed out, and the sign-in gate was the ONLY
+        // thing standing between a signed-out operator and a working QR code.
+        //
+        // Signing in remains supported and unchanged — it just is not required.
+        signedInEmail = coordinator.isAuthenticated ? coordinator.currentUser?.primaryEmail : nil
         state = .preparing
         enablePairingHost()
         let status = await host.ensureListeningAndReady()
