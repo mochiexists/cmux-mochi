@@ -387,6 +387,11 @@ final class MobileHostService {
     /// networks or Tailscale flips, not only when the listener restarts.
     /// `nil` while stopped.
     private var pathMonitor: MobileHostNetworkPathMonitor?
+    /// Fork (cmux Mochi): the Tailscale interface the live listener is pinned to,
+    /// so a path change can tell "same tailnet as before" from "Tailscale moved,
+    /// came up, or went away" and rebind only when it must. `nil` means the
+    /// listener is unpinned (DEBUG) or not bound.
+    private var boundTailnetInterfaceName: String?
     /// Injected once via `configure(auth:)` at app startup, before the
     /// listener starts accepting connections.
     private var auth: AuthCoordinator?
@@ -653,11 +658,9 @@ final class MobileHostService {
     /// guarantees the call can't hang; on timeout/failure the candidate is torn
     /// down and `nil` returned, leaving the live listener untouched.
     private func bindReadyCandidate(on endpointPort: NWEndpoint.Port, generation: UUID) async -> (listener: NWListener, generation: UUID)? {
-        let tcpOptions = NWProtocolTCP.Options()
-        tcpOptions.noDelay = true
         let candidate: NWListener
         do {
-            candidate = try NWListener(using: NWParameters(tls: nil, tcp: tcpOptions), on: endpointPort)
+            candidate = try NWListener(using: Self.makeListenerParameters(), on: endpointPort)
         } catch {
             return nil
         }
@@ -803,10 +806,23 @@ final class MobileHostService {
     private func startListener(usePreferredPort: Bool) {
         let desiredPort = Self.configuredPort()
         appliedPreferredPort = desiredPort
+        // Fork (cmux Mochi): fail closed when there is no tailnet interface to pin
+        // to. `handleNetworkPathChange` retries once Tailscale comes up, so this is
+        // a deferral rather than a dead end.
+        if Self.tailnetInterfaceUnavailableInRelease {
+            lastErrorDescription = "Tailscale is not running; the pairing host stays closed until it is."
+            mobileHostLog.info("mobile host listener deferred: no tailnet interface to bind to")
+            boundTailnetInterfaceName = nil
+            // The path monitor is normally started after a successful bind. Start it
+            // here too, or nothing would ever observe Tailscale coming up and this
+            // deferral would be permanent.
+            startNetworkPathMonitorIfNeeded()
+            drainReadinessWaiters()
+            return
+        }
+        boundTailnetInterfaceName = MobileHostTailnetInterface.tailnetInterfaceName()
         do {
-            let tcpOptions = NWProtocolTCP.Options()
-            tcpOptions.noDelay = true
-            let parameters = NWParameters(tls: nil, tcp: tcpOptions)
+            let parameters = Self.makeListenerParameters()
             let nextListener = try makeListener(
                 parameters: parameters,
                 usePreferredPort: usePreferredPort,
@@ -839,6 +855,41 @@ final class MobileHostService {
             // readiness waiters; resolve them now instead of waiting for the deadline.
             drainReadinessWaiters()
         }
+    }
+
+    /// Listener parameters for the mobile pairing host.
+    ///
+    /// Fork (cmux Mochi): in release the listener is pinned to the Tailscale
+    /// interface, so a connection from off the tailnet cannot be accepted at all.
+    /// That replaces the old peer-address heuristic, which matched RFC 6598 shared
+    /// CGNAT space (hotel/carrier networks hand out the same range) and was
+    /// forgeable by anyone on the local segment. See ``MobileHostTailnetInterface``.
+    ///
+    /// When Tailscale is down there is no interface to pin, and the bind is left
+    /// unpinned only in DEBUG — where the simulator reaches the Mac over loopback
+    /// and there is no tailnet to speak of. Release callers must refuse to listen;
+    /// ``tailnetInterfaceUnavailableInRelease`` reports that case.
+    nonisolated static func makeListenerParameters() -> NWParameters {
+        let tcpOptions = NWProtocolTCP.Options()
+        tcpOptions.noDelay = true
+        let parameters = NWParameters(tls: nil, tcp: tcpOptions)
+        #if !DEBUG
+        parameters.requiredInterface = MobileHostTailnetInterface.shared.requiredInterface()
+        #endif
+        return parameters
+    }
+
+    /// Whether a release build must refuse to bind because Tailscale is not up.
+    ///
+    /// Pairing routes are tailnet-only, so a listener that cannot be pinned to the
+    /// tailnet has nothing legitimate to serve — binding it anyway would reopen the
+    /// all-interfaces exposure this pinning exists to close.
+    nonisolated static var tailnetInterfaceUnavailableInRelease: Bool {
+        #if DEBUG
+        return false
+        #else
+        return MobileHostTailnetInterface.shared.requiredInterface() == nil
+        #endif
     }
 
     private func makeListener(
@@ -1329,12 +1380,16 @@ final class MobileHostService {
 
     /// Whether this connection actually arrived over the tailnet.
     ///
-    /// Checks BOTH ends, and requires the LOCAL one to be a tailnet address:
-    /// the peer's address alone proves nothing, because `100.64.0.0/10` is the
-    /// shared CGNAT range that carriers and some hotel/ISP networks also hand out
-    /// (Codex review, 2026-07-26). A connection that landed on our Tailscale
-    /// address did traverse the tailnet; one that landed on the LAN address did
-    /// not, whatever the peer calls itself.
+    /// SECONDARY check only. The real boundary is now the listener itself, which
+    /// release builds pin to the Tailscale interface (see
+    /// ``makeListenerParameters`` and ``MobileHostTailnetInterface``), so an
+    /// off-tailnet connection is never accepted in the first place.
+    ///
+    /// This remains as cheap defence in depth, but do not mistake it for the
+    /// boundary: every check of the PEER's address is forgeable by a machine on
+    /// the same segment, and `100.64.0.0/10` is RFC 6598 shared CGNAT space that
+    /// carriers and hotel networks also hand out (Codex review, 2026-07-26). Only
+    /// the interface a connection lands on is beyond the peer's influence.
     ///
     /// Both endpoints come from Network.framework, not from RPC input, so neither
     /// is attacker-supplied. Missing/unresolved endpoints fail closed.
@@ -1636,6 +1691,26 @@ final class MobileHostService {
     /// Tears down a listener that could not bind its preferred port and, unless
     /// it was already on the ephemeral fallback, retries on an OS-assigned port.
     /// Shared by the `.failed` and `.waiting(addressUnavailable)` paths.
+    /// Tears the pinned listener down and rebinds it against the current Tailscale
+    /// interface.
+    ///
+    /// Fork (cmux Mochi): pinning to an interface means the listener's validity is
+    /// tied to that interface's lifetime. Existing connections are dropped
+    /// deliberately — if the tailnet moved, anything still attached to the old
+    /// interface is no longer reachable over the route the ticket advertised.
+    private func restartListenerForTailnetInterfaceChange() {
+        listener?.stateUpdateHandler = nil
+        listener?.newConnectionHandler = nil
+        listener?.cancel()
+        listenerGeneration = UUID()
+        listener = nil
+        listenerUsesEphemeralFallback = false
+        listenerPort = nil
+        boundTailnetInterfaceName = nil
+        MobileHostPublicStatusCache.update(routes: [])
+        startListener(usePreferredPort: true)
+    }
+
     private func handleListenerBindFailure(error: NWError, context: String) {
         lastErrorDescription = String(describing: error)
         MobileHostPublicStatusCache.update(routes: [])
@@ -1692,6 +1767,27 @@ final class MobileHostService {
 
     private func handleNetworkPathChange() {
         MobileHostIrohRuntime.shared.retryIfNeeded()
+        // Fork (cmux Mochi): the listener is pinned to the Tailscale interface, so
+        // it must follow that interface. Tailscale coming up (nothing bound yet),
+        // going down, or landing on a different utun after a reconnect all require
+        // a rebind — otherwise the host would keep serving a stale interface, or
+        // stay silent forever after a deferred start.
+        // DEBUG listeners are unpinned (the simulator pairs over loopback), so a
+        // tailnet interface change is not a reason to rebind there — doing so would
+        // be pure churn, and would drop simulator connections whenever Tailscale
+        // flapped.
+        #if !DEBUG
+        if Self.isListeningEnabled {
+            let currentTailnetInterface = MobileHostTailnetInterface.tailnetInterfaceName()
+            if currentTailnetInterface != boundTailnetInterfaceName {
+                mobileHostLog.info(
+                    "mobile host tailnet interface changed (\(self.boundTailnetInterfaceName ?? "none", privacy: .public) -> \(currentTailnetInterface ?? "none", privacy: .public)); rebinding listener"
+                )
+                restartListenerForTailnetInterfaceChange()
+                return
+            }
+        }
+        #endif
         // The cached Tailscale hosts (and any in-flight resolution) may describe
         // the previous network; drop them on EVERY path observation so no later
         // refresh can be satisfied from, or raced by, old-path state. This must
