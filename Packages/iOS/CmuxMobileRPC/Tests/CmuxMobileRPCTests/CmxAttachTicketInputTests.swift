@@ -41,7 +41,7 @@ import Testing
 
     @Test func decodesCompactPayloadAttachURL() throws {
         // New-phone-scans-new-QR.
-        let ticket = try makeTicket(authToken: "minted-but-not-in-qr")
+        let ticket = try makeTicket(authToken: "minted-and-carried-in-qr")
         let url = attachURL(payload: try CmxAttachTicketCompactCoder().encode(
             ticket,
             routeDisclosureMode: .legacyPrivateNetworkCompatibility
@@ -56,12 +56,16 @@ import Testing
         #expect(decoded.macAppBuild == "42")
         #expect(decoded.workspaceID == "")
         #expect(decoded.routes == ticket.routes)
-        // The compact QR grammar intentionally drops the auth token (it
-        // authorizes nothing), the display name (read post-handshake from
-        // `mobile.host.status`), and the expiry (a pairing QR never expires).
-        #expect(decoded.authToken == nil)
+        // Fork (cmux Mochi): the compact QR CARRIES the auth token and expiry.
+        // Upstream dropped both because the token authorized nothing there (Stack
+        // auth was the sole gate), but this fork's Mac host authorizes on the
+        // ticket alone — a QR without the token leaves a signed-out phone with
+        // nothing to present, so it dials the route and hangs.
+        #expect(decoded.authToken == "minted-and-carried-in-qr")
+        #expect(decoded.expiresAt == ticket.expiresAt)
+        // The display name is still omitted: it is read post-handshake from
+        // `mobile.host.status`, so it does not need to ride the QR.
         #expect(decoded.macDisplayName == nil)
-        #expect(decoded.expiresAt == nil)
     }
 
     @Test func missingCompactCompatibilityDecodesAsUnknown() throws {
