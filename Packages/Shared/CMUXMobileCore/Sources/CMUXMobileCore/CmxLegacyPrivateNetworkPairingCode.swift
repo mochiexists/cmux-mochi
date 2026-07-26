@@ -28,8 +28,15 @@ public struct CmxLegacyPrivateNetworkPairingCode: Sendable {
             macAppVersion: ticket.macAppVersion,
             macAppBuild: ticket.macAppBuild,
             routes: tailscaleRoutes,
-            expiresAt: Self.compatibilityExpiry,
-            authToken: nil
+            // Fork (cmux Mochi): carry the real expiry and the attach token.
+            // Upstream pins a far-future expiry and nils the token because there
+            // the token authorizes nothing (Stack auth is the sole gate). This
+            // fork's host authorizes on the ticket alone, so a code without the
+            // token leaves a signed-out phone with nothing to present — it dials
+            // the route and hangs. Both fields are standard on the full-key v1
+            // model, so older clients decode them without trouble.
+            expiresAt: ticket.expiresAt ?? Self.compatibilityExpiry,
+            authToken: ticket.authToken
         )
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601

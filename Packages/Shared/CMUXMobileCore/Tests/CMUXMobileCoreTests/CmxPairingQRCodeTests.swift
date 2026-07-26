@@ -59,18 +59,26 @@ import Testing
         // The scheme is channel-specific: a release Mac emits cmux-ios, a dev
         // Mac emits cmux-ios-dev, so the system camera routes each channel's QR
         // to its build. The rest of the URL is identical across channels.
-        #expect(url == "\(CmxPairingURLScheme.current)://attach?v=2&r=100.64.0.5:58465")
+        // Fork: the code carries the token (k) and expiry (x) after the routes.
+        #expect(url.hasPrefix("\(CmxPairingURLScheme.current)://attach?v=2&r=100.64.0.5:58465"))
+        #expect(url.contains("&k="))
 
         let decoded = try CmxPairingQRCode().decode(try components(url))
         #expect(decoded.routes == ticket.routes)
         #expect(decoded.workspaceID == "")
         #expect(decoded.terminalID == nil)
-        // Identity, expiry, and token are deliberately absent: the host
-        // reports identity post-handshake, and nothing in the QR authorizes.
+        // Identity is still absent (the host reports it post-handshake), but the
+        // fork's QR DOES carry the credential: this host authorizes on the ticket
+        // alone, so a code without a token leaves a signed-out phone unable to
+        // authenticate at all.
         #expect(decoded.macDeviceID == "")
         #expect(decoded.macDisplayName == nil)
-        #expect(decoded.expiresAt == nil)
-        #expect(decoded.authToken == nil)
+        // `x` carries whole seconds, so compare at that resolution.
+        let expectedExpiry = ticket.expiresAt.map {
+            Date(timeIntervalSince1970: TimeInterval(Int($0.timeIntervalSince1970)))
+        }
+        #expect(decoded.expiresAt == expectedExpiry)
+        #expect(decoded.authToken == ticket.authToken)
     }
 
     @Test func roundTripsMagicDNSPlusIPRoutes() throws {
@@ -148,7 +156,9 @@ import Testing
         let ticket = try pairingTicket(routes: [loopback, tailscale])
 
         let url = try #require(encodeLegacy(ticket))
-        #expect(url == "\(CmxPairingURLScheme.current)://attach?v=2&r=100.64.0.5:58465")
+        // Fork: the code carries the token (k) and expiry (x) after the routes.
+        #expect(url.hasPrefix("\(CmxPairingURLScheme.current)://attach?v=2&r=100.64.0.5:58465"))
+        #expect(url.contains("&k="))
         let decoded = try CmxPairingQRCode().decode(try components(url))
         #expect(decoded.routes == [tailscale])
     }
@@ -354,9 +364,12 @@ import Testing
                 "\(afterBytes)B/QR v\(qrVersion(forByteCount: afterBytes)) (ECC M)"
             )
             #expect(afterBytes < beforeBytes)
-            // The representative 2-route QR stays under 100 bytes / version 6.
-            #expect(afterBytes < 100)
-            #expect(qrVersion(forByteCount: afterBytes) <= 6)
+            // Fork: the code now carries the attach token and expiry, so the
+            // representative 2-route QR is denser than upstream's. That is the
+            // cost of the QR being the credential; keep a ceiling so further
+            // growth still shows up in review.
+            #expect(afterBytes < 180)
+            #expect(qrVersion(forByteCount: afterBytes) <= 9)
         }
     }
 }

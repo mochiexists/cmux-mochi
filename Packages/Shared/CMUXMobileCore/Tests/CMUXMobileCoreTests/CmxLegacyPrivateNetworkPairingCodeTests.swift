@@ -3,7 +3,7 @@ import Testing
 @testable import CMUXMobileCore
 
 @Suite struct CmxLegacyPrivateNetworkPairingCodeTests {
-    @Test func encodesTokenlessTailscaleOnlyFullKeyPayload() throws {
+    @Test func encodesTailscaleOnlyFullKeyPayloadCarryingTheToken() throws {
         let tailscale = try CmxAttachRoute(
             id: "tailscale",
             kind: .tailscale,
@@ -50,10 +50,14 @@ import Testing
         let decoded = try decoder.decode(CmxAttachTicket.self, from: data)
 
         #expect(decoded.routes == [tailscale])
-        #expect(decoded.authToken == nil)
+        // Fork (cmux Mochi): the code carries the token and the REAL expiry.
+        // Upstream nils the token and pins a far-future expiry because there the
+        // token authorizes nothing; this fork's host authorizes on the ticket
+        // alone, so the code must be the credential and must expire when it does.
+        #expect(decoded.authToken == "secret")
         #expect(decoded.macUserEmail == nil)
         #expect(decoded.macUserID == "opaque-user-id")
-        #expect(try #require(decoded.expiresAt) > sourceExpiry.addingTimeInterval(365 * 24 * 60 * 60))
+        #expect(decoded.expiresAt == sourceExpiry)
     }
 
     @Test func returnsNilWithoutTailscaleRoute() throws {
