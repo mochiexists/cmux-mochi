@@ -48,6 +48,12 @@ import Testing
         #expect(result.stdout.contains("Cmd+Shift+T restores closed tabs/workspaces"))
         #expect(result.stdout.contains("Sidebar stability"))
         #expect(result.stdout.contains("Privacy Frost — blur sensitive workspaces or groups"))
+        // Fork (cmux Mochi): the no-account iPhone pairing is the fork's headline
+        // feature, so the catalog must keep advertising it — and must keep saying
+        // both halves of what makes it true: no account, and tailnet-pinned.
+        #expect(result.stdout.contains("iPhone pairing without an account"))
+        #expect(result.stdout.contains("expires within the hour"))
+        #expect(result.stdout.contains("pin the pairing listener to your Tailscale interface"))
         #expect(result.stdout.contains("Passkeys/WebAuthn are temporarily disabled"))
         #expect(result.stdout.contains("\u{001B}[3m"))
         let conductorIndex = try #require(result.stdout.range(of: "Conductor — drive visible Codex and Claude")?.lowerBound)
