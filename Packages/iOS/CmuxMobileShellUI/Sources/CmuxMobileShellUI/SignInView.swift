@@ -249,10 +249,13 @@ struct SignInView: View {
                     // Mochi herself, in the slot where the providers put their marks.
                     // Original rendering intent (not template) so the cat keeps her
                     // purple and blue instead of being flattened to the tint.
+                    // 22pt rather than the 18pt the flat provider glyphs use: Mochi
+                    // carries an outline, collar, bell and eye highlights, and that
+                    // detail turns to mush at 18. The row has the height for it.
                     Image("MochiLogo")
                         .resizable()
                         .aspectRatio(contentMode: .fit)
-                        .frame(width: 18, height: 18)
+                        .frame(width: 22, height: 22)
                         .accessibilityHidden(true)
                     Text(L10n.string(
                         "mobile.signIn.skip",
