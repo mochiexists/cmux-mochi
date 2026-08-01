@@ -73,7 +73,7 @@ struct PairingView: View {
                 } footer: {
                     Text(L10n.string(
                         "mobile.addDevice.help",
-                        defaultValue: "Scan the Mac's Iroh QR. Manual host and port is only for loopback development in the simulator."
+                        defaultValue: "Scan the code from your Mac (Settings \u{2192} Mobile \u{2192} Pair a Device). You can also paste that code's link into the host field."
                     ))
                 }
                 .overlay(alignment: .topLeading) {
@@ -106,7 +106,7 @@ struct PairingView: View {
                                 .textSelection(.enabled)
                                 .accessibilityIdentifier("MobileAddDeviceSignedInAccount")
 
-                            Text(L10n.string("mobile.addDevice.accountHelp", defaultValue: "Manual pairing uses this account. If it does not match the Mac, scan a QR/link from the Mac."))
+                            Text(L10n.string("mobile.addDevice.accountHelp", defaultValue: "Pasting a pairing link from the Mac works without an account. A bare host and port does not \u{2014} that path still needs one."))
                                 .font(.footnote)
                                 .foregroundStyle(.secondary)
                         }

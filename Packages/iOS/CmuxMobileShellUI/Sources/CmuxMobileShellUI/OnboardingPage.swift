@@ -56,9 +56,19 @@ struct OnboardingPage: Sendable {
                 "mobile.onboarding.connectTitle",
                 defaultValue: "Encrypted wherever you connect"
             ),
+            // Fork (cmux Mochi): upstream's copy describes an Iroh-first journey
+            // verified by a cmux account. This fork pairs over Tailscale using a
+            // short-lived ticket from the Mac, so the account is not what secures
+            // it and saying so would be false.
+            //
+            // Scoped deliberately to the SCANNED CODE rather than to every
+            // connection: release builds pin the pairing LISTENER to the Tailscale
+            // interface, but Iroh is admitted on its own endpoint and does not pass
+            // through that listener. "The Mac refuses everything else" would
+            // therefore be untrue for a signed-in user on Iroh.
             body: L10n.string(
                 "mobile.onboarding.connectBody",
-                defaultValue: "cmux uses Iroh by default. It connects directly to your Mac when possible and uses a cmux relay when needed. Your Mac's identity and cmux account are verified end to end, so the relay cannot read terminal traffic."
+                defaultValue: "Your phone reaches the Mac over your own Tailscale network, so terminal traffic goes straight to your Mac. The Mac only accepts connections that arrive over that network, and only with a code it issued."
             )
         )
     }
@@ -66,40 +76,45 @@ struct OnboardingPage: Sendable {
     private static var privateNetworkOptions: OnboardingPage {
         OnboardingPage(
             systemImage: "point.3.connected.trianglepath.dotted",
+            // Fork (cmux Mochi): Tailscale is REQUIRED here, not a later
+            // optimisation. Release builds pin the Mac's pairing listener to the
+            // Tailscale interface, so with Tailscale down the Mac does not listen
+            // at all. Upstream's "optional" wording would leave a user staring at a
+            // Mac that silently never appears.
             title: L10n.string(
                 "mobile.onboarding.privateNetworkTitle",
-                defaultValue: "Private networks stay available"
+                defaultValue: "Tailscale is required"
             ),
             body: L10n.string(
                 "mobile.onboarding.privateNetworkBody",
-                defaultValue: "After cmux admits both devices over Iroh, Tailscale, WireGuard, another VPN, or the same LAN may become a faster direct path. They are optional, and Iroh keeps its encryption and identity checks."
+                defaultValue: "This is how your phone finds your Mac. Install Tailscale on both devices and sign in to the same tailnet. Until then the Mac will not accept a scanned code."
             ),
             checklist: [
                 L10n.string(
                     "mobile.onboarding.privateNetworkStep1",
-                    defaultValue: "Sign this phone and the Mac in to the same cmux account."
+                    defaultValue: "Install Tailscale on this phone and on the Mac, signed in to the same tailnet."
                 ),
                 L10n.string(
                     "mobile.onboarding.privateNetworkStep2",
-                    defaultValue: "Leave cmux running on the Mac so Iroh can reconnect."
+                    defaultValue: "Leave cmux running on the Mac so it can accept the connection."
                 ),
                 L10n.string(
                     "mobile.onboarding.privateNetworkStep3",
-                    defaultValue: "Optional: connect both devices to the same private network so an admitted Iroh session can migrate to it."
+                    defaultValue: "No cmux account needed — choose Continue without an account."
                 ),
             ],
             links: [
                 OnboardingPageLink(
                     title: L10n.string(
                         "mobile.onboarding.tailscaleAppStoreLink",
-                        defaultValue: "Optional: Tailscale for iPhone"
+                        defaultValue: "Get Tailscale for iPhone"
                     ),
                     url: URL(string: "https://apps.apple.com/app/tailscale/id1470499037")!
                 ),
                 OnboardingPageLink(
                     title: L10n.string(
                         "mobile.onboarding.tailscaleLink",
-                        defaultValue: "Optional: Tailscale for Mac"
+                        defaultValue: "Get Tailscale for Mac"
                     ),
                     url: URL(string: "https://tailscale.com/download")!
                 ),
@@ -114,9 +129,12 @@ struct OnboardingPage: Sendable {
                 "mobile.onboarding.pairTitle",
                 defaultValue: "Pair your Mac"
             ),
+            // Fork (cmux Mochi): the code is a short-lived attach ticket for the
+            // tailnet, not an Iroh code, and it authorizes on its own — so this page
+            // must not send the user looking for an account first.
             body: L10n.string(
                 "mobile.onboarding.pairBody",
-                defaultValue: "Open Pair iPhone in cmux on your Mac and scan its Iroh code. cmux saves the verified Mac identity and reconnects automatically. Tailscale, another VPN, or the same LAN may speed up the authenticated Iroh connection."
+                defaultValue: "On your Mac open Settings → Mobile → Pair a Device, then scan the code here. The code authorizes this phone by itself and expires within the hour. cmux remembers the Mac and reconnects."
             )
         )
     }

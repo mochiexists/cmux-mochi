@@ -2977,6 +2977,7 @@ public final class MobileShellComposite: MobileTerminalOutputSinking {
         // token is used), so an expired legacy code scanned offline must say
         // "offline", not crawl the route loop's stacked timeouts.
         let candidateRoutes = Self.supportedRoutes(for: ticket, supportedKinds: runtime?.supportedRouteKinds ?? [])
+        MobileDebugLog.shared.append("attach-trace routes=\(ticket.routes.map(\.kind)) kinds=\(runtime?.supportedRouteKinds ?? []) candidates=\(candidateRoutes.count) tok=\(ticket.authToken == nil ? "nil" : "yes")")
         if !candidateRoutes.isEmpty {
             switch await failPairingIfOffline(attemptID: attemptID, phase: "preflight", routes: candidateRoutes) {
             case .failedOffline: return .failed
@@ -2987,7 +2988,9 @@ public final class MobileShellComposite: MobileTerminalOutputSinking {
 
         do {
             guard isCurrentPairingAttempt(attemptID) else { return .superseded }
+            MobileDebugLog.shared.append("attach-trace calling connect()")
             let noThrowFailure = try await connect(ticket: ticket)
+            MobileDebugLog.shared.append("attach-trace connect returned failure=\(String(describing: noThrowFailure)) state=\(connectionState)")
             guard isCurrentPairingAttempt(attemptID) else { return .superseded }
             if connectionState == .connected && activeTicket != nil {
                 recordPairingSucceeded()
@@ -2998,6 +3001,7 @@ public final class MobileShellComposite: MobileTerminalOutputSinking {
             recordFailureForCurrentConnectionError(phase: "connect", category: noThrowFailure)
             return .failed
         } catch is CancellationError {
+            MobileDebugLog.shared.append("attach-trace THREW CancellationError")
             guard isCurrentPairingAttempt(attemptID) else { return .superseded }
             connectionState = .disconnected
             macConnectionStatus = .unavailable
@@ -3005,6 +3009,12 @@ public final class MobileShellComposite: MobileTerminalOutputSinking {
             return .failed
         } catch {
             guard isCurrentPairingAttempt(attemptID) else { return .superseded }
+            MobileDebugLog.shared.append(
+                // Category only, never the raw error: `String(describing:)` can carry
+                // server-supplied text or transport endpoints, which is why the OS log
+                // beneath marks the same value private (Codex review).
+                "attach-trace THREW \(MobilePairingFailureCategory.classify(error: error, route: activeRoute))"
+            )
             mobileShellLog.error("pairing failed: \(String(describing: error), privacy: .private)")
             // Definitive auth failures drive the re-auth prompt rather than a
             // generic connection error (matches the manual-host path); the

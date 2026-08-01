@@ -57,7 +57,7 @@ struct MobilePairingView: View {
         VStack(alignment: .leading, spacing: 2) {
             Text(String(localized: "mobile.pairing.window.heading", defaultValue: "Pair your iPhone"))
                 .cmuxFont(.title2, weight: .semibold)
-            Text(String(localized: "mobile.pairing.window.subheading", defaultValue: "Scan this code with the cmux app on your iPhone to sync your terminal workspaces."))
+            Text(String(localized: "mobile.pairing.window.subheading", defaultValue: "Scan this code with the cmux app on your iPhone. It authorizes the phone on its own and expires within the hour."))
                 .cmuxFont(.callout)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -113,7 +113,7 @@ struct MobilePairingView: View {
         return requirementRow(
             title: String(
                 localized: "mobile.pairing.req.privateNetwork.title",
-                defaultValue: "Private network (optional)"
+                defaultValue: "Private network (required)"
             ),
             subtitle: privateNetworkSubtitle(reachable: reachable)
         ) {
@@ -175,12 +175,12 @@ struct MobilePairingView: View {
         case .some(true):
             return String(
                 localized: "mobile.pairing.req.privateNetwork.reachable",
-                defaultValue: "Tailscale is available for older-client compatibility and may become a direct Iroh path after admission."
+                defaultValue: "This code works only over the tailnet. A phone that is not on it cannot use the code, however it reaches this Mac."
             )
         case .some(false):
             return String(
                 localized: "mobile.pairing.req.privateNetwork.missing",
-                defaultValue: "Not detected. Iroh pairing does not require Tailscale."
+                defaultValue: "Not detected. Start Tailscale — this Mac cannot accept a scanned code without it."
             )
         case .none:
             return String(

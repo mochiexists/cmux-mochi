@@ -1364,18 +1364,6 @@
     "agent.campfire.capability.fallback": {
       "extractionState": "manual",
       "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "do something"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "操作を実行する"
-          }
-        },
         "ar": {
           "stringUnit": {
             "state": "translated",
@@ -1400,6 +1388,12 @@
             "value": "etwas tun"
           }
         },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "do something"
+          }
+        },
         "es": {
           "stringUnit": {
             "state": "translated",
@@ -1416,6 +1410,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "fare qualcosa"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "操作を実行する"
           }
         },
         "km": {
@@ -1489,18 +1489,6 @@
     "agent.campfire.capability.filesList": {
       "extractionState": "manual",
       "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "browse files"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "ファイルを参照する"
-          }
-        },
         "ar": {
           "stringUnit": {
             "state": "translated",
@@ -1525,6 +1513,12 @@
             "value": "Dateien durchsuchen"
           }
         },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "browse files"
+          }
+        },
         "es": {
           "stringUnit": {
             "state": "translated",
@@ -1541,6 +1535,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "sfogliare i file"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ファイルを参照する"
           }
         },
         "km": {
@@ -1614,18 +1614,6 @@
     "agent.campfire.capability.queueAdd": {
       "extractionState": "manual",
       "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "queue a prompt"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "プロンプトをキューに追加する"
-          }
-        },
         "ar": {
           "stringUnit": {
             "state": "translated",
@@ -1650,6 +1638,12 @@
             "value": "einen Prompt in die Warteschlange stellen"
           }
         },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "queue a prompt"
+          }
+        },
         "es": {
           "stringUnit": {
             "state": "translated",
@@ -1666,6 +1660,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "mettere un prompt in coda"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "プロンプトをキューに追加する"
           }
         },
         "km": {
@@ -1739,18 +1739,6 @@
     "agent.campfire.capability.queueRunNow": {
       "extractionState": "manual",
       "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "run a prompt now"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "プロンプトを今すぐ実行する"
-          }
-        },
         "ar": {
           "stringUnit": {
             "state": "translated",
@@ -1775,6 +1763,12 @@
             "value": "einen Prompt jetzt ausführen"
           }
         },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "run a prompt now"
+          }
+        },
         "es": {
           "stringUnit": {
             "state": "translated",
@@ -1791,6 +1785,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "eseguire un prompt ora"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "プロンプトを今すぐ実行する"
           }
         },
         "km": {
@@ -1864,18 +1864,6 @@
     "agent.campfire.capability.sessionInterrupt": {
       "extractionState": "manual",
       "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "interrupt the agent"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "エージェントを中断する"
-          }
-        },
         "ar": {
           "stringUnit": {
             "state": "translated",
@@ -1900,6 +1888,12 @@
             "value": "den Agenten unterbrechen"
           }
         },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "interrupt the agent"
+          }
+        },
         "es": {
           "stringUnit": {
             "state": "translated",
@@ -1916,6 +1910,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "interrompere l’agente"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "エージェントを中断する"
           }
         },
         "km": {
@@ -1989,18 +1989,6 @@
     "agent.campfire.capability.shellExec": {
       "extractionState": "manual",
       "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "run a shell command"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "シェルコマンドを実行する"
-          }
-        },
         "ar": {
           "stringUnit": {
             "state": "translated",
@@ -2025,6 +2013,12 @@
             "value": "einen Shell-Befehl ausführen"
           }
         },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "run a shell command"
+          }
+        },
         "es": {
           "stringUnit": {
             "state": "translated",
@@ -2041,6 +2035,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "eseguire un comando shell"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "シェルコマンドを実行する"
           }
         },
         "km": {
@@ -2114,18 +2114,6 @@
     "agent.campfire.capability.toolsContribute": {
       "extractionState": "manual",
       "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "add tools or skills"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "ツールまたはスキルを追加する"
-          }
-        },
         "ar": {
           "stringUnit": {
             "state": "translated",
@@ -2150,6 +2138,12 @@
             "value": "Tools oder Fähigkeiten hinzufügen"
           }
         },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "add tools or skills"
+          }
+        },
         "es": {
           "stringUnit": {
             "state": "translated",
@@ -2166,6 +2160,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "aggiungere strumenti o competenze"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ツールまたはスキルを追加する"
           }
         },
         "km": {
@@ -2239,18 +2239,6 @@
     "agent.campfire.notification.body.joinRequested": {
       "extractionState": "manual",
       "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%@ is waiting to join the Campfire session"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%@ が Campfire セッションへの参加を待っています"
-          }
-        },
         "ar": {
           "stringUnit": {
             "state": "translated",
@@ -2275,6 +2263,12 @@
             "value": "%@ wartet darauf, der Campfire-Sitzung beizutreten"
           }
         },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ is waiting to join the Campfire session"
+          }
+        },
         "es": {
           "stringUnit": {
             "state": "translated",
@@ -2291,6 +2285,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "%@ sta aspettando di unirsi alla sessione Campfire"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ が Campfire セッションへの参加を待っています"
           }
         },
         "km": {
@@ -2364,18 +2364,6 @@
     "agent.campfire.notification.body.permissionAsked": {
       "extractionState": "manual",
       "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%1$@ asked for permission to %2$@"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%1$@ が %2$@ 権限を求めています"
-          }
-        },
         "ar": {
           "stringUnit": {
             "state": "translated",
@@ -2400,6 +2388,12 @@
             "value": "%1$@ hat um Erlaubnis gebeten, %2$@"
           }
         },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ asked for permission to %2$@"
+          }
+        },
         "es": {
           "stringUnit": {
             "state": "translated",
@@ -2416,6 +2410,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "%1$@ ha chiesto l’autorizzazione a %2$@"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ が %2$@ 権限を求めています"
           }
         },
         "km": {
@@ -2489,18 +2489,6 @@
     "agent.campfire.notification.body.relayError": {
       "extractionState": "manual",
       "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Campfire relay connection failed"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Campfire リレー接続に失敗しました"
-          }
-        },
         "ar": {
           "stringUnit": {
             "state": "translated",
@@ -2525,6 +2513,12 @@
             "value": "Campfire-Relay-Verbindung fehlgeschlagen"
           }
         },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Campfire relay connection failed"
+          }
+        },
         "es": {
           "stringUnit": {
             "state": "translated",
@@ -2541,6 +2535,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Connessione al relay Campfire non riuscita"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Campfire リレー接続に失敗しました"
           }
         },
         "km": {
@@ -2614,18 +2614,6 @@
     "agent.campfire.notification.participantFallback": {
       "extractionState": "manual",
       "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Someone"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "参加者"
-          }
-        },
         "ar": {
           "stringUnit": {
             "state": "translated",
@@ -2650,6 +2638,12 @@
             "value": "Jemand"
           }
         },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Someone"
+          }
+        },
         "es": {
           "stringUnit": {
             "state": "translated",
@@ -2666,6 +2660,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Qualcuno"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "参加者"
           }
         },
         "km": {
@@ -48540,6 +48540,74 @@
         }
       }
     },
+    "cli.vscode.oneDirectory": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "vscode open accepts one directory"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "vscode open にはディレクトリを1つだけ指定できます"
+          }
+        }
+      }
+    },
+    "cli.vscode.startingFormat": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Starting VS Code workbench for %@ in %@"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ の VS Code ワークベンチを %@ で起動しています"
+          }
+        }
+      }
+    },
+    "cli.vscode.unsupportedOptionFormat": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "vscode open does not support %@"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "vscode open は %@ をサポートしていません"
+          }
+        }
+      }
+    },
+    "cli.vscode.usage": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Usage: cmux vscode open [directory] [--workspace <id|ref|index>] [--window <id|ref|index>] [--focus <true|false>]\n\nOpen a full VS Code workbench in cmux. The directory defaults to the caller's current directory and focus defaults to false."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "使用法: cmux vscode open [directory] [--workspace <id|ref|index>] [--window <id|ref|index>] [--focus <true|false>]\n\ncmux 内で完全な VS Code ワークベンチを開きます。ディレクトリの既定値は呼び出し元の現在のディレクトリで、フォーカスの既定値は false です。"
+          }
+        }
+      }
+    },
     "cli.workspace.create.error.envFileRequiresValue": {
       "extractionState": "manual",
       "localizations": {
@@ -70085,6 +70153,40 @@
         }
       }
     },
+    "contextMenu.blurWorkspace": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Blur Workspace"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ワークスペースをぼかす"
+          }
+        }
+      }
+    },
+    "contextMenu.blurWorkspaces": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Blur Workspaces"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ワークスペースをぼかす"
+          }
+        }
+      }
+    },
     "contextMenu.chooseCustomColor": {
       "extractionState": "manual",
       "localizations": {
@@ -73256,6 +73358,40 @@
           "stringUnit": {
             "state": "translated",
             "value": "Finderで表示"
+          }
+        }
+      }
+    },
+    "contextMenu.unblurWorkspace": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unblur Workspace"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ワークスペースのぼかしを解除"
+          }
+        }
+      }
+    },
+    "contextMenu.unblurWorkspaces": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unblur Workspaces"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ワークスペースのぼかしを解除"
           }
         }
       }
@@ -108434,6 +108570,40 @@
         }
       }
     },
+    "file.contextMenu.copyFile": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Copy File"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ファイルをコピー"
+          }
+        }
+      }
+    },
+    "file.contextMenu.copyFileWithExtension": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Copy .%@ File"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": ".%@ファイルをコピー"
+          }
+        }
+      }
+    },
     "fileDrop.holdShiftDropIntoEditor": {
       "localizations": {
         "ar": {
@@ -108784,40 +108954,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "按住 Shift 以分割開啟"
-          }
-        }
-      }
-    },
-    "file.contextMenu.copyFile": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Copy File"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "ファイルをコピー"
-          }
-        }
-      }
-    },
-    "file.contextMenu.copyFileWithExtension": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Copy .%@ File"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": ".%@ファイルをコピー"
           }
         }
       }
@@ -128224,6 +128360,61 @@
         }
       }
     },
+    "mobile.pairing.codeMode.irohDetail": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Iroh code: encrypted end to end, with direct and relay paths selected automatically."
+          }
+        }
+      }
+    },
+    "mobile.pairing.codeMode.legacyDetail": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Compatibility code: the iPhone must be on the same Tailscale network."
+          }
+        }
+      }
+    },
+    "mobile.pairing.codeMode.legacyOnlyDetail": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Iroh is unavailable, so this code uses the Tailscale compatibility path."
+          }
+        }
+      }
+    },
+    "mobile.pairing.codeMode.useIroh": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Use Iroh Code"
+          }
+        }
+      }
+    },
+    "mobile.pairing.codeMode.useLegacy": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pair an Older iPhone App"
+          }
+        }
+      }
+    },
     "mobile.pairing.connected.subtitle": {
       "extractionState": "manual",
       "localizations": {
@@ -128394,6 +128585,17 @@
         }
       }
     },
+    "mobile.pairing.needsReachableTransport.body": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Iroh has not registered this Mac yet, and no Tailscale compatibility route is available. Check the Mac's connection, or enable Tailscale on both devices, then refresh."
+          }
+        }
+      }
+    },
     "mobile.pairing.needsTailscale.body": {
       "extractionState": "manual",
       "localizations": {
@@ -128475,6 +128677,116 @@
           "stringUnit": {
             "state": "translated",
             "value": "コードを更新"
+          }
+        }
+      }
+    },
+    "mobile.pairing.req.account.optional.subtitle": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This code authorizes your iPhone over your private network. Sign in only if you want push notifications and cross-device sync."
+          }
+        }
+      }
+    },
+    "mobile.pairing.req.account.optional.title": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No account needed"
+          }
+        }
+      }
+    },
+    "mobile.pairing.req.iroh.preparing": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Registering this Mac's encrypted endpoint."
+          }
+        }
+      }
+    },
+    "mobile.pairing.req.iroh.ready": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ready. Iroh connects directly when possible and uses a cmux relay when needed."
+          }
+        }
+      }
+    },
+    "mobile.pairing.req.iroh.title": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Iroh encrypted transport"
+          }
+        }
+      }
+    },
+    "mobile.pairing.req.iroh.unavailable": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Not ready. A Tailscale compatibility route may still be available."
+          }
+        }
+      }
+    },
+    "mobile.pairing.req.privateNetwork.hint": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "After Iroh admits the phone, Tailscale, another VPN, or the same LAN may become a direct path."
+          }
+        }
+      }
+    },
+    "mobile.pairing.req.privateNetwork.missing": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Not detected. Start Tailscale — this Mac cannot accept a scanned code without it."
+          }
+        }
+      }
+    },
+    "mobile.pairing.req.privateNetwork.reachable": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This code works only over the tailnet. A phone that is not on it cannot use the code, however it reaches this Mac."
+          }
+        }
+      }
+    },
+    "mobile.pairing.req.privateNetwork.title": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Private network (required)"
           }
         }
       }
@@ -129115,13 +129427,7 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Scan this code with the cmux app on your iPhone to sync your terminal workspaces."
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "iPhone の cmux アプリでこのコードをスキャンして、ターミナルワークスペースを同期します。"
+            "value": "Scan this code with the cmux app on your iPhone. It authorizes the phone on its own and expires within the hour."
           }
         }
       }
@@ -188789,6 +189095,159 @@
         }
       }
     },
+    "settings.terminal.agentResumeMode": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Agent Resume on Reopen"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "再起動時のエージェント再開"
+          }
+        }
+      }
+    },
+    "settings.terminal.agentResumeMode.full": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Full"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "フル"
+          }
+        }
+      }
+    },
+    "settings.terminal.agentResumeMode.full.subtitle": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Restored agent terminals immediately run their resume command."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "復元されたエージェント端末は再開コマンドを直ちに実行します。"
+          }
+        }
+      }
+    },
+    "settings.terminal.agentResumeMode.medium": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Medium"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "中"
+          }
+        }
+      }
+    },
+    "settings.terminal.agentResumeMode.medium.subtitle": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Restored agent terminals show their previous scrollback and leave the resume command ready to run."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "復元されたエージェント端末は以前のスクロールバックを表示し、再開コマンドを実行可能な状態で待機します。"
+          }
+        }
+      }
+    },
+    "settings.terminal.agentResumeMode.off": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Off"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "オフ"
+          }
+        }
+      }
+    },
+    "settings.terminal.agentResumeMode.off.subtitle": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Restored agent terminals start fresh — no scrollback and no resume command."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "復元されたエージェント端末は新規状態で起動します（スクロールバックも再開コマンドもありません）。"
+          }
+        }
+      }
+    },
+    "settings.terminal.agentResumeStyle.useFullCommand": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Resume Agents With Full Command"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "完全なコマンドでエージェントを再開"
+          }
+        }
+      }
+    },
+    "settings.terminal.autosaveScrollback": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Autosave Terminal Scrollback"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ターミナルのスクロールバックを自動保存"
+          }
+        }
+      }
+    },
     "settings.terminal.copyOnSelect": {
       "extractionState": "manual",
       "localizations": {
@@ -212761,6 +213220,40 @@
         }
       }
     },
+    "sidebar.workspace.privacyBlurred": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Private Workspace"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "プライベートワークスペース"
+          }
+        }
+      }
+    },
+    "sidebar.workspace.privacyBlurred.accessibilityHint": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Right-click for workspace actions."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "右クリックしてワークスペース操作を表示します。"
+          }
+        }
+      }
+    },
     "sidebar.workspace.rename.field.accessibilityLabel": {
       "extractionState": "manual",
       "localizations": {
@@ -214695,6 +215188,74 @@
           "stringUnit": {
             "state": "translated",
             "value": "ターミナルサーフェスは利用できなくなっています。開き直すか、新しいターミナルセッションを作成してください。"
+          }
+        }
+      }
+    },
+    "socket.vscode.contentModeRemoved": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "content_mode is no longer supported; open the full VS Code workbench instead"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "content_mode はサポートされなくなりました。代わりに完全な VS Code ワークベンチを開いてください"
+          }
+        }
+      }
+    },
+    "socket.vscode.invalidPath": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "VS Code workbench path must be an existing directory"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "VS Code ワークベンチのパスには既存のディレクトリを指定してください"
+          }
+        }
+      }
+    },
+    "socket.vscode.notInstalled": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Install Visual Studio Code to use the inline workbench"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "インラインワークベンチを使用するには Visual Studio Code をインストールしてください"
+          }
+        }
+      }
+    },
+    "socket.vscode.startFailed": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Failed to start the inline VS Code workbench"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "インライン VS Code ワークベンチを起動できませんでした"
           }
         }
       }
@@ -237239,6 +237800,23 @@
         }
       }
     },
+    "workspaceGroup.contextMenu.blur": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Blur Group"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "グループをぼかす"
+          }
+        }
+      }
+    },
     "workspaceGroup.contextMenu.clearLatestNotifications": {
       "extractionState": "manual",
       "localizations": {
@@ -238485,6 +239063,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "重新命名群組…"
+          }
+        }
+      }
+    },
+    "workspaceGroup.contextMenu.unblur": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unblur Group"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "グループのぼかしを解除"
           }
         }
       }
@@ -240409,6 +241004,23 @@
         }
       }
     },
+    "workspaceGroup.privacyBlurred": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Private Group"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "プライベートグループ"
+          }
+        }
+      }
+    },
     "workspaceGroup.rename.confirm": {
       "extractionState": "manual",
       "localizations": {
@@ -241083,358 +241695,6 @@
             "value": "このワークスペースはすでに利用できません。"
           }
         }
-      }
-    },
-    "socket.vscode.contentModeRemoved": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "content_mode is no longer supported; open the full VS Code workbench instead"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "content_mode はサポートされなくなりました。代わりに完全な VS Code ワークベンチを開いてください"
-          }
-        }
-      }
-    },
-    "socket.vscode.invalidPath": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "VS Code workbench path must be an existing directory"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "VS Code ワークベンチのパスには既存のディレクトリを指定してください"
-          }
-        }
-      }
-    },
-    "socket.vscode.notInstalled": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Install Visual Studio Code to use the inline workbench"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "インラインワークベンチを使用するには Visual Studio Code をインストールしてください"
-          }
-        }
-      }
-    },
-    "socket.vscode.startFailed": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Failed to start the inline VS Code workbench"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "インライン VS Code ワークベンチを起動できませんでした"
-          }
-        }
-      }
-    },
-    "cli.vscode.oneDirectory": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "vscode open accepts one directory"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "vscode open にはディレクトリを1つだけ指定できます"
-          }
-        }
-      }
-    },
-    "cli.vscode.startingFormat": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Starting VS Code workbench for %@ in %@"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%@ の VS Code ワークベンチを %@ で起動しています"
-          }
-        }
-      }
-    },
-    "cli.vscode.unsupportedOptionFormat": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "vscode open does not support %@"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "vscode open は %@ をサポートしていません"
-          }
-        }
-      }
-    },
-    "cli.vscode.usage": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Usage: cmux vscode open [directory] [--workspace <id|ref|index>] [--window <id|ref|index>] [--focus <true|false>]\n\nOpen a full VS Code workbench in cmux. The directory defaults to the caller's current directory and focus defaults to false."
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "使用法: cmux vscode open [directory] [--workspace <id|ref|index>] [--window <id|ref|index>] [--focus <true|false>]\n\ncmux 内で完全な VS Code ワークベンチを開きます。ディレクトリの既定値は呼び出し元の現在のディレクトリで、フォーカスの既定値は false です。"
-          }
-        }
-      }
-    },
-    "contextMenu.blurWorkspace": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Blur Workspace"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "ワークスペースをぼかす"
-          }
-        }
-      }
-    },
-    "contextMenu.blurWorkspaces": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Blur Workspaces"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "ワークスペースをぼかす"
-          }
-        }
-      }
-    },
-    "contextMenu.unblurWorkspace": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Unblur Workspace"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "ワークスペースのぼかしを解除"
-          }
-        }
-      }
-    },
-    "contextMenu.unblurWorkspaces": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Unblur Workspaces"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "ワークスペースのぼかしを解除"
-          }
-        }
-      }
-    },
-    "sidebar.workspace.privacyBlurred": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Private Workspace"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "プライベートワークスペース"
-          }
-        }
-      }
-    },
-    "sidebar.workspace.privacyBlurred.accessibilityHint": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Right-click for workspace actions."
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "右クリックしてワークスペース操作を表示します。"
-          }
-        }
-      }
-    },
-    "workspaceGroup.contextMenu.blur": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Blur Group"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "グループをぼかす"
-          }
-        }
-      }
-    },
-    "workspaceGroup.contextMenu.unblur": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Unblur Group"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "グループのぼかしを解除"
-          }
-        }
-      }
-    },
-    "workspaceGroup.privacyBlurred": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Private Group"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "プライベートグループ"
-          }
-        }
-      }
-    },
-    "settings.terminal.agentResumeMode": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Agent Resume on Reopen" } },
-        "ja": { "stringUnit": { "state": "translated", "value": "再起動時のエージェント再開" } }
-      }
-    },
-    "settings.terminal.agentResumeMode.off": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Off" } },
-        "ja": { "stringUnit": { "state": "translated", "value": "オフ" } }
-      }
-    },
-    "settings.terminal.agentResumeMode.medium": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Medium" } },
-        "ja": { "stringUnit": { "state": "translated", "value": "中" } }
-      }
-    },
-    "settings.terminal.agentResumeMode.full": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Full" } },
-        "ja": { "stringUnit": { "state": "translated", "value": "フル" } }
-      }
-    },
-    "settings.terminal.agentResumeMode.off.subtitle": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Restored agent terminals start fresh — no scrollback and no resume command." } },
-        "ja": { "stringUnit": { "state": "translated", "value": "復元されたエージェント端末は新規状態で起動します（スクロールバックも再開コマンドもありません）。" } }
-      }
-    },
-    "settings.terminal.agentResumeMode.medium.subtitle": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Restored agent terminals show their previous scrollback and leave the resume command ready to run." } },
-        "ja": { "stringUnit": { "state": "translated", "value": "復元されたエージェント端末は以前のスクロールバックを表示し、再開コマンドを実行可能な状態で待機します。" } }
-      }
-    },
-    "settings.terminal.agentResumeMode.full.subtitle": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Restored agent terminals immediately run their resume command." } },
-        "ja": { "stringUnit": { "state": "translated", "value": "復元されたエージェント端末は再開コマンドを直ちに実行します。" } }
-      }
-    },
-    "settings.terminal.autosaveScrollback": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Autosave Terminal Scrollback" } },
-        "ja": { "stringUnit": { "state": "translated", "value": "ターミナルのスクロールバックを自動保存" } }
-      }
-    },
-    "settings.terminal.agentResumeStyle.useFullCommand": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Resume Agents With Full Command" } },
-        "ja": { "stringUnit": { "state": "translated", "value": "完全なコマンドでエージェントを再開" } }
       }
     }
   },

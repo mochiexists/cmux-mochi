@@ -82,6 +82,14 @@ struct SignInView: View {
                 SignInAuthRestoreStatusView()
 
                 VStack(spacing: 12) {
+                    // Fork (cmux Mochi): pairing without an account is a first-class
+                    // choice here, not a footnote — this fork's Mac host authorizes on
+                    // the attach ticket alone, so an account buys extras (push
+                    // forwarding, cross-device sync) rather than access. It sits ABOVE
+                    // the providers, in Mochi purple, because it is the path we expect
+                    // most operators to take.
+                    skipSignInButton
+
                     ForEach(OAuthSignInProvider.allCases, id: \.self) { provider in
                         oauthButton(for: provider)
                     }
@@ -114,28 +122,6 @@ struct SignInView: View {
                     .disabled(email.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isAuthInProgress)
                     .mobileGlassProminentButton()
                     .accessibilityIdentifier("signin.emailCode")
-                }
-
-                // Fork (cmux Mochi): pair over the tailnet, no account. The Mac host
-                // accepts a valid attach ticket as authorization on its own; skipping
-                // only forgoes account-scoped extras (push notification forwarding,
-                // cross-device sync) — which is the point for an operator who wants
-                // no sign-ins and no third-party identity service in the loop.
-                if let onSkipSignIn {
-                    Button {
-                        onSkipSignIn()
-                    } label: {
-                        Text(L10n.string(
-                            "mobile.signIn.skip",
-                            defaultValue: "Continue without an account"
-                        ))
-                        .font(.footnote.weight(.semibold))
-                        .frame(maxWidth: .infinity)
-                        .contentShape(.rect)
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(isAuthInProgress)
-                    .accessibilityIdentifier("signin.skip")
                 }
 
                 if let error {
@@ -246,6 +232,58 @@ struct SignInView: View {
     private var isAuthInProgress: Bool {
         isInteractiveAuthInProgress || authManager.isRestoringSession
     }
+
+    /// Fork (cmux Mochi): the no-account path, presented as a peer of the sign-in
+    /// providers rather than as small print beneath them.
+    ///
+    /// Mochi purple rather than the system accent: it marks this as the fork's own
+    /// affordance, and gives it visual weight against the glass provider buttons
+    /// without stealing the "primary action" styling from `Email me a code`.
+    @ViewBuilder
+    private var skipSignInButton: some View {
+        if let onSkipSignIn {
+            Button {
+                onSkipSignIn()
+            } label: {
+                HStack(spacing: 6) {
+                    // Mochi herself, in the slot where the providers put their marks.
+                    // Original rendering intent (not template) so the cat keeps her
+                    // purple and blue instead of being flattened to the tint.
+                    Image("MochiLogo")
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .frame(width: 18, height: 18)
+                        .accessibilityHidden(true)
+                    Text(L10n.string(
+                        "mobile.signIn.skip",
+                        defaultValue: "Continue without an account"
+                    ))
+                    .fontWeight(.semibold)
+                    .foregroundStyle(Self.mochiPurple)
+                }
+                .frame(maxWidth: .infinity)
+                .contentShape(.capsule)
+            }
+            .disabled(isAuthInProgress)
+            .mobileGlassButton()
+            .accessibilityIdentifier("signin.skip")
+        }
+    }
+
+    /// Mochi's brand purple, adapted per appearance so it stays legible on both
+    /// the light and the dark glass card.
+    ///
+    /// The dark-mode value is the brand purple as-is; on a WHITE card it only
+    /// reaches ~4.25:1, under the 4.5:1 WCAG AA floor for normal-size text
+    /// (Codex review), so light mode uses a darkened variant that clears it while
+    /// still reading as the same colour.
+    private static let mochiPurple = Color(
+        UIColor { traits in
+            traits.userInterfaceStyle == .dark
+                ? UIColor(red: 0.541, green: 0.361, blue: 0.965, alpha: 1)
+                : UIColor(red: 0.404, green: 0.216, blue: 0.816, alpha: 1)
+        }
+    )
 
     private func oauthButton(for provider: OAuthSignInProvider) -> some View {
         Button {
@@ -375,10 +413,19 @@ struct SignInView: View {
                 .frame(width: 28, height: 28)
                 .accessibilityHidden(true)
 
-            Text(L10n.string("mobile.signIn.title", defaultValue: "cmux"))
-                .font(.title2)
-                .fontWeight(.semibold)
-                .foregroundStyle(.primary)
+            // Fork (cmux Mochi): "cmux" keeps upstream's wordmark; "mochi" follows in
+            // the fork's purple so the first screen says whose build this is. One
+            // Text with two runs, so they stay on a single baseline and scale
+            // together with Dynamic Type.
+            (
+                Text(L10n.string("mobile.signIn.title", defaultValue: "cmux"))
+                    .foregroundColor(.primary)
+                + Text(verbatim: " ")
+                + Text(L10n.string("mobile.signIn.titleFork", defaultValue: "mochi"))
+                    .foregroundColor(Self.mochiPurple)
+            )
+            .font(.title2)
+            .fontWeight(.semibold)
         }
         .frame(maxWidth: .infinity, alignment: .center)
         .padding(.bottom, 2)

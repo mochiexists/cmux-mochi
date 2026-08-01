@@ -1,0 +1,9 @@
+{
+  "images" : [
+    { "filename" : "mochi.png", "idiom" : "universal", "scale" : "1x" },
+    { "filename" : "mochi@2x.png", "idiom" : "universal", "scale" : "2x" },
+    { "filename" : "mochi@3x.png", "idiom" : "universal", "scale" : "3x" }
+  ],
+  "info" : { "author" : "xcode", "version" : 1 },
+  "properties" : { "template-rendering-intent" : "original" }
+}
