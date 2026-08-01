@@ -138,6 +138,21 @@ public protocol SettingsHostActions: AnyObject {
     /// bound-port indicator and connection count stay live without polling.
     func mobilePairingStatusUpdates() -> AsyncStream<MobilePairingStatusSnapshot>
 
+    /// Dials the Mac's currently advertised pairing routes and reports what each
+    /// one proved, keyed by ``MobilePairingRoute/id``.
+    ///
+    /// The routes in ``MobilePairingStatusSnapshot/routes`` are derived from the
+    /// Mac's own interfaces, which shows that the Mac *holds* those addresses —
+    /// not that a phone can open the pairing port on them. The Mobile section
+    /// calls this when it displays the route list and when the user refreshes,
+    /// so "Reachable at" reports a verified fact. Never called on a timer: an
+    /// idle Settings window must not keep dialing the listener.
+    ///
+    /// Routes the host cannot dial come back as
+    /// ``CmxRouteReachability/unreachable(_:)``; the call itself never fails, so
+    /// a probe failure only downgrades the display.
+    func verifyMobilePairingRouteReachability() async -> [String: CmxRouteReachability]
+
     /// Cross-platform Iroh and private-network settings controller supplied by
     /// the host app. `nil` in previews and hosts without the Iroh runtime.
     func irohSettingsController() -> (any CmxIrohSettingsControlling)?
@@ -221,6 +236,11 @@ public extension SettingsHostActions {
     func mobilePairingStatusUpdates() -> AsyncStream<MobilePairingStatusSnapshot> {
         AsyncStream { $0.finish() }
     }
+
+    /// Default: no verified routes, for hosts without a live mobile service.
+    /// The section then leaves every route ``CmxRouteReachability/unverified``
+    /// rather than claiming reachability it did not prove.
+    func verifyMobilePairingRouteReachability() async -> [String: CmxRouteReachability] { [:] }
 
     func irohSettingsController() -> (any CmxIrohSettingsControlling)? { nil }
 

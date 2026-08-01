@@ -1,3 +1,4 @@
+import CMUXMobileCore
 import CmuxFoundation
 import CmuxSettings
 import SwiftUI
@@ -24,6 +25,15 @@ public struct MobileSection: View {
     @State private var applyResult: MobilePairingPortApplyResult?
     /// Guards against overlapping Apply taps while a probe is in flight.
     @State private var isApplying = false
+
+    /// What each advertised route's connect-back proved, keyed by route id.
+    /// Routes absent from this map render as
+    /// ``CmxRouteReachability/unverified`` — never as reachable, which is the
+    /// point of verifying instead of trusting interface enumeration.
+    @State private var routeReachability: [String: CmxRouteReachability] = [:]
+    /// True while a verification pass is running, so the Check button can't
+    /// stack passes and the user sees the work is in flight.
+    @State private var isVerifyingRoutes = false
 
     /// Host bridge: opens the pairing window, applies the port (availability
     /// checked), and supplies the live pairing status and default display name.
@@ -360,26 +370,95 @@ public struct MobileSection: View {
                 ))
             } else {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(String(localized: "settings.mobile.routes.title", defaultValue: "Reachable at"))
-                        .cmuxFont(.caption)
-                        .foregroundStyle(.secondary)
+                    routesHeader(snapshot.routes)
                     ForEach(snapshot.routes) { route in
-                        HStack(spacing: 8) {
-                            Text(route.kindLabel)
-                                .cmuxFont(.caption)
-                                .foregroundStyle(.secondary)
-                            Spacer(minLength: 8)
-                            Text(route.endpoint)
-                                .cmuxFont(.caption, design: .monospaced)
-                                .foregroundStyle(.primary)
-                                .textSelection(.enabled)
-                        }
+                        routeRow(route)
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 14)
                 .padding(.bottom, 8)
+                // Verify on display and whenever the advertised set changes.
+                // Keyed on the endpoints, not the snapshot, so the connection
+                // count ticking does not re-dial the listener — and there is no
+                // timer anywhere in this path.
+                .task(id: Self.routeIdentity(snapshot.routes)) {
+                    await verifyRoutes(snapshot.routes)
+                }
             }
         }
+    }
+
+    @ViewBuilder
+    private func routesHeader(_ routes: [MobilePairingRoute]) -> some View {
+        HStack(spacing: 6) {
+            Text(String(localized: "settings.mobile.routes.title", defaultValue: "Reachable at"))
+                .cmuxFont(.caption)
+                .foregroundStyle(.secondary)
+            Button {
+                Task { await verifyRoutes(routes) }
+            } label: {
+                Image(systemName: "arrow.clockwise")
+            }
+            .buttonStyle(.borderless)
+            .controlSize(.small)
+            .disabled(isVerifyingRoutes)
+            .help(String(
+                localized: "settings.mobile.routes.recheck",
+                defaultValue: "Check these addresses again"
+            ))
+            .accessibilityIdentifier("SettingsMobileRouteRecheckButton")
+        }
+    }
+
+    @ViewBuilder
+    private func routeRow(_ route: MobilePairingRoute) -> some View {
+        let state = routeReachability[route.id] ?? .unverified
+        HStack(spacing: 8) {
+            Text(route.kindLabel)
+                .cmuxFont(.caption)
+                .foregroundStyle(.secondary)
+            Spacer(minLength: 8)
+            Text(route.endpoint)
+                .cmuxFont(.caption, design: .monospaced)
+                .foregroundStyle(.primary)
+                .textSelection(.enabled)
+            Label(state.settingsStatusText, systemImage: state.settingsStatusSystemImage)
+                .cmuxFont(.caption)
+                .foregroundStyle(
+                    state.settingsStatusIsWarning
+                        ? AnyShapeStyle(Color.orange)
+                        : AnyShapeStyle(HierarchicalShapeStyle.secondary)
+                )
+                .accessibilityIdentifier("SettingsMobileRouteStatus.\(route.id)")
+        }
+    }
+
+    /// Runs one verification pass and applies the result.
+    ///
+    /// Routes with no result yet stay ``CmxRouteReachability/unverified`` rather
+    /// than inheriting a stale verdict, and a host that reports nothing clears
+    /// the map — a failed check downgrades the display and never tears anything
+    /// down. `await` keeps the dialing off the main actor; the button and the
+    /// rest of the pane stay live.
+    private func verifyRoutes(_ routes: [MobilePairingRoute]) async {
+        guard !routes.isEmpty else {
+            routeReachability = [:]
+            return
+        }
+        guard !isVerifyingRoutes else { return }
+        isVerifyingRoutes = true
+        defer { isVerifyingRoutes = false }
+        routeReachability = routeReachability.filter { entry in
+            routes.contains { $0.id == entry.key }
+        }
+        routeReachability = await hostActions.verifyMobilePairingRouteReachability()
+    }
+
+    /// Identity for the verification task: the exact endpoints being claimed.
+    /// A changed port or address restarts the check; a changed connection count
+    /// does not.
+    private static func routeIdentity(_ routes: [MobilePairingRoute]) -> String {
+        routes.map { "\($0.id)@\($0.endpoint)" }.joined(separator: ",")
     }
 }
