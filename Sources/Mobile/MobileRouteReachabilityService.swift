@@ -50,8 +50,15 @@ actor MobileRouteReachabilityService {
     /// Never throws and never returns ``CmxRouteReachability/unverified``: a
     /// route that cannot be dialed comes back as
     /// ``CmxRouteReachability/unreachable(_:)`` so a failure downgrades the
-    /// display and nothing else. The listener is untouched either way — this
-    /// only opens and closes ordinary client connections.
+    /// display and nothing else — nothing here stops, rebinds, or reconfigures
+    /// the listener.
+    ///
+    /// A probe is an ordinary short-lived client connection, so while it is open
+    /// the listener counts it like any other (it briefly appears in
+    /// `MobileHostConnectionRegistry`, and therefore in the section's connected
+    /// count). That is the same cost a bare TCP connect would carry — the accept
+    /// path registers before any frame is read — so asking for the status reply
+    /// buys strictly more proof for the same disturbance.
     ///
     /// - Parameter routes: The advertised routes to verify.
     /// - Returns: Reachability keyed by ``CmxAttachRoute/id``. Duplicated ids

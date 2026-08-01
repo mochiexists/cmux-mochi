@@ -449,9 +449,10 @@ public struct MobileSection: View {
         guard !isVerifyingRoutes else { return }
         isVerifyingRoutes = true
         defer { isVerifyingRoutes = false }
-        routeReachability = routeReachability.filter { entry in
-            routes.contains { $0.id == entry.key }
-        }
+        // Drop the previous verdicts before dialing: while a pass is running
+        // every row genuinely is unverified again, and keeping last pass's
+        // answer on screen would turn it back into a claim.
+        routeReachability = [:]
         routeReachability = await hostActions.verifyMobilePairingRouteReachability()
     }
 
