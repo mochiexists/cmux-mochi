@@ -414,15 +414,20 @@ public struct MobileSection: View {
     @ViewBuilder
     private func routeRow(_ route: MobilePairingRoute) -> some View {
         let state = routeReachability[route.id] ?? .unverified
-        HStack(spacing: 8) {
-            Text(route.kindLabel)
-                .cmuxFont(.caption)
-                .foregroundStyle(.secondary)
-            Spacer(minLength: 8)
-            Text(route.endpoint)
-                .cmuxFont(.caption, design: .monospaced)
-                .foregroundStyle(.primary)
-                .textSelection(.enabled)
+        // Two lines: the address keeps the full width it needs (a tailnet ULA
+        // literal is long), and the verdict sits under it rather than competing
+        // with it for the same row.
+        VStack(alignment: .leading, spacing: 1) {
+            HStack(spacing: 8) {
+                Text(route.kindLabel)
+                    .cmuxFont(.caption)
+                    .foregroundStyle(.secondary)
+                Spacer(minLength: 8)
+                Text(route.endpoint)
+                    .cmuxFont(.caption, design: .monospaced)
+                    .foregroundStyle(.primary)
+                    .textSelection(.enabled)
+            }
             Label(state.settingsStatusText, systemImage: state.settingsStatusSystemImage)
                 .cmuxFont(.caption)
                 .foregroundStyle(
@@ -430,8 +435,10 @@ public struct MobileSection: View {
                         ? AnyShapeStyle(Color.orange)
                         : AnyShapeStyle(HierarchicalShapeStyle.secondary)
                 )
+                .frame(maxWidth: .infinity, alignment: .trailing)
                 .accessibilityIdentifier("SettingsMobileRouteStatus.\(route.id)")
         }
+        .padding(.bottom, 2)
     }
 
     /// Runs one verification pass and applies the result.
