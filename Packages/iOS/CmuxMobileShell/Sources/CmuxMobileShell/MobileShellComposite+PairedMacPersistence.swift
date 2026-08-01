@@ -32,8 +32,12 @@ extension MobileShellComposite {
               !ticket.macDeviceID.isEmpty,
               ticket.macDeviceID != "manual-ticket-request",
               !ticket.macDeviceID.hasPrefix("manual-") else { return true }
-        let stackUserID = identityProvider?.currentUserID
-        let scope = await currentScopeSnapshot(userID: stackUserID)
+        // Fork (cmux Mochi): store account-free pairings under this install's local
+        // scope rather than nil. A nil scope is unreadable by aggregation (which
+        // refuses nil to avoid reading every account's Macs), so Macs saved that way
+        // could never be listed together — each new pairing displaced the last.
+        let scope = await currentScopeSnapshot(userID: identityProvider?.currentUserID)
+        let stackUserID = scope?.userID ?? identityProvider?.currentUserID
         let ticketDisplayName = displayNameOverride ?? ticket.macDisplayName
         var accepted = true
         await performSerializedPairedMacWrite(ifStillCurrent: ifStillCurrent) { [weak self] in

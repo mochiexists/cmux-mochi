@@ -442,6 +442,12 @@ struct CMUXMobileRootView: View {
             return
         }
         didAuthenticateWithAttachTicket = true
+        // Fork (cmux Mochi): pairing by ticket IS the operator choosing the
+        // no-account path, so persist that choice. `didAuthenticateWithAttachTicket`
+        // lives only in memory, so without this a relaunch put a user who had
+        // already paired back behind the sign-in wall — asking them to sign in to
+        // reach Macs they had deliberately paired without an account.
+        didSkipSignIn = true
         syncShellAuthentication(true)
         Task {
             let result = await store.connectPairingURLResult(rawURL)
