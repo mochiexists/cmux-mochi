@@ -319,3 +319,68 @@ The restart-safe rotation material and honest QR-escalation statement are otherw
   assertions, cross-keypair seal rejection, sealed mint_session bearer.
 
 ---
+
+## Round 4 - Codex Review
+**Timestamp:** 2026-08-02T09:16:17Z
+**Model:** codex exec default, high reasoning, read-only
+
+### Feedback
+
+CONSENSUS: BLOCKED - the grant proof is not bound to the requested operation or client public key, so an active relay can steal the durable successor during rotation.
+
+The round-3 registration blockers are resolved: the persisted X25519 keypair enables restart-safe recovery without the QR ticket and removes the circular `HKDF(K)` construction. Sealing `mint_session` also prevents passive bearer capture.
+
+The new blocker is in [DESIGN.md](/Users/timapple/Documents/mochi/mochi-dev/cmux-mochi-v06420/plans/feat-account-free-reconnect/DESIGN.md:289): `phone_proof` authenticates only the two nonces. An active relay can:
+
+1. Forward a valid challenge.
+2. Intercept `rotate`, replacing `rotation_id` and `client_pubkey` with its own—or change `mint_session` into `rotate`.
+3. Reuse the unchanged valid `phone_proof`.
+4. Receive and decrypt the successor grant sealed to its key.
+
+That converts the acknowledged session-tier relay into durable credential theft.
+
+Required correction: calculate the proof over a canonical transcript containing at least protocol version, `grant_id`, exact verb, both nonces, operation/rotation ID, client public key, and the complete request-body hash. Validate and consume that transcript atomically with the mutation. Authenticate the response envelope under `K` as well. Add mutation tests for verb, public-key, rotation-ID, ciphertext, and metadata substitution.
+
+On the requested session-risk judgment: the status-quo parity argument is not accurate for the stated preferred-port squatter. Today cmux falls back to an OS-assigned port, publishes routes using the actual bound port ([MobileHostService.swift](/Users/timapple/Documents/mochi/mochi-dev/cmux-mochi-v06420/Sources/Mobile/MobileHostService.swift:1645)), and the QR encodes that route ([CmxPairingQRCode.swift](/Users/timapple/Documents/mochi/mochi-dev/cmux-mochi-v06420/Packages/Shared/CMUXMobileCore/Sources/CMUXMobileCore/CmxPairingQRCode.swift:83)). Merely occupying the preferred port therefore does not intercept a fresh QR pairing. Durable reconnect deliberately revisits stored/preferred ports automatically, giving a squatter recurring, unattended relay opportunities. The consequence can remain session-tier once transcript binding is fixed, but the exposure probability is materially increased and needs explicit operator acceptance.
+
+Non-blocking corrections:
+
+- Replace “never stores raw `S`, not even transiently” with “never persists raw `S`”; generation, hashing, and sealing necessarily hold it transiently.
+- Remove the contradiction claiming Keychain-held `K` cannot impersonate the phone; §7a correctly acknowledges that it can.
+- Specify the X25519/HKDF/ChaChaPoly envelope, domain separation, and authenticated metadata rather than only “HPKE-style.”
+- Update the stale “Proposed design (v2)” heading.
+
+
+
+---
+
+## Round 4 - Claude Response
+**Timestamp:** (same session)
+
+### Disposition: v4 SUPERSEDED, not iterated
+Round 4's blocker (phone_proof lacks transcript binding: a relay can swap
+rotation_id/client_pubkey or rewrite the verb and steal a durable successor)
+is CONFIRMED as a real flaw in the bespoke HMAC protocol - and is exactly the
+class of bug that motivated abandoning the bespoke protocol altogether. Its
+port-parity correction is also accepted: today's QR encodes the actual bound
+port, so a preferred-port squatter does not intercept fresh pairings; durable
+auto-reconnect WOULD give recurring unattended relay opportunities - this
+needs explicit operator acceptance in any surviving design.
+
+Per operator direction (2026-08-02 session), the design pivots to a two-door
+admission model and a v5 rewrite:
+- Door 1 (same-tailnet devices): tailnet-identity admission via tailscale
+  whois + one-time per-device approval on the Mac. No app-level durable
+  credential at all; lifecycle/revocation owned by the Tailscale control
+  plane.
+- Door 2 (off-tailnet devices): QR one-time keypair ingest with a
+  channel-establishing handshake (Noise-class, transcript-bound by
+  construction - carrying forward round 4's lesson rather than hand-rolling
+  proof binding).
+Investigation of Local-AI-Chat's tailscale link and LM Studio's LM Link is in
+progress to ground door 1. v5 will be drafted and re-reviewed from scratch;
+rounds 1-4 findings remain binding constraints on whatever survives
+(idempotency, server-authoritative derivation, endpoint discovery, scope
+semantics, Iroh exclusion, honest threat statements).
+
+---
