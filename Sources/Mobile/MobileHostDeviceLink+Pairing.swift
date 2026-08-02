@@ -19,8 +19,11 @@ extension MobileHostDeviceLink {
         lifetime: TimeInterval = EnrollmentTicket.defaultLifetime
     ) async throws -> PairingPayload {
         await prepare()
-        guard let fingerprint = hostFingerprint() else {
-            throw MobileHostDeviceLinkPairingError.identityUnavailable
+        let fingerprint: DeviceFingerprint
+        do {
+            fingerprint = try hostFingerprintOrThrow()
+        } catch {
+            throw MobileHostDeviceLinkPairingError.identityFailed(String(describing: error))
         }
         let ticket = try await issueEnrollmentTicket(lifetime: lifetime)
         let routes = MobileHostPublicStatusCache.snapshot()
@@ -62,6 +65,8 @@ extension MobileHostDeviceLink {
 enum MobileHostDeviceLinkPairingError: Error, Equatable {
     /// This Mac has no TLS identity, so it cannot be pinned by a phone.
     case identityUnavailable
+    /// Identity setup failed, with the platform's reason attached.
+    case identityFailed(String)
     /// No dialable route is published yet — usually Tailscale still coming up.
     case noRoutes
     /// The payload could not be expressed as a URL.

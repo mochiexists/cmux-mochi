@@ -69,6 +69,14 @@ final class MobileHostDeviceLink {
         try? hostIdentity().material.fingerprint
     }
 
+    /// Same as ``hostFingerprint()`` but surfaces why it failed.
+    ///
+    /// Identity setup touches the keychain, which fails in ways worth naming
+    /// (locked, unentitled, corrupt) rather than collapsing to "unavailable".
+    func hostFingerprintOrThrow() throws -> DeviceFingerprint {
+        try hostIdentity().material.fingerprint
+    }
+
     /// TLS options for the pairing listener.
     ///
     /// The verify block answers "is this key one of ours?" by asking the

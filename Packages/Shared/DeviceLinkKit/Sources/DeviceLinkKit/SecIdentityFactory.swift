@@ -64,30 +64,40 @@ public enum SecIdentityFactory {
             throw FactoryError.keyImportFailed(errSecParam)
         }
 
-        let keyAdd: [CFString: Any] = [
-            kSecClass: kSecClassKey,
-            kSecValueRef: secKey,
-            kSecAttrApplicationTag: Data(material.fingerprint.hex.utf8),
-            kSecAttrAccessible: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly,
-            kSecUseDataProtectionKeychain: true,
-        ]
-        let keyStatus = SecItemAdd(keyAdd as CFDictionary, nil)
-        guard keyStatus == errSecSuccess || keyStatus == errSecDuplicateItem else {
-            throw FactoryError.keyImportFailed(keyStatus)
-        }
+        // Data-protection keychain first; on macOS a locally signed build lacks
+        // the entitlement it requires, so fall back to the file keychain rather
+        // than leaving development unable to pair at all.
+        var lastStatus = errSecSuccess
+        for useDataProtection in Self.keychainPreferenceOrder {
+            var keyAdd: [CFString: Any] = [
+                kSecClass: kSecClassKey,
+                kSecValueRef: secKey,
+                kSecAttrApplicationTag: Data(material.fingerprint.hex.utf8),
+                kSecAttrAccessible: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly,
+            ]
+            var certificateAdd: [CFString: Any] = [
+                kSecClass: kSecClassCertificate,
+                kSecValueRef: certificate,
+                kSecAttrLabel: label,
+            ]
+            keyAdd[kSecUseDataProtectionKeychain] = useDataProtection
+            certificateAdd[kSecUseDataProtectionKeychain] = useDataProtection
 
-        let certificateAdd: [CFString: Any] = [
-            kSecClass: kSecClassCertificate,
-            kSecValueRef: certificate,
-            kSecAttrLabel: label,
-            kSecUseDataProtectionKeychain: true,
-        ]
-        let certificateStatus = SecItemAdd(certificateAdd as CFDictionary, nil)
-        guard certificateStatus == errSecSuccess || certificateStatus == errSecDuplicateItem else {
-            throw FactoryError.keyImportFailed(certificateStatus)
+            let keyStatus = SecItemAdd(keyAdd as CFDictionary, nil)
+            guard keyStatus == errSecSuccess || keyStatus == errSecDuplicateItem else {
+                lastStatus = keyStatus
+                continue
+            }
+            let certificateStatus = SecItemAdd(certificateAdd as CFDictionary, nil)
+            guard certificateStatus == errSecSuccess || certificateStatus == errSecDuplicateItem else {
+                lastStatus = certificateStatus
+                continue
+            }
+            if let identity = try? lookupIdentity(matching: material.derEncodedCertificate) {
+                return identity
+            }
         }
-
-        return try lookupIdentity(matching: material.derEncodedCertificate)
+        throw FactoryError.keyImportFailed(lastStatus)
     }
 
     /// Removes the keychain items backing an identity — used when a pairing is
@@ -110,20 +120,31 @@ public enum SecIdentityFactory {
         }
     }
 
+    /// Which keychains to try, in order. iOS has only one.
+    static var keychainPreferenceOrder: [Bool] {
+        #if os(iOS)
+        [true]
+        #else
+        [true, false]
+        #endif
+    }
+
     private static func lookupIdentity(matching certificateDER: Data) throws -> SecIdentity {
-        let query: [CFString: Any] = [
-            kSecClass: kSecClassIdentity,
-            kSecReturnRef: true,
-            kSecMatchLimit: kSecMatchLimitAll,
-            kSecUseDataProtectionKeychain: true,
-        ]
-        var result: CFTypeRef?
-        let status = SecItemCopyMatching(query as CFDictionary, &result)
-        guard status == errSecSuccess else {
-            if status == errSecItemNotFound { throw FactoryError.identityNotFound }
-            throw FactoryError.identityLookupFailed(status)
+        var identities: [SecIdentity] = []
+        for useDataProtection in keychainPreferenceOrder {
+            var query: [CFString: Any] = [
+                kSecClass: kSecClassIdentity,
+                kSecReturnRef: true,
+                kSecMatchLimit: kSecMatchLimitAll,
+            ]
+            query[kSecUseDataProtectionKeychain] = useDataProtection
+            var result: CFTypeRef?
+            if SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess,
+               let found = result as? [SecIdentity] {
+                identities.append(contentsOf: found)
+            }
         }
-        guard let identities = result as? [SecIdentity] else {
+        guard !identities.isEmpty else {
             throw FactoryError.identityNotFound
         }
         for identity in identities {

@@ -48,70 +48,99 @@ struct KeychainItem {
     let service: String
     let account: String
 
-    func read() throws -> Data? {
-        let query: [CFString: Any] = [
+    /// macOS has two keychains; the data-protection one requires an
+    /// `application-identifier` entitlement that a locally signed development
+    /// build does not carry, so it answers `errSecMissingEntitlement` (-34018).
+    /// Every operation therefore tries data protection first and falls back to
+    /// the file keychain on macOS only: a properly provisioned build never
+    /// reaches the fallback, and iOS has no second keychain to fall back to.
+    private func baseQuery(dataProtection: Bool) -> [CFString: Any] {
+        var query: [CFString: Any] = [
             kSecClass: kSecClassGenericPassword,
             kSecAttrService: service,
             kSecAttrAccount: account,
-            kSecReturnData: true,
-            kSecMatchLimit: kSecMatchLimitOne,
-            kSecUseDataProtectionKeychain: true,
         ]
-        var result: CFTypeRef?
-        let status = SecItemCopyMatching(query as CFDictionary, &result)
-        switch status {
-        case errSecSuccess:
-            return result as? Data
-        case errSecItemNotFound:
-            return nil
-        case errSecInteractionNotAllowed:
-            throw KeychainStorageError.locked
-        default:
+        query[kSecUseDataProtectionKeychain] = dataProtection
+        return query
+    }
+
+    /// Runs `attempt` against the data-protection keychain, retrying on the
+    /// file keychain when the platform refuses for lack of entitlement.
+    private func withKeychainFallback<T>(
+        _ attempt: (Bool) throws -> T?
+    ) throws -> T? {
+        do {
+            return try attempt(true)
+        } catch KeychainStorageError.unexpectedStatus(let status)
+            where status == errSecMissingEntitlement || status == errSecNotAvailable
+        {
+            #if os(iOS)
             throw KeychainStorageError.unexpectedStatus(status)
+            #else
+            return try attempt(false)
+            #endif
+        }
+    }
+
+    func read() throws -> Data? {
+        try withKeychainFallback { dataProtection in
+            var query = baseQuery(dataProtection: dataProtection)
+            query[kSecReturnData] = true
+            query[kSecMatchLimit] = kSecMatchLimitOne
+            var result: CFTypeRef?
+            let status = SecItemCopyMatching(query as CFDictionary, &result)
+            switch status {
+            case errSecSuccess:
+                return result as? Data
+            case errSecItemNotFound:
+                return nil
+            case errSecInteractionNotAllowed:
+                throw KeychainStorageError.locked
+            default:
+                throw KeychainStorageError.unexpectedStatus(status)
+            }
         }
     }
 
     func write(_ data: Data) throws {
-        let query: [CFString: Any] = [
-            kSecClass: kSecClassGenericPassword,
-            kSecAttrService: service,
-            kSecAttrAccount: account,
-            kSecUseDataProtectionKeychain: true,
-        ]
-        let attributes: [CFString: Any] = [
-            kSecValueData: data,
-            kSecAttrAccessible: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly,
-        ]
+        _ = try withKeychainFallback { dataProtection -> Bool? in
+            let query = baseQuery(dataProtection: dataProtection)
+            let attributes: [CFString: Any] = [
+                kSecValueData: data,
+                kSecAttrAccessible: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly,
+            ]
 
-        let updateStatus = SecItemUpdate(query as CFDictionary, attributes as CFDictionary)
-        switch updateStatus {
-        case errSecSuccess:
-            return
-        case errSecItemNotFound:
-            var insert = query
-            insert[kSecValueData] = data
-            insert[kSecAttrAccessible] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
-            let addStatus = SecItemAdd(insert as CFDictionary, nil)
-            guard addStatus == errSecSuccess else {
-                throw KeychainStorageError.unexpectedStatus(addStatus)
+            let updateStatus = SecItemUpdate(query as CFDictionary, attributes as CFDictionary)
+            switch updateStatus {
+            case errSecSuccess:
+                return true
+            case errSecItemNotFound:
+                var insert = query
+                insert[kSecValueData] = data
+                insert[kSecAttrAccessible] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+                let addStatus = SecItemAdd(insert as CFDictionary, nil)
+                guard addStatus == errSecSuccess else {
+                    throw KeychainStorageError.unexpectedStatus(addStatus)
+                }
+                return true
+            case errSecInteractionNotAllowed:
+                throw KeychainStorageError.locked
+            default:
+                throw KeychainStorageError.unexpectedStatus(updateStatus)
             }
-        case errSecInteractionNotAllowed:
-            throw KeychainStorageError.locked
-        default:
-            throw KeychainStorageError.unexpectedStatus(updateStatus)
         }
     }
 
     func delete() throws {
-        let query: [CFString: Any] = [
-            kSecClass: kSecClassGenericPassword,
-            kSecAttrService: service,
-            kSecAttrAccount: account,
-            kSecUseDataProtectionKeychain: true,
-        ]
-        let status = SecItemDelete(query as CFDictionary)
-        guard status == errSecSuccess || status == errSecItemNotFound else {
-            throw KeychainStorageError.unexpectedStatus(status)
+        for dataProtection in [true, false] {
+            let status = SecItemDelete(baseQuery(dataProtection: dataProtection) as CFDictionary)
+            if status == errSecSuccess { return }
+            if status != errSecItemNotFound, status != errSecMissingEntitlement {
+                throw KeychainStorageError.unexpectedStatus(status)
+            }
+            #if os(iOS)
+            return
+            #endif
         }
     }
 }

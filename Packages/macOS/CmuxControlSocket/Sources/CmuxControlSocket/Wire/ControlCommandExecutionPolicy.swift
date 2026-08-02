@@ -95,6 +95,13 @@ public enum ControlCommandExecutionPolicy: Sendable, Equatable {
         "browser.profiles.delete",
         "browser.import.cookies",
         "mobile.attach_ticket.create",
+        // Fork (cmux Mochi): DeviceLink pairing management. These are local
+        // socket only by design — the network dispatch deliberately does not
+        // carry them, so a paired phone cannot enumerate, invite, or evict its
+        // siblings.
+        "mobile.pairing.code.create",
+        "mobile.pairing.device.list",
+        "mobile.pairing.device.revoke",
         // `mobile.terminal.set_font` only validates params and emits a push
         // event via thread-safe MobileHostService statics, so it runs on the worker
         // like the other mobile data-plane verbs. Without this entry the policy
