@@ -303,6 +303,46 @@ Sources preserved: `spike0a-identity.swift`, `spike0b-mtls.swift`.
   cert validation under TLS 1.3 → §7's round-trip rule. Caught here rather
   than in production.
 
+### OPEN BLOCKER — Mac identity storage needs a decision (2026-08-02)
+
+**Symptom:** `mobile.pairing.code.create` on a locally built Mac dev build
+fails with `identityFailed("keyImportFailed(-34018)")` —
+`errSecMissingEntitlement`. Everything else on the Mac side works: the verb
+dispatches, the control-socket policy accepts it, routes are published.
+
+**Cause:** `SecIdentityFactory` creates the Mac's TLS identity by adding a
+private key to the keychain and reading back the resulting `SecIdentity` —
+Security.framework offers no public way to build one without a keychain. A
+cmux dev build is signed locally with no provisioning profile, so it carries
+neither `application-identifier` nor `keychain-access-groups`, and **both**
+keychains refuse the `kSecClassKey` add (the file-keychain fallback added in
+`ef11547f14` does not help; the refusal is about entitlement, not routing).
+The iOS app is properly provisioned and is **not** expected to hit this.
+
+**Options (needs an operator/architecture decision):**
+1. **Provision the Mac app.** Add `keychain-access-groups` to
+   `cmux.entitlements` and sign dev builds with a real profile. Cleanest
+   long-term; requires an Apple Developer account signed into Xcode, and
+   touches a checked-in entitlements file used by release lanes.
+2. **Do not use the keychain for the Mac's identity.** Persist the key
+   material in a `0600` file under Application Support and build the
+   `SecIdentity` in memory via `SecPKCS12Import` — the approach the Phase 0b
+   spike proved works from an *unsigned* binary. Needs an in-process PKCS#12
+   encoder (~150 lines) since the p12 is currently produced by shelling out to
+   `openssl` in tests. No entitlement dependency at all, on any build.
+3. **Keychain on provisioned builds, file fallback otherwise** — option 2 as a
+   fallback path only. More code, two paths to keep correct.
+
+**Recommendation: option 2.** DeviceLink already writes its own DER; a p12
+encoder is the same class of work, it removes an entitlement dependency from a
+security-critical path, and it makes the package work in any harness — which is
+also what makes it easy to hand to another app. Option 1 leaves dev builds
+unable to pair whenever provisioning lapses.
+
+**What is NOT blocked:** every unit and integration suite (45 + 610 + 34 + 6),
+the iOS app archive/install, and the Mac app build. Only a live Mac↔phone
+pairing run is gated on this.
+
 ### Implementation log (2026-08-02)
 
 - **Phase 1 ✅ shipped.** `Packages/Shared/DeviceLinkKit`, 42 tests green.
