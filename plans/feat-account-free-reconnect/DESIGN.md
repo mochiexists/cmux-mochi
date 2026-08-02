@@ -76,25 +76,69 @@ review shows the long-ticket approach cannot be made safe, revisit.
 
 ## Questions for review — answer BEFORE implementing
 
+> **Proposed answers (2026-08-02, verified against the code)** follow each
+> question. Reviewer: challenge these, don't just nod.
+
 1. **Self-extension.** Step 2 lets a bearer extend its own life indefinitely. Is
    that acceptable given the ticket is already tailnet-gated and Mac-scoped?
    Should a minted-from-ticket ticket be *weaker* than its parent (shorter TTL,
    no ability to mint again, narrower scope)?
+
+   **Proposed:** copy the refresh/access split exactly, as a two-tier grant on
+   the existing record. The durable ticket is **mint-only**: the only authorized
+   method for it is `mobile.attach_ticket.create` (everything else returns
+   `scopedTicketError`, same as today's `default:` arm in
+   `MobileHostService+TicketAuthorization.swift`). Tickets it mints are today's
+   ordinary short tickets — TTL capped at 1 h, **no mint grant**, scope inherited
+   from the parent — so there is no grandchild chain. Durable→durable rotation IS
+   allowed (that's how the credential stays fresh, see Q6) but rotation
+   **invalidates the parent**, so at most one live durable ticket exists per
+   pairing at any time.
 2. **Revocation.** With tickets persisted, how does an operator revoke a lost
    phone? Today the store is memory-only, so quitting cmux revokes everything —
    persistence removes that property. Does the pairing UI need a device list?
+
+   **Proposed:** round 1 ships CLI-grade revocation, UI later. (a) Persisted
+   records carry issue date + a device label so they are recognizable. (b) New
+   verbs `mobile.attach_ticket.list` / `mobile.attach_ticket.revoke`, exposed
+   over the **local control socket only** (the path QR pairing already uses),
+   never over the network listener. (c) Rotation auto-invalidates the previous
+   durable ticket. Unpairing in the Mac UI purges the pairing's records.
 3. **Storage.** Where does a persisted ticket store live on the Mac, given it
-   holds bearer tokens? Keychain, or a file with correct permissions? Note
-   `MobileHostService` already reaches for `Security` in this file.
+   holds bearer tokens? Keychain, or a file with correct permissions?
+
+   **Proposed:** macOS Keychain, one generic-password item holding the
+   serialized durable records (`MobileAttachTicketStore` already imports
+   `Security` for `SecRandomCopyBytes`). Crucially, **only durable (mint-only)
+   tickets are persisted** — short session tickets stay in-memory exactly as
+   today, so a Mac restart still sheds every session credential and the phone
+   quietly re-mints through the durable one. Smallest possible surface at rest.
 4. **Blast radius of a 30-day ticket** vs the current 1 hour. Is a long TTL plus
    tailnet-pinning acceptable, or should the durable ticket be usable *only* for
    `attach_ticket.create` and nothing else — i.e. a mint-only scope?
+
+   **Proposed:** mint-only, per Q1. A stolen durable ticket gets an attacker
+   nothing except the ability to mint a session ticket **from inside the
+   tailnet**, which is the same position a stolen 1 h ticket already grants;
+   the difference is duration, which revocation (Q2) and rotation bound.
 5. **Scope interaction.** Account-free Macs now live under
    `MobileLocalPairingScope` (`mochi-local:<uuid>`). Does the durable ticket key
    off that scope, and what happens to it when the user later signs in?
+
+   **Proposed:** the phone keys the durable ticket in its Keychain by pairing id
+   (`MobilePairedMac.pairingID`, i.e. macDeviceID + instanceTag) *within* the
+   local scope. Signing in changes nothing: local-scope rows and account rows are
+   already disjoint (`d8f17712c4`), so account pairings keep using Stack auth and
+   local pairings keep using their durable ticket. No migration in round 1; a
+   later "claim this Mac into my account" flow can re-key.
 6. **Expiry while closed.** If the durable ticket lapses while the app is shut,
    the user must re-scan. Is a 30-day window enough, or should the phone refresh
    opportunistically in the background?
+
+   **Proposed:** 30-day TTL, rotated opportunistically on every successful
+   connect once the ticket is older than 24 h (cheap, no background task
+   machinery, no BGTask unreliability). Effective contract: open the app at
+   least once a month or re-scan. Acceptable for round 1.
 
 ---
 
