@@ -84,7 +84,13 @@ extension TerminalController {
                 data: nil
             )
         } catch {
-            return .err(code: "internal_error", message: "Could not create a pairing code.", data: nil)
+            // Name the failure: a generic message here sent an operator hunting
+            // through logs that did not exist.
+            return .err(
+                code: "internal_error",
+                message: "Could not create a pairing code: \(error)",
+                data: nil
+            )
         }
     }
 }

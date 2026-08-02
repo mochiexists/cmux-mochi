@@ -1,8 +1,11 @@
 import DeviceLinkKit
 import Foundation
 import Testing
-
+#if canImport(cmux_DEV)
+@testable import cmux_DEV
+#elseif canImport(cmux)
 @testable import cmux
+#endif
 
 /// Guards the boundaries that make DeviceLink admission meaningful.
 ///
@@ -59,7 +62,8 @@ struct MobileHostDeviceLinkTests {
             stackAuthorization: { _ in nil }
         )
         guard case .failure = enroll else {
-            return Issue.record("a paired device must not be able to mint further pairings")
+            Issue.record("a paired device must not be able to mint further pairings")
+            return
         }
     }
 
@@ -69,7 +73,8 @@ struct MobileHostDeviceLinkTests {
             authorization: .stackBearer
         )
         guard case let .failure(error) = result else {
-            return Issue.record("enrollment must require a DeviceLink connection")
+            Issue.record("enrollment must require a DeviceLink connection")
+            return
         }
         #expect(error.code == "unauthorized")
     }
@@ -80,7 +85,8 @@ struct MobileHostDeviceLinkTests {
             authorization: .enrollmentCandidate(fingerprint: String(repeating: "c", count: 64))
         )
         guard case let .failure(error) = result else {
-            return Issue.record("enrollment without a ticket must fail")
+            Issue.record("enrollment without a ticket must fail")
+            return
         }
         #expect(error.code == "invalid_request")
     }
