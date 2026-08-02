@@ -103,11 +103,21 @@ public final class MobileDeviceLinkClient: @unchecked Sendable {
     /// unambiguous; with several, the first usable identity is offered and the
     /// Mac's own pin check rejects a mismatch, which is the safe failure.
     public func currentPairingTLSOptions() -> NWProtocolTLS.Options? {
-        let pins = (try? pinStore.pins()) ?? [:]
+        let pins: [String: DeviceFingerprint]
+        do {
+            pins = try pinStore.pins()
+        } catch {
+            MobileDeviceLinkDiagnostics.log("tls options: pin store unreadable (\(error))")
+            return nil
+        }
         for pairingID in pins.keys.sorted() {
             if let options = tlsOptions(forPairingID: pairingID) {
                 return options
             }
+            MobileDeviceLinkDiagnostics.log("tls options: no identity for \(pairingID.prefix(24))")
+        }
+        if pins.isEmpty {
+            MobileDeviceLinkDiagnostics.log("tls options: no pins stored")
         }
         return nil
     }
@@ -130,6 +140,8 @@ public final class MobileDeviceLinkClient: @unchecked Sendable {
     }
 
     private func secIdentity(forPairingID pairingID: String) -> SecIdentity? {
+        // Reported because a missing identity here disables every dial while
+        // looking like a network failure.
         lock.lock()
         if let cached = cachedIdentities[pairingID] {
             lock.unlock()
@@ -137,12 +149,27 @@ public final class MobileDeviceLinkClient: @unchecked Sendable {
         }
         lock.unlock()
 
-        guard let material = try? identityStore.identity(forPairingID: pairingID),
-              let identity = try? SecIdentityFactory.makeIdentity(
-                  from: material,
-                  label: "cmux-devicelink-\(pairingID)"
-              )
-        else { return nil }
+        let material: DeviceIdentityMaterial?
+        do {
+            material = try identityStore.identity(forPairingID: pairingID)
+        } catch {
+            MobileDeviceLinkDiagnostics.log("identity read failed: \(error)")
+            return nil
+        }
+        guard let material else {
+            MobileDeviceLinkDiagnostics.log("identity missing for \(pairingID.prefix(24))")
+            return nil
+        }
+        let identity: SecIdentity
+        do {
+            identity = try SecIdentityFactory.makeIdentity(
+                from: material,
+                label: "cmux-devicelink-\(pairingID)"
+            )
+        } catch {
+            MobileDeviceLinkDiagnostics.log("identity build failed: \(error)")
+            return nil
+        }
 
         lock.lock()
         cachedIdentities[pairingID] = identity

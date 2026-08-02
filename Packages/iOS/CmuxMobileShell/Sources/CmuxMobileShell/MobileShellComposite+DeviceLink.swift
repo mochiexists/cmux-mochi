@@ -191,11 +191,7 @@ extension MobileShellComposite {
         restoring: Bool,
         connected: Bool
     ) {
-        deviceLinkLog.info(
-            """
-            devicelink: reconnect gate uiTestURL=\(uiTestURL)             authenticated=\(authenticated)             stack=\(stackAuthenticated)             pairedDevice=\(hasPairedDevice)             attachTicket=\(attachTicket)             restoring=\(restoring)             connected=\(connected)
-            """
-        )
+        logDeviceLink("reconnect gate uiTestURL=(uiTestURL) authenticated=(authenticated) stack=(stackAuthenticated) pairedDevice=(hasPairedDevice) attachTicket=(attachTicket) restoring=(restoring) connected=(connected)")
     }
 }
 
@@ -209,11 +205,7 @@ extension MobileShellComposite {
         requestedUserID: String?,
         resolvedUserID: String?
     ) {
-        deviceLinkLog.info(
-            """
-            devicelink: reconnect scope signedIn=\(isSignedIn)             requested=\(requestedUserID ?? "nil")             resolved=\(resolvedUserID ?? "nil")
-            """
-        )
+        logDeviceLink("reconnect scope signedIn=\(isSignedIn) requested=\(requestedUserID ?? "nil") resolved=\(resolvedUserID ?? "nil")")
     }
 }
 
@@ -225,11 +217,7 @@ extension MobileShellComposite {
         hasDeviceLinkCredential: Bool,
         canConnect: Bool
     ) {
-        deviceLinkLog.info(
-            """
-            devicelink: dial decision mac=\(mac.prefix(28))             routes=\(routeKinds.joined(separator: ","))             credential=\(hasDeviceLinkCredential)             canConnect=\(canConnect)
-            """
-        )
+        logDeviceLink("dial decision mac=\(mac.prefix(28)) routes=\(routeKinds.joined(separator: ",")) credential=\(hasDeviceLinkCredential) canConnect=\(canConnect)")
     }
 }
 
@@ -237,5 +225,15 @@ extension MobileShellComposite {
     /// Marks the point where a stored-Mac dial actually begins.
     public nonisolated static func logStoredMacDialStarted(mac: String) {
         logDeviceLink("dialing stored mac \(mac.prefix(28))")
+    }
+}
+
+extension MobileShellComposite {
+    /// Records how a stored-Mac dial ended.
+    ///
+    /// Without this the reconnect simply moves to the next candidate, and a
+    /// failure that takes milliseconds looks identical to one that timed out.
+    public nonisolated static func logStoredMacDialFinished(outcome: String) {
+        logDeviceLink("dial finished: \(outcome.prefix(90))")
     }
 }

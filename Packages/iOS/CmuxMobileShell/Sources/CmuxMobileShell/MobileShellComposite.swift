@@ -1923,6 +1923,7 @@ public final class MobileShellComposite: MobileTerminalOutputSinking {
             if localCanConnectSecurely {
                 attemptedAutomaticIroh = attemptedAutomaticIroh || localHasIroh
                 Self.logStoredMacDialStarted(mac: mac.macDeviceID)
+                defer { Self.logStoredMacDialFinished(outcome: String(describing: lastDialOutcome)) }
                 lastDialOutcome = await connectStoredMacOutcome(
                     name: mac.displayName ?? mac.macDeviceID,
                     routes: localRoutes,

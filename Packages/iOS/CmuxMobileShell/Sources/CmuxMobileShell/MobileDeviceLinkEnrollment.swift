@@ -91,6 +91,10 @@ public struct MobileDeviceLinkEnroller: Sendable {
         var lastError = MobileDeviceLinkEnrollmentError.unreachable
         for route in payload.routes {
             guard let (host, port) = Self.splitHostPort(route) else { continue }
+            // On a phone, loopback is the phone — never the Mac. The Mac
+            // advertises it for the simulator, which shares the Mac's network
+            // stack and can only reach it that way.
+            if Self.isLoopbackHost(host), Self.isPhysicalDevice { continue }
             do {
                 let outcome = try await enrollOverRoute(
                     host: host,
@@ -136,9 +140,12 @@ public struct MobileDeviceLinkEnroller: Sendable {
         do {
             try await transport.connect()
         } catch {
-            // A pin mismatch surfaces as a failed secure channel. It is not a
-            // transient network problem, so it must not be retried.
-            throw MobileDeviceLinkEnrollmentError.serverPinMismatch
+            // A failed connect can mean the address is unreachable, nothing is
+            // listening, or the peer presented the wrong key — and they are not
+            // distinguishable here. Treat it as "this route did not work" so the
+            // remaining routes still get a turn; only an explicit refusal from
+            // the Mac (below) ends the whole attempt.
+            throw MobileDeviceLinkEnrollmentError.unreachable
         }
         defer { Task { await transport.close() } }
 
@@ -166,6 +173,21 @@ public struct MobileDeviceLinkEnroller: Sendable {
             throw MobileDeviceLinkEnrollmentError.malformedResponse
         }
         return result["already_enrolled"] as? Bool ?? false
+    }
+
+    /// Whether a host refers to the local device.
+    static func isLoopbackHost(_ host: String) -> Bool {
+        let normalized = host.trimmingCharacters(in: CharacterSet(charactersIn: "[]")).lowercased()
+        return normalized == "127.0.0.1" || normalized == "::1" || normalized == "localhost"
+    }
+
+    /// Whether this build runs on real hardware.
+    static var isPhysicalDevice: Bool {
+        #if targetEnvironment(simulator)
+        false
+        #else
+        true
+        #endif
     }
 
     /// Splits `host:port`, tolerating bracketed IPv6 literals.
