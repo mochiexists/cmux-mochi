@@ -1341,6 +1341,10 @@ class TerminalController {
         // network peer — paired, enrolling, or Iroh-admitted — can enumerate or
         // revoke this Mac's paired devices. `MobileHostDeviceLinkDispatchTests`
         // asserts that absence.
+        case "mobile.pairing.code.create":
+            return v2AsyncResultCall(id: request.id, timeoutSeconds: 30) {
+                await self.v2DeviceLinkPairingCodeCreate()
+            }
         case "mobile.pairing.device.list":
             return v2AsyncResultCall(id: request.id, timeoutSeconds: 30) {
                 await self.v2DeviceLinkDeviceList()

@@ -59,3 +59,32 @@ extension TerminalController {
         }
     }
 }
+
+extension TerminalController {
+    /// Mints a DeviceLink pairing code.
+    ///
+    /// Fork (cmux Mochi): the equivalent of `mobile.attach_ticket.create` for
+    /// the key-exchange flow, and the entry point automated pairing uses. Local
+    /// control socket only — whoever can reach that socket already controls this
+    /// Mac, whereas exposing code minting to the network would let any paired
+    /// device invite more devices.
+    @MainActor
+    func v2DeviceLinkPairingCodeCreate() async -> V2CallResult {
+        do {
+            let url = try await MobileHostDeviceLink.shared.makePairingURL()
+            let fingerprint = MobileHostDeviceLink.shared.hostFingerprint()
+            return .ok([
+                "pairing_url": url.absoluteString,
+                "mac_fingerprint": fingerprint?.hex ?? "",
+            ])
+        } catch MobileHostDeviceLinkPairingError.noRoutes {
+            return .err(
+                code: "unavailable",
+                message: "No pairing route is published yet. Is Tailscale up?",
+                data: nil
+            )
+        } catch {
+            return .err(code: "internal_error", message: "Could not create a pairing code.", data: nil)
+        }
+    }
+}
