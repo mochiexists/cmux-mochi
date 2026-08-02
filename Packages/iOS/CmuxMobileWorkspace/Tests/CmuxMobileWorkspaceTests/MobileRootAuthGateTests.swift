@@ -193,4 +193,71 @@ import Testing
             didFinishStoredMacReconnectAttempt: false
         ))
     }
+
+    // MARK: - DeviceLink pairing (fork: cmux Mochi)
+
+    @Test func accountFreePairedDeviceReconnectsWithoutAnAccount() {
+        // The bug this feature exists to fix: a phone paired without an account
+        // holds a private key and the Mac's pin, yet the old gate refused to
+        // reconnect because no Stack session existed, so every cold launch
+        // demanded a fresh QR scan.
+        #expect(MobileRootAuthGate.shouldReconnectStoredMac(
+            stackAuthenticated: false,
+            hasPairedDeviceIdentity: true,
+            attachTicketAuthenticated: false,
+            isRestoringSession: false,
+            connectionState: .disconnected
+        ))
+    }
+
+    @Test func noCredentialMeansNoReconnectAttempt() {
+        // Nothing to present: fall through to pairing rather than spinning.
+        #expect(!MobileRootAuthGate.shouldReconnectStoredMac(
+            stackAuthenticated: false,
+            hasPairedDeviceIdentity: false,
+            attachTicketAuthenticated: false,
+            isRestoringSession: false,
+            connectionState: .disconnected
+        ))
+    }
+
+    @Test func deviceLinkGateStillRespectsTheOtherConditions() {
+        // A live attach ticket already owns the connection.
+        #expect(!MobileRootAuthGate.shouldReconnectStoredMac(
+            stackAuthenticated: false,
+            hasPairedDeviceIdentity: true,
+            attachTicketAuthenticated: true,
+            isRestoringSession: false,
+            connectionState: .disconnected
+        ))
+        // Restore in flight: let it finish before dialing.
+        #expect(!MobileRootAuthGate.shouldReconnectStoredMac(
+            stackAuthenticated: false,
+            hasPairedDeviceIdentity: true,
+            attachTicketAuthenticated: false,
+            isRestoringSession: true,
+            connectionState: .disconnected
+        ))
+        // Already connected: nothing to do.
+        #expect(!MobileRootAuthGate.shouldReconnectStoredMac(
+            stackAuthenticated: false,
+            hasPairedDeviceIdentity: true,
+            attachTicketAuthenticated: false,
+            isRestoringSession: false,
+            connectionState: .connected
+        ))
+    }
+
+    @Test func accountAndDeviceCredentialsAreBothSufficient() {
+        // Either credential alone is enough; neither disables the other.
+        for (stack, device) in [(true, false), (false, true), (true, true)] {
+            #expect(MobileRootAuthGate.shouldReconnectStoredMac(
+                stackAuthenticated: stack,
+                hasPairedDeviceIdentity: device,
+                attachTicketAuthenticated: false,
+                isRestoringSession: false,
+                connectionState: .disconnected
+            ))
+        }
+    }
 }

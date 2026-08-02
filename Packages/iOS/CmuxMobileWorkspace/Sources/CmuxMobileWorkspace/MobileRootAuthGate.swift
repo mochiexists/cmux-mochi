@@ -87,7 +87,42 @@ public struct MobileRootAuthGate {
         isRestoringSession: Bool,
         connectionState: MobileConnectionState
     ) -> Bool {
-        stackAuthenticated
+        shouldReconnectStoredMac(
+            stackAuthenticated: stackAuthenticated,
+            hasPairedDeviceIdentity: false,
+            attachTicketAuthenticated: attachTicketAuthenticated,
+            isRestoringSession: isRestoringSession,
+            connectionState: connectionState
+        )
+    }
+
+    /// Whether a previously stored Mac should be reconnected automatically.
+    ///
+    /// Fork (cmux Mochi): an account is no longer the only way to hold a
+    /// durable credential. A device paired through DeviceLink holds a private
+    /// key and the Mac's pin, which is exactly as good a reason to reconnect as
+    /// a Stack session — this is the gate that used to make account-free
+    /// pairings unable to survive a cold launch.
+    ///
+    /// - Parameters:
+    ///   - stackAuthenticated: Whether Stack auth is established.
+    ///   - hasPairedDeviceIdentity: Whether this device holds a usable identity
+    ///     and pin for the stored Mac. A locked keychain must report `false`
+    ///     only in the sense of "not now" — callers distinguish that from
+    ///     "never paired" so a temporary lock never triggers re-pairing.
+    ///   - attachTicketAuthenticated: Whether a temporary attach ticket grants access.
+    ///   - isRestoringSession: Whether cached auth is still being validated.
+    ///   - connectionState: The current connection state.
+    /// - Returns: `true` when some durable credential exists, restore is
+    ///   complete, no temporary ticket is active, and the Mac is not connected.
+    public static func shouldReconnectStoredMac(
+        stackAuthenticated: Bool,
+        hasPairedDeviceIdentity: Bool,
+        attachTicketAuthenticated: Bool,
+        isRestoringSession: Bool,
+        connectionState: MobileConnectionState
+    ) -> Bool {
+        (stackAuthenticated || hasPairedDeviceIdentity)
             && !isRestoringSession
             && !attachTicketAuthenticated
             && connectionState != .connected
