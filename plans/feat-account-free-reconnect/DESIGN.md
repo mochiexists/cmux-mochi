@@ -1,473 +1,284 @@
-# Account-free reconnect: a durable credential for the no-account path
+# Account-free reconnect v5: paired device identities, SSH-style
 
-**Status:** design v4, not started. Revised after Codex rounds 1–3
-(see `DESIGN_review_history.md`); awaiting round-4 consensus.
+**Status:** design v5, not started. Full architectural pivot after Codex rounds
+1–4 (audit: `DESIGN_review_history.md`) and operator direction 2026-08-02.
 **Branch:** `mochi/on-v0.64.20-wip`
-**Author:** investigation 2026-08-01/02, verified against a real iPhone 16 + M4 + M5.
+**Supersedes:** v1–v4's server-issued durable credential ("grant") designs.
 
 ---
 
-## The problem, stated precisely
+## The problem (unchanged)
 
-A phone paired without an account **cannot reconnect after a cold launch**. Every
-launch needs a fresh QR scan from the Mac.
+A phone paired without an account cannot reconnect after a cold launch; every
+launch needs a fresh QR scan. Upstream's durable half is the Stack account
+session; the fork removed accounts and kept only the disposable attach ticket
+(`MobileAttachTicketStore` is in-memory, `shouldReconnectStoredMac` demands
+`stackAuthenticated`, and the reconnect loop won't dial a stored raw Tailscale
+route — `MobileShellComposite.swift:1897–1968`).
 
-This is not a bug in one function. The fork removed the durable half of a
-two-part credential system and kept only the disposable half.
+## Why v1–v4 died, in one sentence
 
-### How upstream works
+Every design that had the Mac **issue a secret** grew, under review, an
+idempotent-issuance protocol, sealed replay material, recovery verbs, rotation
+state machines, and finally a transcript-binding hole in its bespoke proof
+scheme (round 4) — because server-issued bearer credentials are the wrong
+primitive. SSH solved this thirty years ago by never issuing anything: **the
+durable credential is a keypair that never leaves its device; the server just
+remembers public keys.**
 
-| layer | lifetime | where it lives |
-|---|---|---|
-| Stack **refresh** token | durable, survives relaunch | phone Keychain (`KeychainStackTokenStore`) |
-| Stack **access** token | ~1h, minted on demand | memory |
-| **attach ticket** | ~1h, pruned server-side | Mac, in memory |
+## Comparators studied (2026-08-02)
 
-The attach ticket expires for everyone. Upstream does not care, because the phone
-re-mints one whenever it needs to:
+- **LM Studio LM Link**: account-anchored (their hub) over embedded tsnet.
+  Rejected: accounts are what this fork exists to remove. Lesson kept: don't
+  invent a credential lifecycle — reuse one that exists.
+- **Local-AI-Chat "Model Link"**: no ceremony; bearer token via synced iCloud
+  Keychain + endpoint inventory via iCloud KVS; tailnet for transport.
+  Lessons kept: the KVS endpoint-inventory idea (as an *optional module*,
+  §9); the dev-build Keychain access-group trap; the stale-serve self-probe.
+  Rejected as foundation: external distribution cannot assume a shared Apple
+  ID or iCloud at all.
 
-> "`mobile.attach_ticket.create` mints a bearer credential, so it MUST be
-> authorized: a network caller has no attach token yet, so it is routed through
-> the same-account Stack Auth token"
-> — `Sources/Mobile/MobileHostService.swift:1623`
+## Decisions locked by the operator
 
-**The ticket is disposable. The Stack session is the durable thing.**
-
-### Why the fork breaks
-
-- `Packages/iOS/CmuxMobilePairedMac/.../MobilePairedMac.swift:6` —
-  *"Auth tokens are never persisted, only enough to re-mint a fresh attach ticket"*
-  The stored Mac keeps routes, not credentials.
-- Re-minting needs `attach_ticket.create`, authorized by Stack auth. With no
-  account there is nothing to present.
-- `MobileRootAuthGate.shouldReconnectStoredMac` requires `stackAuthenticated`
-  anyway, so the reconnect path is gated shut regardless.
-- `Sources/Mobile/MobileAttachTicketStore.swift` is **in-memory only**
-  (`recordsByAuthToken`), so tickets also do not survive a Mac restart.
-- Even with a credential in hand, the reconnect loop never dials a stored raw
-  Tailscale route — it treats one as a migration hint and fails with
-  `.unsupportedRoute` (`MobileShellComposite.swift:1897–1968`). Route refresh
-  comes from the authenticated account registry, which the no-account path
-  does not have.
-
-Net effect: no durable credential on either side, and no dialable route even if
-there were one.
-
-### Transport scoping (settled by review round 1)
-
-Iroh admission requires a **backend-signed** credential — a pair-grant JWS or an
-endpoint attestation proving a Stack account binding
-(`CmxIrohAdmissionCredential.swift`). The account-free path has neither, so
-**this feature is Tailscale-only by construction.** Consequences the design must
-honor:
-
-- Iroh-admitted connections bypass per-RPC ticket auth entirely
-  (`MobileHostService.swift:1225` — `case .irohAdmission: return nil`). None of
-  the new verbs may be reachable from an Iroh-admitted connection, and none of
-  the new semantics claim to govern Iroh sessions.
-- E2E tests must force the Tailscale transport explicitly, otherwise a test can
-  "pass" through Iroh without exercising any of this.
+1. Core = SSH-style one-time key exchange via QR. Works tailscale-only, no
+   iCloud, no account. Keys local, non-synced.
+2. iCloud KVS/Keychain sync is an optional enhancement layer, never a
+   dependency. **Not in cmux round 1** (iCloud entitlements for the fork need
+   team sign-off).
+3. One protocol, packaged for reuse by both cmux-Mochi and Local-AI-Chat
+   (§10): cmux policy = QR always; Local-AI-Chat policy (later) =
+   KVS-primary, QR-fallback.
 
 ---
 
-## Proposed design (v2)
+## Architecture
 
-Two distinct credentials with distinct types and lifecycles. The QR ticket stays
-exactly what it is today; a new **durable pairing grant** is issued *after* first
-connect, over the already-authorized connection.
+### 1. Device identity
 
-### 1. The QR ticket is unchanged
+Every app instance (phone and Mac) generates, at first need, a static
+**Curve25519 identity** wrapped in a self-signed certificate, stored as a
+`SecIdentity` in the **local (non-synced) Keychain** — `kSecAttrSynchronizable
+= false`, `kSecAttrAccessibleAfterFirstUnlock`. Private keys never leave the
+device, never transit any network or sync fabric, and are never known to the
+other side. Identity is per app instance (bundle id + instance tag), so
+Stable/Nightly/tagged-dev builds on one Mac are distinct pairable devices —
+mirroring how `MobilePairedMac.pairingID` already treats them.
 
-Short-lived (1 h cap as today, `TerminalController+MobileAttachTicket.swift:8`),
-carried in the QR (`CmxPairingQRCode.swift` `k=` field), in-memory only,
-session-scoped. A photographed QR remains a ≤1 h *acquisition* window — though
-a registration within that window escalates durably; see §10 for the honest
-statement of that accepted risk. Old iOS clients see no change at all.
+### 2. Transport security: mutual TLS 1.3 with pinned identities
 
-### 2. Durable pairing grant, issued by registration
+Connections between paired devices run TLS 1.3 over the existing TCP byte
+transport (Network.framework `NWProtocolTLS` /
+`sec_protocol_options_set_verify_block`, client identity via
+`sec_protocol_options_set_local_identity`):
 
-After the phone connects with a **mac-scoped** QR ticket, it calls a new verb:
+- **Phone → Mac**: verification is a **pin match** — the presented leaf's
+  SPKI (public-key) SHA-256 fingerprint must equal the stored pin for this
+  paired Mac. No CA, no chain, no trust store; a self-signed cert is a key
+  carrier, nothing more.
+- **Mac → phone**: mTLS client-certificate required; the client leaf's SPKI
+  fingerprint must be in the Mac's **authorized-devices table** (§4). Unknown
+  fingerprint ⇒ handshake fails before any RPC exists.
 
-- `mobile.pairing.grant.register` — authorized by the live mac-scoped attach
-  ticket. Workspace-pinned tickets are refused (round 1 restriction).
-  - Phone generates and persists, **before** sending: `{registration_id
-    (random), an X25519 keypair (private key in the Keychain), state:
-    pending}`. It sends `registration_id`, the **public key**, and a bounded
-    device label (e.g. "Tim's iPhone 16", ≤64 chars).
-  - Mac generates server-side: `grant_id`, `family_id`, a 32-byte secret `S`
-    (CSPRNG, **throws if `SecRandomCopyBytes` fails** — no UUID fallback for
-    grants), fixed 30-day TTL. No client-supplied TTL/scope/role is honored.
-  - The response carries `S` **sealed to the phone's public key** (HPKE-style:
-    CryptoKit ephemeral X25519 agreement + ChaCha20-Poly1305). The Mac
-    persists the verifier `K = SHA-256(S)`, grant metadata (grant id, family
-    id, device label, issue + expiry dates, pairing scope, client public key),
-    and — per §5a — the **sealed blob itself** as replay material. The Mac
-    never stores raw `S`, not even transiently: sealing happens before the
-    commit, and what is committed is already opaque to everyone but the
-    registering phone.
-  - **Registration recovery survives a Mac restart and needs no QR ticket**:
-    `mobile.pairing.grant.register_recover {registration_id}` returns the
-    stored sealed blob + grant metadata. It is rate-limited, its unknown-id
-    and throttled errors are indistinguishable, and its response is useless to
-    anyone but the holder of the private key — possession of the persisted
-    keypair *is* the authorization, which is exactly what an in-memory QR
-    ticket could never provide across a restart.
-  - Distinct `registration_id`s create distinct grants (that is what multiple
-    phones scanning one QR look like), capped at 4 registrations per QR
-    ticket on top of the global grant quota. Retrying the same
-    `registration_id` never consumes quota twice.
-  - The Mac posts a **user notification** on every successful registration
-    ("iPhone 'Tim's iPhone 16' is now durably paired — manage with
-    `cmux rpc mobile.pairing.grant.list`"), so a covert registration by a QR
-    photographer is at least visible on the Mac it targets (§10).
+Everything — enrollment deposit, RPC, session traffic — rides inside this
+channel. There is **no bearer token on the wire**, so the round-3/4 relay
+attacks (bearer capture, verb/parameter substitution against HMAC proofs)
+have no object: a relay cannot complete either side of the handshake, and TLS
+1.3 binds the channel keys to both certificates by construction — no bespoke
+transcript discipline for us to get wrong.
 
-This is a distinct typed role with its own DTO — **not** a `CmxAttachTicket`
-with a long TTL. Review round 1 established that overloading the ticket type is
-unsafe (no phone identity, no family, QR leakage, old-client confusion).
+*Documented alternative if TLS framing fights the existing wire protocol:*
+a Noise-IK handshake (CryptoKit: Curve25519 ECDH, HKDF-SHA256, ChaChaPoly,
+hashed transcript with domain separation) with the same pin/table semantics.
+TLS is preferred because Apple implements it; hand-rolled Noise re-opens the
+class of round-4 bugs. Reviewer: treat a switch to Noise as needing its own
+scrutiny.
 
-### 3. The grant is mint-only, and children are server-derived
+### 3. Pairing (QR, once per device pair)
 
-The phone never sends the raw secret `S` over the wire. Grant-authorized verbs
-are authorized by the challenge-response proof of §7a, which demonstrates
-possession of `K = SHA-256(S)` without disclosing it. Exactly two verbs accept
-a grant proof, both new, both network-path:
+The QR is re-purposed from credential-carrier to **fingerprint-carrier**:
 
-- `mobile.pairing.grant.mint_session` — issues an ordinary short-lived session
-  ticket: TTL fixed server-side at 1 h, **mac scope copied from the grant
-  record**, no mint capability, in-memory only, same
-  `MobileAttachTicketStore` record shape as today. The handler derives
-  everything from the authenticated grant; it ignores `ttl_seconds`, `scope`,
-  and route/target parameters (`TerminalController+MobileAttachTicket.swift`'s
-  parameter-trusting path is never reachable from a grant).
-- `mobile.pairing.grant.rotate` — idempotent rotation, below.
+- QR payload: routes (as today) + the Mac's SPKI fingerprint + a short-lived
+  **one-time enrollment ticket** (existing ticket machinery, 10-min TTL,
+  single-use, in-memory — its only power is authorizing one enrollment).
+- Phone scans → dials the route → TLS with the Mac's pin from the QR (server
+  authenticated from the first byte — no TOFU: the QR *is* the out-of-band
+  fingerprint channel) → inside the channel calls
+  `mobile.pairing.device.enroll {ticket, device_label}`. The phone's own
+  certificate arrived as the mTLS client identity; enrollment binds label +
+  fingerprint into the authorized-devices table. Mac fires a user
+  notification naming the label.
+- **Idempotent by construction**: re-enrolling an already-known fingerprint
+  updates the label/last-seen and consumes nothing. A lost response costs one
+  QR re-scan of a code still on screen — no replay material, no recovery
+  verbs, nothing orphaned. (This retires v3–v4's §5a apparatus entirely.)
+- A photographed QR ⇒ the thief can enroll **their own** device within the
+  ticket's ≤10-min single-use window, visible via the enrollment
+  notification and `device.list`. Materially better than v1 (30-day bearer in
+  the QR) and v4 (1-h window, silent until first mint): shorter window,
+  single-use, named, notified.
+- The enrollment verb exists **only inside a pinned-TLS channel**; it is
+  absent from the plain network dispatch and from Iroh-admitted connections.
 
-A grant authorizes **nothing else**: every other method returns
-`scopedTicketError`, enforced in the same single-lookup authorization path as
-today (`MobileHostService+TicketAuthorization.swift`). Session tickets minted
-from a grant carry no mint grant, so there is no grandchild chain.
+### 4. Authorized-devices table (the Mac's `authorized_keys`)
 
-### 4. Idempotent rotation (lost-response-safe)
+Persistent store, repository-actor owned, loaded before the listener reports
+ready:
 
-Naive rotate-and-invalidate strands the phone when the response is lost or iOS
-crashes before its Keychain write. Protocol instead:
+- Row: `{spki_fingerprint, device_label, created_at, last_seen_at}`.
+- Contains **no secrets** — fingerprints and labels. Confidentiality is not
+  required; **integrity is** (a writer can authorize themselves), so it lives
+  in the local Keychain (or a root-owned-perms file; Keychain preferred, it's
+  already imported). Versioned envelope `{version: 1, devices: []}`; corrupt
+  or unknown-version ⇒ treated as empty, loudly logged, every phone re-pairs.
+- Quotas: ≤16 devices; enrollment throttled (1/min); one enrollment per
+  ticket.
+- The phone's mirror: per paired Mac (`pairingID`), store the Mac's SPKI pin
+  + routes + label in the local Keychain. `MobilePairedMac`'s "auth tokens
+  are never persisted" doc-comment gets rewritten: no *tokens* are persisted;
+  a public-key pin is.
 
-1. Phone persists `{rotation_id (random), a fresh X25519 keypair, state:
-   pending}` **before** sending `rotate {rotation_id, client_pubkey}`.
-2. Mac, atomically within the store mutation: revalidate the grant, mint the
-   successor, seal it to `client_pubkey`, persist `parent_verifier +
-   rotation_id → sealed successor` in one commit — **the sealed replay
-   material (§5a) is what makes the commit survive a Mac restart.**
-   Persistence failure leaves the parent untouched and returns an error.
-3. **Retrying the same `rotation_id` returns the identical raw successor**,
-   even across a Mac restart between commit and retry (that is precisely what
-   §5a exists for). A spent parent is otherwise unusable (mint_session and
-   fresh rotations fail).
-4. Phone atomically replaces its Keychain record on response, then clears the
-   pending marker.
-5. At most one live grant per family. Concurrent rotations with different
-   `rotation_id`s: first commit wins; the loser gets the committed successor
-   replay only if it presents the winning `rotation_id`, else an error that
-   tells the phone to retry with its stored pending id.
+### 5. Connection admission
 
-Rotation cadence: on each successful connect, if the grant is older than 24 h.
-No background refresh machinery (BGTask unreliability) — the contract is "open
-the app at least once every 30 days or re-scan."
+A completed mTLS handshake with an authorized client fingerprint admits the
+connection as a new authorization context — sibling of the existing pattern:
 
-**Absolute lifetime: none — intentionally.** A grant in active use renews
-indefinitely, like any refresh token. This is a dogfood fork whose threat model
-assumes tailnet membership is controlled; documented here so it is a decision,
-not an accident.
-
-### 5a. Replay material: how idempotency survives a restart
-
-A verifier (`K`) cannot reproduce the raw secret it verifies, so an
-acknowledged-response protocol needs **recoverable replay material** for the
-window between commit and acknowledgment. The client keypair (§2) makes this
-clean:
-
-- Every secret-issuing request (`register`, `rotate`) carries a fresh client
-  X25519 public key. The Mac seals the new secret to that key **before** the
-  commit; the committed replay material is the **sealed blob**, never raw
-  `S`. The Mac holds nothing a thief of its Keychain could use to *become*
-  the phone's grant — at rest there are only verifiers and blobs decryptable
-  solely by the phone.
-- Recovery (`register_recover` / `rotate_recover`, keyed by
-  `registration_id`/`rotation_id`) returns the sealed blob. It requires no
-  other live credential — after a Mac restart, possession of the persisted
-  client private key is what turns the blob back into a grant, and without it
-  the response is noise. Rate-limited; unknown-id and throttled errors
-  indistinguishable.
-- The replay material is **erased at first use** of the new grant (its first
-  successful challenge-response proof is possession evidence — the phone
-  provably received it) or after a 48-hour retention window, whichever comes
-  first. After erasure, the record is verifier-only and the recovery path for
-  that id returns a terminal "re-pair required" error instead of a replay.
-- Pruning of replay material happens on load and on every mutation, same as
-  expiry pruning.
-
-### 5. Persistence on the Mac
-
-- A dedicated repository (actor) owning grant records; the existing
-  `MobileAttachTicketStore` stays in-memory for session tickets. **No Keychain
-  I/O inside the existing `NSLock`** — the store's lock guards memory, the
-  repository serializes disk.
-- Storage: macOS Keychain, one generic-password item holding the serialized
-  grant table. Service name namespaced per bundle id **and instance tag**
-  (Stable/Nightly/tagged dev builds share a physical Mac; two tagged apps must
-  never load each other's grants — `MobileHostIdentity.swift`).
-- Schema: versioned envelope `{version: 1, grants: [...]}`. Unknown version or
-  corrupt payload → treated as empty (all phones re-pair), logged loudly, never
-  a crash. Expired grants pruned on load and on every mutation.
-- Ordering: persist first, then publish to memory / return success.
-- Loaded before the network listener reports ready (initialization barrier), so
-  a phone can't race a cold Mac into "unknown grant".
-- Quotas: ≤16 grants per Mac; ≤4 live session tickets per family (oldest
-  evicted); rotation throttled to 1/min per family; global session-record cap
-  as today via TTL pruning.
+- `MobileHostConnectionAuthorizationContext` gains
+  `.pairedDevice(fingerprint, label)` alongside `.stackBearer` /
+  `.irohAdmission` (`MobileHostTransportAuthorization.swift:14`). Like Iroh
+  admission, per-RPC bearer auth is bypassed; scope is mac-wide (pairing is a
+  mac-scope act; workspace-scoped *sharing* keeps today's short-lived tickets
+  unchanged).
+- The connection registry indexes paired-device connections by fingerprint,
+  exactly as it does Iroh bindings by `bindingID`
+  (`MobileHostConnectionRegistry`), so revocation can close them.
 
 ### 6. Revocation
 
-- New verbs `mobile.pairing.grant.list` / `mobile.pairing.grant.revoke`,
-  exposed **only over the local control socket** (`TerminalController` v2 path,
-  same placement as QR minting). They must not appear in
-  `mobileHostHandleRPC`'s network dispatch — and therefore are unreachable from
-  Iroh-admitted or ticket-authorized network callers. A test asserts exactly
-  this.
-- `revoke` kills the **family**: the grant, every session ticket it minted
-  (session records gain a `family_id`), and every live connection bound to the
-  family. The connection registry currently tags ticket-authorized TCP
-  connections `.stackBearer` (`MobileHostService.swift:1123`); it gains a
-  family binding so family revocation can close them. Until a connection's
-  family is identifiable, revoke falls back to closing all `.stackBearer`
-  connections — crude but fail-safe.
-- Rotation auto-invalidates the parent (modulo the committed-replay window).
-- Round 1 ships CLI-grade revocation (`cmux rpc mobile.pairing.grant.list`,
-  `... .revoke '{"grant_id":"…"}'`). A pairing-UI device list is future work —
-  the Mac UI currently has no per-phone surface at all, only connection counts,
-  so the earlier claim that "unpairing in the Mac UI purges records" is
-  withdrawn.
+- `mobile.pairing.device.list` / `mobile.pairing.device.revoke
+  {spki_fingerprint}` — **local control socket only** (same placement rule,
+  and the same explicit absent-from-network-dispatch test, as v2–v4
+  demanded). CLI round 1; UI later.
+- Revoke deletes the row and closes that fingerprint's live connections via
+  the registry. No families, no minted children to chase — one row, one
+  device, done.
+- No rotation. Key lifetime = until revoked, exactly like `authorized_keys`.
+  Stated as an intentional decision (SSH's own model; dogfood threat model
+  with controlled tailnet membership). Key hygiene rotation is possible later
+  (enroll new, revoke old) with zero protocol change.
 
-### 7. Phone-side storage and reconnect
+### 7. Reconnect flow and gating
 
-- Grant stored in the iOS Keychain keyed by pairing id
-  (`MobilePairedMac.pairingID` = macDeviceID + instanceTag) within the local
-  scope. `kSecAttrAccessibleAfterFirstUnlock` so a background relaunch can
-  read it.
-- `shouldReconnectStoredMac` (`MobileRootAuthGate.swift:84`) does **not**
-  simply drop `stackAuthenticated`; it gains an explicit
-  `hasUsableDurableCredential` input. Missing, expired, corrupt, or
-  Keychain-inaccessible grant state ⇒ `false` ⇒ clean fall-through to the
-  pairing sheet, never a spin.
-- Reconnect flow, account-free branch: dial last-known Tailscale route in
-  `.attachTicket` transport mode using a synthetic probe ticket — the exact
-  mechanism today's manual-host flow uses
-  (`MobileShellComposite+ManualAttachTicket.swift:102`,
-  `syntheticManualHostTicket`), which is what the Tailscale transport factory
-  accepts (`CmxNetworkByteTransportFactory.swift:51`) — then run the §7a
-  handshake → `mint_session` → attach with the fresh session ticket →
-  opportunistic rotate (§4). Note the unauthenticated `mobile.host.status`
-  probe deliberately withholds identity (`MobileHostService.swift:320`) and a
-  self-reported identity would authenticate nothing anyway; §7a is the
-  authentication.
+- `shouldReconnectStoredMac` (`MobileRootAuthGate.swift:84`) gains
+  `hasPairedDeviceIdentity` (pin + own identity present and readable) rather
+  than dropping `stackAuthenticated`. Missing/corrupt/inaccessible Keychain
+  state ⇒ clean fall-through to the pairing sheet.
+- Flow: dial stored route → mTLS (§2) → admitted → resubscribe. No minting,
+  no proofs, no credential exchange — the handshake is the authentication.
+- Handshake failure against a live listener (wrong pin — impostor or
+  reinstalled Mac) is terminal for that route: fall to re-scan prompt, never
+  loop. Codex round-4's "recurring unattended relay opportunities" concern is
+  resolved structurally: an impostor cannot complete the handshake, so
+  auto-redial risks availability only, never credential or session exposure.
 
-### 7a. Grant reconnect handshake (mutual challenge-response)
+### 8. Endpoint discovery (account-free, no KVS)
 
-The raw grant must never be disclosed to an impostor squatting on the Mac's
-port. Neither side trusts the transport (Network.framework cannot prove the
-packet tunnel is Tailscale — `CmxByteTransportRequest.swift:10`), so
-authentication is cryptographic, both ways, before anything grant-derived is
-sent:
+Carried from v4, unchanged in substance:
 
-1. Phone → Mac: `mobile.pairing.grant.challenge {grant_id, phone_nonce}`.
-   Unauthenticated verb, rate-limited; unknown `grant_id` and throttled
-   requests return one indistinguishable generic error (no existence oracle).
-2. Mac → phone: `{mac_nonce, mac_proof = HMAC-SHA256(K, "mac-proof" ‖
-   phone_nonce ‖ mac_nonce)}`. The Mac proves possession of `K` without
-   revealing it. An impostor cannot produce this; the phone verifies (it
-   derives `K` from `S`) and **aborts before presenting anything** on
-   mismatch — falling to the re-scan prompt, never a hang.
-3. Phone → Mac: the grant-authorized call (`mint_session` or `rotate`)
-   carrying `phone_proof = HMAC-SHA256(K, "phone-proof" ‖ mac_nonce ‖
-   phone_nonce)`. Proofs are bound to both single-use nonces (small in-memory
-   nonce table, short expiry), so neither proof replays.
-4. Every secret a response carries — a rotation/registration successor, and
-   the **`mint_session` session ticket bearer too** — is sealed to a fresh
-   client X25519 public key sent with the request (§5a mechanism, uniformly).
-   A passive on-path observer inside the tailnet learns nothing usable.
+- The Mac persists its successfully-bound port per instance tag and prefers
+  rebinding it; Tailscale node IPs are stable. Steady state: stored route
+  stays valid across Mac restarts.
+- Phone tries stored route, then the instance's preferred port. Both failing
+  or pin-mismatching ⇒ "scan to reconnect". No port scans, no broadcast.
+- Accepted residual: a port stolen during the restart window costs one
+  re-scan (availability, not security — §7).
+- E2E covers the port-steal-and-restart case proving the failure is the
+  re-scan prompt, not a hang.
 
-**What the handshake does and does not claim (round-3 finding, scoped
-honestly).** The proofs authenticate endpoints and the sealing defeats passive
-capture, but an *active relay* — realistically, an unprivileged process on the
-Mac squatting the preferred port and forwarding to the real listener — sits
-inside the phone's session once established: subsequent requests carry the
-session bearer as plaintext `attach_token` JSON
-(`MobileCoreRPCClient.swift:396`), so a relay can capture **session-tier**
-credentials (≤1 h, revocable with the family). This is *exactly* the exposure
-today's QR flow already has — a port-squatter during pairing captures the QR
-ticket bearer the same way — so this feature leaves session-tier relay risk
-unchanged while guaranteeing one new thing: **the durable credential never
-transits in a capturable form** (`S` only ever moves sealed; proofs are
-nonce-bound HMACs). Accepted for round 1 and stated in §10. The upgrade path
-if the threat model hardens: pin a Mac TLS identity at registration and run
-the RPC channel over it, or switch grant-minted sessions from bearer tokens to
-per-request HMAC under a sealed session key — both deliberately out of scope
-now.
+### 9. Optional enhancement module: shared-KVS discovery (NOT round 1)
 
-Also accepted and documented: an attacker who reads the Mac's Keychain holds
-`K` and can impersonate either side of this handshake — but that attacker owns
-the Mac already. Raw `S` never rests on the Mac at all (§5a stores only sealed
-blobs).
+Design hook only, so the package boundary is right from day one: a
+`DeviceLinkDirectory` protocol — "publish my current endpoints", "observe
+peers' endpoints/fingerprints" — with the core consuming it if present.
+iCloud KVS implementation (Local-AI-Chat-style: non-secret endpoint + pubkey
+inventory under the shared Apple ID, enabling zero-QR enrollment among
+same-account devices) ships later: for cmux only after the team clears iCloud
+entitlements for the fork; for Local-AI-Chat as its primary path with QR
+fallback. Nothing in §§1–8 may depend on it.
 
-### 8. Endpoint discovery without an account
+### 10. Packaging for reuse
 
-The account path refreshes routes from cloud backup; account-free has no
-authority to ask. Round-1 answer, explicitly modest:
+The protocol core ships as a dependency-light SwiftPM package (working name
+`DeviceLinkKit`) under `Packages/Shared/`: identity store, pin store,
+authorized-devices repository, TLS parameter construction + verify blocks,
+QR payload coding, enrollment DTOs, `DeviceLinkDirectory` hook. No cmux
+types, transport injected as a byte stream, platform = iOS + macOS.
+cmux-Mochi integrates it round 1; Local-AI-Chat can adopt it to replace its
+bearer-token layer later (out of scope here). Package API gets DocC and its
+own test target per repo architecture rules.
 
-- The Mac **persists the port it successfully bound** (per instance tag) and
-  prefers rebinding it on relaunch, falling back to ephemeral only when taken
-  (then persisting the new one). Tailscale node IPs are already stable, so in
-  steady state the stored route stays valid across Mac restarts.
-- The phone tries the stored route; on identity mismatch or timeout it also
-  probes the instance's preferred port. Both failing ⇒ surface "scan to
-  reconnect". No port scanning, no broadcast discovery in round 1.
-- Residual gap, accepted and documented: if another process steals the
-  preferred port during the exact restart window, the phone needs one manual
-  re-scan. E2E covers the steal-and-restart case to prove the failure is the
-  documented one (re-scan prompt), not a hang.
+### 11. Scope, transports, and carried constraints (binding, from rounds 1–4)
 
-### 9. Scope interaction with sign-in (corrected)
-
-The earlier claim that "signing in changes nothing" was wrong. The code chooses
-the Stack user over the local scope and explicitly invalidates a local scope
-after sign-in (`MobileShellComposite+Scope.swift:16,61`). **Adopted behavior:
-local pairings disappear while signed in, reappear on sign-out.** Grants keep
-working after sign-out because they live under the local scope key, untouched
-by account sessions. Tested: no-account pair → sign in → relaunch → sign out →
-reconnect without re-scan. A later "claim this Mac into my account" migration
-is out of scope.
-
-### 10. Threat model, stated honestly
-
-A stolen grant is **not** "nothing but minting": minting yields a mac-scoped
-session ticket, i.e. full terminal access on that Mac — same power as today's
-stolen 1 h ticket, for longer. Bounds: usable only from inside the tailnet;
-the Mac stores only verifiers and phone-sealed blobs (raw `S` never rests
-there); revocable per family; rotation means a thief racing the owner locks
-one of them out, which is at least *visible* (the owner's next rotate fails
-against an unknown grant → the phone surfaces "re-pair needed" and the Mac
-logs a security event).
-
-**Active-relay exposure is session-tier only and pre-existing** (§7a): a
-port-squatting relay can capture a ≤1 h session bearer — as it can during
-today's QR pairing — but never the durable grant. Accepted; upgrade paths
-noted in §7a.
-
-**QR escalation, stated honestly (round-2 finding):** the QR's *acquisition*
-window is ≤1 h, but a photographer who registers within that window obtains an
-indefinitely renewable family — the compromise itself is not one-hour-bounded.
-This is **accepted** for this dogfood fork, with mitigations rather than
-prevention: every registration fires a visible Mac notification naming the
-device label (§2), `grant.list` shows all families with labels and issue
-dates, and `grant.revoke` kills one family without disturbing the others.
-Prevention (per-registration local approval on the Mac) is deliberately
-deferred — it reintroduces the tap-on-Mac friction this feature exists to
-remove — and is the first thing to revisit if the threat model hardens.
+- **Tailscale-only**; Iroh admission is backend-signed and remains untouched.
+  New verbs absent from Iroh-admitted and plain-TCP dispatch; E2E forces
+  Tailscale.
+- **Sign-in semantics**: local pairings hidden while signed in, reappear on
+  sign-out (matches `MobileShellComposite+Scope.swift:16,61`); tested.
+- Threat wording honest: an enrolled thief (photographed QR, §3 window) has
+  full mac-scoped terminal access until revoked; tailnet gating and
+  enrollment notifications bound it. An attacker reading the Mac's Keychain
+  owns the Mac already (and there are no secrets in the table anyway).
+- Node/app granularity: identity is per app instance, not per human.
+- Stale doc-comments updated with the code (`MobilePairedMac.swift:4`,
+  `MobileAttachTicketStore` header, `CmxPairingQRCode` comment).
 
 ---
 
-## Questions from v1 — resolved
+## Test plan
 
-| # | Question | Resolution |
-|---|---|---|
-| 1 | Self-extension | Grants rotate (idempotent, §4); session children are strictly weaker (1 h, no mint). No grandchild chains. |
-| 2 | Revocation | Family-wide revoke via local-socket-only verbs; CLI round 1, UI later (§6). |
-| 3 | Storage | Mac Keychain digest-at-rest via repository actor (§5); phone Keychain for the raw grant (§7). |
-| 4 | Blast radius | Mint-only grant, server-derived children (§3); honest threat wording (§10). |
-| 5 | Scope on sign-in | Local pairings hidden while signed in — matches code, now documented + tested (§9). |
-| 6 | Expiry while closed | 30-day TTL, rotate-on-connect after 24 h, no background refresh (§4). |
+**Unit — identity, enrollment, admission**
+- enrollment: valid ticket + new fingerprint ⇒ row + notification; reused
+  ticket ⇒ refused; expired ticket ⇒ refused; re-enrollment of known
+  fingerprint ⇒ idempotent update, no quota consumption; label bounds; quota
+  and throttle enforcement
+- enrollment verb unreachable outside a pinned-TLS channel; absent from
+  network/Iroh dispatch (explicit test, as is `list`/`revoke` absence)
+- admission: unknown client fingerprint ⇒ handshake failure, no connection
+  registry entry; authorized fingerprint ⇒ `.pairedDevice` context, mac-wide
+  scope; workspace-share tickets still scope independently
+- pin verification: wrong server key ⇒ phone aborts in handshake, falls to
+  re-scan state; no retry loop
+- revocation: row removed ⇒ live connections for that fingerprint closed
+  (registry test), future handshakes fail; other devices unaffected
+- store: round-trips restart; corrupt/unknown version ⇒ empty + loud log +
+  re-pair path; tagged-app isolation (per-instance identity and table —
+  import Local-AI-Chat's access-group lesson: assert two bundle
+  ids/instance tags cannot read each other's identities)
+- gating truth table for `hasPairedDeviceIdentity` incl. inaccessible
+  Keychain
+- scope transitions: no-account pair → sign in → relaunch → sign out →
+  reconnect, Mac present in both scopes
 
----
+**E2E on hardware (force Tailscale; release build per the `#if !DEBUG` trap)**
+1. Pair phone → M5, no account. Connected.
+2. Force-quit, cold launch: reconnect, **no scan**.
+3. Restart cmux on the Mac: phone reconnects (sticky port).
+4. Port-steal during restart: phone lands on the re-scan prompt, no hang.
+5. Pair M4 too; both Macs connected (regression: `d8f17712c4`); screenshot
+   blue + green workspaces in one list.
+6. Second phone enrolls off a fresh QR: distinct row, distinct label,
+   notification fires; revoking it doesn't disturb phone 1.
+7. > 1 h idle: connection persists or re-establishes with no user action (no
+   ticket expiry in the loop anymore — verify nothing else times it out).
+8. Revoke phone 1 from the Mac CLI mid-session: connection closes, phone
+   falls to pairing sheet.
+9. Impostor test: wrong listener on the stored port (self-signed cert with a
+   different key) ⇒ phone shows re-scan prompt, sends no RPC.
+10. Old-client sanity: a build predating DeviceLinkKit pairs via today's QR
+    ticket flow exactly as before.
 
-## Test plan (must all pass before it ships)
-
-**Unit — credential lifecycle**
-- grant mints a session ticket; expired/revoked/spent grant does not
-- minted session ticket: 1 h TTL, grant's mac scope, no mint capability; a
-  session ticket presented to `mint_session`/`rotate` fails
-- `register` refused for workspace-pinned tickets, Iroh-admitted connections,
-  and unauthenticated callers; label length enforced
-- scope/TTL/route/role parameter overrides are ignored on every grant verb
-- rotation: lost response then retry with same `rotation_id` returns the same
-  successor; different `rotation_id` against a spent parent fails; concurrent
-  rotations leave exactly one live grant; persistence failure leaves the
-  parent valid
-- **commit → lose response → restart Mac (reload from Keychain) →
-  `rotate_recover`/`register_recover` with the same id → identical sealed
-  successor, decryptable by the persisted client private key, with no QR
-  ticket or parent credential presented** (§5a)
-- replay material: erased at successor's first use and at the 48 h window;
-  post-erasure recovery returns the terminal re-pair error, not a replay
-- registration idempotency: retried `registration_id` returns the same grant
-  and never consumes quota twice; per-QR-ticket registration cap enforced
-- sealing: raw `S` appears nowhere in the Mac's store or on the wire (assert
-  on the serialized table and a wire capture); a blob sealed to one keypair
-  does not decrypt with another; `mint_session`'s bearer is sealed to the
-  request's client pubkey
-- handshake (§7a): phone aborts on bad/missing `mac_proof` before sending
-  anything grant-derived (spoofed port-owner test); nonces are single-use
-  (replayed proofs fail); unknown `grant_id`/`registration_id` and
-  rate-limited responses are indistinguishable
-- phone crash between response and Keychain write: pending marker + retry
-  recovers
-- CSPRNG failure ⇒ grant creation throws (no UUID fallback)
-
-**Unit — persistence and store**
-- grant table round-trips across a simulated Mac restart; session tickets do not
-- corrupt / unknown-version payload ⇒ empty table, no crash
-- tagged-app namespace isolation: two service names never read each other
-- quotas: grant cap, per-family session cap, rotation throttle
-- family revoke kills grant + minted sessions + bound connections;
-  `.stackBearer` fallback path covered
-- `list`/`revoke` absent from network dispatch (explicit test), present on the
-  control socket
-- initialization barrier: no "unknown grant" window on cold start
-
-**Unit — phone gating and scope**
-- `shouldReconnectStoredMac` with `hasUsableDurableCredential` truth table,
-  including corrupt/inaccessible Keychain ⇒ pairing sheet
-- local → signed-in → local transitions (§9), including a Mac present in both
-  scopes
-- signing in cannot read the local scope's grant, nor the reverse
-
-**E2E on hardware — the point of the exercise** (force Tailscale transport)
-1. Pair the phone to the **M5**, no account. Confirm connected.
-2. **Force-quit the app. Cold launch.** Must reconnect with **no scan**.
-3. **Restart cmux on the Mac.** Phone must reconnect once the Mac is back
-   (stable-port rebind, §8).
-4. Port-steal case: occupy the preferred port, restart cmux (ephemeral
-   fallback), confirm the phone surfaces the re-scan prompt rather than
-   hanging.
-5. Pair the **M4** as well. Both Macs must stay connected — regression guard
-   for the multi-Mac scope fix (`d8f17712c4`).
-6. Screenshot showing **both** Macs' workspaces in one list, blue and green.
-7. Two phones scan one QR: both register, distinct grants/labels, rotating one
-   never breaks the other; each registration fires the Mac notification.
-8. Leave it > 1 hour so the session ticket lapses; confirm the grant silently
-   mints a new one with no user action.
-9. Revoke the grant family from the Mac CLI mid-session: connection closes,
-   phone falls to the pairing sheet.
-10. Old-client sanity: a build predating the grant verbs pairs and runs
-    exactly as today.
-
-**Suites**: not just the 606 `CmuxMobileShell` tests — also host
-authorization/store, MobileRPC, MobileTransport, MobileWorkspace,
-control-socket, and Iroh suites. Regression tests follow the repo's two-commit
-red/green policy.
-
-**Release**
-- Cut a nightly, install on M4 and M5, and repeat the E2E list against the
-  **release** build — the interface pinning is `#if !DEBUG`, so DEBUG runs do
-  not exercise it.
+**Suites**: CmuxMobileShell (606) + host authorization/store + MobileRPC +
+MobileTransport + MobileWorkspace + control-socket + Iroh + new DeviceLinkKit
+target. Two-commit red/green policy for regression tests.
 
 ### Test tooling that already works (do not rediscover)
 
@@ -488,35 +299,24 @@ xcrun devicectl device copy from --device <id> --domain-type appDataContainer \
 
 ### Verification traps paid for already
 
-- **`lsof` cannot see these connections.** Tailscale's userspace networking means
-  accepted sockets are not attributed to the app's pid. Use
-  `netstat -an | grep <port>`. This cost a full debugging cycle.
-- **`strings` in the binary does not prove a string is shown.** `L10n.string`
-  resolves the `.xcstrings` catalog first; the `defaultValue` is a fallback.
-  Edit the catalog too.
-- **The Mac's pairing port changes on every launch** when another cmux instance
-  holds the preferred port (ephemeral fallback). Always re-mint; never reuse a
-  port from a previous run. (§8 makes the port sticky for account-free hosts —
-  after that lands, the trap softens but the steal case remains.)
-- **`sync.subscribe_ok` / `liveness probe_ok` do NOT prove a Mac connection.**
-  They are emitted by local sync setup regardless. Confirm on the Mac side.
-- **Never open a cmux session or dev build in `/`** — it walks the filesystem and
-  triggers macOS TCC prompts.
-
-### Stale contracts to update alongside the code
-
-- `MobilePairedMac.swift:4` ("Auth tokens are never persisted") — grants are
-  persisted on the phone now; reword.
-- `MobileAttachTicketStore.swift` header comments asserting tickets are the
-  only credential.
-- `CmxPairingQRCode.swift` "keep TTLs short" comment — still true, now
-  load-bearing; reference this design.
+- `lsof` cannot see these connections (userspace Tailscale) — use
+  `netstat -an | grep <port>`.
+- `strings` in the binary does not prove a string is shown — edit the
+  `.xcstrings` catalog too.
+- The pairing port changes when another instance holds the preferred port —
+  §8 makes it sticky; the steal case remains and is an E2E case.
+- `sync.subscribe_ok` / `liveness probe_ok` do NOT prove a Mac connection —
+  confirm Mac-side.
+- Never open a cmux session or dev build in `/`.
+- (New, from Local-AI-Chat) a stale advertised endpoint can 502 silently for
+  weeks — the Mac self-probes its advertised route and surfaces failure.
 
 ---
 
 ## Definition of done
 
-- Cold launch reconnects with no scan, on the **release** nightly, on hardware.
-- Both M4 and M5 connected simultaneously, screenshotted.
-- Codex has reviewed the design (this doc) **and** the implementation diff.
-- Full suite list above green, red/green regression commits included.
+- Cold launch reconnects with no scan, on the **release** nightly, on
+  hardware; M4 + M5 simultaneously, screenshotted.
+- DeviceLinkKit exists as a package with its own tests and DocC.
+- Codex has approved this design and reviewed the implementation diff.
+- Full suite list green; red/green regression commits included.

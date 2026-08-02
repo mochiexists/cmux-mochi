@@ -384,3 +384,21 @@ rounds 1-4 findings remain binding constraints on whatever survives
 semantics, Iroh exclusion, honest threat statements).
 
 ---
+
+## v5 pivot - operator-directed architecture change
+**Timestamp:** 2026-08-02T09:34:33Z
+
+Operator decisions (2026-08-02): SSH-style QR key exchange is the core
+(tailscale-only, no iCloud dependency); iCloud KVS demoted to optional module
+(not cmux round 1, pending team sign-off on fork entitlements); one shared
+package (DeviceLinkKit) targeted at both cmux-Mochi and Local-AI-Chat; cmux
+policy QR-always, Local-AI-Chat policy KVS-primary/QR-fallback later.
+
+v5 replaces server-issued grants with per-device static keypairs + mutual
+TLS 1.3 pinning (Apple-implemented; Noise-IK documented as the fallback).
+No bearer on the wire, no rotation, no replay material, no recovery verbs.
+Rounds 1-4 carried constraints preserved in SS11. Comparative investigation
+(LM Link, Local-AI-Chat Model Link) recorded in the design's Comparators
+section.
+
+---
