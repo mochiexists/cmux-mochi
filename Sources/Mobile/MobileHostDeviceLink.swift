@@ -113,9 +113,13 @@ final class MobileHostDeviceLink {
     }
 
     /// Mints an enrollment ticket for a pairing QR.
-    func issueEnrollmentTicket() async throws -> EnrollmentTicket {
+    /// - Parameter lifetime: How long the code stays scannable. Short by
+    ///   default: the window is the whole exposure a photographed QR creates.
+    func issueEnrollmentTicket(
+        lifetime: TimeInterval = EnrollmentTicket.defaultLifetime
+    ) async throws -> EnrollmentTicket {
         await prepare()
-        return try await coordinator.issueEnrollmentTicket()
+        return try await coordinator.issueEnrollmentTicket(lifetime: lifetime)
     }
 
     /// Enrolls a device that presented a valid ticket over a pinned channel.

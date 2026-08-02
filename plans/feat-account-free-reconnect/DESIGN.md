@@ -303,6 +303,34 @@ Sources preserved: `spike0a-identity.swift`, `spike0b-mtls.swift`.
   cert validation under TLS 1.3 → §7's round-trip rule. Caught here rather
   than in production.
 
+### Implementation log (2026-08-02)
+
+- **Phase 1 ✅ shipped.** `Packages/Shared/DeviceLinkKit`, 42 tests green.
+  Deviation from plan, deliberately: `swift-certificates` was **dropped**. Its
+  X509 product vendors its own Crypto, which collided with the app's in the
+  `cmux-unit` scheme (missing `Crypto_*_PackageProduct.framework` at link
+  time). DeviceLink needs exactly one certificate profile, so the DER is
+  written in-package (`DER.swift`, `SelfSignedCertificate.swift`) and the
+  package now has **no external dependencies** — which also makes it easier to
+  hand upstream. Correctness is not asserted by inspection: the loopback TLS
+  tests only pass if Apple's stack parses these certificates and completes
+  mutual authentication with them.
+  Bug caught by its own test: concurrent redemptions of one enrollment ticket
+  all succeeded, because actors suspend at `await` and persistence sat inside
+  the critical section. Fixed by reserving the ticket before the first
+  suspension point — exactly the round-5 atomicity blocker, found by a test
+  rather than by a user.
+- **Phase 2 ✅ shipped.** Listener is TLS-only; admission derives from the
+  completed handshake (`.pairedDevice` / `.enrollmentCandidate`); enroll verb
+  on the network path, list/revoke on the control socket only (guarded by a
+  test that reads the shipping dispatch). 6 host-boundary tests green in the
+  app target.
+- **Environment note:** `xcodebuild` on this macOS 26 machine needs
+  `CMUX_SKIP_ZIG_BUILD=1` — zig 0.15.2 cannot link the Ghostty CLI helper here
+  (the repo documents the same wall in `scripts/build-sign-upload.sh`, and CI
+  passes the same flag). Unrelated to DeviceLink; the baseline fails
+  identically.
+
 **Phase 1 — DeviceLinkKit package:** identity generation/store, fingerprint
 canonicalization, pin store, authorized-devices repository actor, enrollment
 ticket type + coordinator, TLS parameter factories, QR payload coder,
