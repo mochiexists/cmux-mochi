@@ -96,11 +96,17 @@ public actor CmxNetworkByteTransport: CmxByteTransport {
     private var connectTimeoutTimer: (any DispatchSourceTimer)?
     private var remoteDidClose = false
 
+    /// - Parameter tlsOptions: When present, the connection is established over
+    ///   TLS with these options. Fork (cmux Mochi): DeviceLink supplies mutual
+    ///   TLS options here (client identity plus the Mac's pinned key), which is
+    ///   why a `nil` value must never reach a pairing route — see
+    ///   ``CmxNetworkByteTransportFactory``.
     public init(
         host: String,
         port: Int,
         maximumReceiveLength: Int = CmxNetworkByteTransport.defaultMaximumReceiveLength,
-        connectTimeoutNanoseconds: UInt64 = CmxNetworkByteTransport.defaultConnectTimeoutNanoseconds
+        connectTimeoutNanoseconds: UInt64 = CmxNetworkByteTransport.defaultConnectTimeoutNanoseconds,
+        tlsOptions: NWProtocolTLS.Options? = nil
     ) throws {
         let normalizedHost = host.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalizedHost.isEmpty else {
@@ -118,7 +124,7 @@ public actor CmxNetworkByteTransport: CmxByteTransport {
 
         let tcpOptions = NWProtocolTCP.Options()
         tcpOptions.noDelay = true
-        let parameters = NWParameters(tls: nil, tcp: tcpOptions)
+        let parameters = NWParameters(tls: tlsOptions, tcp: tcpOptions)
         connection = NWConnection(
             host: NWEndpoint.Host(normalizedHost),
             port: nwPort,

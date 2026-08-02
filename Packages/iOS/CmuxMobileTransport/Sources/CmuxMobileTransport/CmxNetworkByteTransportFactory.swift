@@ -1,19 +1,30 @@
 public import CMUXMobileCore
+public import Network
 
 /// Builds Network.framework TCP transports for host/port routes.
 public struct CmxNetworkByteTransportFactory: CmxRouteAwareByteTransportFactory {
     public var supportedKinds: [CmxAttachTransportKind]
     public var maximumReceiveLength: Int
     public var connectTimeoutNanoseconds: UInt64
+    /// Fork (cmux Mochi): supplies DeviceLink's mutual-TLS options for a paired
+    /// Mac. The factory stays free of DeviceLinkKit by taking a closure, so the
+    /// transport package keeps no opinion about how identities are stored.
+    ///
+    /// A tailnet route with no options available fails closed: the pairing host
+    /// is TLS-only, so a plaintext dial could only ever be a misconfiguration or
+    /// an attempt to reach something that is not our Mac.
+    public var deviceLinkTLSOptions: (@Sendable () -> NWProtocolTLS.Options?)?
 
     public init(
         supportedKinds: [CmxAttachTransportKind] = [.tailscale, .debugLoopback],
         maximumReceiveLength: Int = CmxNetworkByteTransport.defaultMaximumReceiveLength,
-        connectTimeoutNanoseconds: UInt64 = CmxNetworkByteTransport.defaultConnectTimeoutNanoseconds
+        connectTimeoutNanoseconds: UInt64 = CmxNetworkByteTransport.defaultConnectTimeoutNanoseconds,
+        deviceLinkTLSOptions: (@Sendable () -> NWProtocolTLS.Options?)? = nil
     ) {
         self.supportedKinds = supportedKinds
         self.maximumReceiveLength = maximumReceiveLength
         self.connectTimeoutNanoseconds = max(1, connectTimeoutNanoseconds)
+        self.deviceLinkTLSOptions = deviceLinkTLSOptions
     }
 
     public func makeTransport(for route: CmxAttachRoute) throws -> any CmxByteTransport {
@@ -68,11 +79,18 @@ public struct CmxNetworkByteTransportFactory: CmxRouteAwareByteTransportFactory 
             guard request.authorizationMode == .attachTicket else {
                 throw CmxNetworkByteTransportError.tailscaleAuthorizationUnavailable
             }
+            // Fork (cmux Mochi): the pairing host requires a client certificate,
+            // so a tailnet dial without DeviceLink options cannot succeed — fail
+            // here rather than opening a socket that can only be refused.
+            guard let tlsOptions = deviceLinkTLSOptions?() else {
+                throw CmxNetworkByteTransportError.tailscaleAuthorizationUnavailable
+            }
             return try CmxNetworkByteTransport(
                 host: host,
                 port: port,
                 maximumReceiveLength: maximumReceiveLength,
-                connectTimeoutNanoseconds: connectTimeoutNanoseconds
+                connectTimeoutNanoseconds: connectTimeoutNanoseconds,
+                tlsOptions: tlsOptions
             )
         case .debugLoopback:
             guard CmxLoopbackHost().matches(route) else {
