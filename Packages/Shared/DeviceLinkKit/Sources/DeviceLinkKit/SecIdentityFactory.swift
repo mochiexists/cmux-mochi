@@ -14,6 +14,17 @@ internal import Security
 /// tool gets `errSecMissingEntitlement` (-34018) — which is why the Phase 0
 /// spike proved the chain via a PKCS#12 import instead, and why these paths are
 /// exercised from the app targets rather than from package tests.
+/// `SecIdentityCreate` pairs a certificate with a private key in memory.
+///
+/// Not surfaced in the Swift overlay, but a long-standing macOS export and the
+/// supported way to build an identity you already hold both halves of.
+@_silgen_name("SecIdentityCreate")
+private func SecIdentityCreate(
+    _ allocator: CFAllocator?,
+    _ certificate: SecCertificate,
+    _ privateKey: SecKey
+) -> Unmanaged<SecIdentity>?
+
 public enum SecIdentityFactory {
     public enum FactoryError: Error, Equatable {
         case keyImportFailed(OSStatus)
@@ -23,15 +34,24 @@ public enum SecIdentityFactory {
         case malformedKey
     }
 
-    /// Imports identity material and returns the matching `SecIdentity`.
+    /// Builds the `SecIdentity` that Network.framework's TLS stack requires.
     ///
-    /// Idempotent: re-importing material that is already present resolves to
-    /// the existing identity rather than duplicating it.
+    /// Both halves are already in hand, so the identity is assembled directly
+    /// and nothing is written to a keychain. The earlier approach — persisting
+    /// the key with `kSecAttrIsPermanent` and reading the pair back — fails on
+    /// macOS in a way worth recording: `SecKeyCreateWithData` returns a valid
+    /// key object but does **not** persist it, so the certificate stored alone
+    /// and no identity could ever form. Avoiding the keychain sidesteps that
+    /// and the `application-identifier` entitlement a locally-signed build
+    /// lacks, and it works identically in test harnesses.
+    ///
+    /// Durable material still lives in the keychain as ordinary
+    /// generic-password items (see ``KeychainDeviceIdentityStore``), which need
+    /// no entitlement; this call just turns it into the object TLS wants.
     ///
     /// - Parameters:
     ///   - material: The generated key and certificate.
-    ///   - label: Keychain label for the certificate, so instances of this app
-    ///     can find (and clean up) their own items.
+    ///   - label: Unused; retained so call sites need not change.
     /// - Returns: An identity usable with `sec_identity_create`.
     public static func makeIdentity(
         from material: DeviceIdentityMaterial,
@@ -43,123 +63,29 @@ public enum SecIdentityFactory {
         ) else {
             throw FactoryError.certificateRejected
         }
-
-        if let existing = try? lookupIdentity(matching: material.derEncodedCertificate) {
-            return existing
-        }
-
         guard let privateKey = try? P256.Signing.PrivateKey(pemRepresentation: material.pemPrivateKey) else {
             throw FactoryError.malformedKey
         }
 
-        // Create the key as PERMANENT rather than creating a detached ref and
-        // adding it afterwards: `SecItemAdd` with a `kSecValueRef` from
-        // `SecKeyCreateWithData` answers -25304 ("item is no longer valid"),
-        // because that ref was never keychain-backed. Letting Security store it
-        // at creation time is the supported path.
-        var lastStatus = errSecSuccess
-        for useDataProtection in Self.keychainPreferenceOrder {
-            let keyAttributes: [CFString: Any] = [
+        var keyError: Unmanaged<CFError>?
+        guard let secKey = SecKeyCreateWithData(
+            privateKey.x963Representation as CFData,
+            [
                 kSecAttrKeyType: kSecAttrKeyTypeECSECPrimeRandom,
                 kSecAttrKeyClass: kSecAttrKeyClassPrivate,
-                kSecAttrIsPermanent: true,
-                kSecAttrApplicationTag: Data(material.fingerprint.hex.utf8),
-                kSecUseDataProtectionKeychain: useDataProtection,
-            ]
-            var keyError: Unmanaged<CFError>?
-            let stored = SecKeyCreateWithData(
-                privateKey.x963Representation as CFData,
-                keyAttributes as CFDictionary,
-                &keyError
-            )
-            if stored == nil {
-                let code = (keyError?.takeRetainedValue()).map { CFErrorGetCode($0) } ?? Int(errSecParam)
-                lastStatus = OSStatus(code)
-                continue
-            }
-
-            var certificateAdd: [CFString: Any] = [
-                kSecClass: kSecClassCertificate,
-                kSecValueRef: certificate,
-                kSecAttrLabel: label,
-            ]
-            certificateAdd[kSecUseDataProtectionKeychain] = useDataProtection
-            let certificateStatus = SecItemAdd(certificateAdd as CFDictionary, nil)
-            guard certificateStatus == errSecSuccess || certificateStatus == errSecDuplicateItem else {
-                lastStatus = certificateStatus
-                continue
-            }
-            if let identity = try? lookupIdentity(matching: material.derEncodedCertificate) {
-                return identity
-            }
+            ] as CFDictionary,
+            &keyError
+        ) else {
+            throw FactoryError.malformedKey
         }
-        throw FactoryError.keyImportFailed(lastStatus)
-    }
 
-    /// Removes the keychain items backing an identity — used when a pairing is
-    /// forgotten, so a device's key does not outlive its purpose.
-    public static func removeIdentity(for material: DeviceIdentityMaterial) {
-        let keyQuery: [CFString: Any] = [
-            kSecClass: kSecClassKey,
-            kSecAttrApplicationTag: Data(material.fingerprint.hex.utf8),
-            kSecUseDataProtectionKeychain: true,
-        ]
-        SecItemDelete(keyQuery as CFDictionary)
-
-        if let certificate = SecCertificateCreateWithData(nil, material.derEncodedCertificate as CFData) {
-            let certificateQuery: [CFString: Any] = [
-                kSecClass: kSecClassCertificate,
-                kSecValueRef: certificate,
-                kSecUseDataProtectionKeychain: true,
-            ]
-            SecItemDelete(certificateQuery as CFDictionary)
-        }
-    }
-
-    /// Which keychain to use, per platform.
-    ///
-    /// iOS has only the data-protection keychain. macOS has both, and the
-    /// data-protection one requires an `application-identifier` entitlement
-    /// that comes from a provisioning profile — asking for it was the whole
-    /// source of `errSecMissingEntitlement` here. The file keychain needs no
-    /// entitlement for a non-sandboxed signed app, stores the key just as
-    /// locally, and is what a Mac app normally uses. Nothing here is shared or
-    /// synced, so the stronger iOS-style store buys nothing on macOS.
-    static var keychainPreferenceOrder: [Bool] {
-        #if os(iOS)
-        [true]
-        #else
-        [false]
-        #endif
-    }
-
-    private static func lookupIdentity(matching certificateDER: Data) throws -> SecIdentity {
-        var identities: [SecIdentity] = []
-        for useDataProtection in keychainPreferenceOrder {
-            var query: [CFString: Any] = [
-                kSecClass: kSecClassIdentity,
-                kSecReturnRef: true,
-                kSecMatchLimit: kSecMatchLimitAll,
-            ]
-            query[kSecUseDataProtectionKeychain] = useDataProtection
-            var result: CFTypeRef?
-            if SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess,
-               let found = result as? [SecIdentity] {
-                identities.append(contentsOf: found)
-            }
-        }
-        guard !identities.isEmpty else {
+        guard let identity = SecIdentityCreate(nil, certificate, secKey)?.takeRetainedValue() else {
             throw FactoryError.identityNotFound
         }
-        for identity in identities {
-            var certificate: SecCertificate?
-            guard SecIdentityCopyCertificate(identity, &certificate) == errSecSuccess,
-                  let certificate
-            else { continue }
-            if SecCertificateCopyData(certificate) as Data == certificateDER {
-                return identity
-            }
-        }
-        throw FactoryError.identityNotFound
+        return identity
     }
+
+    /// No-op: identities are assembled on demand, so there is nothing stored to
+    /// remove. Kept so forgetting a pairing reads the same at every call site.
+    public static func removeIdentity(for material: DeviceIdentityMaterial) {}
 }
