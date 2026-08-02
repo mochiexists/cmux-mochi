@@ -184,12 +184,26 @@ final class MobilePairingModel {
             return
         }
         do {
-            let payload = try await host.createAttachTicket(
-                workspaceID: "",
-                terminalID: nil,
-                ttl: ticketTTL,
-                routeDisclosureMode: routePlan.primaryDisclosureMode
-            )
+            // Fork (cmux Mochi): DeviceLink codes carry this Mac's public-key
+            // fingerprint and a single-use enrollment ticket — never a bearer
+            // token. A photographed code is therefore worth at most one visible,
+            // revocable enrollment inside a ten-minute window, instead of
+            // working credentials for the ticket's whole life.
+            //
+            // Iroh pairing keeps its own upstream path; only the
+            // Tailscale/TCP code changes here.
+            let deviceLinkURL = try? await MobileHostDeviceLink.shared.makePairingURL()
+            let payload: [String: Any]
+            if let deviceLinkURL {
+                payload = ["attach_url": deviceLinkURL.absoluteString]
+            } else {
+                payload = try await host.createAttachTicket(
+                    workspaceID: "",
+                    terminalID: nil,
+                    ttl: ticketTTL,
+                    routeDisclosureMode: routePlan.primaryDisclosureMode
+                )
+            }
             guard generation == refreshGeneration else { return }
             guard let attachURL = payload["attach_url"] as? String, !attachURL.isEmpty else {
                 state = .failed(
@@ -200,18 +214,10 @@ final class MobilePairingModel {
                 )
                 return
             }
-            let legacyAttachURL: String?
-            if routePlan.offersLegacyCode,
-               let legacyPayload = try? await host.createAttachTicket(
-                   workspaceID: "",
-                   terminalID: nil,
-                   ttl: ticketTTL,
-                   routeDisclosureMode: .legacyPrivateNetworkCompatibility
-               ) {
-                legacyAttachURL = legacyPayload["attach_url"] as? String
-            } else {
-                legacyAttachURL = nil
-            }
+            // Fork (cmux Mochi): the legacy compatibility code embeds a bearer
+            // token in the QR. With DeviceLink there is nothing it can pair that
+            // the primary code cannot, so it is no longer offered.
+            let legacyAttachURL: String? = nil
             state = .ready(
                 Ready(
                     attachURL: attachURL,
