@@ -90,9 +90,22 @@ public actor DeviceLinkCoordinator {
         return wasRejected
     }
 
+    /// Loads on first use if the host has not already done so.
+    ///
+    /// Every reader goes through this, so a cold start cannot answer "unknown
+    /// device" from an empty in-memory table while the real one sits unread on
+    /// disk. The host still calls ``load()`` explicitly at startup to surface
+    /// corruption early; this is the safety net, not the plan.
+    private func ensureLoaded() async {
+        guard !isLoaded else { return }
+        _ = try? await load()
+        isLoaded = true
+    }
+
     /// All enrolled devices, newest first.
-    public func devices() -> [AuthorizedDevice] {
-        table.devices.sorted { $0.createdAt > $1.createdAt }
+    public func devices() async -> [AuthorizedDevice] {
+        await ensureLoaded()
+        return table.devices.sorted { $0.createdAt > $1.createdAt }
     }
 
     /// Whether an enrollment window is currently open.
@@ -116,8 +129,9 @@ public actor DeviceLinkCoordinator {
     ///
     /// This is the TLS verify block's question. It reads the actor's state, so
     /// it cannot observe a table mid-mutation.
-    public func isAuthorized(_ fingerprint: DeviceFingerprint) -> Bool {
-        table.devices.contains { $0.fingerprint == fingerprint }
+    public func isAuthorized(_ fingerprint: DeviceFingerprint) async -> Bool {
+        await ensureLoaded()
+        return table.devices.contains { $0.fingerprint == fingerprint }
     }
 
     /// Redeems a ticket, enrolling the presented fingerprint.

@@ -1336,6 +1336,19 @@ class TerminalController {
             return v2AsyncResultCall(id: request.id, timeoutSeconds: 30) {
                 await self.v2MobileAttachTicketCreate(params: request.params)
             }
+        // Fork (cmux Mochi): DeviceLink pairing management is LOCAL-SOCKET ONLY.
+        // These verbs are deliberately absent from `mobileHostHandleRPC`, so no
+        // network peer — paired, enrolling, or Iroh-admitted — can enumerate or
+        // revoke this Mac's paired devices. `MobileHostDeviceLinkDispatchTests`
+        // asserts that absence.
+        case "mobile.pairing.device.list":
+            return v2AsyncResultCall(id: request.id, timeoutSeconds: 30) {
+                await self.v2DeviceLinkDeviceList()
+            }
+        case "mobile.pairing.device.revoke":
+            return v2AsyncResultCall(id: request.id, timeoutSeconds: 30) {
+                await self.v2DeviceLinkDeviceRevoke(params: request.params)
+            }
         case "mobile.terminal.set_font":
             return v2Result(id: request.id, v2MobileTerminalSetFont(params: request.params))
         case "system.ping":

@@ -660,7 +660,11 @@ final class MobileHostService {
     private func bindReadyCandidate(on endpointPort: NWEndpoint.Port, generation: UUID) async -> (listener: NWListener, generation: UUID)? {
         let candidate: NWListener
         do {
-            candidate = try NWListener(using: Self.makeListenerParameters(), on: endpointPort)
+            let tlsOptions = try MobileHostDeviceLink.shared.listenerOptions()
+            candidate = try NWListener(
+                using: Self.makeListenerParameters(deviceLinkTLS: tlsOptions),
+                on: endpointPort
+            )
         } catch {
             return nil
         }
@@ -822,7 +826,11 @@ final class MobileHostService {
         }
         boundTailnetInterfaceName = MobileHostTailnetInterface.tailnetInterfaceName()
         do {
-            let parameters = Self.makeListenerParameters()
+            // The coordinator loads its table on first read (see
+            // `ensureLoaded`), so a cold start cannot answer "unknown device"
+            // from an empty in-memory table while the real one sits on disk.
+            let tlsOptions = try MobileHostDeviceLink.shared.listenerOptions()
+            let parameters = Self.makeListenerParameters(deviceLinkTLS: tlsOptions)
             let nextListener = try makeListener(
                 parameters: parameters,
                 usePreferredPort: usePreferredPort,
@@ -869,10 +877,17 @@ final class MobileHostService {
     /// unpinned only in DEBUG — where the simulator reaches the Mac over loopback
     /// and there is no tailnet to speak of. Release callers must refuse to listen;
     /// ``tailnetInterfaceUnavailableInRelease`` reports that case.
-    nonisolated static func makeListenerParameters() -> NWParameters {
+    /// - Parameter deviceLinkTLS: DeviceLink's mutual-TLS options. Fork (cmux
+    ///   Mochi): the pairing listener is TLS-only — every accepted connection
+    ///   must present a client certificate, and unknown keys are admitted only
+    ///   during an enrollment window. There is no plaintext path to fall back
+    ///   to, by design (see `plans/feat-account-free-reconnect/DESIGN.md`).
+    nonisolated static func makeListenerParameters(
+        deviceLinkTLS: NWProtocolTLS.Options
+    ) -> NWParameters {
         let tcpOptions = NWProtocolTCP.Options()
         tcpOptions.noDelay = true
-        let parameters = NWParameters(tls: nil, tcp: tcpOptions)
+        let parameters = NWParameters(tls: deviceLinkTLS, tcp: tcpOptions)
         #if !DEBUG
         parameters.requiredInterface = MobileHostTailnetInterface.shared.requiredInterface()
         #endif
@@ -1120,10 +1135,32 @@ final class MobileHostService {
             }
             #endif
 
+            // Fork (cmux Mochi): admission is derived from the completed TLS
+            // handshake, not assumed. Establishing the transport first performs
+            // that handshake (the verify block has already refused any key that
+            // is neither authorized nor mid-enrollment); reading the peer
+            // certificate afterwards says *which* key arrived, so the connection
+            // runs under the right context. `connect()` is idempotent, so the
+            // session's own later call resolves immediately.
             let transport = CmxNetworkByteTransport(acceptedConnection: connection)
+            do {
+                try await transport.connect()
+            } catch {
+                mobileHostLog.error("mobile host rejected connection: handshake failed")
+                await transport.close()
+                return
+            }
+            guard let fingerprint = Self.deviceLinkPeerFingerprint(of: connection) else {
+                mobileHostLog.error("mobile host rejected connection with no usable peer certificate")
+                await transport.close()
+                return
+            }
+            let authorization = await MobileHostDeviceLink.shared
+                .authorizationContext(forPeer: fingerprint)
+
             await Self.acceptTransport(
                 transport,
-                authorization: .stackBearer,
+                authorization: authorization,
                 isCurrent: {
                     await MobileHostService.shared.canAcceptConnection(
                         generation: generation
@@ -1180,6 +1217,16 @@ final class MobileHostService {
                         }
                     )
                 }
+                // Fork (cmux Mochi): enrollment is handled here rather than in
+                // the general dispatch because it needs the handshake identity,
+                // which only this scope holds. The fingerprint comes from the
+                // TLS peer certificate — never from the request body.
+                if Self.isDeviceLinkEnrollmentMethod(request.method) {
+                    return await Self.deviceLinkEnrollmentResult(
+                        for: request,
+                        authorization: authorization
+                    )
+                }
                 let result = await TerminalController.shared.mobileHostHandleRPC(request)
                 await MobileHostService.shared.recordCreatedResourcesIfNeeded(
                     request: request,
@@ -1224,7 +1271,34 @@ final class MobileHostService {
             return await stackAuthorization(request)
         case .irohAdmission:
             return nil
+        case .pairedDevice:
+            // The mutual-TLS handshake already proved possession of an
+            // authorized private key, and the pairing is Mac-wide, so no
+            // further per-request gate applies. Enrollment is refused: a paired
+            // device has no business minting more pairings.
+            if isDeviceLinkEnrollmentMethod(request.method) {
+                return .failure(MobileHostRPCError(
+                    code: "forbidden",
+                    message: "This device is already paired."
+                ))
+            }
+            return nil
+        case .enrollmentCandidate:
+            // An unknown key, admitted solely because an enrollment window is
+            // open. It may enroll and do nothing else.
+            guard isDeviceLinkEnrollmentMethod(request.method) else {
+                return .failure(MobileHostRPCError(
+                    code: "unauthorized",
+                    message: "Pair this device before using it."
+                ))
+            }
+            return nil
         }
+    }
+
+    /// Whether a method is the DeviceLink enrollment verb.
+    nonisolated static func isDeviceLinkEnrollmentMethod(_ method: String) -> Bool {
+        method == "mobile.pairing.device.enroll"
     }
 
     nonisolated static func connectionStatusResult(
@@ -1237,6 +1311,14 @@ final class MobileHostService {
             return await stackStatus(request)
         case .irohAdmission:
             return MobileHostPublicStatusCache.result(includeIdentity: true)
+        case .pairedDevice:
+            // A paired device holds a key this Mac authorized, so it already
+            // knows which Mac it reached — identity here is not a disclosure.
+            return MobileHostPublicStatusCache.result(includeIdentity: true)
+        case .enrollmentCandidate:
+            // Not yet paired: routes only. Identity arrives with the pairing
+            // payload the user scanned, not from an unenrolled caller's probe.
+            return MobileHostPublicStatusCache.result(includeIdentity: false)
         }
     }
 

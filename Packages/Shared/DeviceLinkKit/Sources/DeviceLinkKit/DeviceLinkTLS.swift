@@ -95,6 +95,23 @@ public enum DeviceLinkTLS {
         return String(cString: raw)
     }
 
+    /// Reads the peer's leaf-certificate fingerprint from a ready connection.
+    ///
+    /// This is how the host labels an admitted connection: the verify block
+    /// decides *whether* to admit, and this reports *who* was admitted, taken
+    /// from the completed handshake rather than from anything the peer asserts
+    /// in a request body.
+    public static func peerFingerprint(from metadata: NWProtocolTLS.Metadata) -> DeviceFingerprint? {
+        var leafDER: Data?
+        sec_protocol_metadata_access_peer_certificate_chain(metadata.securityProtocolMetadata) { certificate in
+            guard leafDER == nil else { return }
+            let secCertificate = sec_certificate_copy_ref(certificate).takeRetainedValue()
+            leafDER = SecCertificateCopyData(secCertificate) as Data
+        }
+        guard let leafDER else { return nil }
+        return DeviceFingerprint(derEncodedCertificate: leafDER)
+    }
+
     /// Extracts the peer's leaf-certificate fingerprint from a handshake trust
     /// object. Exposed so the host can label an admitted connection.
     public static func leafFingerprint(from trust: sec_trust_t) -> DeviceFingerprint? {
