@@ -190,3 +190,86 @@ All six blockers were verified against the source before accepting:
   CmuxMobileShell; two-commit red/green policy noted
 
 ---
+
+## Round 2 - Codex Review (FINAL per skill config, extended per standing loop-until-clear policy)
+**Timestamp:** 2026-08-02T09:00:30Z
+**Model:** codex exec default, high reasoning, read-only
+
+### Feedback
+
+## Final review
+
+REQUEST_CHANGES. Most round-1 concerns are resolved, but three blockers remain.
+
+### BLOCKER — Rotation replay contradicts digest-only persistence
+
+The plan persists only the successor’s SHA-256 digest ([DESIGN.md:96](/Users/timapple/Documents/mochi/mochi-dev/cmux-mochi-v06420/plans/feat-account-free-reconnect/DESIGN.md:96)) while requiring retries to return the identical raw successor ([DESIGN.md:133](/Users/timapple/Documents/mochi/mochi-dev/cmux-mochi-v06420/plans/feat-account-free-reconnect/DESIGN.md:133)). After a Mac restart, the raw bearer cannot be reconstructed from its digest.
+
+Round 1 explicitly required restart-between-commit-and-retry coverage; v2 still lacks that combined test.
+
+Required: persist recoverable replay material—such as a sealed successor bearer or deterministic derivation using a separately protected key—atomically with the rotation record. Define replay retention/pruning and test: commit → lose response → restart Mac → retry same `rotation_id` → receive identical successor.
+
+### BLOCKER — The proposed reconnect handshake cannot safely reach the Mac
+
+The plan requires dialing Tailscale and probing identity before presenting credentials ([DESIGN.md:207](/Users/timapple/Documents/mochi/mochi-dev/cmux-mochi-v06420/plans/feat-account-free-reconnect/DESIGN.md:207)), but currently:
+
+- Tailscale transport is allowed only in `.attachTicket` mode ([CmxNetworkByteTransportFactory.swift:51](/Users/timapple/Documents/mochi/mochi-dev/cmux-mochi-v06420/Packages/iOS/CmuxMobileTransport/Sources/CmuxMobileTransport/CmxNetworkByteTransportFactory.swift:51)).
+- Without an attach token, `MobileCoreRPCClient` chooses `.stackBearer`, which that factory refuses.
+- An unauthenticated `mobile.host.status` deliberately withholds Mac identity ([MobileHostService.swift:320](/Users/timapple/Documents/mochi/mochi-dev/cmux-mochi-v06420/Sources/Mobile/MobileHostService.swift:320)).
+- Merely exposing self-reported `macDeviceID` and `instanceTag` would not authenticate the peer. The transport itself documents that Network.framework cannot prove the generic packet tunnel is Tailscale ([CmxByteTransportRequest.swift:10](/Users/timapple/Documents/mochi/mochi-dev/cmux-mochi-v06420/Packages/Shared/CMUXMobileCore/Sources/CMUXMobileCore/CmxByteTransportRequest.swift:10)).
+
+Required: define an executable, cryptographically authenticated grant reconnect mode—such as mutual challenge-response using a grant-derived key, or a pinned encrypted channel—so the raw durable grant is never disclosed to an impostor. Include a spoofed-status/port-owner test.
+
+### BLOCKER — Registration is neither replay-safe nor honestly bounded to one hour
+
+A QR holder can call `register`, receive a 30-day grant, and rotate indefinitely. Therefore the claim that a photographed QR remains only a one-hour exposure ([DESIGN.md:81](/Users/timapple/Documents/mochi/mochi-dev/cmux-mochi-v06420/plans/feat-account-free-reconnect/DESIGN.md:81)) is incomplete: the acquisition window is one hour, but successful compromise can become indefinite.
+
+Registration also has the same lost-response problem: the Mac stores only a digest, so a committed grant whose response is lost becomes an orphan. Repeated retries create families until the 16-grant quota is exhausted.
+
+Required: make registration idempotent with a persisted client `registration_id` and recoverable replay response, and either mitigate durable QR escalation through local approval/single-use semantics or explicitly accept and test that any tailnet QR holder can establish an indefinitely renewable family.
+
+### Round-1 resolution summary
+
+Resolved at the design level:
+
+- Distinct per-phone grants instead of long-lived QR tickets
+- Server-derived session scope and lifetime
+- Stable-port strategy with documented manual fallback
+- Local-versus-signed-in scope behavior
+- Tailscale-only scope and Iroh exclusion requirement
+- Family revocation, actor-owned persistence, gating, quotas, and fail-closed CSPRNG
+
+Rotation recovery remains incomplete, and the newly specified reconnect/registration protocols expose the blockers above. The working tree is clean and no grant implementation exists outside the plan yet.
+
+**CONSENSUS: BLOCKED - digest-only storage cannot provide restart-safe replay, the reconnect handshake lacks an authenticated executable transport, and registration is not idempotent or honestly bounded.**
+
+---
+
+## Round 2 - Claude Response
+**Timestamp:** (same session)
+
+### Verification
+- Tailscale transport factory accepts only .attachTicket mode: confirmed
+  (CmxNetworkByteTransportFactory.swift:51). Note: the phone CAN dial in that
+  mode with a synthetic probe ticket (manual-host flow does today), so the
+  transport half was solvable; the authentication half was the real gap.
+- Unauthenticated host.status withholds identity: confirmed
+  (MobileHostService.swift:320-326).
+- Digest-vs-replay contradiction and registration orphan/quota exhaustion:
+  confirmed by inspection of my own v2 text.
+
+### Changes Made (v3)
+- SS5a replay material: raw successor persisted atomically with the commit,
+  erased at first use or 48 h; restart-safe retry returns identical successor;
+  post-erasure retry is a terminal re-pair error. Restart-replay tests added.
+- SS7a mutual challenge-response handshake: HMAC proofs of K=SHA-256(S) both
+  ways, nonce-bound, no existence oracle, successor sealed with
+  ChaChaPoly/HKDF; phone aborts before disclosure on impostor; transport rides
+  .attachTicket mode via synthetic probe ticket. Spoofed-port test added.
+- Registration made idempotent (registration_id, same replay pattern),
+  per-QR-ticket cap of 4; Mac fires a user notification on every registration.
+- QR escalation stated honestly in SS1/SS10: acquisition <=1 h, compromise
+  potentially indefinite; accepted with visibility mitigations; local-approval
+  prevention explicitly deferred.
+
+---
