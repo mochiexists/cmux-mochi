@@ -590,3 +590,48 @@ Read-only audit at HEAD `44ecfc7ff7d6`; no files changed or tests run.
   DeviceLinkKit + design to be offered to the team after delivery.
 
 ---
+
+## Round 7 - Codex Review (FINAL)
+**Timestamp:** 2026-08-02T10:21:04Z
+
+### Feedback
+
+No blocker-grade gap remains. The share-link removal makes the admission model coherent: TCP now serves only DeviceLink enrollment candidates and paired devices; Iroh uses transport admission, while Stack authorization remains separate.
+
+Verified resolutions:
+
+- Share-ticket TCP admission is fully removed in the design.
+- Manual/synthetic attach, QR grammar, network dispatch, ticket issuance, root gating, and pairing compatibility routing are inventoried.
+- M5 revocation preserves M4 usability, followed by explicit re-enrollment before Journey B.
+- Release automation correctly uses `openURL` with `cmux-ios://`.
+- Package-first `DeviceLinkKit` with thin app integration matches the repository’s architecture rules.
+
+Non-blocking cleanup before implementation:
+
+- [DESIGN.md:72](/Users/timapple/Documents/mochi/mochi-dev/cmux-mochi-v06420/plans/feat-account-free-reconnect/DESIGN.md:72) still contains the superseded “or fingerprint re-validated” resumption alternative; remove it.
+- [DESIGN.md:118](/Users/timapple/Documents/mochi/mochi-dev/cmux-mochi-v06420/plans/feat-account-free-reconnect/DESIGN.md:118) inaccurately says Iroh/Stack consume `MobileAttachTicketStore`. The live store exclusively issues and validates attach bearers; Iroh selects `.transportAdmission` at [MobileCoreRPCClient.swift:66](/Users/timapple/Documents/mochi/mochi-dev/cmux-mochi-v06420/Packages/iOS/CmuxMobileRPC/Sources/CmuxMobileRPC/MobileCoreRPCClient.swift:66). Retain any shared route DTOs/coders still needed, but delete the bearer store if migration leaves it unused.
+- Include ticket-derived iOS capability policy and debug/soak scripts in Phase 4 migration; for example [MobileShellWorkspaceMutationTicketPolicy.swift:4](/Users/timapple/Documents/mochi/mochi-dev/cmux-mochi-v06420/Packages/iOS/CmuxMobileShell/Sources/CmuxMobileShell/MobileShellWorkspaceMutationTicketPolicy.swift:4) and [attach-url.mjs:3](/Users/timapple/Documents/mochi/mochi-dev/cmux-mochi-v06420/scripts/lib/attach-url.mjs:3).
+- Journey A step 1 still mentions the DEBUG-only environment injection; the detailed commands correctly establish that Release uses only `openURL`.
+- Rename the stale “v6” document heading to v7.
+
+Read-only audit at `b88259c265ddf70e629f24ddf593d5a2a046186e`; no files changed or tests run.
+
+CONSENSUS: APPROVED - proceed with implementation
+
+---
+
+## Final Consensus
+**Status:** APPROVED
+**Total Rounds:** 7 (v1 grant design -> v5 architectural pivot to device
+keypairs/mTLS -> v7 coherent TLS-only paired-device surface)
+
+All five round-7 non-blocking cleanups applied to the design before
+implementation start: heading v7, unconditional resumption disablement
+wording, MobileAttachTicketStore deleted-if-unused (Iroh uses
+.transportAdmission, not the store), ticket policy + attach-url scripts
+added to Phase 4 migration, Journey A step 1 openURL-only.
+
+Implementation proceeds per the phased plan; Codex reviews the
+implementation diff at Phase 5.
+
+---

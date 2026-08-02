@@ -1,4 +1,4 @@
-# Account-free reconnect v6: paired device identities over pinned mTLS
+# Account-free reconnect v7: paired device identities over pinned mTLS
 
 **Status:** design v7, not started. v5 architecture + Codex round-5/6 fixes +
 comparator imports (T3 Code study 2026-08-02). Audit: `DESIGN_review_history.md`.
@@ -69,9 +69,9 @@ and whose lesson list literally reads "put the cert fingerprint in the QR."
   hostname check (the pin is the identity). Canonical fingerprint =
   lowercase-hex SHA-256 of the DER SubjectPublicKeyInfo. ALPN
   `cmux-devicelink/1` so the endpoint can never be confused with any other
-  protocol. **TLS session resumption disabled** (or fingerprint re-validated
-  on every ready handshake) so revocation is never bypassed by a cached
-  session (round-5 blocker 5).
+  protocol. **TLS session resumption unconditionally disabled** so revocation
+  is never bypassed by a cached session (round-5 blocker 5; round-7 removed
+  the revalidation alternative).
 - **TLS-only, client certificate required unconditionally.** Session
   resumption **unconditionally disabled** (not "or revalidate"), and the
   client **verifies the negotiated ALPN** equals `cmux-devicelink/1` rather
@@ -114,9 +114,18 @@ and whose lesson list literally reads "put the cert fingerprint in the QR."
     own upstream entry points.
 
   *Retained (different subsystems, not legacy):* Iroh transport + admission
-  wholesale; the local control socket; Stack-account auth paths for
-  signed-in users; the in-memory session-ticket store where Iroh/Stack
-  flows still consume it.
+  wholesale (Iroh uses `.transportAdmission`, not the ticket store —
+  `MobileCoreRPCClient.swift:66`); the local control socket; Stack-account
+  auth paths for signed-in users. **`MobileAttachTicketStore` itself is
+  deleted if migration leaves it unused** — round-7 correction: the live
+  store exclusively issues/validates attach bearers, which no longer exist;
+  only shared route DTOs/coders still needed elsewhere survive.
+
+  *Also migrated in Phase 4 (round-7 additions):* ticket-derived iOS
+  capability policy (`MobileShellWorkspaceMutationTicketPolicy.swift`) and
+  the debug/soak scripting that builds attach URLs
+  (`scripts/lib/attach-url.mjs` and dependents) — retargeted to the v7
+  payload or deleted with their feature.
 
   No dual listeners, no downgrade branches. Removal is a dedicated commit
   series, each deletion with its dead tests.
@@ -306,8 +315,9 @@ journey), **iPhone 17** (manual human journey). Two journeys, both on the
 
 Driven by the proven tooling (below). Scripted end-to-end:
 
-1. Enroll to M5 (inject pairing URL via `CMUX_DOGFOOD_ATTACH_URL` env /
-   `openURL`). Assert connected; screenshot.
+1. Enroll to M5 (deliver the pairing URL via `openURL` with the
+   `cmux-ios://` scheme — Release has no env-injection path). Assert
+   connected; screenshot.
 2. Force-quit; cold launch. Assert reconnect **with no scan**; screenshot;
    pull `cmux-debug.log`, assert the mTLS reconnect path (not enrollment)
    ran.
