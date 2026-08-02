@@ -51,43 +51,39 @@ public enum SecIdentityFactory {
         guard let privateKey = try? P256.Signing.PrivateKey(pemRepresentation: material.pemPrivateKey) else {
             throw FactoryError.malformedKey
         }
-        let keyAttributes: [CFString: Any] = [
-            kSecAttrKeyType: kSecAttrKeyTypeECSECPrimeRandom,
-            kSecAttrKeyClass: kSecAttrKeyClassPrivate,
-        ]
-        var keyError: Unmanaged<CFError>?
-        guard let secKey = SecKeyCreateWithData(
-            privateKey.x963Representation as CFData,
-            keyAttributes as CFDictionary,
-            &keyError
-        ) else {
-            throw FactoryError.keyImportFailed(errSecParam)
-        }
 
-        // Data-protection keychain first; on macOS a locally signed build lacks
-        // the entitlement it requires, so fall back to the file keychain rather
-        // than leaving development unable to pair at all.
+        // Create the key as PERMANENT rather than creating a detached ref and
+        // adding it afterwards: `SecItemAdd` with a `kSecValueRef` from
+        // `SecKeyCreateWithData` answers -25304 ("item is no longer valid"),
+        // because that ref was never keychain-backed. Letting Security store it
+        // at creation time is the supported path.
         var lastStatus = errSecSuccess
         for useDataProtection in Self.keychainPreferenceOrder {
-            var keyAdd: [CFString: Any] = [
-                kSecClass: kSecClassKey,
-                kSecValueRef: secKey,
+            let keyAttributes: [CFString: Any] = [
+                kSecAttrKeyType: kSecAttrKeyTypeECSECPrimeRandom,
+                kSecAttrKeyClass: kSecAttrKeyClassPrivate,
+                kSecAttrIsPermanent: true,
                 kSecAttrApplicationTag: Data(material.fingerprint.hex.utf8),
-                kSecAttrAccessible: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly,
+                kSecUseDataProtectionKeychain: useDataProtection,
             ]
+            var keyError: Unmanaged<CFError>?
+            let stored = SecKeyCreateWithData(
+                privateKey.x963Representation as CFData,
+                keyAttributes as CFDictionary,
+                &keyError
+            )
+            if stored == nil {
+                let code = (keyError?.takeRetainedValue()).map { CFErrorGetCode($0) } ?? Int(errSecParam)
+                lastStatus = OSStatus(code)
+                continue
+            }
+
             var certificateAdd: [CFString: Any] = [
                 kSecClass: kSecClassCertificate,
                 kSecValueRef: certificate,
                 kSecAttrLabel: label,
             ]
-            keyAdd[kSecUseDataProtectionKeychain] = useDataProtection
             certificateAdd[kSecUseDataProtectionKeychain] = useDataProtection
-
-            let keyStatus = SecItemAdd(keyAdd as CFDictionary, nil)
-            guard keyStatus == errSecSuccess || keyStatus == errSecDuplicateItem else {
-                lastStatus = keyStatus
-                continue
-            }
             let certificateStatus = SecItemAdd(certificateAdd as CFDictionary, nil)
             guard certificateStatus == errSecSuccess || certificateStatus == errSecDuplicateItem else {
                 lastStatus = certificateStatus

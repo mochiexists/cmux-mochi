@@ -319,6 +319,27 @@ keychains refuse the `kSecClassKey` add (the file-keychain fallback added in
 `ef11547f14` does not help; the refusal is about entitlement, not routing).
 The iOS app is properly provisioned and is **not** expected to hit this.
 
+**This is a build-configuration problem, not an architecture one.** An earlier
+draft of this section proposed replacing keychain storage with an in-process
+PKCS#12 encoder; that was over-engineering a signing issue and is withdrawn.
+Evidence from three experiments:
+
+| dev build signed as | keychain result |
+|---|---|
+| ad-hoc (Xcode default, `TeamIdentifier=not set`) | `-34018` missing entitlement |
+| manually re-signed Developer ID + hardened runtime | `-25304` invalid item ref — a *different*, later failure, so signing genuinely moved it |
+| `DEVELOPMENT_TEAM=599WAZ6282` + automatic signing | `-34018` again |
+
+The `-25304` step also exposed a real code bug, since fixed: a key made by
+`SecKeyCreateWithData` is not keychain-backed, so adding it by `kSecValueRef`
+is invalid. Keys are now created with `kSecAttrIsPermanent`, which is the
+supported path.
+
+Remaining gap is almost certainly the missing `keychain-access-groups`
+entitlement (a one-line addition to `cmux.entitlements`), not the storage
+design. The release app is signed and notarised under team 599WAZ6282 already;
+only locally-built dev apps hit this.
+
 **Options (needs an operator/architecture decision):**
 1. **Provision the Mac app.** Add `keychain-access-groups` to
    `cmux.entitlements` and sign dev builds with a real profile. Cleanest
