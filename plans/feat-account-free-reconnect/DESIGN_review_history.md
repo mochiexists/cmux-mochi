@@ -537,3 +537,56 @@ CONSENSUS: BLOCKED - enrollment cannot occur under the stated unknown-key handsh
   operator journey, M4 + M5, cross-matrix assertions.
 
 ---
+
+## Round 6 - Codex Review
+**Timestamp:** 2026-08-02T10:14:02Z
+
+### Feedback
+
+CONSENSUS: BLOCKED - the retained workspace-share ticket path has no valid admission model under the client-certificate-required TLS listener.
+
+The paired-device path genuinely resolves round-5 B1–B3/B5 and the listed majors. Phase 0 appropriately gates the certificate/API assumptions.
+
+Blocker:
+
+- v6 requires every client to present a certificate on the TLS-only listener ([DESIGN.md](/Users/timapple/Documents/mochi/mochi-dev/cmux-mochi-v06420/plans/feat-account-free-reconnect/DESIGN.md:64)), but simultaneously retains workspace-share tickets “on their existing paths” ([DESIGN.md](/Users/timapple/Documents/mochi/mochi-dev/cmux-mochi-v06420/plans/feat-account-free-reconnect/DESIGN.md:148)). Today those tickets select `.attachTicket` and reach the same TCP listener without any DeviceLink identity ([MobileCoreRPCClient.swift](/Users/timapple/Documents/mochi/mochi-dev/cmux-mochi-v06420/Packages/iOS/CmuxMobileRPC/Sources/CmuxMobileRPC/MobileCoreRPCClient.swift:52), [CmxNetworkByteTransportFactory.swift](/Users/timapple/Documents/mochi/mochi-dev/cmux-mochi-v06420/Packages/iOS/CmuxMobileTransport/Sources/CmuxMobileTransport/CmxNetworkByteTransportFactory.swift:58)). An unpaired share recipient therefore fails before presenting its bearer; a paired recipient already has Mac-wide admission, making workspace scope non-authoritative. Define a separate TLS share admission path, migrate shares to another authenticated transport, or explicitly remove Tailscale share links.
+
+New-material corrections:
+
+- The deletion inventory must explicitly partition device-pairing code from retained scoped-ticket code. In particular, account for the manual/synthetic attach path, `MobilePairingModel`’s Iroh/compatibility routing, Mac-wide ticket issuance, and temporary attach-ticket root authentication.
+- Journey A revokes iPhone 16 from M5, but Journey B later expects and revokes the same row again. Specify reset/re-enrollment. A7 also should leave the M4-backed aggregate UI usable—not send the whole phone to the pairing sheet.
+- The release-nightly automation commands are wrong: `CMUX_DOGFOOD_ATTACH_URL` is DEBUG-only, and Release registers `cmux-ios`, not `cmux-ios-dev` ([UITestConfig.swift](/Users/timapple/Documents/mochi/mochi-dev/cmux-mochi-v06420/Packages/iOS/CmuxMobileSupport/Sources/CmuxMobileSupport/UITestConfig.swift:46), [Release.xcconfig](/Users/timapple/Documents/mochi/mochi-dev/cmux-mochi-v06420/ios/Config/Release.xcconfig:18)). Release automation must use `openURL` with the actual `cmux-ios://` payload.
+- Minor: the enrollment ticket is a short-lived bearer capability, so “QR carries no bearer credential” remains inaccurate. Also choose unconditional resumption disablement and verify the negotiated ALPN value rather than merely advertising it.
+
+Read-only audit at HEAD `44ecfc7ff7d6`; no files changed or tests run.
+
+---
+
+## Round 6 - Claude Response (v7)
+**Timestamp:** (same session)
+
+### Changes Made (v7)
+- BLOCKER resolved by extending the operator's zero-consumers ruling:
+  Tailscale workspace-share links REMOVED. TCP listener = paired-device
+  surface only; ephemeral cross-person sharing stays on Iroh (upstream,
+  untouched). Flagged to operator for veto; consistent with their explicit
+  "no legacy, delete redundant code" direction. Future account-free
+  workspace sharing would return as a scoped enrollment, not a bearer path.
+- Deletion inventory partitioned explicitly (deleted vs retained), now
+  covering: manual/synthetic attach machinery (manual add-by-host survives
+  as typed fingerprint+ticket payload), MobilePairingModel compatibility
+  routing, mac-wide network ticket issuance, attach-ticket root auth.
+- Journey A step 7 corrected (M5 revoke leaves M4 aggregate usable; no
+  global pairing sheet) + new step 8 re-enrollment proving
+  recovery-after-revoke and restoring fleet state for Journey B; B4
+  sequencing made explicit.
+- Release automation corrected: openURL with cmux-ios:// scheme;
+  CMUX_DOGFOOD_ATTACH_URL documented as DEBUG-only iteration tooling.
+- Minors: enrollment-ticket-is-a-short-lived-bearer wording fixed;
+  resumption disablement made unconditional; client verifies negotiated
+  ALPN.
+- NEW operator directive recorded: package-first implementation for clean
+  upstream merges; thin integration seams in fork-touched files;
+  DeviceLinkKit + design to be offered to the team after delivery.
+
+---
