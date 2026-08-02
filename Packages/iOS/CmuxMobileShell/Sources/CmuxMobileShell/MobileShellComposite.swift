@@ -2895,6 +2895,14 @@ public final class MobileShellComposite: MobileTerminalOutputSinking {
         acceptedVersionWarning: Bool
     ) async -> MobilePairingURLConnectionResult {
         let rawURL = Self.normalizedPairingURL(rawValue ?? pairingCode)
+        // Fork (cmux Mochi): a DeviceLink (v3) code pairs by exchanging public
+        // keys rather than carrying a bearer, so it takes a different path
+        // entirely. Kept as a single branch here with the work in
+        // `MobileShellComposite+DeviceLink.swift`, so upstream merges see a
+        // one-line seam rather than a rewritten function.
+        if let deviceLinkPayload = Self.deviceLinkPairingPayload(from: rawURL) {
+            return await connectDeviceLinkPairing(payload: deviceLinkPayload)
+        }
         _ = beginPairingValidationAttempt()
         connectionAttemptGeneration = UUID()
         if connectionState != .connected {
@@ -5569,7 +5577,7 @@ public final class MobileShellComposite: MobileTerminalOutputSinking {
         return attemptID
     }
 
-    private func beginPairingValidationAttempt(method: String? = nil) -> UUID {
+    func beginPairingValidationAttempt(method: String? = nil) -> UUID {
         let attemptID = UUID()
         pairingAttemptID = attemptID
         if let method {
@@ -5740,7 +5748,7 @@ public final class MobileShellComposite: MobileTerminalOutputSinking {
         clearRemoteConnectionContext()
     }
 
-    private func applyPairingValidationFailure(_ category: MobilePairingFailureCategory) {
+    func applyPairingValidationFailure(_ category: MobilePairingFailureCategory) {
         if pairingAttemptMethod == nil {
             _ = beginPairingValidationAttempt(method: "qr")
         }
@@ -5749,12 +5757,12 @@ public final class MobileShellComposite: MobileTerminalOutputSinking {
 
     /// Clear the error and its guidance together (never bare `connectionError
     /// = nil`) so guidance cannot linger under a cleared headline.
-    private func clearPairingError() {
+    func clearPairingError() {
         connectionError = nil
         connectionErrorGuidance = nil
     }
 
-    private func clearPairingVersionWarning() {
+    func clearPairingVersionWarning() {
         pairingVersionWarning = nil
         pendingPairingVersionWarningURL = nil
     }
