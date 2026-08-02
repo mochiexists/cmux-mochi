@@ -41,8 +41,13 @@ public struct PairingPayload: Sendable, Equatable {
 /// removed):
 ///
 /// ```
-/// <scheme>://pair?v=3&r=<host:port>&r=<host:port>&f=<64-hex>&t=<ticket>&n=<label>
+/// <scheme>://attach?v=3&r=<host:port>&r=<host:port>&f=<64-hex>&t=<ticket>&n=<label>
 /// ```
+///
+/// The host stays `attach` because that is the deep link iOS already routes to
+/// the app (`CFBundleURLName = dev.cmux.ios.attach`); the version discriminates
+/// the grammar. A `pair` host is also decoded so codes minted during
+/// development keep working.
 public enum PairingPayloadCoder {
     /// Grammar version. Distinct from the removed bearer-carrying grammars so a
     /// stale code can never be misread as a valid one.
@@ -60,7 +65,7 @@ public enum PairingPayloadCoder {
     public static func encode(_ payload: PairingPayload) -> URL? {
         var components = URLComponents()
         components.scheme = payload.scheme
-        components.host = "pair"
+        components.host = "attach"
         var items = [URLQueryItem(name: "v", value: String(version))]
         items += payload.routes.map { URLQueryItem(name: "r", value: $0) }
         items.append(URLQueryItem(name: "f", value: payload.macFingerprint.hex))
@@ -78,7 +83,7 @@ public enum PairingPayloadCoder {
     ///   "this code is from an older build" rather than "invalid code".
     public static func decode(_ url: URL) throws -> PairingPayload {
         guard let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
-              components.host?.caseInsensitiveCompare("pair") == .orderedSame,
+              isPairingURL(url),
               let scheme = components.scheme
         else { throw DecodingError.notAPairingURL }
 
@@ -110,7 +115,13 @@ public enum PairingPayloadCoder {
     }
 
     /// Whether a URL looks like a DeviceLink pairing link at all.
+    ///
+    /// Accepts either host: `attach` is what iOS routes to the app, and `pair`
+    /// appeared in development codes. The version field is what actually
+    /// separates this grammar from the legacy one.
     public static func isPairingURL(_ url: URL) -> Bool {
-        url.host?.caseInsensitiveCompare("pair") == .orderedSame
+        guard let host = url.host else { return false }
+        return host.caseInsensitiveCompare("attach") == .orderedSame
+            || host.caseInsensitiveCompare("pair") == .orderedSame
     }
 }

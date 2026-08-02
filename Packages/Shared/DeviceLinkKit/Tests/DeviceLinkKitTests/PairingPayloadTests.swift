@@ -68,12 +68,25 @@ struct PairingPayloadTests {
         }
     }
 
-    @Test("non-pairing URLs are not mistaken for pairing links")
-    func rejectsUnrelatedURLs() throws {
-        let attach = try #require(URL(string: "cmux-ios://attach?payload=whatever"))
-        #expect(PairingPayloadCoder.isPairingURL(attach) == false)
+    @Test("a legacy attach payload is refused by version, not by host")
+    func rejectsLegacyPayloads() throws {
+        // DeviceLink shares the `attach` host because that is the deep link iOS
+        // already routes to the app, so the version is what separates the
+        // grammars. A legacy code must fail as "wrong version" - which the UI
+        // can explain - rather than "not a pairing link".
+        let legacy = try #require(URL(string: "cmux-ios://attach?payload=whatever"))
+        #expect(PairingPayloadCoder.isPairingURL(legacy))
+        #expect(throws: PairingPayloadCoder.DecodingError.unsupportedVersion(nil)) {
+            _ = try PairingPayloadCoder.decode(legacy)
+        }
+    }
+
+    @Test("URLs for other hosts are not pairing links")
+    func rejectsUnrelatedHosts() throws {
+        let unrelated = try #require(URL(string: "cmux-ios://settings?tab=general"))
+        #expect(PairingPayloadCoder.isPairingURL(unrelated) == false)
         #expect(throws: PairingPayloadCoder.DecodingError.notAPairingURL) {
-            _ = try PairingPayloadCoder.decode(attach)
+            _ = try PairingPayloadCoder.decode(unrelated)
         }
     }
 }
