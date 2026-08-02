@@ -1,7 +1,5 @@
 public import Foundation
-internal import Crypto
-internal import SwiftASN1
-internal import X509
+internal import CryptoKit
 
 /// Errors raised while creating or loading a device identity.
 public enum DeviceIdentityError: Error, Equatable {
@@ -77,46 +75,30 @@ public struct DeviceIdentityMaterial: Sendable {
         now: Date = Date()
     ) throws -> DeviceIdentityMaterial {
         let key = P256.Signing.PrivateKey()
-        let name: DistinguishedName
-        do {
-            name = try DistinguishedName { CommonName(commonName) }
-        } catch {
-            throw DeviceIdentityError.identityGenerationFailed("subject: \(error)")
+        var serialNumber = [UInt8](repeating: 0, count: 16)
+        var generator = SystemRandomNumberGenerator()
+        for index in serialNumber.indices {
+            serialNumber[index] = UInt8.random(in: UInt8.min ... UInt8.max, using: &generator)
         }
 
-        let certificate: Certificate
+        let derEncodedCertificate: Data
         do {
-            certificate = try Certificate(
-                version: .v3,
-                serialNumber: Certificate.SerialNumber(),
-                publicKey: Certificate.PublicKey(key.publicKey),
-                notValidBefore: now.addingTimeInterval(-60),
-                notValidAfter: now.addingTimeInterval(validity),
-                issuer: name,
-                subject: name,
-                signatureAlgorithm: .ecdsaWithSHA256,
-                extensions: try Certificate.Extensions {
-                    Critical(BasicConstraints.notCertificateAuthority)
-                },
-                issuerPrivateKey: Certificate.PrivateKey(key)
+            derEncodedCertificate = try SelfSignedCertificate.make(
+                key: key,
+                commonName: commonName,
+                notBefore: now.addingTimeInterval(-60),
+                notAfter: now.addingTimeInterval(validity),
+                serialNumber: serialNumber
             )
         } catch {
             throw DeviceIdentityError.identityGenerationFailed("certificate: \(error)")
         }
 
-        var serializer = DER.Serializer()
-        do {
-            try serializer.serialize(certificate)
-        } catch {
-            throw DeviceIdentityError.identityGenerationFailed("DER: \(error)")
-        }
-        guard let fingerprint = DeviceFingerprint(certificate: certificate) else {
-            throw DeviceIdentityError.identityGenerationFailed("fingerprint")
-        }
+        let fingerprint = DeviceFingerprint(publicKey: key.publicKey)
 
         return DeviceIdentityMaterial(
             pemPrivateKey: key.pemRepresentation,
-            derEncodedCertificate: Data(serializer.serializedBytes),
+            derEncodedCertificate: derEncodedCertificate,
             fingerprint: fingerprint
         )
     }

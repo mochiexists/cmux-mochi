@@ -1,7 +1,5 @@
 public import Foundation
-internal import Crypto
-internal import SwiftASN1
-internal import X509
+internal import CryptoKit
 
 /// The canonical identity of a device in a DeviceLink pairing: the SHA-256
 /// digest of its certificate's DER-encoded SubjectPublicKeyInfo.
@@ -29,17 +27,17 @@ public struct DeviceFingerprint: Hashable, Sendable, Codable, CustomStringConver
     /// - Parameter derEncodedCertificate: The certificate's DER bytes.
     /// - Returns: `nil` when the bytes are not a parseable certificate.
     public init?(derEncodedCertificate: Data) {
-        guard let certificate = try? Certificate(derEncoded: Array(derEncodedCertificate)),
-              let fingerprint = DeviceFingerprint(certificate: certificate)
-        else { return nil }
-        self = fingerprint
+        guard let spki = SelfSignedCertificate.subjectPublicKeyInfo(fromCertificate: derEncodedCertificate) else {
+            return nil
+        }
+        self.hex = SHA256.hash(data: spki).map { String(format: "%02x", $0) }.joined()
     }
 
-    init?(certificate: Certificate) {
-        var serializer = DER.Serializer()
-        guard (try? serializer.serialize(certificate.publicKey)) != nil else { return nil }
-        let digest = SHA256.hash(data: Data(serializer.serializedBytes))
-        self.hex = digest.map { String(format: "%02x", $0) }.joined()
+    /// Fingerprint of a public key directly, for a key not yet wrapped in a
+    /// certificate.
+    init(publicKey: P256.Signing.PublicKey) {
+        let spki = Data(SelfSignedCertificate.subjectPublicKeyInfo(for: publicKey))
+        self.hex = SHA256.hash(data: spki).map { String(format: "%02x", $0) }.joined()
     }
 
     /// A short, human-readable form for notifications and CLI output.

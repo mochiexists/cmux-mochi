@@ -1,5 +1,5 @@
 public import Foundation
-internal import Crypto
+internal import CryptoKit
 internal import Security
 
 /// Turns generated ``DeviceIdentityMaterial`` into the `SecIdentity` that

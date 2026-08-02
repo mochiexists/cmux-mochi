@@ -1,5 +1,5 @@
 public import Foundation
-internal import Crypto
+internal import CryptoKit
 
 /// Errors surfaced while minting or redeeming an enrollment ticket.
 public enum EnrollmentError: Error, Equatable {

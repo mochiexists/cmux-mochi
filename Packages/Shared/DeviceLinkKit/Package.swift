@@ -14,15 +14,9 @@ let package = Package(
             targets: ["DeviceLinkKit"]
         ),
     ],
-    dependencies: [
-        .package(url: "https://github.com/apple/swift-certificates.git", from: "1.0.0"),
-    ],
     targets: [
         .target(
             name: "DeviceLinkKit",
-            dependencies: [
-                .product(name: "X509", package: "swift-certificates"),
-            ],
             swiftSettings: [.swiftLanguageMode(.v6)]
         ),
         .testTarget(
