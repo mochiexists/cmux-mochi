@@ -402,3 +402,138 @@ Rounds 1-4 carried constraints preserved in SS11. Comparative investigation
 section.
 
 ---
+
+## Round 5 - Codex Review
+**Timestamp:** 2026-08-02T10:05:17Z
+
+### Feedback
+
+## Verdict
+
+REQUEST_CHANGES. TLS is feasible beneath the existing byte framing, but v5 has five blocker-grade gaps.
+
+### BLOCKER — Enrollment contradicts handshake admission
+
+The design requires unknown client fingerprints to fail the TLS handshake, yet enrollment requires that unknown client to finish TLS and invoke `device.enroll` ([DESIGN.md](/Users/timapple/Documents/mochi/mochi-dev/cmux-mochi-v06420/plans/feat-account-free-reconnect/DESIGN.md:78), [pairing flow](/Users/timapple/Documents/mochi/mochi-dev/cmux-mochi-v06420/plans/feat-account-free-reconnect/DESIGN.md:100)). The ticket cannot influence certificate verification because it arrives only after TLS.
+
+Required model:
+
+- Require a client certificate.
+- Admit an unknown certificate only as `.enrollmentCandidate(fingerprint)`, preferably only while an enrollment ticket exists.
+- Restrict that context to enrollment—never general RPC dispatch.
+- Atomically enroll, then close/redial or transition to `.pairedDevice`.
+- Unknown clients without an active enrollment window must fail the handshake.
+
+The test expecting every unknown fingerprint to fail the handshake must be split accordingly.
+
+### BLOCKER — “Curve25519 SecIdentity” is not an executable API contract
+
+`sec_protocol_options_set_local_identity` requires a `sec_identity_t` carrying a certificate and signing private key ([SecProtocolOptions.h](/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk/System/Library/Frameworks/Security.framework/Versions/A/Headers/SecProtocolOptions.h:89)). X25519 is a key-agreement algorithm and cannot authenticate TLS certificates. The documented Security key types expose NIST EC curves—not Curve25519 ([SecItem.h](/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk/System/Library/Frameworks/Security.framework/Versions/A/Headers/SecItem.h:768)).
+
+Use a supported TLS signing identity, most plausibly P-256, and specify how the self-signed X.509 certificate is created and associated with its Keychain key. Security.framework has no public self-signed-certificate constructor, so the plan must name a vetted certificate-generation/import path and prove it on physical iOS and macOS. Also define certificate validity under the “no rotation” policy.
+
+### BLOCKER — The existing ticket machinery is neither single-use nor enrollment-only
+
+The current store creates reusable bearer tokens and `validAuthorization` does not consume them ([MobileAttachTicketStore.swift](/Users/timapple/Documents/mochi/mochi-dev/cmux-mochi-v06420/Sources/Mobile/MobileAttachTicketStore.swift:26), [lookup](/Users/timapple/Documents/mochi/mochi-dev/cmux-mochi-v06420/Sources/Mobile/MobileAttachTicketStore.swift:108)). The QR explicitly transmits that bearer ([CmxPairingQRCode.swift](/Users/timapple/Documents/mochi/mochi-dev/cmux-mochi-v06420/Packages/Shared/CMUXMobileCore/Sources/CMUXMobileCore/CmxPairingQRCode.swift:91)). Its generator also retains the round-1 fail-open UUID fallback.
+
+Create a distinct enrollment-ticket type and coordinator that atomically:
+
+1. Validates expiry, purpose, quota, and throttle.
+2. Persists the authorized fingerprint.
+3. Consumes the ticket only after persistence succeeds.
+4. Serializes concurrent uses so exactly one unknown fingerprint wins.
+5. Fails closed if secure randomness fails.
+
+### BLOCKER — TLS-only transport conflicts with old-client compatibility
+
+Both sides currently construct plaintext TCP explicitly: the phone at [CmxNetworkByteTransport.swift](/Users/timapple/Documents/mochi/mochi-dev/cmux-mochi-v06420/Packages/iOS/CmuxMobileTransport/Sources/CmuxMobileTransport/CmxNetworkByteTransport.swift:119) and Mac at [MobileHostService.swift](/Users/timapple/Documents/mochi/mochi-dev/cmux-mochi-v06420/Sources/Mobile/MobileHostService.swift:872). Replacing the Mac listener parameters with TLS applies TLS to every accepted connection; a pre-DeviceLink plaintext client cannot pair “exactly as before.”
+
+Choose explicitly:
+
+- Drop old-client compatibility; or
+- Run separate TLS and legacy listeners/ports and encode distinct routes/credentials.
+
+A v5 client that received a pin must never downgrade to legacy plaintext. If a legacy QR remains available, its photographed bearer exposure must remain in the threat statement.
+
+### BLOCKER — Revocation is not linearizable
+
+The current registry inserts independently of authorization persistence ([MobileHostTransportAuthorization.swift](/Users/timapple/Documents/mochi/mochi-dev/cmux-mochi-v06420/Sources/Mobile/MobileHostTransportAuthorization.swift:58)). A race can occur:
+
+1. TLS verification observes the fingerprint as authorized.
+2. Local revoke deletes it and closes currently indexed connections.
+3. The just-verified connection is inserted afterward and survives revocation.
+
+One actor must own authorization rows plus admission finalization and registry indexing, so revoke orders either before admission—causing rejection—or afterward—closing the indexed connection.
+
+Also disable TLS session resumption or revalidate the current fingerprint after every ready handshake. Otherwise resumed sessions could undermine the promise that future handshakes fail immediately after revocation.
+
+## Major findings
+
+- **MAJOR — TLS is layerable, but not through the stated byte-stream seam.** TLS parameters are needed while constructing `NWConnection`/`NWListener`, before a byte stream exists. `DeviceLinkKit` should supply Network.framework option/parameter factories, while `CmxNetworkByteTransport` accepts injected parameters or an already-created connection.
+
+- **MAJOR — Host authorization is currently selected before TLS completes.** The Mac immediately wraps an accepted connection and passes `.stackBearer` ([MobileHostService.swift](/Users/timapple/Documents/mochi/mochi-dev/cmux-mochi-v06420/Sources/Mobile/MobileHostService.swift:1123)); registry insertion happens before `transport.connect()` performs the handshake ([MobileHostService.swift](/Users/timapple/Documents/mochi/mochi-dev/cmux-mochi-v06420/Sources/Mobile/MobileHostService.swift:1150)). Admission must become handshake-first and peer-identity-derived.
+
+- **MAJOR — Keychain accessibility permits migration.** `kSecAttrSynchronizable=false` prevents synchronization, not encrypted-backup migration. Use `kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly`, matching the existing Iroh identity precedent, and distinguish `errSecInteractionNotAllowed` from “missing.” Never generate a replacement identity merely because the original is temporarily inaccessible.
+
+- **MAJOR — One static phone key silently expands compromise scope.** Theft of that private key grants access to every paired Mac until each Mac separately revokes it, and the repeated fingerprint makes pairings linkable. V1–v4 had per-Mac credential compartmentalization. Either use per-pair identities or record explicit operator acceptance of this regression.
+
+- **MAJOR — The TLS profile is underspecified.** Require TLS 1.3 min/max, server-side `peer_authentication_required=true`—servers default false ([SecProtocolOptions.h](/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk/System/Library/Frameworks/Security.framework/Versions/A/Headers/SecProtocolOptions.h:562))—a canonical fingerprint format, permitted key algorithm/size, precise leaf extraction, ALPN/version separation, and certificate-expiry behavior.
+
+- **MAJOR — Wrong-pin failure is not presently terminal.** `.secureChannelFailed` in an `NWConnection.waiting` state is allowed to wait until the connect deadline ([CmxNetworkConnectionEvent.swift](/Users/timapple/Documents/mochi/mochi-dev/cmux-mochi-v06420/Packages/iOS/CmuxMobileTransport/Sources/CmuxMobileTransport/CmxNetworkConnectionEvent.swift:81)). The v5 route policy needs to fail fast and suppress automatic retries after a definitive pin mismatch.
+
+- **MAJOR — Pairing persistence ordering is missing.** The phone must persist its identity and Mac pin before sending enrollment. If the Mac commits enrollment and the response is lost, the phone can simply redial with the same identity; rescanning should not be required. A temporarily locked pin store must not create a second identity.
+
+- **MAJOR — Actual TLS integration tests are required.** Add real loopback `NWListener`/`NWConnection` tests for negotiated TLS 1.3, valid pins, wrong pins, provisional enrollment, plaintext downgrade rejection, concurrent ticket use, revoke/admit races, and reconnect after revocation with session caching.
+
+## Minor findings
+
+- **MINOR — “No bearer token on the wire” is inaccurate.** The enrollment ticket is a short-lived bearer. The accurate claim is “no durable bearer or session bearer.”
+- **MINOR — Device labels are attacker-controlled.** Normalize control characters, cap bytes, avoid implying the label is trusted, and include a fingerprint suffix in notifications/list output.
+- **MINOR — A root-owned file is not a viable alternative store for an unprivileged app.** If Keychain is rejected, the fallback is a user-owned protected file with an honest same-user integrity threat model.
+- **MINOR — “Confidentiality is not required” overlooks device-name privacy and cross-host fingerprint correlation.**
+
+## SS11 assessment
+
+TLS 1.3, once implemented correctly, genuinely resolves the round-4 transcript-binding and active-relay substitution class. Mac-wide scope is server-authoritative; Iroh separation and sign-in scope match the live architecture.
+
+SS11 is not yet fully carried forward: atomic single-use issuance, fail-closed randomness, immediate revocation, endpoint/transport migration, and old-client behavior remain unresolved. V5 also drops per-Mac compromise compartmentalization without acknowledging it.
+
+No files were changed and no tests were run; this was a read-only design/source/API audit of HEAD `466131d518`.
+
+CONSENSUS: BLOCKED - enrollment cannot occur under the stated unknown-key handshake rejection, the Curve25519 SecIdentity path is not executable as specified, legacy plaintext coexistence and ticket semantics conflict with v5, and revocation is not race-safe.
+
+---
+
+## Round 5 - Claude Response (v6)
+**Timestamp:** (same session)
+
+### Changes Made (v6) - all five blockers + all majors addressed
+- B1: .enrollmentCandidate admission context (unknown cert accepted ONLY
+  while an enrollment ticket is live; RPC surface = enroll only).
+- B2: P-256 identities + swift-certificates as the named cert path; Phase 0
+  hardware spikes gate the design; Noise-IK stays the documented fallback.
+- B3: distinct enrollment-ticket type, CSPRNG-or-throw, coordinator actor
+  with consume-after-persist (T3 Code atomic-consume pattern imported).
+- B4: OPERATOR DECISION - zero external consumers, so no legacy: TLS-only,
+  legacy pairing paths DELETED (bearer QR grammar, legacy private-network
+  code, fallback heuristics) in a dedicated cleanup phase. No dual listener,
+  no downgrade branches.
+- B5: one actor owns table + admission + registry insertion; TLS session
+  resumption disabled/revalidated.
+- Majors: TLS parameter factories at construction seam; handshake-first
+  admission restructure; ThisDeviceOnly accessibility + locked!=missing;
+  per-pair phone identities (compartmentalization restored); full TLS
+  profile pinned (1.3 only, peer_authentication_required, canonical SPKI
+  fingerprint, ALPN cmux-devicelink/1); fail-fast pin mismatch; persist-
+  before-enroll; loopback TLS integration test matrix mandated in Phase 1.
+- Minors: bearer wording fixed; label hygiene + fingerprint suffix in
+  notifications; file-store fallback framed honestly; name privacy noted.
+- Comparator imports (T3 Code study): atomic consume, jittered backoff +
+  foreground-resume bypass, discoverable-descriptor lesson noted via ALPN/
+  versioning, QR-carries-the-capability principle retained.
+- NEW: full implementation phasing (Phase 0 spikes -> package -> Mac -> iOS
+  -> legacy deletion -> E2E) and the two-journey hardware matrix:
+  iPhone 16 = fully automated devicectl journey, iPhone 17 = fully manual
+  operator journey, M4 + M5, cross-matrix assertions.
+
+---
