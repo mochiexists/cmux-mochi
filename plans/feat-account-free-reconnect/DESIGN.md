@@ -1,7 +1,7 @@
 # Account-free reconnect: a durable credential for the no-account path
 
-**Status:** design v3, not started. Revised after Codex rounds 1–2
-(see `DESIGN_review_history.md`); awaiting round-3 consensus.
+**Status:** design v4, not started. Revised after Codex rounds 1–3
+(see `DESIGN_review_history.md`); awaiting round-4 consensus.
 **Branch:** `mochi/on-v0.64.20-wip`
 **Author:** investigation 2026-08-01/02, verified against a real iPhone 16 + M4 + M5.
 
@@ -90,22 +90,32 @@ After the phone connects with a **mac-scoped** QR ticket, it calls a new verb:
 
 - `mobile.pairing.grant.register` — authorized by the live mac-scoped attach
   ticket. Workspace-pinned tickets are refused (round 1 restriction).
-  - Phone persists `{registration_id (random), state: pending}` **before**
-    sending, and sends it with a bounded device label (e.g. "Tim's iPhone 16",
-    ≤64 chars). **Registration is idempotent**: retrying the same
-    `registration_id` returns the same grant (replay material per §5a), so a
-    lost response never orphans a committed grant or burns quota. Distinct
-    `registration_id`s create distinct grants (that is what multiple phones
-    scanning one QR look like), capped at 4 registrations per QR ticket on top
-    of the global grant quota.
+  - Phone generates and persists, **before** sending: `{registration_id
+    (random), an X25519 keypair (private key in the Keychain), state:
+    pending}`. It sends `registration_id`, the **public key**, and a bounded
+    device label (e.g. "Tim's iPhone 16", ≤64 chars).
   - Mac generates server-side: `grant_id`, `family_id`, a 32-byte secret `S`
     (CSPRNG, **throws if `SecRandomCopyBytes` fails** — no UUID fallback for
     grants), fixed 30-day TTL. No client-supplied TTL/scope/role is honored.
-  - Mac persists the verifier `K = SHA-256(S)` plus grant metadata (grant id,
-    family id, device label, issue + expiry dates, pairing scope), and — until
-    the grant is first used or the retention window lapses — the replay
-    material of §5a. Steady-state storage is verifier-only; the raw secret
-    lives durably only in the phone's Keychain.
+  - The response carries `S` **sealed to the phone's public key** (HPKE-style:
+    CryptoKit ephemeral X25519 agreement + ChaCha20-Poly1305). The Mac
+    persists the verifier `K = SHA-256(S)`, grant metadata (grant id, family
+    id, device label, issue + expiry dates, pairing scope, client public key),
+    and — per §5a — the **sealed blob itself** as replay material. The Mac
+    never stores raw `S`, not even transiently: sealing happens before the
+    commit, and what is committed is already opaque to everyone but the
+    registering phone.
+  - **Registration recovery survives a Mac restart and needs no QR ticket**:
+    `mobile.pairing.grant.register_recover {registration_id}` returns the
+    stored sealed blob + grant metadata. It is rate-limited, its unknown-id
+    and throttled errors are indistinguishable, and its response is useless to
+    anyone but the holder of the private key — possession of the persisted
+    keypair *is* the authorization, which is exactly what an in-memory QR
+    ticket could never provide across a restart.
+  - Distinct `registration_id`s create distinct grants (that is what multiple
+    phones scanning one QR look like), capped at 4 registrations per QR
+    ticket on top of the global grant quota. Retrying the same
+    `registration_id` never consumes quota twice.
   - The Mac posts a **user notification** on every successful registration
     ("iPhone 'Tim's iPhone 16' is now durably paired — manage with
     `cmux rpc mobile.pairing.grant.list`"), so a covert registration by a QR
@@ -141,13 +151,13 @@ from a grant carry no mint grant, so there is no grandchild chain.
 Naive rotate-and-invalidate strands the phone when the response is lost or iOS
 crashes before its Keychain write. Protocol instead:
 
-1. Phone persists `{rotation_id (random), state: pending}` **before** sending
-   `rotate {rotation_id}`.
+1. Phone persists `{rotation_id (random), a fresh X25519 keypair, state:
+   pending}` **before** sending `rotate {rotation_id, client_pubkey}`.
 2. Mac, atomically within the store mutation: revalidate the grant, mint the
-   successor, persist `parent_verifier + rotation_id → successor` in one
-   commit — **including the successor's replay material (§5a), so the commit
-   survives a Mac restart.** Persistence failure leaves the parent untouched
-   and returns an error.
+   successor, seal it to `client_pubkey`, persist `parent_verifier +
+   rotation_id → sealed successor` in one commit — **the sealed replay
+   material (§5a) is what makes the commit survive a Mac restart.**
+   Persistence failure leaves the parent untouched and returns an error.
 3. **Retrying the same `rotation_id` returns the identical raw successor**,
    even across a Mac restart between commit and retry (that is precisely what
    §5a exists for). A spent parent is otherwise unusable (mint_session and
@@ -172,18 +182,26 @@ not an accident.
 
 A verifier (`K`) cannot reproduce the raw secret it verifies, so an
 acknowledged-response protocol needs **recoverable replay material** for the
-window between commit and acknowledgment:
+window between commit and acknowledgment. The client keypair (§2) makes this
+clean:
 
-- When `register` or `rotate` commits, the record stores the raw successor
-  secret alongside the verifier, inside the same Keychain-backed table
-  (equivalent protection to everything else in the item — this is a bounded
-  widening of digest-at-rest, not an abandonment of it).
+- Every secret-issuing request (`register`, `rotate`) carries a fresh client
+  X25519 public key. The Mac seals the new secret to that key **before** the
+  commit; the committed replay material is the **sealed blob**, never raw
+  `S`. The Mac holds nothing a thief of its Keychain could use to *become*
+  the phone's grant — at rest there are only verifiers and blobs decryptable
+  solely by the phone.
+- Recovery (`register_recover` / `rotate_recover`, keyed by
+  `registration_id`/`rotation_id`) returns the sealed blob. It requires no
+  other live credential — after a Mac restart, possession of the persisted
+  client private key is what turns the blob back into a grant, and without it
+  the response is noise. Rate-limited; unknown-id and throttled errors
+  indistinguishable.
 - The replay material is **erased at first use** of the new grant (its first
   successful challenge-response proof is possession evidence — the phone
   provably received it) or after a 48-hour retention window, whichever comes
-  first. After erasure, the record is verifier-only and the retry path for
-  that `registration_id`/`rotation_id` returns a terminal "re-pair required"
-  error instead of a replay.
+  first. After erasure, the record is verifier-only and the recovery path for
+  that id returns a terminal "re-pair required" error instead of a replay.
 - Pruning of replay material happens on load and on every mutation, same as
   expiry pruning.
 
@@ -272,15 +290,33 @@ sent:
    carrying `phone_proof = HMAC-SHA256(K, "phone-proof" ‖ mac_nonce ‖
    phone_nonce)`. Proofs are bound to both single-use nonces (small in-memory
    nonce table, short expiry), so neither proof replays.
-4. Secrets in responses (a rotation/registration successor `S'`) are sealed
-   with `ChaChaPoly` under `HKDF(K, phone_nonce ‖ mac_nonce)` — CryptoKit,
-   nothing exotic — so even a passive on-path observer inside the tailnet
-   learns nothing durable.
+4. Every secret a response carries — a rotation/registration successor, and
+   the **`mint_session` session ticket bearer too** — is sealed to a fresh
+   client X25519 public key sent with the request (§5a mechanism, uniformly).
+   A passive on-path observer inside the tailnet learns nothing usable.
 
-Accepted and documented: an attacker who reads the Mac's Keychain holds `K`
-and can impersonate either side of this handshake — but that attacker owns the
-Mac already. `S` itself still never transits or rests on the Mac outside the
-§5a replay window.
+**What the handshake does and does not claim (round-3 finding, scoped
+honestly).** The proofs authenticate endpoints and the sealing defeats passive
+capture, but an *active relay* — realistically, an unprivileged process on the
+Mac squatting the preferred port and forwarding to the real listener — sits
+inside the phone's session once established: subsequent requests carry the
+session bearer as plaintext `attach_token` JSON
+(`MobileCoreRPCClient.swift:396`), so a relay can capture **session-tier**
+credentials (≤1 h, revocable with the family). This is *exactly* the exposure
+today's QR flow already has — a port-squatter during pairing captures the QR
+ticket bearer the same way — so this feature leaves session-tier relay risk
+unchanged while guaranteeing one new thing: **the durable credential never
+transits in a capturable form** (`S` only ever moves sealed; proofs are
+nonce-bound HMACs). Accepted for round 1 and stated in §10. The upgrade path
+if the threat model hardens: pin a Mac TLS identity at registration and run
+the RPC channel over it, or switch grant-minted sessions from bearer tokens to
+per-request HMAC under a sealed session key — both deliberately out of scope
+now.
+
+Also accepted and documented: an attacker who reads the Mac's Keychain holds
+`K` and can impersonate either side of this handshake — but that attacker owns
+the Mac already. Raw `S` never rests on the Mac at all (§5a stores only sealed
+blobs).
 
 ### 8. Endpoint discovery without an account
 
@@ -315,11 +351,16 @@ is out of scope.
 A stolen grant is **not** "nothing but minting": minting yields a mac-scoped
 session ticket, i.e. full terminal access on that Mac — same power as today's
 stolen 1 h ticket, for longer. Bounds: usable only from inside the tailnet;
-verifier-at-rest on the Mac (raw secret only within the §5a replay window);
-revocable per family; rotation means a thief racing the owner locks one of
-them out, which is at least *visible* (the owner's next rotate fails against
-an unknown grant → the phone surfaces "re-pair needed" and the Mac logs a
-security event).
+the Mac stores only verifiers and phone-sealed blobs (raw `S` never rests
+there); revocable per family; rotation means a thief racing the owner locks
+one of them out, which is at least *visible* (the owner's next rotate fails
+against an unknown grant → the phone surfaces "re-pair needed" and the Mac
+logs a security event).
+
+**Active-relay exposure is session-tier only and pre-existing** (§7a): a
+port-squatting relay can capture a ≤1 h session bearer — as it can during
+today's QR pairing — but never the durable grant. Accepted; upgrade paths
+noted in §7a.
 
 **QR escalation, stated honestly (round-2 finding):** the QR's *acquisition*
 window is ≤1 h, but a photographer who registers within that window obtains an
@@ -360,17 +401,22 @@ remove — and is the first thing to revisit if the threat model hardens.
   successor; different `rotation_id` against a spent parent fails; concurrent
   rotations leave exactly one live grant; persistence failure leaves the
   parent valid
-- **commit → lose response → restart Mac (reload from Keychain) → retry same
-  `rotation_id` → identical raw successor** (§5a); same for `registration_id`
+- **commit → lose response → restart Mac (reload from Keychain) →
+  `rotate_recover`/`register_recover` with the same id → identical sealed
+  successor, decryptable by the persisted client private key, with no QR
+  ticket or parent credential presented** (§5a)
 - replay material: erased at successor's first use and at the 48 h window;
-  post-erasure retry returns the terminal re-pair error, not a replay
+  post-erasure recovery returns the terminal re-pair error, not a replay
 - registration idempotency: retried `registration_id` returns the same grant
   and never consumes quota twice; per-QR-ticket registration cap enforced
+- sealing: raw `S` appears nowhere in the Mac's store or on the wire (assert
+  on the serialized table and a wire capture); a blob sealed to one keypair
+  does not decrypt with another; `mint_session`'s bearer is sealed to the
+  request's client pubkey
 - handshake (§7a): phone aborts on bad/missing `mac_proof` before sending
   anything grant-derived (spoofed port-owner test); nonces are single-use
-  (replayed proofs fail); unknown `grant_id` and rate-limited responses are
-  indistinguishable; sealed successor decrypts only with the session's HKDF
-  key
+  (replayed proofs fail); unknown `grant_id`/`registration_id` and
+  rate-limited responses are indistinguishable
 - phone crash between response and Keychain write: pending marker + retry
   recovers
 - CSPRNG failure ⇒ grant creation throws (no UUID fallback)

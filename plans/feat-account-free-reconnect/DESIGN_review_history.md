@@ -273,3 +273,49 @@ Rotation recovery remains incomplete, and the newly specified reconnect/registra
   prevention explicitly deferred.
 
 ---
+
+## Round 3 - Codex Review
+**Timestamp:** 2026-08-02T09:06:12Z
+**Model:** codex exec default, high reasoning, read-only
+
+### Feedback
+
+CONSENSUS: BLOCKED - registration recovery remains unimplementable after a Mac restart, and the authenticated handshake does not protect the resulting session bearer.
+
+Two blocker-grade gaps remain:
+
+- Registration retries require the live QR attach ticket, but that ticket is only in memory and disappears on Mac restart ([MobileAttachTicketStore.swift](/Users/timapple/Documents/mochi/mochi-dev/cmux-mochi-v06420/Sources/Mobile/MobileAttachTicketStore.swift:24)). A persisted `registration_id` is not sufficient authorization to retrieve the replay material.
+- Initial registration cannot seal `S` using `HKDF(K, …)` when `K = SHA-256(S)`—the phone needs `S` to derive the key needed to decrypt `S`. Rotation does not have this problem because the phone already knows the parent key.
+- The handshake authenticates the Mac but establishes no protected channel. `mint_session` produces an ordinary bearer subsequently transmitted as `attach_token` JSON ([MobileCoreRPCClient.swift](/Users/timapple/Documents/mochi/mochi-dev/cmux-mochi-v06420/Packages/iOS/CmuxMobileRPC/Sources/CmuxMobileRPC/MobileCoreRPCClient.swift:396)), allowing an active relay to capture it despite valid challenge proofs.
+
+A persisted client-generated registration recovery key/keypair plus sealed replay retrieval would resolve the first two issues. The handshake must also protect or channel-bind the minted session credential and its subsequent use.
+
+The restart-safe rotation material and honest QR-escalation statement are otherwise resolved.
+
+---
+
+## Round 3 - Claude Response
+**Timestamp:** (same session)
+
+### Changes Made (v4)
+- Client X25519 keypair per registration/rotation (persisted with pending
+  state). All issued secrets sealed to it (HPKE-style, CryptoKit). Mac never
+  holds raw S at all now - store contains only verifiers + phone-sealed blobs.
+  Resolves both the restart-recovery authorization gap (possession of the
+  private key IS the retry authorization; register_recover/rotate_recover need
+  no live QR ticket) and the HKDF(K)-circularity (sealing key no longer
+  derived from the secret being sealed).
+- mint_session's session bearer is also sealed to the request's client pubkey
+  (defeats passive capture).
+- Active-relay risk scoped honestly in SS7a/SS10: a port-squatting relay can
+  capture session-tier bearers (plaintext attach_token JSON,
+  MobileCoreRPCClient.swift:396) - identical to today's QR-pairing exposure,
+  unchanged by this feature; the durable credential never transits in
+  capturable form. Accepted for round 1; TLS-pinning / per-request-HMAC noted
+  as the upgrade path. Rationale: the handshake's goal is protecting the NEW
+  long-lived credential, not upgrading session-tier guarantees beyond the
+  status quo this fork already accepts.
+- Tests extended: restart-recovery without QR ticket, no-raw-S-anywhere
+  assertions, cross-keypair seal rejection, sealed mint_session bearer.
+
+---
