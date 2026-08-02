@@ -216,7 +216,17 @@ protocol change.
 
 - Gate: `shouldReconnectStoredMac` gains `hasPairedDeviceIdentity`
   (identity + pin present *and readable*; locked-Keychain ≠ missing).
-- Flow: dial stored route → mTLS → admitted → resubscribe. Nothing else.
+- Flow: dial stored route → mTLS → **round-trip probe** → admitted →
+  resubscribe.
+- **`.ready` is not admission (proven in spike 0b).** Under TLS 1.3 the
+  client's handshake completes *before* the server validates the client
+  certificate (client auth rides after the server's Finished), so a phone
+  presenting an unknown or revoked identity briefly observes a `.ready`
+  connection that the Mac never admitted. The phone therefore treats the
+  first successful **request/response round trip** as the connected signal;
+  a connection that goes `.ready` and then fails its probe is reported as a
+  refusal (re-pair needed), never as "connected". Mac-side truth is its own
+  admission record, not the socket state.
 - **Fail-fast on definitive pin mismatch** (round-5 major: today
   `.secureChannelFailed` in `.waiting` idles until the connect deadline —
   `CmxNetworkConnectionEvent.swift:81`): a completed handshake with a wrong
@@ -265,14 +275,33 @@ QR comments) updated with the code.
 
 ## Implementation plan (phased; each phase = small commits + green build)
 
-**Phase 0 — feasibility spikes (throwaway branches, half a day each):**
-- a. `swift-certificates` P-256 self-signed leaf + `SecIdentity` assembly +
-  `sec_protocol_options_set_local_identity` round-trip on macOS **and**
-  physical iOS.
-- b. `NWListener`/`NWConnection` mTLS 1.3 loopback with verify blocks both
-  ways, ALPN, resumption disabled — the round-5 "prove the key bet" demand.
-  Outcome gates the design: if either spike fails, stop and re-plan (the
-  Noise-IK alternative is the documented fallback).
+**Phase 0 — feasibility spikes — ✅ BOTH PASS on macOS 2026-08-02.**
+Sources preserved: `spike0a-identity.swift`, `spike0b-mtls.swift`.
+- a. ✅ `swift-certificates` P-256 self-signed leaf → `SecCertificate` +
+  `SecKey` → resolvable `SecIdentity` → `sec_identity_create` →
+  `sec_protocol_options_set_local_identity` accepted with TLS 1.3 pinned;
+  canonical SPKI SHA-256 extracted and cross-checked against
+  `SecCertificateCopyKey`.
+  *Environment notes (harness artifacts, not API limits):* an **unsigned**
+  CLI cannot `SecItemAdd` to the data-protection keychain (`-34018`, needs
+  an application-identifier entitlement) and legacy-keychain add of an
+  ephemeral `SecKey` ref returns `-50`; the spike proved identity resolution
+  via PKCS#12 import instead. **Phase 1 must assert the entitled
+  `SecItemAdd` path inside a real app target** (iOS device included — that
+  half of 0a is still outstanding and is a Phase-1 entry gate).
+  Also: macOS 26's OpenSSL 3 requires `-legacy` (or explicit
+  `PBE-SHA1-3DES`/`-macalg sha1`) for `security import` to accept a p12 —
+  relevant to E2E scripting.
+- b. ✅ `NWListener`/`NWConnection` mutual TLS 1.3 on loopback with SPKI
+  verify blocks **both ways**, ALPN `cmux-devicelink/1` negotiated and
+  verified, `peer_authentication_required(true)`, resumption + tickets
+  disabled. Four cases green: happy path (data round-trip + server
+  admission), wrong server pin (client refuses the impostor before sending
+  data), unknown client (server refuses — no admission, no data), plaintext
+  client (no session).
+  **Design-affecting finding:** client `.ready` precedes server-side client-
+  cert validation under TLS 1.3 → §7's round-trip rule. Caught here rather
+  than in production.
 
 **Phase 1 — DeviceLinkKit package:** identity generation/store, fingerprint
 canonicalization, pin store, authorized-devices repository actor, enrollment
@@ -280,7 +309,12 @@ ticket type + coordinator, TLS parameter factories, QR payload coder,
 reconnect policy constants. Full unit coverage incl. the round-5-mandated
 loopback TLS integration tests (valid pin, wrong pin, unknown-client with
 and without enrollment window, concurrent ticket use, revoke/admit race,
-reconnect-after-revoke with resumption attempted, plaintext rejection).
+reconnect-after-revoke with resumption attempted, plaintext rejection) —
+spike 0b's four cases are the seed, extended with server-side admission
+assertions rather than socket state.
+*Entry gate carried from Phase 0a:* prove entitled `SecItemAdd` +
+`SecIdentity` resolution inside a signed app target on macOS **and a
+physical iPhone** before building on the identity store.
 
 **Phase 2 — Mac integration:** listener TLS parameters; handshake-first
 admission; `.enrollmentCandidate` + `.pairedDevice` contexts; registry
