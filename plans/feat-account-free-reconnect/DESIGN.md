@@ -325,11 +325,18 @@ Sources preserved: `spike0a-identity.swift`, `spike0b-mtls.swift`.
   on the network path, list/revoke on the control socket only (guarded by a
   test that reads the shipping dispatch). 6 host-boundary tests green in the
   app target.
-- **Environment note:** `xcodebuild` on this macOS 26 machine needs
-  `CMUX_SKIP_ZIG_BUILD=1` — zig 0.15.2 cannot link the Ghostty CLI helper here
-  (the repo documents the same wall in `scripts/build-sign-upload.sh`, and CI
-  passes the same flag). Unrelated to DeviceLink; the baseline fails
-  identically.
+- **Environment note (build):** zig 0.15.2 cannot link the Ghostty CLI helper
+  on macOS 26, so a from-source helper build fails here (baseline fails
+  identically — unrelated to DeviceLink). **Use the already-built helper, not
+  the stub:**
+
+  ```bash
+  export CMUX_PREBUILT_GHOSTTY_HELPER="/Applications/cmux Mochi NIGHTLY.app/Contents/Resources/bin/ghostty"
+  ```
+
+  That is a real universal Mach-O, so the resulting app is installable — unlike
+  `CMUX_SKIP_ZIG_BUILD=1`, whose stub is fine for compiling and unit tests but
+  must never be used for a build that goes on a phone.
 
 **Phase 1 — DeviceLinkKit package:** identity generation/store, fingerprint
 canonicalization, pin store, authorized-devices repository actor, enrollment
