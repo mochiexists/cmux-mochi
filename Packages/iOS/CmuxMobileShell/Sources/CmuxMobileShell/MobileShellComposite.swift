@@ -1710,8 +1710,13 @@ public final class MobileShellComposite: MobileTerminalOutputSinking {
             finishStoredMacReconnectAttempt(generation: generation)
             return .failed(.noRoute)
         }
-        guard isSignedIn,
-              let scope = await currentScopeSnapshot(userID: stackUserID) else {
+        let resolvedScope = await currentScopeSnapshot(userID: stackUserID)
+        Self.logStoredMacReconnectScope(
+            isSignedIn: isSignedIn,
+            requestedUserID: stackUserID,
+            resolvedUserID: resolvedScope?.userID
+        )
+        guard isSignedIn, let scope = resolvedScope else {
             finishStoredMacReconnectAttempt(generation: generation)
             return .failed(.authorizationFailed)
         }
@@ -1724,6 +1729,7 @@ public final class MobileShellComposite: MobileTerminalOutputSinking {
         // this a stale port makes the auto-connect fail and the app falls back to
         // the Mac picker, the screen we want to avoid showing.
         if refreshBackupBeforeDial,
+           !MobileLocalPairingScope.isLocal(scope.userID),
            let refresher = pairedMacStore as? any PairedMacBackupRefreshing {
             await refresher.refreshFromBackup(stackUserID: scope.userID)
         }
@@ -1823,7 +1829,13 @@ public final class MobileShellComposite: MobileTerminalOutputSinking {
             self.didFinishStoredMacReconnectAttempt = true
         }
         let irohReconnectIsBlocked = automaticIrohReconnectIsBlocked(accountID: scope.userID)
-        let zeroTouchCandidates: [MobilePairedMac] = if irohReconnectIsBlocked {
+        // Fork (cmux Mochi): zero-touch Iroh discovery is account-scoped and
+        // waits on Stack readiness, which an account-free pairing never reaches
+        // — so for a local scope it can only suspend the reconnect it is meant
+        // to help. Kept separate from `irohReconnectIsBlocked`, which means
+        // retry backoff rather than "not applicable".
+        let zeroTouchCandidates: [MobilePairedMac] = if irohReconnectIsBlocked
+            || MobileLocalPairingScope.isLocal(scope.userID) {
             []
         } else {
             await discoverZeroTouchIrohCandidates(
@@ -1886,8 +1898,22 @@ public final class MobileShellComposite: MobileTerminalOutputSinking {
                 !irohReconnectIsBlocked || $0.kind != .iroh
             }
             let localHasIroh = localRoutes.contains { $0.kind == .iroh }
+            // Fork (cmux Mochi): a DeviceLink pairing dials Tailscale under
+            // mutual TLS with the Mac's key pinned, so a stored tailnet route is
+            // securely reconnectable — unlike the plaintext bearer era this
+            // check was written for, when such a route was only a migration
+            // hint. Without this a paired device holds a perfectly good key and
+            // still refuses to dial the Mac it belongs to.
+            let hasDeviceLinkCredential = MobileDeviceLinkClient.shared.hasAnyPairedDevice()
             let localCanConnectSecurely = localHasIroh
                 || localRoutes.contains { $0.kind == .debugLoopback }
+                || (hasDeviceLinkCredential && localRoutes.contains { $0.kind == .tailscale })
+            Self.logStoredMacDialDecision(
+                mac: mac.macDeviceID,
+                routeKinds: localRoutes.map { $0.kind.rawValue },
+                hasDeviceLinkCredential: hasDeviceLinkCredential,
+                canConnect: localCanConnectSecurely
+            )
             let isLegacyPrivateNetworkPairing = !mac.routes.contains { $0.kind == .iroh }
                 && mac.routes.contains { $0.kind == .tailscale }
 
@@ -1896,6 +1922,7 @@ public final class MobileShellComposite: MobileTerminalOutputSinking {
             // consult the authenticated registry for the Mac's Iroh identity.
             if localCanConnectSecurely {
                 attemptedAutomaticIroh = attemptedAutomaticIroh || localHasIroh
+                Self.logStoredMacDialStarted(mac: mac.macDeviceID)
                 lastDialOutcome = await connectStoredMacOutcome(
                     name: mac.displayName ?? mac.macDeviceID,
                     routes: localRoutes,
@@ -3215,6 +3242,7 @@ public final class MobileShellComposite: MobileTerminalOutputSinking {
         let client = MobileCoreRPCClient(
             runtime: runtime,
             route: route,
+            isDeviceLinkChannel: MobileDeviceLinkClient.shared.hasAnyPairedDevice(),
             ticket: ticket,
             allowsStackAuthFallback: MobileShellRouteAuthPolicy.routeAllowsStackAuth(route),
             connectAttemptRegistry: connectAttemptRegistry,
@@ -4990,6 +5018,7 @@ public final class MobileShellComposite: MobileTerminalOutputSinking {
             let client = MobileCoreRPCClient(
                 runtime: runtime,
                 route: route,
+                isDeviceLinkChannel: MobileDeviceLinkClient.shared.hasAnyPairedDevice(),
                 ticket: ticket,
                 allowsStackAuthFallback: routeAllowsStackAuthFallbackOverride
                     ?? MobileShellRouteAuthPolicy.routeAllowsStackAuth(route),

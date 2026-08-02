@@ -40,7 +40,13 @@ struct cmuxApp: App {
         #else
         let supportedKinds: [CmxAttachTransportKind] = [.tailscale]
         #endif
-        let networkFactory = CmxNetworkByteTransportFactory(supportedKinds: supportedKinds)
+        // Fork (cmux Mochi): tailnet dials are mutual TLS, so the factory needs
+        // this device's identity and the Mac's pin. Supplied as a closure so the
+        // transport package keeps no opinion about how identities are stored.
+        let networkFactory = CmxNetworkByteTransportFactory(
+            supportedKinds: supportedKinds,
+            deviceLinkTLSOptions: { MobileDeviceLinkClient.shared.currentPairingTLSOptions() }
+        )
         let fallbackRegistrations = supportedKinds.map { kind in
             CmxRouteTransportFactoryRegistration(kind: kind, factory: networkFactory)
         }

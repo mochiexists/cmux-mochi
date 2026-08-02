@@ -36,6 +36,7 @@ public final class MobileCoreRPCClient: MobileSyncing, Sendable {
     public init(
         runtime: any MobileSyncRuntime,
         route: CmxAttachRoute,
+        isDeviceLinkChannel: Bool = false,
         ticket: CmxAttachTicket,
         allowsStackAuthFallback: Bool = false,
         connectAttemptRegistry: MobileRPCConnectAttemptRegistry = MobileRPCConnectAttemptRegistry(),
@@ -64,6 +65,15 @@ public final class MobileCoreRPCClient: MobileSyncing, Sendable {
         // `debugLoopback` topping up with an account token) is untouched.
         let authorizationMode: CmxTransportAuthorizationMode
         if route.kind == .iroh {
+            authorizationMode = .transportAdmission
+        } else if isDeviceLinkChannel {
+            // Fork (cmux Mochi): a DeviceLink dial is mutual TLS with the Mac's
+            // key pinned, so the transport itself proves both identities —
+            // the same situation as Iroh admission. Requests carry no auth
+            // material, and the Stack fallback below must not fire: with no
+            // attach token it would try to attach an account bearer and then
+            // refuse itself, which is what made reconnect fail as
+            // `insecureManualRoute`.
             authorizationMode = .transportAdmission
         } else if route.kind == .tailscale, hasAttachToken {
             authorizationMode = .attachTicket

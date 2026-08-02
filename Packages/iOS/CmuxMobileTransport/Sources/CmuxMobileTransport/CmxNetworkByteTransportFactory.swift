@@ -60,7 +60,8 @@ public struct CmxNetworkByteTransportFactory: CmxRouteAwareByteTransportFactory 
             throw CmxNetworkByteTransportError.unsupportedEndpoint(route.endpoint)
         }
         guard request.authorizationMode == .stackBearer
-                || request.authorizationMode == .attachTicket else {
+                || request.authorizationMode == .attachTicket
+                || request.authorizationMode == .transportAdmission else {
             throw CmxNetworkByteTransportError.unsupportedAuthorizationMode(
                 request.authorizationMode
             )
@@ -76,7 +77,11 @@ public struct CmxNetworkByteTransportFactory: CmxRouteAwareByteTransportFactory 
             // bearer, so that reasoning does not apply — see
             // ``CmxTransportAuthorizationMode/attachTicket``. Stack-bearer
             // requests keep failing closed exactly as upstream.
-            guard request.authorizationMode == .attachTicket else {
+            // `.transportAdmission` here means DeviceLink: mutual TLS with the
+            // Mac's key pinned, which is a stronger guarantee than the attach
+            // ticket this check was written for.
+            guard request.authorizationMode == .attachTicket
+                    || request.authorizationMode == .transportAdmission else {
                 throw CmxNetworkByteTransportError.tailscaleAuthorizationUnavailable
             }
             // Fork (cmux Mochi): the pairing host requires a client certificate,
@@ -96,11 +101,16 @@ public struct CmxNetworkByteTransportFactory: CmxRouteAwareByteTransportFactory 
             guard CmxLoopbackHost().matches(route) else {
                 throw CmxNetworkByteTransportError.tailscaleAuthorizationUnavailable
             }
+            // Fork (cmux Mochi): the pairing host is TLS-only on every
+            // interface, so a loopback dial needs the same DeviceLink options a
+            // tailnet dial does. Dialing this one in plaintext is invisible
+            // until the handshake never completes.
             return try CmxNetworkByteTransport(
                 host: host,
                 port: port,
                 maximumReceiveLength: maximumReceiveLength,
-                connectTimeoutNanoseconds: connectTimeoutNanoseconds
+                connectTimeoutNanoseconds: connectTimeoutNanoseconds,
+                tlsOptions: deviceLinkTLSOptions?()
             )
         case .iroh, .websocket:
             throw CmxNetworkByteTransportError.unsupportedRouteKind(route.kind)

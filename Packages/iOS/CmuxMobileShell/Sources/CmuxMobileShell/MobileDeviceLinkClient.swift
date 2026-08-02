@@ -86,6 +86,32 @@ public final class MobileDeviceLinkClient: @unchecked Sendable {
         try? pinStore.removePin(forPairingID: pairingID)
     }
 
+    /// Whether this device has paired with any Mac.
+    ///
+    /// The reconnect gate asks this: holding a key and a pin is exactly as good
+    /// a reason to dial on launch as an account session, and requiring the
+    /// account is what made account-free pairings unable to survive a cold
+    /// launch.
+    public func hasAnyPairedDevice() -> Bool {
+        !((try? pinStore.pins()) ?? [:]).isEmpty
+    }
+
+    /// TLS options for whichever Mac this device is paired with.
+    ///
+    /// The transport layer knows a route, not a pairing, so it asks for the
+    /// current one. With a single paired Mac — the common case — this is
+    /// unambiguous; with several, the first usable identity is offered and the
+    /// Mac's own pin check rejects a mismatch, which is the safe failure.
+    public func currentPairingTLSOptions() -> NWProtocolTLS.Options? {
+        let pins = (try? pinStore.pins()) ?? [:]
+        for pairingID in pins.keys.sorted() {
+            if let options = tlsOptions(forPairingID: pairingID) {
+                return options
+            }
+        }
+        return nil
+    }
+
     // MARK: - TLS
 
     /// Mutual-TLS options for dialing one paired Mac.

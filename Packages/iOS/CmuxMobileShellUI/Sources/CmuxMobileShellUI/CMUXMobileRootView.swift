@@ -131,6 +131,13 @@ struct CMUXMobileRootView: View {
         .animation(.snappy(duration: 0.18), value: isAuthenticated)
         .animation(.snappy(duration: 0.18), value: store.phase)
         .onAppear {
+            // Fork (cmux Mochi): a device holding a DeviceLink key pair is
+            // authenticated by that key, with no account involved. Without
+            // this the shell starts signed-out, refuses to resolve a pairing
+            // scope, and so never looks up the Mac it is already paired with —
+            // which is exactly the cold-launch failure this feature exists to
+            // fix.
+            adoptDeviceLinkAuthenticationIfPaired()
             syncShellAuthentication(isAuthenticated)
             store.resumeForegroundRefresh()
             #if os(iOS)
@@ -391,6 +398,16 @@ struct CMUXMobileRootView: View {
     /// already authenticated) and `onChange(of: isAuthenticated)` (covers a
     /// sign-in that completes after mount) so the restoring gate always resolves
     /// even when the auth state never transitions while this view is mounted.
+    /// Marks the shell authenticated when this device holds a paired-device key.
+    private func adoptDeviceLinkAuthenticationIfPaired() {
+        guard !didAuthenticateWithAttachTicket,
+              MobileDeviceLinkClient.shared.hasAnyPairedDevice()
+        else { return }
+        MobileShellComposite.logDeviceLinkReconnectAdoption()
+        didAuthenticateWithAttachTicket = true
+        didSkipSignIn = true
+    }
+
     private func reconnectStoredMacIfNeeded() {
         guard !authManager.isRestoringSession else { return }
         // Fork (cmux Mochi): an INJECTED attach URL authorizes on its own, exactly
@@ -401,10 +418,20 @@ struct CMUXMobileRootView: View {
         // silently ignored CMUX_DOGFOOD_ATTACH_URL. The stored-Mac reconnect that
         // follows is account-scoped and keeps its own `isAuthenticated` gate.
         let startedUITestAttachURL = connectUITestAttachURLIfNeeded()
+        MobileShellComposite.logReconnectGate(
+            uiTestURL: startedUITestAttachURL,
+            authenticated: isAuthenticated,
+            stackAuthenticated: authManager.isAuthenticated,
+            hasPairedDevice: MobileDeviceLinkClient.shared.hasAnyPairedDevice(),
+            attachTicket: hasActiveAttachTicketAuthentication,
+            restoring: authManager.isRestoringSession,
+            connected: store.connectionState == .connected
+        )
         guard !startedUITestAttachURL,
-              isAuthenticated,
+              isAuthenticated || MobileDeviceLinkClient.shared.hasAnyPairedDevice(),
               MobileRootAuthGate.shouldReconnectStoredMac(
                 stackAuthenticated: authManager.isAuthenticated,
+                hasPairedDeviceIdentity: MobileDeviceLinkClient.shared.hasAnyPairedDevice(),
                 attachTicketAuthenticated: hasActiveAttachTicketAuthentication,
                 isRestoringSession: authManager.isRestoringSession,
                 connectionState: store.connectionState
