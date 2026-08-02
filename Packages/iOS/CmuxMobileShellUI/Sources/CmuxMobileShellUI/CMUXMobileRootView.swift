@@ -171,19 +171,7 @@ struct CMUXMobileRootView: View {
             Task { await authManager.revalidateSession() }
         }
         .onOpenURL { url in
-            let rawURL = url.absoluteString
-            if MobileRootAuthGate.isAttachURL(url) {
-                connectAttachURL(rawURL)
-                return
-            }
-
-            guard isAuthenticated else {
-                pendingAttachURL = rawURL
-                return
-            }
-            Task {
-                await store.connectPairingURL(rawURL)
-            }
+            handleIncomingURL(url)
         }
         .onChange(of: isAuthenticated) { _, isAuthenticated in
             syncShellAuthentication(isAuthenticated)
@@ -436,7 +424,44 @@ struct CMUXMobileRootView: View {
         isShowingAddDeviceSheet = true
     }
 
+    /// Routes an incoming deep link.
+    ///
+    /// Extracted from the view body: inlining it pushed the SwiftUI expression
+    /// past what the type-checker will solve in reasonable time.
+    private func handleIncomingURL(_ url: URL) {
+        let rawURL = url.absoluteString
+        MobileShellComposite.logPairingURLArrival(rawURL)
+        if MobileRootAuthGate.isAttachURL(url) {
+            connectAttachURL(rawURL)
+            return
+        }
+        guard isAuthenticated else {
+            pendingAttachURL = rawURL
+            return
+        }
+        Task {
+            await store.connectPairingURL(rawURL)
+        }
+    }
+
     private func connectAttachURL(_ rawURL: String) {
+        // Fork (cmux Mochi): a DeviceLink code pairs by exchanging public keys,
+        // so it does not depend on account state and must not wait for a Stack
+        // session restore that may never complete for a signed-out user. Parking
+        // it there is what made scanning appear to do nothing.
+        if MobileShellComposite.isDeviceLinkPairingURL(rawURL) {
+            didAuthenticateWithAttachTicket = true
+            didSkipSignIn = true
+            syncShellAuthentication(true)
+            Task {
+                let result = await store.connectPairingURLResult(rawURL)
+                if result == .needsUserApproval {
+                    isShowingAddDeviceSheet = true
+                }
+                clearAttachTicketAuthentication(after: result)
+            }
+            return
+        }
         guard !authManager.isRestoringSession else {
             pendingAttachURL = rawURL
             return

@@ -1,10 +1,13 @@
 internal import CMUXMobileCore
 internal import DeviceLinkKit
+internal import OSLog
 public import CmuxMobileShellModel
 import Foundation
 #if canImport(UIKit)
 import UIKit
 #endif
+
+private let deviceLinkLog = Logger(subsystem: "com.cmux-mochi", category: "DeviceLink")
 
 @MainActor
 extension MobileShellComposite {
@@ -12,11 +15,25 @@ extension MobileShellComposite {
     ///
     /// Returns `nil` for anything else, so the legacy path keeps handling the
     /// codes it already understands until Phase 4 removes them.
+    public static func isDeviceLinkPairingURL(_ rawURL: String) -> Bool {
+        deviceLinkPairingPayload(from: rawURL) != nil
+    }
+
     static func deviceLinkPairingPayload(from rawURL: String) -> PairingPayload? {
         guard let url = URL(string: rawURL.trimmingCharacters(in: .whitespacesAndNewlines)),
               PairingPayloadCoder.isPairingURL(url)
-        else { return nil }
-        return try? PairingPayloadCoder.decode(url)
+        else {
+            deviceLinkLog.info("devicelink: not a pairing URL")
+            return nil
+        }
+        do {
+            let payload = try PairingPayloadCoder.decode(url)
+            deviceLinkLog.info("devicelink: decoded code, routes=\(payload.routes.count, privacy: .public)")
+            return payload
+        } catch {
+            deviceLinkLog.info("devicelink: decode failed \(String(describing: error), privacy: .public)")
+            return nil
+        }
     }
 
     /// Pairs with a Mac by exchanging public keys.
@@ -32,15 +49,19 @@ extension MobileShellComposite {
         clearPairingError()
         clearPairingVersionWarning()
 
+        deviceLinkLog.info("devicelink: enrolling against \(payload.routes.joined(separator: ","), privacy: .public)")
         let enroller = MobileDeviceLinkEnroller(deviceLabel: Self.deviceLinkDeviceLabel)
         do {
             let outcome = try await enroller.enroll(payload: payload)
+            deviceLinkLog.info("devicelink: enrolled ok via \(outcome.route, privacy: .public)")
             await recordDeviceLinkPairing(outcome: outcome, payload: payload)
             return .connected
         } catch let error as MobileDeviceLinkEnrollmentError {
+            deviceLinkLog.error("devicelink: enrollment failed \(String(describing: error), privacy: .public)")
             applyDeviceLinkFailure(error)
             return .failed
         } catch {
+            deviceLinkLog.error("devicelink: unexpected \(String(describing: error), privacy: .public)")
             applyPairingValidationFailure(.invalidCode)
             return .failed
         }
@@ -110,5 +131,13 @@ extension MobileShellComposite {
         #else
         return "iOS device"
         #endif
+    }
+}
+
+extension MobileShellComposite {
+    /// Records that a pairing URL reached the composite at all, which is the
+    /// first thing to check when scanning a code appears to do nothing.
+    public nonisolated static func logPairingURLArrival(_ rawURL: String) {
+        deviceLinkLog.info("devicelink: pairing URL arrived, host=\(URL(string: rawURL)?.host ?? "nil", privacy: .public)")
     }
 }

@@ -2900,6 +2900,7 @@ public final class MobileShellComposite: MobileTerminalOutputSinking {
         // entirely. Kept as a single branch here with the work in
         // `MobileShellComposite+DeviceLink.swift`, so upstream merges see a
         // one-line seam rather than a rewritten function.
+        MobileShellComposite.logPairingURLArrival(rawURL)
         if let deviceLinkPayload = Self.deviceLinkPairingPayload(from: rawURL) {
             return await connectDeviceLinkPairing(payload: deviceLinkPayload)
         }
