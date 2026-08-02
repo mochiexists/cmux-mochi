@@ -116,12 +116,20 @@ public enum SecIdentityFactory {
         }
     }
 
-    /// Which keychains to try, in order. iOS has only one.
+    /// Which keychain to use, per platform.
+    ///
+    /// iOS has only the data-protection keychain. macOS has both, and the
+    /// data-protection one requires an `application-identifier` entitlement
+    /// that comes from a provisioning profile — asking for it was the whole
+    /// source of `errSecMissingEntitlement` here. The file keychain needs no
+    /// entitlement for a non-sandboxed signed app, stores the key just as
+    /// locally, and is what a Mac app normally uses. Nothing here is shared or
+    /// synced, so the stronger iOS-style store buys nothing on macOS.
     static var keychainPreferenceOrder: [Bool] {
         #if os(iOS)
         [true]
         #else
-        [true, false]
+        [false]
         #endif
     }
 
