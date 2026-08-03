@@ -26,7 +26,10 @@ struct ProUpgradeCard: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
             Spacer(minLength: 12)
-            if shouldShowAction {
+            // Fork (cmux Mochi): this build has no Pro plan to sell, so the
+            // action is withheld rather than offering something that cannot be
+            // bought here. The row still renders, explaining what this build is.
+            if !Self.isMochiFork, shouldShowAction {
                 Button {
                     if flow?.canManageBilling == true {
                         flow?.openBillingPortal()
@@ -55,7 +58,19 @@ struct ProUpgradeCard: View {
         }
     }
 
+    /// Whether this is the personal, non-commercial cmux Mochi fork.
+    ///
+    /// Kept as one flag rather than deleting the Pro screens, so upstream
+    /// merges stay clean and this work remains easy to offer back.
+    static let isMochiFork = (Bundle.main.bundleIdentifier ?? "").hasPrefix("com.cmux-mochi")
+
     private var subtitleText: String {
+        if Self.isMochiFork {
+            return String(
+                localized: "settings.account.pro.mochiFork",
+                defaultValue: "This is cmux Mochi, a personal fork built for account-free phone access, for the love of the game. There is no Pro plan here \u{2014} support cmux upstream instead."
+            )
+        }
         if flow?.isProActive == true {
             if flow?.canManageBilling == true {
                 return String(

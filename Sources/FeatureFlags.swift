@@ -31,11 +31,17 @@ struct CmuxFeatureFlagDefinition: Identifiable, Equatable {
 final class CmuxFeatureFlags {
     static let shared = CmuxFeatureFlags()
 
-    #if DEBUG
-    private static let proUpgradeUIDefault = true
-    #else
+    // Fork (cmux Mochi): off in every configuration, not just release.
+    //
+    // This fork is a personal, non-commercial build; there is no Pro plan to
+    // sell and no billing behind these entry points, so showing an upgrade
+    // prompt would offer something that cannot be bought here. Upstream's split
+    // (visible in DEBUG for dogfood, hidden in release until the PostHog flag
+    // turns it on) is right for upstream and wrong for us.
+    //
+    // Left as a flag default rather than deleting the Pro screens, so upstream
+    // merges stay clean and the work remains easy to offer back.
     private static let proUpgradeUIDefault = false
-    #endif
 
     private static let mobileConnectButtonDefault = true
 
