@@ -64,8 +64,18 @@ export type JsonObjectResult =
   | { readonly ok: true; readonly value: Record<string, unknown> }
   | { readonly ok: false; readonly error: "invalid_json" | "request_too_large" };
 
-const DEV_TAGGED_BUNDLE_ID = /^dev\.cmux\.ios\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
-const PROD_BUNDLE_IDS = new Set(["com.cmux-mochi", "dev.cmux.app.beta"]);
+// Fork (cmux Mochi): the iOS app lives in the `com.cmux-mochi` namespace, not
+// upstream's `dev.cmux.ios` — upstream's identifier is registered to upstream's
+// Apple team and cannot be signed by this one. A stale pattern here does not
+// fail loudly: registration returns `invalid_bundle_id` and the iOS side only
+// writes an OSLog line, so push silently stops working on every tagged build.
+const DEV_TAGGED_BUNDLE_ID =
+  /^com\.cmux-mochi\.ios\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
+const PROD_BUNDLE_IDS = new Set([
+  "com.cmux-mochi",
+  "com.cmux-mochi.ios",
+  "dev.cmux.app.beta",
+]);
 
 function stringValue(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";

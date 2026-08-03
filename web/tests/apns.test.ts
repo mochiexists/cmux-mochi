@@ -172,18 +172,19 @@ describe("apns route policy", () => {
       bundleId: "dev.cmux.app.beta",
       environment: "production",
     });
-    expect(normalizeApnsBundle("com.cmux.app")).toEqual({
-      bundleId: "com.cmux.app",
-      environment: "production",
-    });
-    expect(normalizeApnsBundle("dev.cmux.ios.push1")).toEqual({
-      bundleId: "dev.cmux.ios.push1",
+    // Upstream's identifier, which this fork neither ships nor can sign.
+    // The assertion previously expected it to be accepted even though the
+    // fork's PROD_BUNDLE_IDS never contained it, so this test failed on a
+    // clean tree.
+    expect(normalizeApnsBundle("com.cmux.app")).toBeNull();
+    expect(normalizeApnsBundle("com.cmux-mochi.ios.push1")).toEqual({
+      bundleId: "com.cmux-mochi.ios.push1",
       environment: "sandbox",
     });
 
     expect(normalizeApnsBundle("com.example.app")).toBeNull();
-    expect(normalizeApnsBundle("dev.cmux.ios.bad_topic")).toBeNull();
-    expect(normalizeApnsBundle("dev.cmux.ios.-bad")).toBeNull();
+    expect(normalizeApnsBundle("com.cmux-mochi.ios.bad_topic")).toBeNull();
+    expect(normalizeApnsBundle("com.cmux-mochi.ios.-bad")).toBeNull();
   });
 
   test("bounds and trims push payloads before sending to APNs", () => {
@@ -446,7 +447,7 @@ describe("apns sender transport", () => {
     const resultPromise = sendApnsNotification(
       { keyP8: p8, keyId: "KID-CONCURRENT", teamId: "TEAM456" },
       [
-        { deviceToken: "a".repeat(64), bundleId: "dev.cmux.ios.push1", environment: "sandbox" },
+        { deviceToken: "a".repeat(64), bundleId: "com.cmux-mochi.ios.push1", environment: "sandbox" },
         { deviceToken: "b".repeat(64), bundleId: "com.cmux-mochi", environment: "production" },
       ],
       { title: "agent", body: "done" },
@@ -524,7 +525,7 @@ describe("apns sender transport", () => {
     const results = await sendApnsNotification(
       { keyP8: p8, keyId: "KID-PARTIAL", teamId: "TEAM456" },
       [
-        { deviceToken: "a".repeat(64), bundleId: "dev.cmux.ios.push1", environment: "sandbox" },
+        { deviceToken: "a".repeat(64), bundleId: "com.cmux-mochi.ios.push1", environment: "sandbox" },
         { deviceToken: "b".repeat(64), bundleId: "com.cmux-mochi", environment: "production" },
       ],
       { title: "agent", body: "done" },
