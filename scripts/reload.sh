@@ -1013,7 +1013,35 @@ fi
 if command -v xattr >/dev/null 2>&1; then
   xattr -cr "$APP_PATH" || true
 fi
-if ! /usr/bin/codesign --force --sign - --timestamp=none --generate-entitlement-der "$APP_PATH" >/dev/null 2>&1; then
+# Fork (cmux Mochi): prefer a stable Developer ID over an ad-hoc signature.
+#
+# An ad-hoc signature has no stable code identity, so every rebuild looks like a
+# different application to the keychain. Keychain ACLs are keyed on that
+# identity, which means "Always Allow" can never stick: each launch of a freshly
+# built app re-prompts for the login password, once per item read. DeviceLink
+# reads its identity several times during startup, and the app blocks on those
+# modals before it binds its control socket - so the symptom is not "an annoying
+# prompt", it is an app that appears to hang.
+#
+# Signing with the team's Developer ID certificate keeps the identity constant
+# across rebuilds, so the grant is made once and holds. Ad-hoc remains the
+# fallback when the certificate is not installed (CI, a fresh machine).
+CMUX_DEV_SIGN_IDENTITY="${CMUX_DEV_SIGN_IDENTITY:-Developer ID Application: Atlas Codes LTD (599WAZ6282)}"
+codesign_dev_app() {
+  local identity="$1"
+  local -a entitlement_args=()
+  if [[ "$identity" != "-" && -f "$SCRIPT_DIR/../cmux.entitlements" ]]; then
+    entitlement_args=(--entitlements "$SCRIPT_DIR/../cmux.entitlements")
+  fi
+  /usr/bin/codesign --force --sign "$identity" "${entitlement_args[@]}" \
+    --timestamp=none --generate-entitlement-der "$APP_PATH" >/dev/null 2>&1
+}
+
+if /usr/bin/security find-identity -v -p codesigning 2>/dev/null \
+    | grep -qF "$CMUX_DEV_SIGN_IDENTITY" \
+    && codesign_dev_app "$CMUX_DEV_SIGN_IDENTITY"; then
+  :
+elif ! codesign_dev_app -; then
   if [[ "${CMUX_ALLOW_UNSIGNED_DEV_APP:-}" == "1" ]]; then
     echo "warning: codesign failed for $APP_PATH; continuing because CMUX_ALLOW_UNSIGNED_DEV_APP=1" >&2
   else
