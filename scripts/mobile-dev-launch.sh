@@ -98,7 +98,7 @@ fi
 
 # --- bundle id (matches ios/scripts/reload.sh sanitize_tag) ------------------
 slug="$(cmux_attach__slug "$TAG")"
-BUNDLE_ID="dev.cmux.ios.$slug"
+BUNDLE_ID="com.cmux-mochi.ios.$slug"
 if [[ "$TARGET" == "device" ]]; then
   ATTACH_TARGET="physical_device"
 else

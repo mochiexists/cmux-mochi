@@ -38,7 +38,7 @@
 			<key>CFBundleTypeRole</key>
 			<string>Viewer</string>
 			<key>CFBundleURLName</key>
-			<string>dev.cmux.ios.attach</string>
+			<string>com.cmux-mochi.ios.attach</string>
 			<key>CFBundleURLSchemes</key>
 			<array>
 				<!-- Channel-specific pairing scheme (CMUX_IOS_URL_SCHEME in
@@ -53,7 +53,7 @@
 			<key>CFBundleTypeRole</key>
 			<string>Viewer</string>
 			<key>CFBundleURLName</key>
-			<string>dev.cmux.ios.stack-auth</string>
+			<string>com.cmux-mochi.ios.stack-auth</string>
 			<key>CFBundleURLSchemes</key>
 			<array>
 				<string>stack-auth-mobile-oauth-url</string>

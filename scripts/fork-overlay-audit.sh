@@ -44,6 +44,17 @@ require_file_contains "cmux.xcodeproj/project.pbxproj" 'PRODUCT_BUNDLE_IDENTIFIE
 require_file_contains "cmux.xcodeproj/project.pbxproj" 'PRODUCT_BUNDLE_IDENTIFIER = "com.cmux-mochi.tests";'
 require_file_contains "cmux.xcodeproj/project.pbxproj" 'PRODUCT_BUNDLE_IDENTIFIER = "com.cmux-mochi.uitests";'
 require_file_contains "cmux.xcodeproj/project.pbxproj" 'PRODUCT_BUNDLE_IDENTIFIER = "com.cmux-mochi.docktileplugin";'
+# The iOS app lives in the same namespace as the Mac app. Upstream's
+# `dev.cmux.ios` is registered to upstream's Apple team and cannot be signed by
+# this one, so a regression here breaks every device build.
+require_file_contains "ios/Config/Shared.xcconfig" 'PRODUCT_BUNDLE_IDENTIFIER = com.cmux-mochi.ios'
+require_file_contains "ios/Config/Tests.xcconfig" 'PRODUCT_BUNDLE_IDENTIFIER = com.cmux-mochi.ios.uitests'
+# A tagged build derives its scope from this prefix; if it drifts from the
+# bundle identifier the scope resolves to nil and paired-Mac persistence bails,
+# which looks like a phone that pairs and then cannot reconnect.
+require_file_contains \
+  "Packages/Shared/CMUXMobileCore/Sources/CMUXMobileCore/MobileIOSBuildScope.swift" \
+  'baseBundleIdentifier = "com.cmux-mochi.ios"'
 require_file_contains "cmux.xcodeproj/project.pbxproj" 'PRODUCT_NAME = "cmux Mochi";'
 require_file_contains "cmux.xcodeproj/project.pbxproj" 'PRODUCT_NAME = "cmux Mochi DEV";'
 require_file_contains "cmux.xcodeproj/project.pbxproj" 'SPARKLE_PUBLIC_KEY = "zuKEVdkteBH5X33sMtjNnINr5JfskPx6Yj4LxZlySfY=";'

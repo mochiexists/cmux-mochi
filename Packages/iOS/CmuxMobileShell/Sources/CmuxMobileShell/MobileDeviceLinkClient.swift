@@ -20,7 +20,7 @@ public final class MobileDeviceLinkClient: @unchecked Sendable {
     private var cachedIdentities: [String: SecIdentity] = [:]
 
     private static var keychainScope: KeychainScope {
-        KeychainScope(bundleIdentifier: Bundle.main.bundleIdentifier ?? "dev.cmux.ios")
+        KeychainScope(bundleIdentifier: Bundle.main.bundleIdentifier ?? "com.cmux-mochi.ios")
     }
 
     public init(scope: KeychainScope? = nil) {

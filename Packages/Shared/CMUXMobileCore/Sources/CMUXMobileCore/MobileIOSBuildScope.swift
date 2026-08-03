@@ -10,6 +10,20 @@ public import Foundation
 public struct MobileIOSBuildScope: Sendable, Equatable {
     private static let serializedScopeVersion = "v2"
 
+    /// The fork's iOS bundle identifier.
+    ///
+    /// Fork (cmux Mochi): the iOS app lives in the same `com.cmux-mochi`
+    /// namespace as the Mac app rather than upstream's `dev.cmux.ios`, which is
+    /// registered to upstream's Apple team and cannot be signed by this one.
+    /// Declared here because a tagged build's scope is derived from it, so a
+    /// drifting copy silently yields a `nil` scope — and a `nil` scope makes
+    /// paired-Mac persistence bail out, which presents as a phone that pairs
+    /// successfully and then cannot reconnect.
+    public static let baseBundleIdentifier = "com.cmux-mochi.ios"
+
+    /// The prefix a tagged iOS build extends with its tag.
+    public static let taggedBundleIdentifierPrefix = "\(baseBundleIdentifier)."
+
     /// The canonical iOS development tag.
     public let value: String
 
@@ -32,7 +46,7 @@ public struct MobileIOSBuildScope: Sendable, Equatable {
         infoDictionary: [String: Any]? = Bundle.main.infoDictionary,
         bundleIdentifier: String? = Bundle.main.bundleIdentifier
     ) -> MobileIOSBuildScope? {
-        let prefix = "dev.cmux.ios."
+        let prefix = taggedBundleIdentifierPrefix
         if let bundleIdentifier,
            bundleIdentifier.hasPrefix(prefix),
            let scope = MobileIOSBuildScope(String(bundleIdentifier.dropFirst(prefix.count))) {

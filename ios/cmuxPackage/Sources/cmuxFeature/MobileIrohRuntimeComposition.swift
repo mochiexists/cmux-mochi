@@ -1520,7 +1520,7 @@ public final class MobileIrohRuntimeComposition:
         service: String,
         bundleIdentifier: String?
     ) -> URL {
-        let rawBundleScope = bundleIdentifier ?? "dev.cmux.ios.debug"
+        let rawBundleScope = bundleIdentifier ?? "com.cmux-mochi.ios.debug"
         let bundleScope = String(rawBundleScope.map { character in
             character.isASCII
                 && (character.isLetter
