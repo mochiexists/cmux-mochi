@@ -539,23 +539,6 @@ final class MobileHostService {
         return (1...65535).contains(raw) ? raw : fallback
     }
 
-    /// Defaults key for the port most recently bound successfully.
-    nonisolated static let lastBoundPortDefaultsKey = "mobile.host.lastBoundPort"
-
-    /// The port bound on the previous run, when it is still plausible.
-    nonisolated static func lastBoundPort(defaults: UserDefaults = .standard) -> Int? {
-        guard let raw = defaults.object(forKey: lastBoundPortDefaultsKey) as? Int,
-              (1 ... 65535).contains(raw)
-        else { return nil }
-        return raw
-    }
-
-    /// Records a successful bind so the next launch can ask for it again.
-    nonisolated static func rememberBoundPort(_ port: Int, defaults: UserDefaults = .standard) {
-        guard (1 ... 65535).contains(port) else { return }
-        defaults.set(port, forKey: lastBoundPortDefaultsKey)
-    }
-
     /// The port a settings change should reconcile the *running* listener to, or
     /// `nil` when the stored value is present but out of range.
     ///
@@ -799,7 +782,7 @@ final class MobileHostService {
         }
 
         CmxIrohTCPFirstActivation.start(
-            startTCP: { startListener(usePreferredPort: true) },
+            startTCP: { startListener() },
             scheduleIroh: { MobileHostIrohRuntime.shared.setDesiredActive(true) }
         )
     }
@@ -824,7 +807,7 @@ final class MobileHostService {
     }
     #endif
 
-    private func startListener(usePreferredPort: Bool) {
+    private func startListener() {
         let desiredPort = Self.configuredPort()
         appliedPreferredPort = desiredPort
         // Fork (cmux Mochi): fail closed when there is no tailnet interface to pin
@@ -848,11 +831,7 @@ final class MobileHostService {
             // from an empty in-memory table while the real one sits on disk.
             let tlsOptions = try MobileHostDeviceLink.shared.listenerOptions()
             let parameters = Self.makeListenerParameters(deviceLinkTLS: tlsOptions)
-            let nextListener = try makeListener(
-                parameters: parameters,
-                usePreferredPort: usePreferredPort,
-                port: desiredPort
-            )
+            let nextListener = try makeListener(parameters: parameters, port: desiredPort)
             let generation = UUID()
             listenerGeneration = generation
             nextListener.stateUpdateHandler = { state in
@@ -864,17 +843,12 @@ final class MobileHostService {
                 Self.acceptConnectionOffMain(connection, generation: generation)
             }
             listener = nextListener
-            listenerUsesEphemeralFallback = !usePreferredPort
+            listenerUsesEphemeralFallback = false
             listenerPort = nil
             nextListener.start(queue: callbackQueue)
             startNetworkPathMonitorIfNeeded()
         } catch {
-            if usePreferredPort {
-                mobileHostLog.info("mobile host preferred port unavailable before listener start, falling back to an ephemeral port")
-                startListener(usePreferredPort: false)
-                return
-            }
-            lastErrorDescription = String(describing: error)
+            lastErrorDescription = Self.bindFailureDescription(port: desiredPort, error: error)
             mobileHostLog.error("mobile host listener failed to start: \(String(describing: error), privacy: .public)")
             // No listener was registered, so no state callback will fire to drain
             // readiness waiters; resolve them now instead of waiting for the deadline.
@@ -924,17 +898,26 @@ final class MobileHostService {
         #endif
     }
 
-    private func makeListener(
-        parameters: NWParameters,
-        usePreferredPort: Bool,
-        port: Int
-    ) throws -> NWListener {
-        if usePreferredPort,
-           let rawPort = UInt16(exactly: port),
-           let endpointPort = NWEndpoint.Port(rawValue: rawPort) {
-            return try NWListener(using: parameters, on: endpointPort)
+    /// Why a pairing listener could not be created.
+    enum MobileHostListenerError: Error, Equatable {
+        /// The configured port is outside the range a TCP listener can bind.
+        case invalidPort(Int)
+    }
+
+    /// Binds the configured pairing port, or throws.
+    ///
+    /// Fork (cmux Mochi): there is deliberately no OS-assigned fallback. A
+    /// paired phone stores the `host:port` it was given, so silently landing on
+    /// a different port each launch invalidates every stored route while looking
+    /// like an unreachable Mac. Refusing to listen is the honest outcome: the
+    /// address a phone was told to use either works or is reported as taken.
+    private func makeListener(parameters: NWParameters, port: Int) throws -> NWListener {
+        guard let rawPort = UInt16(exactly: port),
+              let endpointPort = NWEndpoint.Port(rawValue: rawPort)
+        else {
+            throw MobileHostListenerError.invalidPort(port)
         }
-        return try NWListener(using: parameters, on: .any)
+        return try NWListener(using: parameters, on: endpointPort)
     }
 
     func stop() {
@@ -1749,16 +1732,6 @@ final class MobileHostService {
         case .ready:
             listenerPort = listener?.port.map { Int($0.rawValue) }
             lastErrorDescription = nil
-            // Fork (cmux Mochi): remember the port we actually bound, so the
-            // next launch prefers it. A paired phone stores the route it was
-            // given; without this the Mac lands on a fresh ephemeral port every
-            // restart and every stored route is instantly dead — reconnect then
-            // fails in a way that looks like an unreachable Mac rather than a
-            // moved one. Recorded separately from the user's configured port so
-            // an explicit setting is never overwritten.
-            if let listenerPort {
-                Self.rememberBoundPort(listenerPort)
-            }
             if let listenerPort {
                 routeResolver.refreshTailscaleRoutes(onResolvedHosts: { [weak self] hosts in
                     Task { @MainActor [weak self] in
@@ -1823,13 +1796,31 @@ final class MobileHostService {
         listenerPort = nil
         boundTailnetInterfaceName = nil
         MobileHostPublicStatusCache.update(routes: [])
-        startListener(usePreferredPort: true)
+        startListener()
+    }
+
+    /// A bind failure phrased for the settings UI.
+    ///
+    /// The overwhelmingly likely cause is a second cmux instance holding the
+    /// port, and that is worth naming: the raw `POSIXErrorCode: Address already
+    /// in use` tells the user nothing about what to close.
+    static func bindFailureDescription(port: Int, error: Error) -> String {
+        if let nwError = error as? NWError, isAddressUnavailable(nwError) {
+            return """
+            Port \(port) is already in use, so the pairing host is not listening. \
+            Another cmux instance is the usual cause. Close it, or change the \
+            pairing port in settings and re-pair your devices.
+            """
+        }
+        return String(describing: error)
     }
 
     private func handleListenerBindFailure(error: NWError, context: String) {
-        lastErrorDescription = String(describing: error)
+        lastErrorDescription = Self.bindFailureDescription(
+            port: appliedPreferredPort ?? Self.configuredPort(),
+            error: error
+        )
         MobileHostPublicStatusCache.update(routes: [])
-        let shouldRetryWithEphemeralPort = !listenerUsesEphemeralFallback
         listener?.stateUpdateHandler = nil
         listener?.newConnectionHandler = nil
         listener?.cancel()
@@ -1837,15 +1828,12 @@ final class MobileHostService {
         listener = nil
         listenerUsesEphemeralFallback = false
         listenerPort = nil
-        if shouldRetryWithEphemeralPort {
-            mobileHostLog.info("mobile host preferred port \(context, privacy: .public), falling back to an ephemeral port")
-            startListener(usePreferredPort: false)
-        } else {
-            mobileHostLog.error("mobile host listener bind failed on ephemeral port: \(String(describing: error), privacy: .public)")
-            // No retry left: unblock any readiness waiters (the retry path drains
-            // them when the ephemeral listener reaches `.ready`).
-            drainReadinessWaiters()
-        }
+        // Fork (cmux Mochi): fail closed. Rebinding on an OS-assigned port would
+        // keep this Mac "running" at an address no paired phone has ever been
+        // told about, turning a loud, fixable collision into a silent one that
+        // presents as an unreachable Mac.
+        mobileHostLog.error("mobile host listener bind failed (\(context, privacy: .public)): \(String(describing: error), privacy: .public)")
+        drainReadinessWaiters()
     }
 
     private func updatePublicStatusRoutes(

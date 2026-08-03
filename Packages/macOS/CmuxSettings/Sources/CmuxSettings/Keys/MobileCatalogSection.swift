@@ -27,19 +27,33 @@ public struct MobileCatalogSection: SettingCatalogSection {
     private static let iOSPairingHostDefault = false
     #endif
 
-    /// TCP port the Mac-side iOS pairing listener prefers to bind.
+    /// TCP port the Mac-side iOS pairing listener binds.
     ///
-    /// This is a *preference*: if the port is already in use the listener
-    /// falls back to an OS-assigned ephemeral port, and the iOS app is always
-    /// handed the actual bound port (so pairing still works). Configure a fixed
-    /// port when you need predictable firewall rules or to avoid a conflict.
-    /// The default mirrors `CmxMobileDefaults.defaultHostPort`, the protocol
-    /// default mobile clients dial when a pairing payload omits a port.
+    /// This is a *fixed service port*, not a preference: if it is already in use
+    /// the listener refuses to start and reports why, rather than moving to an
+    /// OS-assigned port. A paired phone stores the `host:port` it was handed, so
+    /// a host that silently moved would be running at an address no phone has
+    /// ever been told about — indistinguishable, from the phone, from a Mac that
+    /// is switched off. Changing this port requires re-pairing.
+    ///
+    /// The default mirrors `CmxMobileDefaults.channelHostPort` (kept in step by
+    /// `MobileCatalogSectionTests`; this package deliberately does not depend on
+    /// CMUXMobileCore), so a debug build and the installed release build can run
+    /// side by side instead of fighting over one fixed port.
     public let iOSPairingPort = DefaultsKey<Int>(
         id: "mobile.iOSPairingHost.port",
-        defaultValue: 58_465,
+        defaultValue: Self.channelPairingPort,
         userDefaultsKey: "mobile.iOSPairingHost.port"
     )
+
+    /// Mirrors `CmxMobileDefaults.channelHostPort`.
+    static var channelPairingPort: Int {
+        #if DEBUG
+        58_467
+        #else
+        58_465
+        #endif
+    }
 
     /// Optional override for the name the iOS app shows for this Mac during
     /// pairing. Empty means use the Mac's name from System Settings

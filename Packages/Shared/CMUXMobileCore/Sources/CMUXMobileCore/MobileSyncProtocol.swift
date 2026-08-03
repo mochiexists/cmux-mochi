@@ -5,7 +5,30 @@ public struct CmxMobileDefaults {
     private init() {}
 
     /// The default daemon host port mobile clients dial when none is supplied.
+    ///
+    /// This is a fixed service port, not a hint: the pairing host binds it or
+    /// refuses to listen. A paired phone stores the `host:port` it was given, so
+    /// a host that quietly moved to an OS-assigned port would still be
+    /// "running" at an address no phone has ever been told about.
     public static let defaultHostPort = 58_465
+
+    /// The pairing port for a developer build.
+    ///
+    /// Fork (cmux Mochi): a dev build and the installed release build routinely
+    /// run side by side on one Mac. With a fixed, fail-closed service port they
+    /// would otherwise fight over `defaultHostPort` and the loser could not host
+    /// pairing at all. Separating the channels keeps the production protocol
+    /// port fixed instead of weakening it to accommodate development.
+    public static let developmentHostPort = 58_467
+
+    /// The pairing port this build should bind.
+    public static var channelHostPort: Int {
+        #if DEBUG
+        developmentHostPort
+        #else
+        defaultHostPort
+        #endif
+    }
     /// Shared Mac/iOS pairing compatibility level. Bump this only when current
     /// clients can pair but may behave incorrectly without explicit user approval.
     public static let pairingCompatibilityVersion = 1
