@@ -88,6 +88,13 @@ public enum MobilePairingFailureCategory: Equatable, Sendable {
     /// The pairing code carried no route kind this device build can dial (for
     /// example an iroh-only ticket on a build without the iroh transport).
     case noSupportedRoute
+    /// The Mac accepted the pairing, but this device could not save it.
+    ///
+    /// Distinct from every other failure here because the *Mac* now trusts this
+    /// device while the phone has nothing to reconnect with. Reporting it as
+    /// success is worse than reporting it as failure: the next launch would
+    /// believe it was paired, find no Mac to dial, and stop silently.
+    case pairingNotSaved
     /// The attempt was cancelled (the user tapped Cancel, or a newer attempt
     /// superseded it). Not surfaced as an error.
     case cancelled
@@ -119,6 +126,7 @@ extension MobilePairingFailureCategory {
         case .macUpdateRequired: return "mac_update_required"
         case .unsupportedRoute: return "unsupported_route"
         case .noSupportedRoute: return "no_supported_route"
+        case .pairingNotSaved: return "pairing_not_saved"
         case .cancelled: return "cancelled"
         case .unknown: return "other"
         }
@@ -260,6 +268,11 @@ extension MobilePairingFailureCategory {
                 "mobile.pairing.loopbackRejected",
                 defaultValue: "This code points at the Mac itself (localhost), so your iPhone can't use it. Update cmux on the Mac and scan its Iroh code."
             )
+        case .pairingNotSaved:
+            return L10n.string(
+                "mobile.pairing.pairingNotSaved",
+                defaultValue: "This Mac paired, but the pairing could not be saved on this device, so it will not reconnect. This usually means the Mac and iPhone builds do not match {2014} check they are the same channel or dev tag."
+            )
         case .macUpdateRequired:
             return L10n.string(
                 "mobile.pairing.macUpdateRequired",
@@ -310,6 +323,11 @@ extension MobilePairingFailureCategory {
             return L10n.string(
                 "mobile.pairing.guidance.localNetwork",
                 defaultValue: "Settings > cmux > Local Network, then try again."
+            )
+        case .pairingNotSaved:
+            return L10n.string(
+                "mobile.pairing.guidance.pairingNotSaved",
+                defaultValue: "Pair again from a Mac running the matching build, or reinstall this app from the same build as the Mac."
             )
         case .accountMismatch, .emailMismatch, .authFailed:
             return L10n.string(

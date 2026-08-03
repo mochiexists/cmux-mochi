@@ -1848,10 +1848,14 @@ final class MobileHostService {
     /// the pairing) has to await this rather than read whatever is cached.
     func publishRoutesAwaitingMagicDNS() async {
         guard let port = listenerPort else { return }
+        // Capture the generation, not just the port. The port is now a fixed
+        // service port, so a listener that tore down and rebound during
+        // resolution has the *same* port — comparing ports alone accepts routes
+        // resolved against the previous listener (and the previous network
+        // path) as if they described the current one.
+        let generation = listenerGeneration
         let snapshot = await routeResolver.routesResolvingTailscaleDNS(port: port)
-        // The listener can rebind while resolution is in flight; those routes
-        // describe a port that is no longer served.
-        guard listenerPort == port else { return }
+        guard listenerGeneration == generation, listenerPort == port else { return }
         MobileHostPublicStatusCache.update(routes: snapshot.routes)
         logDeviceLinkHost("routes (magicdns awaited) -> \(Self.routeSummary(snapshot.routes))")
     }

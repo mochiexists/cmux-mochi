@@ -72,7 +72,14 @@ extension MobileShellComposite {
         do {
             let outcome = try await enroller.enroll(payload: payload)
             logDeviceLink("enrolled ok via \(outcome.route)")
-            await recordDeviceLinkPairing(outcome: outcome, payload: payload)
+            // A pairing that enrolled but did not persist is the worst outcome
+            // to report as success: the key exists, so the next launch believes
+            // it is paired, finds no Mac to dial, and gives up silently. Say so
+            // now, while the user is still holding the QR code.
+            guard await recordDeviceLinkPairing(outcome: outcome, payload: payload) else {
+                applyPairingValidationFailure(.pairingNotSaved)
+                return .failed
+            }
             return .connected
         } catch let error as MobileDeviceLinkEnrollmentError {
             logDeviceLink("enrollment failed \(String(describing: error))")
@@ -93,7 +100,7 @@ extension MobileShellComposite {
     private func recordDeviceLinkPairing(
         outcome: MobileDeviceLinkEnrollmentOutcome,
         payload: PairingPayload
-    ) async {
+    ) async -> Bool {
         // Prefer the route that actually completed the pairing handshake: it is
         // the one proven to reach this Mac from this device. A simulator can
         // only use loopback (it shares the Mac's network stack, which cannot
@@ -114,7 +121,10 @@ extension MobileShellComposite {
                   routes: routes,
                   expiresAt: nil
               )
-        else { return }
+        else {
+            logDeviceLink("pairing NOT persisted: no dialable route or ticket could be built")
+            return false
+        }
         // Record the instance tag too: build-compatibility checks compare it,
         // and a pairing stored without one is treated as an older host.
         let persisted = await persistPairedMacFromTicket(
@@ -123,6 +133,7 @@ extension MobileShellComposite {
             displayNameOverride: outcome.macDisplayName ?? payload.macLabel
         )
         logDeviceLink("pairing persisted=\(persisted)")
+        return persisted
     }
 
     /// Rebuilds the route that worked, so reconnection starts where pairing
