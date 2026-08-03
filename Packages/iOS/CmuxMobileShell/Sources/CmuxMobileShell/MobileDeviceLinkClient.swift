@@ -18,6 +18,9 @@ public final class MobileDeviceLinkClient: @unchecked Sendable {
     private let pinStore: KeychainServerPinStore
     private let lock = NSLock()
     private var cachedIdentities: [String: SecIdentity] = [:]
+    /// macDeviceID -> pairingID, so a dial can find the right key.
+    private lazy var pairingIDsByMacDeviceID: [String: String] =
+        (UserDefaults.standard.dictionary(forKey: Self.pairingIndexDefaultsKey) as? [String: String]) ?? [:]
 
     private static var keychainScope: KeychainScope {
         KeychainScope(bundleIdentifier: Bundle.main.bundleIdentifier ?? "com.cmux-mochi.ios")
@@ -107,13 +110,59 @@ public final class MobileDeviceLinkClient: @unchecked Sendable {
         !((try? pinStore.pins()) ?? [:]).isEmpty
     }
 
-    /// TLS options for whichever Mac this device is paired with.
+    /// Which Mac the next dial is for, keyed by its device id.
     ///
-    /// The transport layer knows a route, not a pairing, so it asks for the
-    /// current one. With a single paired Mac — the common case — this is
-    /// unambiguous; with several, the first usable identity is offered and the
-    /// Mac's own pin check rejects a mismatch, which is the safe failure.
+    /// The transport asks for TLS options through a closure that knows only
+    /// "give me an identity", so the caller that *does* know which Mac it is
+    /// dialing records it here first. Without this the client offers whichever
+    /// pin sorts first, and with more than one paired Mac that is the wrong key
+    /// most of the time — the dial then dies in the TLS handshake, which is
+    /// indistinguishable from the Mac being switched off.
+    private var activeDialTarget: String?
+
+    /// Remembers which pairing belongs to a Mac, so a later dial can pick its
+    /// key. Written at enrollment, where both halves are known.
+    ///
+    /// Kept next to the pins rather than in the paired-Mac database because the
+    /// database has no fingerprint column, and the pin store is already the
+    /// authority on which pairings exist.
+    public func rememberPairing(macDeviceID: String, pairingID: String) {
+        guard !macDeviceID.isEmpty, !pairingID.isEmpty else { return }
+        lock.lock()
+        pairingIDsByMacDeviceID[macDeviceID] = pairingID
+        let snapshot = pairingIDsByMacDeviceID
+        lock.unlock()
+        UserDefaults.standard.set(snapshot, forKey: Self.pairingIndexDefaultsKey)
+    }
+
+    /// Declares the Mac the next dial targets.
+    public func setActiveDialTarget(macDeviceID: String?) {
+        lock.lock()
+        activeDialTarget = macDeviceID
+        lock.unlock()
+    }
+
+    private static let pairingIndexDefaultsKey = "devicelink.pairingIDsByMacDeviceID"
+
     public func currentPairingTLSOptions() -> NWProtocolTLS.Options? {
+        // Prefer the pin for the Mac actually being dialed.
+        lock.lock()
+        let target = activeDialTarget
+        let mapped = target.flatMap { pairingIDsByMacDeviceID[$0] }
+        lock.unlock()
+        if let mapped, let options = tlsOptions(forPairingID: mapped) {
+            MobileDeviceLinkDiagnostics.log("tls options: offering \(mapped.prefix(24)) for target \(target?.prefix(12) ?? "?")")
+            return options
+        }
+        if target != nil, mapped == nil {
+            MobileDeviceLinkDiagnostics.log(
+                "tls options: no pairing recorded for target \(target?.prefix(12) ?? "?") — falling back to first pin"
+            )
+        }
+        return firstAvailableTLSOptions()
+    }
+
+    private func firstAvailableTLSOptions() -> NWProtocolTLS.Options? {
         let pins: [String: DeviceFingerprint]
         do {
             pins = try pinStore.pins()

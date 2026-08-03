@@ -111,6 +111,13 @@ extension MobileShellComposite {
         let routes = orderedDescriptions.enumerated().compactMap { index, description in
             Self.deviceLinkRoute(from: description, priority: index)
         }
+        // Record which pairing belongs to this Mac while both halves are known.
+        // Reconnect otherwise has to guess which key to offer, and with more
+        // than one paired Mac it guesses wrong.
+        MobileDeviceLinkClient.shared.rememberPairing(
+            macDeviceID: outcome.macDeviceID,
+            pairingID: outcome.pairingID
+        )
         logDeviceLink("recording pairing mac=\(outcome.macDeviceID.prefix(12)) tag=\(outcome.macInstanceTag ?? "nil") routes=\(routes.count) store=\(pairedMacStore == nil ? "MISSING" : "present")")
         guard !routes.isEmpty,
               let ticket = try? CmxAttachTicket(
@@ -253,6 +260,9 @@ extension MobileShellComposite {
 extension MobileShellComposite {
     /// Marks the point where a stored-Mac dial actually begins.
     public nonisolated static func logStoredMacDialStarted(mac: String) {
+        // The transport's TLS closure cannot see which Mac this is for, so tell
+        // the client before the dial begins.
+        MobileDeviceLinkClient.shared.setActiveDialTarget(macDeviceID: mac)
         logDeviceLink("dialing stored mac \(mac.prefix(28))")
     }
 }
