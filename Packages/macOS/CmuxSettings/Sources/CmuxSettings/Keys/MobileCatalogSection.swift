@@ -46,12 +46,25 @@ public struct MobileCatalogSection: SettingCatalogSection {
         userDefaultsKey: "mobile.iOSPairingHost.port"
     )
 
-    /// Mirrors `CmxMobileDefaults.channelHostPort`.
+    /// Mirrors `CmxMobileDefaults.channelHostPort(launchTag:)`.
+    ///
+    /// Tagged dev builds derive their port from the tag so several can run at
+    /// once; the listener fails closed, so a single shared debug port would let
+    /// only the first build host pairing. The mapping is a pure function of the
+    /// tag, so a given tag binds the same port on every launch.
     static var channelPairingPort: Int {
         #if DEBUG
-        58_467
+        let tag = ProcessInfo.processInfo.environment["CMUX_TAG"]?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !tag.isEmpty else { return 58_467 }
+        var hash: UInt64 = 0xcbf2_9ce4_8422_2325
+        for byte in tag.utf8 {
+            hash ^= UInt64(byte)
+            hash = hash &* 0x0000_0100_0000_01b3
+        }
+        return 58_467 + Int(hash % 64)
         #else
-        58_465
+        return 58_465
         #endif
     }
 

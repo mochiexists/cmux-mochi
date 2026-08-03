@@ -12,7 +12,7 @@ public struct CmxMobileDefaults {
     /// "running" at an address no phone has ever been told about.
     public static let defaultHostPort = 58_465
 
-    /// The pairing port for a developer build.
+    /// Base pairing port for developer builds.
     ///
     /// Fork (cmux Mochi): a dev build and the installed release build routinely
     /// run side by side on one Mac. With a fixed, fail-closed service port they
@@ -21,13 +21,44 @@ public struct CmxMobileDefaults {
     /// port fixed instead of weakening it to accommodate development.
     public static let developmentHostPort = 58_467
 
-    /// The pairing port this build should bind.
-    public static var channelHostPort: Int {
+    /// How many ports the tagged development lane may occupy.
+    private static let developmentPortSpan = 64
+
+    /// The pairing port a build binds, derived from its launch tag.
+    ///
+    /// Tagged builds exist so several can run at once (`reload.sh --tag`). A
+    /// single fixed debug port would let only the first one host pairing, since
+    /// the listener now fails closed rather than drifting to a free port — so
+    /// the tag picks the port. The mapping is a pure function of the tag, which
+    /// is what matters: the same tag lands on the same port on every launch, so
+    /// a paired phone's stored route stays valid across restarts, while two
+    /// different tags almost never collide. A collision between two tags is
+    /// still reported rather than silently worked around.
+    public static func channelHostPort(
+        launchTag: String? = ProcessInfo.processInfo.environment["CMUX_TAG"]
+    ) -> Int {
         #if DEBUG
-        developmentHostPort
+        guard let tag = launchTag?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !tag.isEmpty
+        else { return developmentHostPort }
+        return developmentHostPort + Int(stableOffset(for: tag, span: developmentPortSpan))
         #else
-        defaultHostPort
+        return defaultHostPort
         #endif
+    }
+
+    /// FNV-1a over the tag, reduced to `0..<span`.
+    ///
+    /// Deliberately not `hashValue`: Swift seeds string hashing per process, so
+    /// it returns a different value on every launch — which is exactly the
+    /// moving port this design exists to eliminate.
+    static func stableOffset(for tag: String, span: Int) -> UInt64 {
+        var hash: UInt64 = 0xcbf2_9ce4_8422_2325
+        for byte in tag.utf8 {
+            hash ^= UInt64(byte)
+            hash = hash &* 0x0000_0100_0000_01b3
+        }
+        return hash % UInt64(span)
     }
     /// Shared Mac/iOS pairing compatibility level. Bump this only when current
     /// clients can pair but may behave incorrectly without explicit user approval.
