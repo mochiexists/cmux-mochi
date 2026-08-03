@@ -119,8 +119,8 @@ struct MobileHostAuthorizationTests {
     @Test func testLiveAuthorizationRejectsWorkspaceScopedAttachTokenForMacScopedMutations() async throws {
         let service = MobileHostService.shared
         service.debugConfigureAcceptedStackAuthTokenForTesting("cmux-dev-token")
-        service.debugSetListenerStateForTesting(generation: UUID(), usesEphemeralFallback: false, port: 61234)
-        defer { service.debugConfigureAcceptedStackAuthTokenForTesting(nil); service.debugSetListenerStateForTesting(generation: UUID(), usesEphemeralFallback: false, port: nil) }
+        service.debugSetListenerStateForTesting(generation: UUID(), port: 61234)
+        defer { service.debugConfigureAcceptedStackAuthTokenForTesting(nil); service.debugSetListenerStateForTesting(generation: UUID(), port: nil) }
         let payload = try await service.createAttachTicket(workspaceID: "workspace-main", terminalID: nil, ttl: 3600)
         let ticketPayload = try #require(payload["ticket"] as? [String: Any])
         let attachToken = try #require(ticketPayload["auth_token"] as? String)
@@ -183,12 +183,11 @@ struct MobileHostAuthorizationTests {
         let generation = UUID()
         service.debugSetListenerStateForTesting(
             generation: generation,
-            usesEphemeralFallback: false,
             port: 58465
         )
         defer {
             service.debugSetListenerStateForTesting(
-                generation: UUID(), usesEphemeralFallback: false, port: nil
+                generation: UUID(), port: nil
             )
         }
 
@@ -197,7 +196,6 @@ struct MobileHostAuthorizationTests {
         )
 
         #expect(service.debugListenerPortForTesting() == nil)
-        #expect(service.debugListenerUsesEphemeralFallbackForTesting() == false)
     }
 
     @Test func testMobileHostBindFailureNamesThePortAndTheLikelyCause() {
@@ -869,7 +867,6 @@ struct MobileHostAuthorizationTests {
         service.debugResetMobileLifecycleStateForTesting()
         service.debugSetListenerStateForTesting(
             generation: currentGeneration,
-            usesEphemeralFallback: true,
             port: 61234
         )
         service.debugHandleListenerStateForTesting(
@@ -877,11 +874,9 @@ struct MobileHostAuthorizationTests {
             generation: staleGeneration
         )
         #expect(service.debugListenerGenerationForTesting() == currentGeneration)
-        #expect(service.debugListenerUsesEphemeralFallbackForTesting())
         #expect(service.debugListenerPortForTesting() == 61234)
         service.debugHandleListenerStateForTesting(.cancelled, generation: staleGeneration)
         #expect(service.debugListenerGenerationForTesting() == currentGeneration)
-        #expect(service.debugListenerUsesEphemeralFallbackForTesting())
         #expect(service.debugListenerPortForTesting() == 61234)
     }
     @Test func testMobileHostWaitingListenerDoesNotPublishRoutes() {
@@ -891,7 +886,6 @@ struct MobileHostAuthorizationTests {
         service.debugResetMobileLifecycleStateForTesting()
         service.debugSetListenerStateForTesting(
             generation: generation,
-            usesEphemeralFallback: false,
             port: 61234
         )
         service.debugHandleListenerStateForTesting(.waiting(.posix(.EADDRINUSE)), generation: generation)

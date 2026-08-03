@@ -328,7 +328,7 @@ final class HostSettingsActions: SettingsHostActions {
             isRunning: status.isRunning,
             configuredPort: status.configuredPort,
             boundPort: status.port,
-            usesEphemeralFallback: status.usesEphemeralFallback,
+            lastErrorDescription: status.lastErrorDescription,
             activeConnectionCount: status.activeConnectionCount,
             routes: routes
         )

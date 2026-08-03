@@ -24,9 +24,13 @@ public struct MobilePairingStatusSnapshot: Sendable, Equatable {
     /// The port the listener actually bound, or `nil` when it is not running.
     public let boundPort: Int?
 
-    /// True when the listener is running on a different port than
-    /// ``configuredPort`` because the configured port could not be bound.
-    public let usesEphemeralFallback: Bool
+    /// Why the listener is not running, when it is not.
+    ///
+    /// Replaces an `usesEphemeralFallback` flag: the listener no longer moves to
+    /// another port when the configured one is taken, so "which port did we land
+    /// on instead" is not a question that can arise. What the user needs instead
+    /// is the reason it refused to start.
+    public let lastErrorDescription: String?
 
     /// Number of iOS devices currently connected.
     public let activeConnectionCount: Int
@@ -40,22 +44,21 @@ public struct MobilePairingStatusSnapshot: Sendable, Equatable {
     ///   - isRunning: Whether the listener is bound.
     ///   - configuredPort: The preferred port from settings.
     ///   - boundPort: The port actually bound, or `nil` when not running.
-    ///   - usesEphemeralFallback: True when the bound port differs from the
-    ///     configured port because the configured port was unavailable.
+    ///   - lastErrorDescription: Why the listener is not running, if it is not.
     ///   - activeConnectionCount: Number of connected iOS devices.
     ///   - routes: Addresses the iOS app can use to reach this Mac.
     public init(
         isRunning: Bool,
         configuredPort: Int,
         boundPort: Int?,
-        usesEphemeralFallback: Bool,
+        lastErrorDescription: String?,
         activeConnectionCount: Int,
         routes: [MobilePairingRoute]
     ) {
         self.isRunning = isRunning
         self.configuredPort = configuredPort
         self.boundPort = boundPort
-        self.usesEphemeralFallback = usesEphemeralFallback
+        self.lastErrorDescription = lastErrorDescription
         self.activeConnectionCount = activeConnectionCount
         self.routes = routes
     }

@@ -205,7 +205,11 @@ extension MobileShellComposite {
         restoring: Bool,
         connected: Bool
     ) {
-        logDeviceLink("reconnect gate uiTestURL=(uiTestURL) authenticated=(authenticated) stack=(stackAuthenticated) pairedDevice=(hasPairedDevice) attachTicket=(attachTicket) restoring=(restoring) connected=(connected)")
+        logDeviceLink(
+            "reconnect gate uiTestURL=\(uiTestURL) authenticated=\(authenticated) "
+                + "stack=\(stackAuthenticated) pairedDevice=\(hasPairedDevice) "
+                + "attachTicket=\(attachTicket) restoring=\(restoring) connected=\(connected)"
+        )
     }
 }
 

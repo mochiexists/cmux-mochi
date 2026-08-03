@@ -241,18 +241,17 @@ public struct MobileSection: View {
 
     @ViewBuilder
     private func boundPortStatusText(_ snapshot: MobilePairingStatusSnapshot) -> some View {
-        if !snapshot.isRunning {
+        if !snapshot.isRunning, let failure = snapshot.lastErrorDescription, !failure.isEmpty {
+            // The listener binds its configured port or refuses to run, so a
+            // stopped listener has a reason worth showing. The previous message
+            // here announced a fallback to another port; there is no longer any
+            // such fallback, and a paired phone only ever dials the configured
+            // port.
+            Label(failure, systemImage: "exclamationmark.triangle.fill")
+                .foregroundStyle(.orange)
+        } else if !snapshot.isRunning {
             Text(String(localized: "settings.mobile.port.status.starting", defaultValue: "Starting the pairing listener…"))
                 .foregroundStyle(.secondary)
-        } else if snapshot.usesEphemeralFallback, let bound = snapshot.boundPort {
-            Label(
-                String(
-                    localized: "settings.mobile.port.status.fallback",
-                    defaultValue: "Port \(snapshot.configuredPort) is in use. Listening on \(bound) instead."
-                ),
-                systemImage: "exclamationmark.triangle.fill"
-            )
-            .foregroundStyle(.orange)
         } else if let bound = snapshot.boundPort {
             Label(
                 String(localized: "settings.mobile.port.status.ok", defaultValue: "Listening on port \(bound)."),

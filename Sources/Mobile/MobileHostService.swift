@@ -167,9 +167,6 @@ struct MobileHostServiceStatus {
     let port: Int?
     /// The preferred port from settings the listener tried to bind.
     let configuredPort: Int
-    /// True when the listener is running on an OS-assigned ephemeral port
-    /// because the configured port could not be bound.
-    let usesEphemeralFallback: Bool
     let routes: [CmxAttachRoute]
     let activeConnectionCount: Int
     let lastErrorDescription: String?
@@ -180,7 +177,6 @@ struct MobileHostServiceStatus {
             "is_running": isRunning,
             "port": port ?? NSNull(),
             "configured_port": configuredPort,
-            "uses_ephemeral_fallback": usesEphemeralFallback,
             "routes": routes.mobileHostJSONObjects(for: .authenticated, at: now),
             "active_connection_count": activeConnectionCount,
             "last_error": lastErrorDescription ?? NSNull()
@@ -372,7 +368,6 @@ final class MobileHostService {
     }
     private var listener: NWListener?
     private var listenerGeneration = UUID()
-    private var listenerUsesEphemeralFallback = false
     private var listenerPort: Int?
     /// The preferred port the active start-sequence targeted (regardless of an
     /// ephemeral fallback). Used to decide whether a settings change needs a
@@ -741,7 +736,6 @@ final class MobileHostService {
 
         listener = candidate
         listenerGeneration = generation
-        listenerUsesEphemeralFallback = false
         listenerPort = port
         appliedPreferredPort = port
         lastErrorDescription = nil
@@ -798,7 +792,6 @@ final class MobileHostService {
         guard listener == nil else { return }
         let port = Self.configuredPort()
         listenerGeneration = UUID()
-        listenerUsesEphemeralFallback = false
         listenerPort = port
         appliedPreferredPort = port
         lastErrorDescription = nil
@@ -843,7 +836,6 @@ final class MobileHostService {
                 Self.acceptConnectionOffMain(connection, generation: generation)
             }
             listener = nextListener
-            listenerUsesEphemeralFallback = false
             listenerPort = nil
             nextListener.start(queue: callbackQueue)
             startNetworkPathMonitorIfNeeded()
@@ -935,7 +927,6 @@ final class MobileHostService {
     private func stopLegacyListener(reason: String) {
         stopNetworkPathMonitor()
         listenerGeneration = UUID()
-        listenerUsesEphemeralFallback = false
         listener?.stateUpdateHandler = nil
         listener?.newConnectionHandler = nil
         listener?.cancel()
@@ -1047,7 +1038,6 @@ final class MobileHostService {
             configuredPort: Self.configuredPort(),
             // The actual bind outcome, not a recomputation from current defaults:
             // editing the preferred port before a restart must not flip this.
-            usesEphemeralFallback: isRunning && listenerUsesEphemeralFallback,
             routes: routes,
             activeConnectionCount: MobileHostConnectionRegistry.shared.count,
             lastErrorDescription: lastErrorDescription
@@ -1753,7 +1743,6 @@ final class MobileHostService {
         case .cancelled:
             listenerGeneration = UUID()
             listener = nil
-            listenerUsesEphemeralFallback = false
             listenerPort = nil
             MobileHostPublicStatusCache.update(routes: [])
             drainReadinessWaiters()
@@ -1792,7 +1781,6 @@ final class MobileHostService {
         listener?.cancel()
         listenerGeneration = UUID()
         listener = nil
-        listenerUsesEphemeralFallback = false
         listenerPort = nil
         boundTailnetInterfaceName = nil
         MobileHostPublicStatusCache.update(routes: [])
@@ -1826,7 +1814,6 @@ final class MobileHostService {
         listener?.cancel()
         listenerGeneration = UUID()
         listener = nil
-        listenerUsesEphemeralFallback = false
         listenerPort = nil
         // Fork (cmux Mochi): fail closed. Rebinding on an OS-assigned port would
         // keep this Mac "running" at an address no paired phone has ever been
@@ -1962,7 +1949,6 @@ extension MobileHostService {
 
     func debugResetMobileLifecycleStateForTesting() {
         listenerGeneration = UUID()
-        listenerUsesEphemeralFallback = false
         listenerPort = nil
         activeConnections.removeAll()
         clientIDsByConnectionID.removeAll()
@@ -1984,11 +1970,9 @@ extension MobileHostService {
 
     func debugSetListenerStateForTesting(
         generation: UUID,
-        usesEphemeralFallback: Bool,
         port: Int?
     ) {
         listenerGeneration = generation
-        listenerUsesEphemeralFallback = usesEphemeralFallback
         listenerPort = port
     }
 
@@ -2002,10 +1986,6 @@ extension MobileHostService {
 
     func debugListenerPortForTesting() -> Int? {
         listenerPort
-    }
-
-    func debugListenerUsesEphemeralFallbackForTesting() -> Bool {
-        listenerUsesEphemeralFallback
     }
 
     func debugConfigureAcceptedStackAuthTokenForTesting(_ token: String?) {
