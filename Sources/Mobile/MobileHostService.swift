@@ -369,9 +369,8 @@ final class MobileHostService {
     private var listener: NWListener?
     private var listenerGeneration = UUID()
     private var listenerPort: Int?
-    /// The preferred port the active start-sequence targeted (regardless of an
-    /// ephemeral fallback). Used to decide whether a settings change needs a
-    /// restart. `nil` while stopped.
+    /// The port the active start-sequence targeted. Used to decide whether a
+    /// settings change needs a restart. `nil` while stopped.
     private var appliedPreferredPort: Int?
     private var activeConnections: [UUID: MobileHostConnection] = [:]
     private var clientIDsByConnectionID: [UUID: Set<String>] = [:]
@@ -516,16 +515,15 @@ final class MobileHostService {
         return SettingCatalog().mobile.iOSPairingHost.defaultValue
     }
 
-    /// User-default key for the preferred iOS pairing listener port.
+    /// User-default key for the iOS pairing listener port.
     nonisolated static let portDefaultsKey = SettingCatalog().mobile.iOSPairingPort.userDefaultsKey
 
-    /// The preferred TCP port the listener should try to bind, read from
-    /// settings.
+    /// The TCP port the listener binds, read from settings.
     ///
     /// Falls back to the catalog default (which mirrors
-    /// `CmxMobileDefaults.defaultHostPort`) when unset or outside the valid
-    /// `1...65535` range. The listener still falls back to an OS-assigned
-    /// ephemeral port if this port is unavailable at bind time.
+    /// `CmxMobileDefaults.channelHostPort`) when unset or outside the valid
+    /// `1...65535` range. If that port is unavailable at bind time the listener
+    /// refuses to start rather than moving elsewhere.
     nonisolated static func configuredPort(defaults: UserDefaults = .standard) -> Int {
         let fallback = SettingCatalog().mobile.iOSPairingPort.defaultValue
         guard let raw = defaults.object(forKey: portDefaultsKey) as? Int else {
@@ -1747,10 +1745,10 @@ final class MobileHostService {
             MobileHostPublicStatusCache.update(routes: [])
             drainReadinessWaiters()
         case let .waiting(error):
-            // A preferred-port bind blocked by another listener surfaces as
+            // A bind blocked by another listener surfaces as
             // `.waiting(.posix(.EADDRINUSE))` rather than `.failed`, and NWListener
             // would otherwise wait forever; treat address-unavailable the same as
-            // a failure so the ephemeral fallback (and bound-port warning) fire.
+            // a failure so the host stops with the reason recorded.
             if Self.isAddressUnavailable(error) {
                 handleListenerBindFailure(error: error, context: "in use (waiting)")
             } else {
@@ -1765,9 +1763,9 @@ final class MobileHostService {
         }
     }
 
-    /// Tears down a listener that could not bind its preferred port and, unless
-    /// it was already on the ephemeral fallback, retries on an OS-assigned port.
-    /// Shared by the `.failed` and `.waiting(addressUnavailable)` paths.
+    /// Tears down a listener that could not bind its port, leaving the host
+    /// stopped with the reason recorded. Shared by the `.failed` and
+    /// `.waiting(addressUnavailable)` paths.
     /// Tears the pinned listener down and rebinds it against the current Tailscale
     /// interface.
     ///

@@ -167928,23 +167928,6 @@
         }
       }
     },
-    "settings.mobile.port.status.fallback": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Port %lld is in use. Listening on %lld instead."
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "ポート %lld は使用中です。代わりにポート %lld で待ち受けています。"
-          }
-        }
-      }
-    },
     "settings.mobile.port.status.invalid": {
       "extractionState": "manual",
       "localizations": {

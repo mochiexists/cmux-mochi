@@ -3,11 +3,11 @@ import Foundation
 /// A point-in-time view of the Mac-side iOS pairing host, shown in the Mobile
 /// settings section.
 ///
-/// The configured port is only a *preference*: if it is already in use the
-/// listener binds an OS-assigned ephemeral port instead, and the iOS app is
-/// handed the actual ``boundPort``. The settings UI uses this snapshot to show
-/// the real bound port and warn when it differs from ``configuredPort`` so a
-/// configured port can never silently fail to take effect.
+/// The configured port is a *fixed service port*: the listener binds it or
+/// refuses to start, so ``boundPort`` either equals ``configuredPort`` or is
+/// `nil` with the reason in ``lastErrorDescription``. It is never some third
+/// port — a paired phone dials the address it was given, so a host that
+/// silently moved would be unreachable while appearing to run.
 ///
 /// The host supplies the snapshot through
 /// ``SettingsHostActions/mobilePairingStatus()`` and pushes updates through

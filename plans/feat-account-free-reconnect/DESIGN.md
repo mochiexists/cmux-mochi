@@ -236,10 +236,15 @@ protocol change.
   ladder with **jitter**, reset after 30 s healthy, and
   **foreground-resume bypasses backoff** — app-open is an immediate
   reconnect attempt.
-- Endpoint discovery: sticky per-instance port + stable Tailscale IP
-  (unchanged from v4/v5 §8); stored route first, preferred port second,
-  both failing ⇒ re-scan prompt. Port-steal is an availability event only —
-  an impostor cannot complete the handshake.
+- Endpoint discovery (**revised during implementation**): a *fixed* service
+  port — the listener binds it or refuses to start, never moving to an
+  OS-assigned port. A sticky/ephemeral fallback was tried and rejected: it
+  silently changes the address a paired phone was given, which presents as an
+  unreachable Mac rather than a moved one. Alongside the numeric tailnet
+  addresses the Mac advertises its **MagicDNS name**, which survives a tailnet
+  IP change; the stored route set is tried in order, and only when all of them
+  fail does the phone reach the re-scan prompt. Port-steal is an availability
+  event only — an impostor cannot complete the handshake.
 
 ### 8. Optional module + packaging (unchanged from v5)
 
@@ -451,11 +456,15 @@ Driven by the proven tooling (below). Scripted end-to-end:
 2. Force-quit; cold launch. Assert reconnect **with no scan**; screenshot;
    pull `cmux-debug.log`, assert the mTLS reconnect path (not enrollment)
    ran.
-3. Restart cmux on M5. Assert phone reconnects (sticky port). Confirm on
-   the Mac side (`netstat`, host log) — not just phone-side liveness.
-4. Port-steal case: occupy M5's preferred port, restart cmux (ephemeral
-   fallback). Assert phone lands on the re-scan prompt — a clean failure
-   state, not a hang.
+3. Restart cmux on M5. Assert phone reconnects (the port is fixed, so the
+   stored route stays valid). Confirm on the Mac side (`netstat`, host log) —
+   not just phone-side liveness.
+4. Port-steal case: occupy M5's port, restart cmux. Assert the Mac **fails
+   closed** — it must report the port as taken and stay stopped, never bind
+   elsewhere. Assert the phone reports "can't reach", not a re-pair prompt:
+   an unreachable Mac must never destroy a valid pairing.
+5. Tailnet IP change: the numeric routes go stale while the MagicDNS route
+   still resolves. Assert reconnect succeeds with no scan.
 5. Enroll to M4 as well. Assert both Macs connected simultaneously;
    screenshot the merged workspace list (blue + green) — regression guard
    for `d8f17712c4`.
@@ -510,11 +519,11 @@ release nightly once Journey A is green:
 # registers the cmux-ios:// scheme, not cmux-ios-dev:// (Release.xcconfig:18)
 # — round-6 correction. Drive Release via openURL with the real scheme:
 xcrun devicectl device process launch --device <id> --terminate-existing \
-  dev.cmux.ios.nightly
+  com.cmux-mochi.ios.nightly
 xcrun devicectl device process openURL --device <id> "cmux-ios://attach?<v7 payload>"
 xcrun devicectl device capture screenshot --device <id> --destination shot.png
 xcrun devicectl device copy from --device <id> --domain-type appDataContainer \
-  --domain-identifier dev.cmux.ios.nightly \
+  --domain-identifier com.cmux-mochi.ios.nightly \
   --source "Library/Application Support/cmux-debug.log" --destination log.txt
 # (CMUX_DOGFOOD_ATTACH_URL + cmux-ios-dev:// remain valid for DEBUG-build
 # iteration during Phases 1–3.)
