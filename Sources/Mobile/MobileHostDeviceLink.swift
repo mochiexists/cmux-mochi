@@ -6,6 +6,20 @@ import Security
 
 private let deviceLinkLog = Logger(subsystem: "dev.cmux", category: "mobile-devicelink")
 
+/// Records a DeviceLink event to os_log **and** stdout.
+///
+/// A tagged dev build launched from a shell has its stdout captured, while its
+/// `os_log` output has proven unretrievable in practice — every pairing
+/// diagnosis so far has been done with the Mac's half invisible, which is why
+/// several wrong conclusions survived as long as they did. Cheap insurance.
+func logDeviceLinkHost(_ message: String) {
+    deviceLinkLog.info("devicelink: \(message, privacy: .public)")
+    #if DEBUG
+    print("devicelink · \(message)")
+    fflush(stdout)
+    #endif
+}
+
 /// The Mac's DeviceLink state: its own TLS identity, the authorized-devices
 /// table, and the coordinator that serializes admission against revocation.
 ///
@@ -105,9 +119,7 @@ final class MobileHostDeviceLink {
             // Answers from the snapshot, never awaiting. See
             // `admissionSnapshot` for why blocking here is not an option.
             let admitted = snapshot.admits(fingerprint)
-            deviceLinkLog.info(
-                "devicelink: verify \(fingerprint.shortForm, privacy: .public) -> \(admitted ? "admit" : "REJECT", privacy: .public) \(snapshot.describe(), privacy: .public)"
-            )
+            logDeviceLinkHost("verify \(fingerprint.shortForm) -> \(admitted ? "admit" : "REJECT") \(snapshot.describe())")
             return admitted
         }
     }
@@ -117,9 +129,7 @@ final class MobileHostDeviceLink {
         let authorized = await coordinator.devices().map(\.fingerprint)
         let enrolling = await coordinator.hasOpenEnrollmentWindow()
         admissionSnapshot.update(authorized: Set(authorized), enrollmentWindowOpen: enrolling)
-        deviceLinkLog.info(
-            "devicelink: admission snapshot -> \(authorized.count, privacy: .public) authorized, enrolling=\(enrolling, privacy: .public)"
-        )
+        logDeviceLinkHost("admission snapshot -> \(authorized.count) authorized, enrolling=\(enrolling)")
     }
 
     /// Classifies a completed handshake into the authorization context the

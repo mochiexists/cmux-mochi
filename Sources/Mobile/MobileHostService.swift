@@ -533,15 +533,10 @@ final class MobileHostService {
     /// ephemeral port if this port is unavailable at bind time.
     nonisolated static func configuredPort(defaults: UserDefaults = .standard) -> Int {
         let fallback = SettingCatalog().mobile.iOSPairingPort.defaultValue
-        let raw = defaults.object(forKey: portDefaultsKey) as? Int
-        // A configured value of 0 means "any port", which hands out a new
-        // ephemeral port on every launch and instantly invalidates the routes
-        // already given to paired phones. Prefer the port bound last time in
-        // that case; an explicit non-zero setting still wins.
-        if let raw, (1 ... 65535).contains(raw) {
-            return raw
+        guard let raw = defaults.object(forKey: portDefaultsKey) as? Int else {
+            return fallback
         }
-        return lastBoundPort(defaults: defaults) ?? fallback
+        return (1...65535).contains(raw) ? raw : fallback
     }
 
     /// Defaults key for the port most recently bound successfully.
@@ -829,11 +824,8 @@ final class MobileHostService {
     }
     #endif
 
-    /// Guards the one-shot retry on the previously bound port.
-    private var hasTriedStickyPort = false
-
-    private func startListener(usePreferredPort: Bool, overridePort: Int? = nil) {
-        let desiredPort = overridePort ?? Self.configuredPort()
+    private func startListener(usePreferredPort: Bool) {
+        let desiredPort = Self.configuredPort()
         appliedPreferredPort = desiredPort
         // Fork (cmux Mochi): fail closed when there is no tailnet interface to pin
         // to. `handleNetworkPathChange` retries once Tailscale comes up, so this is
@@ -850,7 +842,6 @@ final class MobileHostService {
             return
         }
         boundTailnetInterfaceName = MobileHostTailnetInterface.tailnetInterfaceName()
-        if overridePort == nil, usePreferredPort { hasTriedStickyPort = false }
         do {
             // The coordinator loads its table on first read (see
             // `ensureLoaded`), so a cold start cannot answer "unknown device"
@@ -879,19 +870,6 @@ final class MobileHostService {
             startNetworkPathMonitorIfNeeded()
         } catch {
             if usePreferredPort {
-                // Fork (cmux Mochi): before giving up on a stable port, try the
-                // one bound last time. Paired phones store the route they were
-                // given, so an ephemeral port on every launch silently
-                // invalidates every stored pairing — the reconnect then fails
-                // as if the Mac were unreachable rather than merely moved.
-                if let sticky = Self.lastBoundPort(),
-                   sticky != Self.configuredPort(),
-                   !hasTriedStickyPort {
-                    hasTriedStickyPort = true
-                    mobileHostLog.info("mobile host preferred port unavailable; trying last bound port \(sticky, privacy: .public)")
-                    startListener(usePreferredPort: true, overridePort: sticky)
-                    return
-                }
                 mobileHostLog.info("mobile host preferred port unavailable before listener start, falling back to an ephemeral port")
                 startListener(usePreferredPort: false)
                 return
@@ -1185,12 +1163,12 @@ final class MobileHostService {
             do {
                 try await transport.connect()
             } catch {
-                mobileHostLog.error("mobile host rejected connection: handshake failed")
+                logDeviceLinkHost("rejected connection: handshake failed")
                 await transport.close()
                 return
             }
             guard let fingerprint = Self.deviceLinkPeerFingerprint(of: connection) else {
-                mobileHostLog.error("mobile host rejected connection with no usable peer certificate")
+                logDeviceLinkHost("rejected connection: no usable peer certificate")
                 await transport.close()
                 return
             }
@@ -1200,7 +1178,7 @@ final class MobileHostService {
             // just enrollments — otherwise it cannot be used to tell whether a
             // reconnect actually landed.
             await MobileHostDeviceLink.shared.noteAdmission(fingerprint)
-            mobileHostLog.info("mobile host admitted \(String(describing: authorization), privacy: .public)")
+            logDeviceLinkHost("admitted \(String(describing: authorization).prefix(60))")
 
             await Self.acceptTransport(
                 transport,
