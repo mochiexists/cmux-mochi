@@ -115,3 +115,55 @@ zero-argument (`CmxNetworkByteTransportFactory.swift:16`) and would need the
 route passed in.
 
 This is required before a phone can hold pairings to both the M4 and the M5.
+
+---
+
+# iPhone 17: reconnect works, then the session is signed out
+
+Proven on hardware 2026-08-03. **Journey B passes**: cold launch → `dial
+finished: connected` in 0.75 s with no rescan.
+
+```
+[0.430] dial decision mac=24D04160… credential=true canConnect=true
+[0.435] tls options: offering devicelink:8dd06915fb28a for target 24D04160-6D4
+[0.563] client verify: server 8dd06915fb28 expected 8dd06915fb28 -> accept
+[0.748] dial finished: connected
+[49.5]  reconnect scope signedIn=false requested=nil resolved=nil   ← regressed
+[182.7] reconnect scope signedIn=false requested=nil resolved=nil
+```
+
+## Root cause
+
+`MobileShellComposite.signOut()` (MobileShellComposite.swift:1108) sets
+`isSignedIn = false`, and its own comment records that it "is called on every
+unauthenticated auth-state sync". An account-free DeviceLink pairing is
+permanently unauthenticated in Stack terms — that is the entire point — so every
+sync signs the shell out.
+
+Paired Macs are looked up **by scope**, and scope resolution requires a
+signed-in shell (`MobileShellComposite+Scope.swift`). Once `isSignedIn` is false
+the scope resolves to `nil` and the store returns nothing, so the UI reports "no
+computers paired" while the DeviceLink connection is still live. The legacy
+attach panel separately shows "Still loading", which is why the two states
+contradict each other on screen.
+
+## Fix direction
+
+The key is the credential. `connectDeviceLinkPairing` already asserts this
+(`if !isSignedIn { signIn() }`, MobileShellComposite+DeviceLink.swift:64). The
+unauthenticated auth-state sync must not revoke it: a device holding a usable
+identity and pin (`MobileDeviceLinkClient.shared.hasAnyPairedDevice()`) is
+authenticated regardless of Stack account state.
+
+Do **not** simply make `signOut()` a no-op when a pairing exists — that would
+break genuine user-initiated sign-out. The sync path is what needs the guard,
+and no production caller of `signOut()` appears in `Packages/iOS` or `ios/`
+(only tests), so it is invoked through a binding/closure that still needs
+locating.
+
+## Why this is the same bug family
+
+Third instance today of the account path asserting authority over a credential
+that was never account-derived — after paired-Mac persistence bailing on a nil
+scope, and the build-compatibility wrapper silently dropping writes. Phase 4's
+deletion of the legacy/account pairing surface is the real cure.
