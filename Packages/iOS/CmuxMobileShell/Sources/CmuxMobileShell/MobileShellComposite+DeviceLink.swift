@@ -102,13 +102,19 @@ extension MobileShellComposite {
               let ticket = try? CmxAttachTicket(
                   workspaceID: "",
                   terminalID: nil,
-                  macDeviceID: outcome.pairingID,
-                  macDisplayName: payload.macLabel,
+                  macDeviceID: outcome.macDeviceID,
+                  macDisplayName: outcome.macDisplayName ?? payload.macLabel,
                   routes: routes,
                   expiresAt: nil
               )
         else { return }
-        await persistPairedMacFromTicket(ticket, displayNameOverride: payload.macLabel)
+        // Record the instance tag too: build-compatibility checks compare it,
+        // and a pairing stored without one is treated as an older host.
+        await persistPairedMacFromTicket(
+            ticket,
+            instanceTagUpdate: .replace(outcome.macInstanceTag),
+            displayNameOverride: outcome.macDisplayName ?? payload.macLabel
+        )
     }
 
     /// Rebuilds the route that worked, so reconnection starts where pairing

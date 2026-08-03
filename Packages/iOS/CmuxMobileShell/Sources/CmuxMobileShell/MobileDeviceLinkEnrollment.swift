@@ -26,6 +26,17 @@ public enum MobileDeviceLinkEnrollmentError: Error, Equatable {
 public struct MobileDeviceLinkEnrollmentOutcome: Sendable, Equatable {
     /// Stable local identity for this pairing, keyed by the Mac's public key.
     public let pairingID: String
+    /// The Mac's own device id, read from the authenticated channel.
+    ///
+    /// Stored pairings are keyed by this, because every existing identity and
+    /// build-compatibility check compares against it. Keying them by the
+    /// DeviceLink pairing id instead made reconnect dial a Mac whose reported
+    /// identity never matched, so the connection was refused after dialing.
+    public let macDeviceID: String
+    /// The Mac's app-instance tag, which distinguishes Stable/Nightly/dev.
+    public let macInstanceTag: String?
+    /// Display name reported by the Mac.
+    public let macDisplayName: String?
     /// The Mac's pinned fingerprint.
     public let macFingerprint: DeviceFingerprint
     /// The route that worked, so the caller can store it for reconnection.
@@ -104,9 +115,12 @@ public struct MobileDeviceLinkEnroller: Sendable {
                 )
                 return MobileDeviceLinkEnrollmentOutcome(
                     pairingID: pairingID,
+                    macDeviceID: outcome.identity.deviceID,
+                    macInstanceTag: outcome.identity.instanceTag,
+                    macDisplayName: outcome.identity.displayName,
                     macFingerprint: payload.macFingerprint,
                     route: route,
-                    wasAlreadyEnrolled: outcome
+                    wasAlreadyEnrolled: outcome.wasAlreadyEnrolled
                 )
             } catch let error as MobileDeviceLinkEnrollmentError {
                 // A refusal or a pin mismatch is the Mac's final answer; trying
@@ -125,12 +139,24 @@ public struct MobileDeviceLinkEnroller: Sendable {
         throw lastError
     }
 
+    /// What the Mac reports about itself once the channel is authenticated.
+    struct MacIdentity: Sendable {
+        var deviceID: String
+        var instanceTag: String?
+        var displayName: String?
+    }
+
+    private struct RouteOutcome: Sendable {
+        var wasAlreadyEnrolled: Bool
+        var identity: MacIdentity
+    }
+
     private func enrollOverRoute(
         host: String,
         port: Int,
         tlsOptions: NWProtocolTLS.Options,
         ticket: String
-    ) async throws -> Bool {
+    ) async throws -> RouteOutcome {
         let transport = try CmxNetworkByteTransport(
             host: host,
             port: port,
@@ -172,7 +198,39 @@ public struct MobileDeviceLinkEnroller: Sendable {
         else {
             throw MobileDeviceLinkEnrollmentError.malformedResponse
         }
-        return result["already_enrolled"] as? Bool ?? false
+        let wasAlreadyEnrolled = result["already_enrolled"] as? Bool ?? false
+
+        // Ask who we just paired with. The channel is admitted at this point,
+        // so the Mac discloses its identity, and storing that identity is what
+        // lets the ordinary reconnect path recognise this Mac later.
+        let identity = try await requestMacIdentity(over: transport)
+        return RouteOutcome(wasAlreadyEnrolled: wasAlreadyEnrolled, identity: identity)
+    }
+
+    /// Reads the Mac's identity over an already-authenticated channel.
+    private func requestMacIdentity(over transport: CmxNetworkByteTransport) async throws -> MacIdentity {
+        let request: [String: Any] = [
+            "id": UUID().uuidString,
+            "method": "mobile.host.status",
+            "params": [:],
+        ]
+        try await transport.send(Self.frame(try JSONSerialization.data(withJSONObject: request)))
+        let data = try await Self.readFrame(from: transport)
+        guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let result = object["result"] as? [String: Any]
+        else {
+            throw MobileDeviceLinkEnrollmentError.malformedResponse
+        }
+        guard let deviceID = (result["device_id"] as? String) ?? (result["mac_device_id"] as? String),
+              !deviceID.isEmpty
+        else {
+            throw MobileDeviceLinkEnrollmentError.malformedResponse
+        }
+        return MacIdentity(
+            deviceID: deviceID,
+            instanceTag: result["instance_tag"] as? String,
+            displayName: (result["display_name"] as? String) ?? (result["name"] as? String)
+        )
     }
 
     /// Whether a host refers to the local device.
