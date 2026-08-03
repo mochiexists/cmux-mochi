@@ -26,6 +26,12 @@ extension MobileHostDeviceLink {
             throw MobileHostDeviceLinkPairingError.identityFailed(String(describing: error))
         }
         let ticket = try await issueEnrollmentTicket(lifetime: lifetime)
+        // The phone stores these routes and redials them for the life of the
+        // pairing, so the code must not be minted from a snapshot taken before
+        // MagicDNS resolved — that silently drops the only locator that survives
+        // a tailnet IP change, and the loss is invisible until a reconnect fails
+        // months later.
+        await MobileHostService.shared.publishRoutesAwaitingMagicDNS()
         let routes = MobileHostPublicStatusCache.snapshot()
             .compactMap(Self.routeDescription)
         guard !routes.isEmpty else {

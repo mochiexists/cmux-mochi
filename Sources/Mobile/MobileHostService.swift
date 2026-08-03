@@ -1852,6 +1852,23 @@ final class MobileHostService {
         logDeviceLinkHost("routes -> \(Self.routeSummary(routes))")
     }
 
+    /// Republishes the advertised routes, waiting for MagicDNS resolution.
+    ///
+    /// The published snapshot is filled in synchronously when the listener binds
+    /// — before any DNS resolution has happened — and refreshed asynchronously
+    /// afterwards. Anything that must not miss the MagicDNS route (above all the
+    /// pairing code a phone scans, which is stored and redialled for the life of
+    /// the pairing) has to await this rather than read whatever is cached.
+    func publishRoutesAwaitingMagicDNS() async {
+        guard let port = listenerPort else { return }
+        let snapshot = await routeResolver.routesResolvingTailscaleDNS(port: port)
+        // The listener can rebind while resolution is in flight; those routes
+        // describe a port that is no longer served.
+        guard listenerPort == port else { return }
+        MobileHostPublicStatusCache.update(routes: snapshot.routes)
+        logDeviceLinkHost("routes (magicdns awaited) -> \(Self.routeSummary(snapshot.routes))")
+    }
+
     /// One-line `kind:host:port` summary of advertised routes, for diagnostics.
     static func routeSummary(_ routes: [CmxAttachRoute]) -> String {
         guard !routes.isEmpty else { return "(none)" }
