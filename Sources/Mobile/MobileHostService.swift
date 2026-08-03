@@ -1274,14 +1274,15 @@ final class MobileHostService {
         case .pairedDevice:
             // The mutual-TLS handshake already proved possession of an
             // authorized private key, and the pairing is Mac-wide, so no
-            // further per-request gate applies. Enrollment is refused: a paired
-            // device has no business minting more pairings.
-            if isDeviceLinkEnrollmentMethod(request.method) {
-                return .failure(MobileHostRPCError(
-                    code: "forbidden",
-                    message: "This device is already paired."
-                ))
-            }
+            // further per-request gate applies.
+            //
+            // Enrollment is allowed through rather than refused: a device that
+            // re-presents a key this Mac already trusts is retrying, and the
+            // handler answers `already_enrolled` for it. Refusing here made
+            // every re-pair after the first fail, and turned a lost enrollment
+            // response into a dead end instead of the harmless retry the
+            // design relies on. It cannot enroll a *different* key, because the
+            // fingerprint comes from the handshake rather than the request.
             return nil
         case .enrollmentCandidate:
             // An unknown key, admitted solely because an enrollment window is

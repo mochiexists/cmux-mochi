@@ -104,6 +104,7 @@ extension MobileShellComposite {
         let routes = orderedDescriptions.enumerated().compactMap { index, description in
             Self.deviceLinkRoute(from: description, priority: index)
         }
+        logDeviceLink("recording pairing mac=\(outcome.macDeviceID.prefix(12)) tag=\(outcome.macInstanceTag ?? "nil") routes=\(routes.count) store=\(pairedMacStore == nil ? "MISSING" : "present")")
         guard !routes.isEmpty,
               let ticket = try? CmxAttachTicket(
                   workspaceID: "",
@@ -116,11 +117,12 @@ extension MobileShellComposite {
         else { return }
         // Record the instance tag too: build-compatibility checks compare it,
         // and a pairing stored without one is treated as an older host.
-        await persistPairedMacFromTicket(
+        let persisted = await persistPairedMacFromTicket(
             ticket,
             instanceTagUpdate: .replace(outcome.macInstanceTag),
             displayNameOverride: outcome.macDisplayName ?? payload.macLabel
         )
+        logDeviceLink("pairing persisted=\(persisted)")
     }
 
     /// Rebuilds the route that worked, so reconnection starts where pairing
