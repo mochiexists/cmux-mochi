@@ -533,10 +533,32 @@ final class MobileHostService {
     /// ephemeral port if this port is unavailable at bind time.
     nonisolated static func configuredPort(defaults: UserDefaults = .standard) -> Int {
         let fallback = SettingCatalog().mobile.iOSPairingPort.defaultValue
-        guard let raw = defaults.object(forKey: portDefaultsKey) as? Int else {
-            return fallback
+        let raw = defaults.object(forKey: portDefaultsKey) as? Int
+        // A configured value of 0 means "any port", which hands out a new
+        // ephemeral port on every launch and instantly invalidates the routes
+        // already given to paired phones. Prefer the port bound last time in
+        // that case; an explicit non-zero setting still wins.
+        if let raw, (1 ... 65535).contains(raw) {
+            return raw
         }
-        return (1...65535).contains(raw) ? raw : fallback
+        return lastBoundPort(defaults: defaults) ?? fallback
+    }
+
+    /// Defaults key for the port most recently bound successfully.
+    nonisolated static let lastBoundPortDefaultsKey = "mobile.host.lastBoundPort"
+
+    /// The port bound on the previous run, when it is still plausible.
+    nonisolated static func lastBoundPort(defaults: UserDefaults = .standard) -> Int? {
+        guard let raw = defaults.object(forKey: lastBoundPortDefaultsKey) as? Int,
+              (1 ... 65535).contains(raw)
+        else { return nil }
+        return raw
+    }
+
+    /// Records a successful bind so the next launch can ask for it again.
+    nonisolated static func rememberBoundPort(_ port: Int, defaults: UserDefaults = .standard) {
+        guard (1 ... 65535).contains(port) else { return }
+        defaults.set(port, forKey: lastBoundPortDefaultsKey)
     }
 
     /// The port a settings change should reconcile the *running* listener to, or
@@ -807,8 +829,11 @@ final class MobileHostService {
     }
     #endif
 
-    private func startListener(usePreferredPort: Bool) {
-        let desiredPort = Self.configuredPort()
+    /// Guards the one-shot retry on the previously bound port.
+    private var hasTriedStickyPort = false
+
+    private func startListener(usePreferredPort: Bool, overridePort: Int? = nil) {
+        let desiredPort = overridePort ?? Self.configuredPort()
         appliedPreferredPort = desiredPort
         // Fork (cmux Mochi): fail closed when there is no tailnet interface to pin
         // to. `handleNetworkPathChange` retries once Tailscale comes up, so this is
@@ -825,6 +850,7 @@ final class MobileHostService {
             return
         }
         boundTailnetInterfaceName = MobileHostTailnetInterface.tailnetInterfaceName()
+        if overridePort == nil, usePreferredPort { hasTriedStickyPort = false }
         do {
             // The coordinator loads its table on first read (see
             // `ensureLoaded`), so a cold start cannot answer "unknown device"
@@ -853,6 +879,19 @@ final class MobileHostService {
             startNetworkPathMonitorIfNeeded()
         } catch {
             if usePreferredPort {
+                // Fork (cmux Mochi): before giving up on a stable port, try the
+                // one bound last time. Paired phones store the route they were
+                // given, so an ephemeral port on every launch silently
+                // invalidates every stored pairing — the reconnect then fails
+                // as if the Mac were unreachable rather than merely moved.
+                if let sticky = Self.lastBoundPort(),
+                   sticky != Self.configuredPort(),
+                   !hasTriedStickyPort {
+                    hasTriedStickyPort = true
+                    mobileHostLog.info("mobile host preferred port unavailable; trying last bound port \(sticky, privacy: .public)")
+                    startListener(usePreferredPort: true, overridePort: sticky)
+                    return
+                }
                 mobileHostLog.info("mobile host preferred port unavailable before listener start, falling back to an ephemeral port")
                 startListener(usePreferredPort: false)
                 return
@@ -1157,6 +1196,11 @@ final class MobileHostService {
             }
             let authorization = await MobileHostDeviceLink.shared
                 .authorizationContext(forPeer: fingerprint)
+            // Record the admission so `last_seen_at` reflects connections, not
+            // just enrollments — otherwise it cannot be used to tell whether a
+            // reconnect actually landed.
+            await MobileHostDeviceLink.shared.noteAdmission(fingerprint)
+            mobileHostLog.info("mobile host admitted \(String(describing: authorization), privacy: .public)")
 
             await Self.acceptTransport(
                 transport,
@@ -1727,6 +1771,16 @@ final class MobileHostService {
         case .ready:
             listenerPort = listener?.port.map { Int($0.rawValue) }
             lastErrorDescription = nil
+            // Fork (cmux Mochi): remember the port we actually bound, so the
+            // next launch prefers it. A paired phone stores the route it was
+            // given; without this the Mac lands on a fresh ephemeral port every
+            // restart and every stored route is instantly dead — reconnect then
+            // fails in a way that looks like an unreachable Mac rather than a
+            // moved one. Recorded separately from the user's configured port so
+            // an explicit setting is never overwritten.
+            if let listenerPort {
+                Self.rememberBoundPort(listenerPort)
+            }
             if let listenerPort {
                 routeResolver.refreshTailscaleRoutes(onResolvedHosts: { [weak self] hosts in
                     Task { @MainActor [weak self] in

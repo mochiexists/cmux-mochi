@@ -95,10 +95,20 @@ final class MobileHostDeviceLink {
     func listenerOptions() throws -> NWProtocolTLS.Options {
         let identity = try hostIdentity().secIdentity
         let snapshot = admissionSnapshot
+        // Load the table into the snapshot the moment the listener exists.
+        // Without this the snapshot starts empty and stays empty until
+        // something incidental refreshes it, so a Mac that has just launched
+        // rejects every device it is paired with — pairing still works, because
+        // minting a code refreshes it, which is exactly why this hid.
+        Task { await refreshAdmissionSnapshot() }
         return DeviceLinkTLS.listenerOptions(identity: identity) { fingerprint in
             // Answers from the snapshot, never awaiting. See
             // `admissionSnapshot` for why blocking here is not an option.
-            snapshot.admits(fingerprint)
+            let admitted = snapshot.admits(fingerprint)
+            deviceLinkLog.info(
+                "devicelink: verify \(fingerprint.shortForm, privacy: .public) -> \(admitted ? "admit" : "REJECT", privacy: .public) \(snapshot.describe(), privacy: .public)"
+            )
+            return admitted
         }
     }
 
@@ -107,6 +117,9 @@ final class MobileHostDeviceLink {
         let authorized = await coordinator.devices().map(\.fingerprint)
         let enrolling = await coordinator.hasOpenEnrollmentWindow()
         admissionSnapshot.update(authorized: Set(authorized), enrollmentWindowOpen: enrolling)
+        deviceLinkLog.info(
+            "devicelink: admission snapshot -> \(authorized.count, privacy: .public) authorized, enrolling=\(enrolling, privacy: .public)"
+        )
     }
 
     /// Classifies a completed handshake into the authorization context the
@@ -157,6 +170,11 @@ final class MobileHostDeviceLink {
             "devicelink: enrolled \(outcome.device.displayName, privacy: .public) (existing: \(outcome.wasAlreadyEnrolled, privacy: .public))"
         )
         return outcome
+    }
+
+    /// Marks a device as seen, so a reconnect is visible in `device.list`.
+    func noteAdmission(_ fingerprint: DeviceFingerprint) async {
+        _ = await coordinator.registerAdmission(fingerprint, connectionID: UUID())
     }
 
     /// Every enrolled device, for `mobile.pairing.device.list`.

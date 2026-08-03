@@ -22,6 +22,13 @@ final class MobileHostDeviceLinkAdmissionSnapshot: @unchecked Sendable {
         return authorized.contains(fingerprint) || enrollmentWindowOpen
     }
 
+    /// Short description for logs.
+    func describe() -> String {
+        lock.lock()
+        defer { lock.unlock() }
+        return "(known=\(authorized.count) enrolling=\(enrollmentWindowOpen))"
+    }
+
     func update(authorized: Set<DeviceFingerprint>, enrollmentWindowOpen: Bool) {
         lock.lock()
         self.authorized = authorized
