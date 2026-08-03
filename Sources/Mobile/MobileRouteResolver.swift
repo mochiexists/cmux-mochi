@@ -80,9 +80,9 @@ final class MobileRouteResolver: @unchecked Sendable {
             }
         }
 
-        let numericTailscaleHosts = Self.deduplicatedHosts(tailscaleHosts).filter {
-            Self.isTailscalePeerAddress($0)
-        }
+        let orderedHosts = Self.deduplicatedHosts(tailscaleHosts)
+
+        let numericTailscaleHosts = orderedHosts.filter { Self.isTailscalePeerAddress($0) }
         for (index, tailscaleHost) in numericTailscaleHosts.enumerated() {
             let id = index == 0
                 ? CmxAttachTransportKind.tailscale.rawValue
@@ -94,6 +94,27 @@ final class MobileRouteResolver: @unchecked Sendable {
                 priority: 10 + (index * 10)
             ) {
                 resolved.append(tailscaleRoute)
+            }
+        }
+
+        // The MagicDNS name is the Mac's only address-independent identifier on
+        // the tailnet, and it is what lets a stored route survive a tailnet IP
+        // change — the reason a paired phone otherwise has to rescan a QR code.
+        //
+        // Advertised *in addition to* the numeric addresses and ranked below
+        // them, never instead of them: a `.ts.net` name only resolves while the
+        // client's Tailscale DNS is active, whereas the numeric address is
+        // always directly dialable by a device already on the tailnet.
+        let magicDNSHosts = orderedHosts.filter { Self.isTailscaleDNSName($0) }
+        for (index, dnsHost) in magicDNSHosts.enumerated() {
+            let suffix = index == 0 ? "" : "_\(index + 1)"
+            if let dnsRoute = try? CmxAttachRoute(
+                id: "\(CmxAttachTransportKind.tailscale.rawValue)_dns\(suffix)",
+                kind: .tailscale,
+                endpoint: .hostPort(host: dnsHost, port: port),
+                priority: 100 + (index * 10)
+            ) {
+                resolved.append(dnsRoute)
             }
         }
 
