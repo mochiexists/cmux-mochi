@@ -39,10 +39,21 @@ extension MobileShellComposite {
         let scope = await currentScopeSnapshot(userID: identityProvider?.currentUserID)
         let stackUserID = scope?.userID ?? identityProvider?.currentUserID
         let ticketDisplayName = displayNameOverride ?? ticket.macDisplayName
-        var accepted = true
+        // Starts false and is earned by an actual write. It was initialised to
+        // `true`, so every early return below — and a write closure that never
+        // ran at all — reported success while persisting nothing. A pairing then
+        // logged "persisted=true" with an empty store, and the phone had no Mac
+        // to dial on the next cold launch: the exact failure this function
+        // exists to prevent, reported as a success.
+        var accepted = false
         await performSerializedPairedMacWrite(ifStillCurrent: ifStillCurrent) { [weak self] in
             guard let self else { return }
-            if let scope, await !self.isScopeCurrent(scope) { return }
+            if let scope, await !self.isScopeCurrent(scope) {
+                pairedMacPersistenceLog.error(
+                    "paired mac not persisted: scope changed during write"
+                )
+                return
+            }
             let scopedMacs = (try? await pairedMacStore.loadAll(
                 stackUserID: stackUserID, teamID: scope?.teamID
             )) ?? []
@@ -129,6 +140,7 @@ extension MobileShellComposite {
                         teamID: scope?.teamID,
                         now: Date()
                     )
+                    accepted = true
                 }
                 await self.clearForgottenMacDeviceID(
                     ticket.macDeviceID,
