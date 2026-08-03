@@ -1922,7 +1922,15 @@ public final class MobileShellComposite: MobileTerminalOutputSinking {
             // consult the authenticated registry for the Mac's Iroh identity.
             if localCanConnectSecurely {
                 attemptedAutomaticIroh = attemptedAutomaticIroh || localHasIroh
-                Self.logStoredMacDialStarted(mac: mac.macDeviceID)
+                Self.logStoredMacDialStarted(
+                    mac: mac.macDeviceID,
+                    endpoints: localRoutes.map { route in
+                        if case let .hostPort(host, port) = route.endpoint {
+                            return "\(route.kind.rawValue):\(host):\(port)"
+                        }
+                        return route.kind.rawValue
+                    }
+                )
                 defer { Self.logStoredMacDialFinished(outcome: String(describing: lastDialOutcome)) }
                 lastDialOutcome = await connectStoredMacOutcome(
                     name: mac.displayName ?? mac.macDeviceID,

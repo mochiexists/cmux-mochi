@@ -259,11 +259,20 @@ extension MobileShellComposite {
 
 extension MobileShellComposite {
     /// Marks the point where a stored-Mac dial actually begins.
-    public nonisolated static func logStoredMacDialStarted(mac: String) {
+    /// Reports the endpoints a dial will actually attempt, after filtering.
+    public nonisolated static func logStoredMacDialCandidates(_ endpoints: [String]) {
+        logDeviceLink("dial candidates: \(endpoints.isEmpty ? "(none)" : endpoints.joined(separator: " "))")
+    }
+
+    public nonisolated static func logStoredMacDialStarted(mac: String, endpoints: [String] = []) {
         // The transport's TLS closure cannot see which Mac this is for, so tell
         // the client before the dial begins.
         MobileDeviceLinkClient.shared.setActiveDialTarget(macDeviceID: mac)
-        logDeviceLink("dialing stored mac \(mac.prefix(28))")
+        // Name the endpoints. Every other line says *that* a dial happened;
+        // none said where to, which made "three attempts, all timed out"
+        // impossible to attribute between a wrong address and a refused one.
+        let where_ = endpoints.isEmpty ? "" : " -> \(endpoints.joined(separator: " "))"
+        logDeviceLink("dialing stored mac \(mac.prefix(28))\(where_)")
     }
 }
 

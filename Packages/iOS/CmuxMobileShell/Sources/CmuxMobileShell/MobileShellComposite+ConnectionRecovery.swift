@@ -607,6 +607,12 @@ extension MobileShellComposite {
                 supportedKinds: supportedKinds,
                 preferNonLoopback: Self.prefersNonLoopbackRoutes
             )
+            // The candidate list, not the stored list. Routes are filtered and
+            // reordered between the two, and a candidate silently dropped here
+            // is invisible in every other log line.
+            MobileShellComposite.logStoredMacDialCandidates(
+                candidates.map { "\($0.host):\($0.port)" }
+            )
             for route in candidates {
                 guard ifStillCurrent?() ?? true else { return .superseded }
                 await connectManualHost(
