@@ -23,7 +23,18 @@ public final class MobileDeviceLinkClient: @unchecked Sendable {
         KeychainScope(bundleIdentifier: Bundle.main.bundleIdentifier ?? "com.cmux-mochi.ios")
     }
 
+    /// Routes TLS verify-block outcomes into the device log.
+    ///
+    /// Installed once, at first use of the client. A handshake that fails
+    /// inside the verify block is otherwise completely silent on this side.
+    private static let installVerificationObserver: Void = {
+        DeviceLinkTLS.verificationObserver = { message in
+            MobileDeviceLinkDiagnostics.log(message)
+        }
+    }()
+
     public init(scope: KeychainScope? = nil) {
+        _ = Self.installVerificationObserver
         let resolved = scope ?? Self.keychainScope
         identityStore = KeychainDeviceIdentityStore(scope: resolved)
         pinStore = KeychainServerPinStore(scope: resolved)
@@ -110,8 +121,15 @@ public final class MobileDeviceLinkClient: @unchecked Sendable {
             MobileDeviceLinkDiagnostics.log("tls options: pin store unreadable (\(error))")
             return nil
         }
+        // Which pin was offered matters as much as whether one was found: this
+        // picks the first, so with more than one paired Mac it can present the
+        // wrong key and the dial dies in the TLS handshake — indistinguishable,
+        // from the phone, from an unreachable Mac.
         for pairingID in pins.keys.sorted() {
             if let options = tlsOptions(forPairingID: pairingID) {
+                MobileDeviceLinkDiagnostics.log(
+                    "tls options: offering \(pairingID.prefix(24)) of \(pins.count) pin(s)"
+                )
                 return options
             }
             MobileDeviceLinkDiagnostics.log("tls options: no identity for \(pairingID.prefix(24))")

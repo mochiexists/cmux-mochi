@@ -1134,7 +1134,12 @@ final class MobileHostService {
             do {
                 try await transport.connect()
             } catch {
-                logDeviceLinkHost("rejected connection: handshake failed")
+                // Name the reason. "handshake failed" alone cannot distinguish a
+                // client that offered the wrong key from one that never
+                // presented a certificate, from a peer that hung up mid-flight —
+                // and on the phone every one of them looks like an unreachable
+                // Mac.
+                logDeviceLinkHost("rejected connection: handshake failed — \(String(describing: error))")
                 await transport.close()
                 return
             }

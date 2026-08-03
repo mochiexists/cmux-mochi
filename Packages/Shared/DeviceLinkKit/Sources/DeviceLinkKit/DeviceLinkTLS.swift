@@ -70,10 +70,15 @@ public enum DeviceLinkTLS {
         applyCommon(security, identity: identity)
         sec_protocol_options_set_verify_block(security, { _, trust, complete in
             guard let fingerprint = leafFingerprint(from: trust) else {
+                verificationObserver?("client verify: no leaf certificate from server")
                 complete(false)
                 return
             }
-            complete(fingerprint == expectedServerFingerprint)
+            let matches = fingerprint == expectedServerFingerprint
+            verificationObserver?(
+                "client verify: server \(fingerprint.shortForm) expected \(expectedServerFingerprint.shortForm) -> \(matches ? "accept" : "REJECT")"
+            )
+            complete(matches)
         }, verificationQueue)
         return options
     }
@@ -122,10 +127,25 @@ public enum DeviceLinkTLS {
         return DeviceFingerprint(derEncodedCertificate: SecCertificateCopyData(leaf) as Data)
     }
 
+    /// Runs TLS verify blocks.
+    ///
+    /// **Concurrent, deliberately.** A serial queue here serializes every
+    /// handshake in the process, so one verify block that is slow — or that
+    /// never completes — stalls every other connection behind it, and the
+    /// symptom is a handshake timeout on both ends rather than a rejection.
+    /// Verification is pure (hash a certificate, compare against a snapshot),
+    /// so there is nothing to serialize for correctness.
     private static let verificationQueue = DispatchQueue(
         label: "dev.cmux.devicelink.tls-verify",
-        qos: .userInitiated
+        qos: .userInitiated,
+        attributes: .concurrent
     )
+
+    /// Reports what a verify block decided.
+    ///
+    /// A handshake that fails silently is indistinguishable from an unreachable
+    /// peer, which is the most expensive failure in this whole feature.
+    nonisolated(unsafe) public static var verificationObserver: (@Sendable (String) -> Void)?
 
     private static func applyCommon(_ security: sec_protocol_options_t, identity: SecIdentity) {
         if let secIdentity = sec_identity_create(identity) {
