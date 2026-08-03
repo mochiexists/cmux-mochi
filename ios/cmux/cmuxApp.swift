@@ -45,7 +45,11 @@ struct cmuxApp: App {
         // transport package keeps no opinion about how identities are stored.
         let networkFactory = CmxNetworkByteTransportFactory(
             supportedKinds: supportedKinds,
-            deviceLinkTLSOptions: { MobileDeviceLinkClient.shared.currentPairingTLSOptions() }
+            deviceLinkTLSOptions: {
+                let options = MobileDeviceLinkClient.shared.currentPairingTLSOptions()
+                MobileDeviceLinkClient.reportTLSOptionsLookup(succeeded: options != nil)
+                return options
+            }
         )
         let fallbackRegistrations = supportedKinds.map { kind in
             CmxRouteTransportFactoryRegistration(kind: kind, factory: networkFactory)

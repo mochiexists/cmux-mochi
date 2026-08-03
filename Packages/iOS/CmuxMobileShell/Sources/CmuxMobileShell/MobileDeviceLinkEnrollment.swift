@@ -221,15 +221,19 @@ public struct MobileDeviceLinkEnroller: Sendable {
         else {
             throw MobileDeviceLinkEnrollmentError.malformedResponse
         }
-        guard let deviceID = (result["device_id"] as? String) ?? (result["mac_device_id"] as? String),
+        guard let deviceID = result["mac_device_id"] as? String,
               !deviceID.isEmpty
         else {
             throw MobileDeviceLinkEnrollmentError.malformedResponse
         }
+        // The host publishes these under `mac_`-prefixed keys. Reading the
+        // wrong key yields a nil instance tag, and the build-compatibility
+        // policy fails CLOSED on a missing tag — so the pairing is silently
+        // discarded and the phone can never reconnect to its own Mac.
         return MacIdentity(
             deviceID: deviceID,
-            instanceTag: result["instance_tag"] as? String,
-            displayName: (result["display_name"] as? String) ?? (result["name"] as? String)
+            instanceTag: result["mac_instance_tag"] as? String,
+            displayName: result["mac_display_name"] as? String
         )
     }
 

@@ -122,6 +122,15 @@ public final class MobileDeviceLinkClient: @unchecked Sendable {
         return nil
     }
 
+    /// Records whether the transport layer got TLS options when it asked.
+    ///
+    /// A `nil` here means the dial proceeds in plaintext against a TLS-only
+    /// host, which fails as a connection timeout rather than an auth error —
+    /// the single most misleading failure in this path.
+    public static func reportTLSOptionsLookup(succeeded: Bool) {
+        MobileDeviceLinkDiagnostics.log("transport asked for TLS options: \(succeeded ? "provided" : "NONE")")
+    }
+
     // MARK: - TLS
 
     /// Mutual-TLS options for dialing one paired Mac.

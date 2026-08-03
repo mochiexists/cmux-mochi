@@ -30,6 +30,14 @@ final class MobileHostDeviceLink {
     }
 
     let coordinator: DeviceLinkCoordinator
+    /// Synchronously-readable view of what may be admitted.
+    ///
+    /// The TLS verify block runs on a Network.framework callback thread and
+    /// must answer without awaiting: blocking it on a semaphore while an actor
+    /// call completes stalls the handshake until the connect deadline, which
+    /// looks exactly like an unreachable Mac. This snapshot is refreshed
+    /// whenever the table or the enrollment window changes.
+    private let admissionSnapshot = MobileHostDeviceLinkAdmissionSnapshot()
     private let identityStore: KeychainDeviceIdentityStore
     private var cachedIdentity: (material: DeviceIdentityMaterial, secIdentity: SecIdentity)?
     private var didLoad = false
@@ -59,6 +67,7 @@ final class MobileHostDeviceLink {
                 )
             }
             didLoad = true
+            await refreshAdmissionSnapshot()
         } catch {
             deviceLinkLog.error("devicelink: device table load failed: \(String(describing: error), privacy: .public)")
         }
@@ -85,22 +94,19 @@ final class MobileHostDeviceLink {
     /// then the connection is restricted to the enrollment verb.
     func listenerOptions() throws -> NWProtocolTLS.Options {
         let identity = try hostIdentity().secIdentity
-        let coordinator = coordinator
+        let snapshot = admissionSnapshot
         return DeviceLinkTLS.listenerOptions(identity: identity) { fingerprint in
-            // The verify block is synchronous; bridge to the actor and wait.
-            let semaphore = DispatchSemaphore(value: 0)
-            nonisolated(unsafe) var allowed = false
-            Task {
-                if await coordinator.isAuthorized(fingerprint) {
-                    allowed = true
-                } else {
-                    allowed = await coordinator.hasOpenEnrollmentWindow()
-                }
-                semaphore.signal()
-            }
-            _ = semaphore.wait(timeout: .now() + 5)
-            return allowed
+            // Answers from the snapshot, never awaiting. See
+            // `admissionSnapshot` for why blocking here is not an option.
+            snapshot.admits(fingerprint)
         }
+    }
+
+    /// Refreshes the snapshot the verify block reads.
+    private func refreshAdmissionSnapshot() async {
+        let authorized = await coordinator.devices().map(\.fingerprint)
+        let enrolling = await coordinator.hasOpenEnrollmentWindow()
+        admissionSnapshot.update(authorized: Set(authorized), enrollmentWindowOpen: enrolling)
     }
 
     /// Classifies a completed handshake into the authorization context the
@@ -127,7 +133,9 @@ final class MobileHostDeviceLink {
         lifetime: TimeInterval = EnrollmentTicket.defaultLifetime
     ) async throws -> EnrollmentTicket {
         await prepare()
-        return try await coordinator.issueEnrollmentTicket(lifetime: lifetime)
+        let ticket = try await coordinator.issueEnrollmentTicket(lifetime: lifetime)
+        await refreshAdmissionSnapshot()
+        return ticket
     }
 
     /// Enrolls a device that presented a valid ticket over a pinned channel.
@@ -143,6 +151,7 @@ final class MobileHostDeviceLink {
         )
         // The operator sees every enrollment: a covertly-scanned QR should not
         // be a silent event on the machine it targets.
+        await refreshAdmissionSnapshot()
         MobileHostDeviceLinkNotifier.postEnrollment(device: outcome.device)
         deviceLinkLog.info(
             "devicelink: enrolled \(outcome.device.displayName, privacy: .public) (existing: \(outcome.wasAlreadyEnrolled, privacy: .public))"
@@ -160,7 +169,9 @@ final class MobileHostDeviceLink {
     func revoke(fingerprintHex: String) async throws -> Bool {
         guard let fingerprint = DeviceFingerprint(hex: fingerprintHex) else { return false }
         await prepare()
-        return try await coordinator.revoke(fingerprint)
+        let didRevoke = try await coordinator.revoke(fingerprint)
+        await refreshAdmissionSnapshot()
+        return didRevoke
     }
 
     /// Loads or creates this Mac's TLS identity.

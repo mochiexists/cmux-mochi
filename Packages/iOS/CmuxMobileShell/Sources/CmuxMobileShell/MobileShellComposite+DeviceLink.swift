@@ -56,6 +56,12 @@ extension MobileShellComposite {
     /// survives the launch is a key pair in the keychain — which is why this
     /// pairing reconnects after a cold start where the old ticket could not.
     func connectDeviceLinkPairing(payload: PairingPayload) async -> MobilePairingURLConnectionResult {
+        // A completed key exchange IS this device's credential, so the shell is
+        // authenticated from here on. Without this the pairing succeeds but
+        // never persists: scope resolution requires a signed-in shell, and a
+        // pairing that is not stored cannot be reconnected to — which looked
+        // like a reconnect bug rather than a persistence one.
+        if !isSignedIn { signIn() }
         _ = beginPairingValidationAttempt()
         connectionAttemptGeneration = UUID()
         clearPairingError()
