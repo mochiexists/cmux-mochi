@@ -1844,9 +1844,27 @@ final class MobileHostService {
         guard generation == listenerGeneration, listenerPort == port else {
             return
         }
-        MobileHostPublicStatusCache.update(
-            routes: routeResolver.routes(port: port, tailscaleHosts: tailscaleHosts).routes
-        )
+        let routes = routeResolver.routes(port: port, tailscaleHosts: tailscaleHosts).routes
+        MobileHostPublicStatusCache.update(routes: routes)
+        // The advertised route list is what a phone is told to dial, and it is
+        // the first thing worth checking when reconnect fails. Log it: a Mac
+        // whose routes are wrong looks exactly like a Mac that is switched off.
+        logDeviceLinkHost("routes -> \(Self.routeSummary(routes))")
+    }
+
+    /// One-line `kind:host:port` summary of advertised routes, for diagnostics.
+    static func routeSummary(_ routes: [CmxAttachRoute]) -> String {
+        guard !routes.isEmpty else { return "(none)" }
+        return routes.map { route in
+            switch route.endpoint {
+            case let .hostPort(host, port):
+                return "\(route.kind.rawValue):\(host):\(port)"
+            case let .peer(identity, _):
+                return "\(route.kind.rawValue):peer:\(identity.endpointID.prefix(12))"
+            case let .url(url):
+                return "\(route.kind.rawValue):\(url)"
+            }
+        }.joined(separator: " ")
     }
 
     // MARK: - Network path monitoring
