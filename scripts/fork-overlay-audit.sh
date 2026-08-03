@@ -68,7 +68,11 @@ require_file_contains "Packages/macOS/CmuxSettings/Sources/CmuxSettings/SocketCo
 require_file_contains "Packages/macOS/CmuxSettings/Sources/CmuxSettings/SocketControl/SocketPathMarkerFiles.swift" 'stagingBundleIdentifier = "com.cmux-mochi.staging"'
 require_file_contains "Packages/macOS/CmuxSettings/Sources/CmuxSettings/SocketControl/SocketPathMarkerFiles.swift" 'defaultBaseDebugBundleIdentifier = "com.cmux-mochi.debug"'
 require_file_contains "Packages/macOS/CmuxSettings/Sources/CmuxSettings/SocketControl/SocketControlSettings.swift" 'baseDebugBundleIdentifier = "com.cmux-mochi.debug"'
-require_file_contains "web/services/apns/routePolicy.ts" 'PROD_BUNDLE_IDS = new Set(["com.cmux-mochi", "dev.cmux.app.beta"])'
+# The push route policy must know the fork's namespace. A stale pattern here
+# fails silently: registration returns invalid_bundle_id and the iOS side only
+# writes an OSLog line, so push stops working with nothing visible.
+require_file_contains "web/services/apns/routePolicy.ts" '"com.cmux-mochi.ios"'
+require_file_contains "web/services/apns/routePolicy.ts" 'DEV_TAGGED_BUNDLE_ID ='
 
 # Upstream's scheduled TUI nightly must stay cron-disabled on the fork
 # (workflow_dispatch only); a rebase can silently restore the schedule.
