@@ -148,8 +148,13 @@ public enum DeviceLinkTLS {
     nonisolated(unsafe) public static var verificationObserver: (@Sendable (String) -> Void)?
 
     private static func applyCommon(_ security: sec_protocol_options_t, identity: SecIdentity) {
+        // A nil here is silent and fatal: no client certificate is attached, the
+        // listener requires one, and both ends then sit waiting until they time
+        // out. That reads as an unreachable Mac, not as an auth failure.
         if let secIdentity = sec_identity_create(identity) {
             sec_protocol_options_set_local_identity(security, secIdentity)
+        } else {
+            verificationObserver?("local identity: sec_identity_create returned nil — no client certificate will be sent")
         }
         sec_protocol_options_set_min_tls_protocol_version(security, .TLSv13)
         sec_protocol_options_set_max_tls_protocol_version(security, .TLSv13)

@@ -72,16 +72,24 @@ validates the server certificate, and both ends then time out.
 That points at the handshake never starting properly rather than at any
 admission or pinning decision. Next things to check, in order:
 
-1. Whether `sec_identity_create(identity)` returns nil inside `applyCommon`
-   on the simulator. If it does, no client certificate is attached; the server
-   has `peer_authentication_required(true)` and both sides can sit waiting.
-   Note `tlsOptions(forPairingID:)` returning non-nil does **not** prove this —
-   it only proves a `SecIdentity` was built, not that `sec_identity_create`
-   accepted it.
-2. Whether the simulator keychain returns an identity whose private key is not
+1. ~~`sec_identity_create(identity)` returning nil~~ — **ELIMINATED**. A log was
+   added for exactly that case and it never fires, so the client certificate is
+   attached.
+2. **Log the host:port actually dialled.** This is now the decisive missing
+   fact and the single next thing to do. Every existing log line says *that* a
+   dial happened, none says *where to*. Without it we cannot tell whether the
+   three attempts are the three tailnet routes (which the Mac cannot reach from
+   itself — `nc` to its own tailnet IP fails, so these would time out exactly
+   like this) or whether loopback is genuinely being dialled and failing. The
+   ~8.4 s spacing looks like a TCP connect timeout, which fits "dialling the
+   unreachable tailnet addresses and never trying loopback" far better than it
+   fits a TLS failure over loopback.
+
+   If that is what is happening, the two Mac-side handshake timeouts are NOT
+   from the simulator, and the real bug is route *selection*, not TLS. Confirm
+   by correlating counts: 3 dials vs 2 Mac-side rejections already do not match.
+3. Whether the simulator keychain returns an identity whose private key is not
    usable for signing (simulator keychain differs from device).
-3. Whether the reconnect transport is even reaching `.debugLoopback` — add a
-   log of the host:port actually dialled, which the current logging omits.
 
 ## Fix already made while investigating
 
