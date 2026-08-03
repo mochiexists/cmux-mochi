@@ -61,7 +61,42 @@ Do not retry these; each was checked against evidence.
 5. **Stale port after the per-tag port change.** Eliminated by re-pairing the
    simulator against the new port and reproducing the failure.
 
-## The live lead
+---
+
+# RESOLVED 2026-08-04 — root cause found
+
+Everything below this heading up to "## Fix already made" is **superseded**.
+Kept because the eliminations are still valid and re-deriving them costs a day.
+
+**The loopback candidate was never dialled at all.**
+
+`manualHostTicket` mints an attach ticket when `routeAllowsStackAuth(route)` —
+which admits **loopback and nothing else**. Minting needs a Stack access token,
+and `requestDataWithAuth` fetches it *before* `session.send` builds the
+transport. An account-free device has no token, so the loopback candidate threw
+before a socket was opened.
+
+That accounts for every number exactly:
+
+| Observation | Explanation |
+|---|---|
+| 4 candidates, 3 `asked for TLS options` | loopback failed pre-transport; the 3 tailnet routes each built one |
+| verify block never ran, on **either** side | no TLS handshake ever started |
+| ~8.4 s spacing | the 8 s pairing-RPC deadline, dialling tailnet addresses the Mac cannot reach from itself |
+| 2 Mac-side handshake timeouts vs 3 dials | those were not from the simulator — a bare `nc` connect that sends no ClientHello logs identically |
+| hardware unaffected | `prefersNonLoopbackRoutes` is true on device, so phones never enter this path |
+
+Found independently by Fable and by Codex (gpt-5.6-sol, high), which agreed on
+the file, the mechanism and the fix. Fixed in `c66e7a4758`: a DeviceLink dial
+takes the synthetic ticket, because it authorises with the device's own key and
+needs no minted ticket.
+
+**Status: fixed in code with a regression test; NOT yet verified end-to-end on a
+simulator.** The headless pairing harness (mint via the local socket, deliver by
+`simctl openurl`) did not get the app to log a URL arrival, so the e2e proof is
+still owed.
+
+## The live lead (superseded — see above)
 
 **The client TLS verify block never executes.** `DeviceLinkTLS.verificationObserver`
 was added and wired into the device log; across three dials it produced no
