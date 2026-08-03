@@ -207,6 +207,18 @@ extension MobileShellComposite {
     public nonisolated static func logDeviceLinkReconnectAdoption() {
         logDeviceLink("paired key present, adopting device authentication")
     }
+
+    /// Records that unpairing actually destroyed the device credential.
+    ///
+    /// Deleting the row is visible in the UI; destroying the key is not, and
+    /// the two used to disagree. Naming it here is how a re-pair that silently
+    /// reused the old identity stays diagnosable.
+    public nonisolated static func logDeviceLinkPairingForgotten(
+        macDeviceID: String,
+        pairingID: String
+    ) {
+        logDeviceLink("forgot pairing mac=\(macDeviceID.prefix(12)) pairing=\(pairingID.prefix(24))")
+    }
 }
 
 extension MobileShellComposite {

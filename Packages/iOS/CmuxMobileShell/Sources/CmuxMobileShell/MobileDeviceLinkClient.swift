@@ -89,15 +89,52 @@ public final class MobileDeviceLinkClient: @unchecked Sendable {
 
     /// Forgets a Mac: its pin, this device's key for it, and the keychain items
     /// backing that key. A forgotten pairing leaves nothing behind to reuse.
+    ///
+    /// Also drops the Mac -> pairing mapping and any dial target pointing at
+    /// this pairing. Leaving either behind lets a later dial resolve a mapping
+    /// to an identity that no longer exists, and
+    /// ``currentPairingTLSOptions()`` then falls back to *another* Mac's pin —
+    /// offering the wrong key, which fails as an unreachable Mac.
     public func forget(pairingID: String) {
         lock.lock()
         cachedIdentities[pairingID] = nil
+        let staleTargets = pairingIDsByMacDeviceID
+            .filter { $0.value == pairingID }
+            .map(\.key)
+        for macDeviceID in staleTargets {
+            pairingIDsByMacDeviceID[macDeviceID] = nil
+            if activeDialTarget == macDeviceID { activeDialTarget = nil }
+        }
+        let snapshot = pairingIDsByMacDeviceID
         lock.unlock()
+        if !staleTargets.isEmpty {
+            UserDefaults.standard.set(snapshot, forKey: Self.pairingIndexDefaultsKey)
+        }
         if let material = try? identityStore.identity(forPairingID: pairingID) {
             SecIdentityFactory.removeIdentity(for: material)
         }
         try? identityStore.remove(pairingID: pairingID)
         try? pinStore.removePin(forPairingID: pairingID)
+    }
+
+    /// Forgets whatever pairing this device holds for one Mac.
+    ///
+    /// Unpairing is expressed in the UI as "remove this computer", which knows
+    /// only a Mac device id. Without this the deletion removed the row and left
+    /// the key and pin in the keychain: ``hasAnyPairedDevice()`` stayed true
+    /// with nothing listed, and re-scanning that Mac's QR code reused the same
+    /// identity, so the Mac reported it as already enrolled. That is not a
+    /// delete, and the re-pair it appears to offer never really happens.
+    ///
+    /// - Returns: the pairing that was forgotten, if this device had one.
+    @discardableResult
+    public func forgetPairing(macDeviceID: String) -> String? {
+        lock.lock()
+        let pairingID = pairingIDsByMacDeviceID[macDeviceID]
+        lock.unlock()
+        guard let pairingID else { return nil }
+        forget(pairingID: pairingID)
+        return pairingID
     }
 
     /// Whether this device has paired with any Mac.

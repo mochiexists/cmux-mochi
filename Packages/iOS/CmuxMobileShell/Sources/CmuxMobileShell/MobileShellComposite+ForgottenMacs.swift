@@ -278,6 +278,26 @@ extension MobileShellComposite {
                 pruneWorkspaceStateForForgottenMac(id)
             }
         }
+        // Fork (cmux Mochi): a DeviceLink pairing is a keychain identity and a
+        // pin, not a database row, so removing the row alone is not a delete.
+        // Only forget the credential once no row still dials that physical Mac:
+        // the key is per-Mac, while rows are per-tagged-instance, so a sibling
+        // instance would otherwise lose the identity it is still using.
+        let survivingPhysicalIDs = Set(pairedMacsForIdentityMatching
+            .filter { !removedPairingIDs.contains($0.id) }
+            .map(\.macDeviceID))
+        let credentialsToForget = Set(targets
+            .filter { removedPairingIDs.contains($0.id) }
+            .map(\.macDeviceID))
+            .subtracting(survivingPhysicalIDs)
+        for macDeviceID in credentialsToForget {
+            if let pairingID = MobileDeviceLinkClient.shared.forgetPairing(macDeviceID: macDeviceID) {
+                MobileShellComposite.logDeviceLinkPairingForgotten(
+                    macDeviceID: macDeviceID,
+                    pairingID: pairingID
+                )
+            }
+        }
         await loadPairedMacs()
         clearSavedMacHintAfterDeletingLastVisibleMacIfNeeded()
     }
