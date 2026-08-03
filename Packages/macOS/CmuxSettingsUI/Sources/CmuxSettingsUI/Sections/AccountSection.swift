@@ -32,7 +32,12 @@ public struct AccountSection: View {
                 AccountIdentityCard(flow: accountFlow)
             }
             .settingsSearchAnchors(["setting:account:account"])
-            if accountFlow?.isProUpgradeAvailable ?? false {
+            // Fork (cmux Mochi): the upgrade flag is off, which removes the
+            // sidebar badge, palette command and Help entry - all pure noise
+            // in a build with nothing to sell. This one row still renders,
+            // without its action, so there is a single honest place saying
+            // what this build is rather than a silent gap where Pro used to be.
+            if ProUpgradeCard.isMochiFork || (accountFlow?.isProUpgradeAvailable ?? false) {
                 SettingsCard {
                     ProUpgradeCard(flow: accountFlow)
                 }
