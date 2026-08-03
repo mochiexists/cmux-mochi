@@ -86,4 +86,48 @@ import Testing
             _ = try factory.makeTransport(for: request)
         }
     }
+
+    /// A DeviceLink dial to loopback must fail rather than go out in plaintext.
+    ///
+    /// The pairing host is TLS-only on every interface, so a plaintext socket
+    /// is left hanging and reported as a connect timeout — which reads as "the
+    /// Mac is unreachable" and sent an earlier investigation after the network
+    /// instead of the missing identity.
+    @Test func rejectsDeviceLinkLoopbackDialWithoutTLSOptions() throws {
+        let route = try CmxAttachRoute(
+            id: "loopback",
+            kind: .debugLoopback,
+            endpoint: .hostPort(host: "127.0.0.1", port: 49831)
+        )
+        let request = CmxByteTransportRequest(
+            route: route,
+            expectedPeerDeviceID: "mac-1",
+            authorizationMode: .transportAdmission
+        )
+        // No `deviceLinkTLSOptions`: the identity is missing or unreadable.
+        let factory = CmxNetworkByteTransportFactory()
+
+        #expect(throws: CmxNetworkByteTransportError.tailscaleAuthorizationUnavailable) {
+            _ = try factory.makeTransport(for: request)
+        }
+    }
+
+    /// The plaintext UI-test mock host keeps working: it is a genuinely
+    /// plaintext loopback peer, and it dials as `.stackBearer`.
+    @Test func allowsPlaintextLoopbackForTheMockHost() throws {
+        let route = try CmxAttachRoute(
+            id: "loopback",
+            kind: .debugLoopback,
+            endpoint: .hostPort(host: "127.0.0.1", port: 49831)
+        )
+        let request = CmxByteTransportRequest(
+            route: route,
+            expectedPeerDeviceID: "mac-1",
+            authorizationMode: .stackBearer
+        )
+
+        let transport = try CmxNetworkByteTransportFactory().makeTransport(for: request)
+
+        #expect(transport is CmxNetworkByteTransport)
+    }
 }

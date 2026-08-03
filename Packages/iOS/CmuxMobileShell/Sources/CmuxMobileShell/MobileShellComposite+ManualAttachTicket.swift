@@ -48,7 +48,19 @@ extension MobileShellComposite {
     ) async throws -> CmxAttachTicket {
         let directRoute = try Self.manualHostRoute(host: host, port: port)
         let displayName = name.isEmpty ? host : name
-        if MobileShellRouteAuthPolicy.routeAllowsStackAuth(directRoute) {
+        // Fork (cmux Mochi): minting an attach ticket needs a Stack access
+        // token, and it is fetched *before* the transport is built — so on an
+        // account-free device this path throws before a socket is ever opened.
+        // Only loopback reaches it (`routeAllowsStackAuth` admits nothing else),
+        // which is why this was invisible on hardware and fatal on the
+        // simulator: the loopback candidate was consumed without a single dial,
+        // leaving only tailnet addresses the Mac cannot reach from itself.
+        //
+        // A DeviceLink dial needs no ticket. It authorizes with the device's own
+        // key under `.transportAdmission`, so go straight to the synthetic
+        // ticket the non-loopback routes already use.
+        let hasDeviceLinkCredential = MobileDeviceLinkClient.shared.hasAnyPairedDevice()
+        if MobileShellRouteAuthPolicy.routeAllowsStackAuth(directRoute), !hasDeviceLinkCredential {
             do {
                 let ticket = try await requestManualAttachTicket(
                     route: directRoute,

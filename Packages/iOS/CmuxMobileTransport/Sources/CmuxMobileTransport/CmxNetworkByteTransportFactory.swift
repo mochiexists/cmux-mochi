@@ -102,15 +102,24 @@ public struct CmxNetworkByteTransportFactory: CmxRouteAwareByteTransportFactory 
                 throw CmxNetworkByteTransportError.tailscaleAuthorizationUnavailable
             }
             // Fork (cmux Mochi): the pairing host is TLS-only on every
-            // interface, so a loopback dial needs the same DeviceLink options a
-            // tailnet dial does. Dialing this one in plaintext is invisible
-            // until the handshake never completes.
+            // interface, so a DeviceLink dial to loopback needs the same
+            // options a tailnet dial does — fail closed rather than open a
+            // plaintext socket the listener can only leave hanging, which
+            // surfaces as a connect timeout and reads as "Mac unreachable".
+            //
+            // Gated on the authorization mode, not the route kind: the UI-test
+            // mock host is a genuinely plaintext loopback peer, and it dials
+            // with `.stackBearer`.
+            let loopbackTLSOptions = deviceLinkTLSOptions?()
+            if request.authorizationMode == .transportAdmission, loopbackTLSOptions == nil {
+                throw CmxNetworkByteTransportError.tailscaleAuthorizationUnavailable
+            }
             return try CmxNetworkByteTransport(
                 host: host,
                 port: port,
                 maximumReceiveLength: maximumReceiveLength,
                 connectTimeoutNanoseconds: connectTimeoutNanoseconds,
-                tlsOptions: deviceLinkTLSOptions?()
+                tlsOptions: loopbackTLSOptions
             )
         case .iroh, .websocket:
             throw CmxNetworkByteTransportError.unsupportedRouteKind(route.kind)
