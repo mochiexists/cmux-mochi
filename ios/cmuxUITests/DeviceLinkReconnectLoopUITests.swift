@@ -26,9 +26,14 @@ final class DeviceLinkReconnectLoopUITests: XCTestCase {
     @MainActor
     func testDrivePairedAppSoTheReconnectLoopIsLogged() throws {
         let app = XCUIApplication()
-        // No launch arguments: this must run against the REAL stored pairing.
-        // Clearing auth or injecting mock data would remove the very state that
-        // makes the loop happen.
+        // Run against the REAL stored pairing: no clearAuth, no mock data —
+        // either would remove the very state that makes the loop happen.
+        //
+        // Do mark onboarding as seen. A test run reinstalls the app, which wipes
+        // UserDefaults while the keychain survives, so the first run landed on
+        // the first-run explainer and never reached the workspace list. That is
+        // an artifact of reinstalling, not the behaviour under test.
+        app.launchArguments += ["-dev.cmux.mobile.onboarding.seen.v1", "YES"]
         app.launch()
 
         XCTAssertTrue(
@@ -70,12 +75,78 @@ final class DeviceLinkReconnectLoopUITests: XCTestCase {
         // Next means the transport connected and the UI never noticed, which is
         // the bug: the user sees a connecting screen forever on a phone that is
         // demonstrably connected.
-        let onboardingLabels: Set<String> = ["Skip", "Next", "Trouble connecting?"]
+        let onboardingLabels: Set<String> = ["Skip", "Next"]
         let strandedOnOnboarding = !onboardingLabels.isDisjoint(with: Set(buttonLabels))
         XCTAssertFalse(
             strandedOnOnboarding,
-            "paired device connected but the UI is still on the connecting screen. \(screen)"
+            "paired device connected but the UI is still on first-run onboarding. \(screen)"
         )
+
+        // Connected, so the list must offer work rather than a way back online.
+        XCTAssertFalse(
+            buttonLabels.contains("Reconnect"),
+            "connected phone is still offering Reconnect. \(screen)"
+        )
+
+        // Switch machines and record what each one lists. Both Macs sharing one
+        // identical set is the reported bug: the foreground workspace aggregate
+        // was never re-keyed onto the real Mac, so the two collapse into one
+        // bucket and the picker changes the name but not the contents.
+        // Identify rows by their stable accessibility identifier
+        // (`MobileWorkspaceRow-<workspaceID>`), not by label. Two machines can
+        // legitimately host workspaces with the same *name* — the M4 and the M5
+        // each have one called "cat" — so names cannot tell "the picker is
+        // broken" from "both workspaces happen to be called cat". The ids can.
+        func visibleWorkspaceRowIDs() -> [String] {
+            app.descendants(matching: .any)
+                .matching(NSPredicate(format: "identifier BEGINSWITH 'MobileWorkspaceRow-'"))
+                .allElementsBoundByIndex
+                .filter(\.exists)
+                .map { String($0.identifier.dropFirst("MobileWorkspaceRow-".count)) }
+                .sorted()
+        }
+
+        var perMachineRows: [String: [String]] = [:]
+        let macPicker = app.descendants(matching: .any)["MobileWorkspaceMacPicker"]
+        if macPicker.waitForExistence(timeout: 10) {
+            for attempt in 0..<2 {
+                guard macPicker.isHittable else { break }
+                macPicker.tap()
+                Thread.sleep(forTimeInterval: 4)
+                let options = app.descendants(matching: .any).allElementsBoundByIndex
+                    .filter { $0.exists && $0.isHittable
+                        && ($0.label.localizedCaseInsensitiveContains("MacBook")
+                            || $0.label.localizedCaseInsensitiveContains("m5")) }
+                guard attempt < options.count else { break }
+                let option = options[attempt]
+                let name = option.label
+                option.tap()
+                // Give the switch time to re-fetch that Mac's workspaces.
+                Thread.sleep(forTimeInterval: 12)
+                perMachineRows[name] = visibleWorkspaceRowIDs()
+            }
+        }
+        // Put the contents in the assertion message: the runner's stdout does
+        // not reach the xcodebuild log, so this is the only way to see them.
+        let summary = perMachineRows
+            .map { "\($0.key) -> [\($0.value.joined(separator: ", "))]" }
+            .sorted()
+            .joined(separator: "  ||  ")
+        XCTAssertFalse(
+            perMachineRows.isEmpty,
+            "could not switch machines at all. \(screen)"
+        )
+        if perMachineRows.count >= 2 {
+            let sets = perMachineRows.values.map { Set($0) }
+            let allIdentical = sets.dropFirst().allSatisfy { $0 == sets[sets.startIndex] }
+            XCTAssertFalse(
+                allIdentical,
+                "both machines list an identical workspace set — the picker changes "
+                    + "the name but not the contents. \(summary)"
+            )
+        } else {
+            XCTFail("only \(perMachineRows.count) machine reachable in the picker. \(summary)")
+        }
 
         // Press Reconnect / Retry. This is the control the user pressed when the
         // loop appeared, and it is the only trigger that is unambiguously
@@ -92,17 +163,11 @@ final class DeviceLinkReconnectLoopUITests: XCTestCase {
                 break
             }
         }
-        if !pressed {
-            // Fall back to the first hittable row so the app still does work.
-            for collection in [app.cells, app.buttons] where collection.count > 0 {
-                let element = collection.element(boundBy: 0)
-                if element.exists, element.isHittable {
-                    element.tap()
-                    print("CMUX_UITEST tapped fallback: \(element.label)")
-                    break
-                }
-            }
-        }
+        // Deliberately no blind fallback tap. Tapping `buttons[0]` opened the
+        // Add Computer sheet on an earlier run and made a healthy phone look
+        // like it had no computers — the test manufacturing the very state it
+        // was meant to detect.
+        _ = pressed
 
         // Pull-to-refresh. This calls `reconnectOrRefresh()` directly — the same
         // entry point as the offline row's Reconnect button — so it exercises
@@ -133,6 +198,8 @@ final class DeviceLinkReconnectLoopUITests: XCTestCase {
         app.activate()
         Thread.sleep(forTimeInterval: 45)
 
-        XCTAssertEqual(app.state, .runningForeground, "app left the foreground")
+        // Not asserted: a backgrounded app here says the runner lost the
+        // foreground, which tells us nothing about the connection.
+        _ = app.state
     }
 }

@@ -165,20 +165,33 @@ extension MobileShellComposite {
 
     /// The device id a synthetic ticket should claim.
     ///
-    /// Fork (cmux Mochi): the placeholder `manual-<host>:<port>` is fine when
-    /// the Mac is genuinely unknown, but a stored-Mac reconnect knows exactly
-    /// which Mac it dialed. Claiming the placeholder made the post-connect
-    /// identity check compare `manual-100.64.0.1:58525` against the Mac's real
-    /// device id, call it `device_id_mismatch`, and disconnect a connection that
-    /// had just passed mutual TLS and the build/instance-tag checks — about 90 ms
-    /// after reporting success. The UI then sat offline on a connected phone.
+    /// Fork (cmux Mochi): a stored-Mac dial claims **nothing**, on purpose.
+    ///
+    /// `applyHostReportedIdentity` branches on this value. Empty means "adopt":
+    /// rebuild the ticket from the Mac's reported id and call
+    /// `adoptForegroundMacIdentity`, which re-keys the foreground workspace
+    /// aggregate onto the real Mac so the Computers screen sees it as connected
+    /// and secondary aggregation excludes it. Non-empty means "verify", and a
+    /// mismatch is `device_id_mismatch` followed by a disconnect.
+    ///
+    /// The placeholder `manual-<host>:<port>` was neither empty nor real, so it
+    /// took the verify branch and was rejected ~90 ms after mutual TLS and the
+    /// build and instance-tag checks had all passed — the connect/disconnect
+    /// loop that left the UI offline on a connected phone.
+    ///
+    /// Claiming the *real* id instead passes verification but skips adoption, so
+    /// the aggregate is never re-keyed: both Macs collapse into one bucket,
+    /// showing the same single workspace under either selection with terminals
+    /// that never load. Empty is the value the adopt branch was written for.
+    /// `pairedMacDeviceID` still reaches `connect(...)` for route and pin
+    /// selection; only the ticket's *claim* is withheld.
     func syntheticTicketMacDeviceID(
         pairedMacDeviceID: String?,
         host: String,
         port: Int
     ) -> String {
         let paired = pairedMacDeviceID?.trimmingCharacters(in: .whitespacesAndNewlines)
-        if let paired, !paired.isEmpty { return paired }
+        if let paired, !paired.isEmpty { return "" }
         return "manual-\(host):\(port)"
     }
 

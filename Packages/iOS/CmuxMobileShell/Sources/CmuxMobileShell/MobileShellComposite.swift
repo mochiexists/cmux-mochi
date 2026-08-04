@@ -2869,6 +2869,7 @@ public final class MobileShellComposite: MobileTerminalOutputSinking {
             // Move the foreground aggregate key from the anonymous key to the real
             // id so the Computers screen recognizes this Mac as connected and
             // secondary aggregation excludes it (no duplicate connection to self).
+            MobileDeviceLinkDiagnostics.log("host identity: ADOPT \(reportedID.prefix(12))")
             adoptForegroundMacIdentity(reportedID)
         } else {
             // An authenticated status response may refresh metadata only for
@@ -2878,9 +2879,13 @@ public final class MobileShellComposite: MobileTerminalOutputSinking {
                 reportedDeviceID: reportedID,
                 expectedDeviceID: ticket.macDeviceID
             ) else {
+                MobileDeviceLinkDiagnostics.log(
+                    "host identity: REJECT reported=\(reportedID.prefix(12)) ticket=\(ticket.macDeviceID.prefix(24))"
+                )
                 rejectForegroundHostIdentity(client: client, reason: "device_id_mismatch")
                 return
             }
+            MobileDeviceLinkDiagnostics.log("host identity: VERIFY-ONLY \(reportedID.prefix(12)) (no adoption)")
             resolvedTicket = ticket
         }
         guard remoteClient === client else { return }
@@ -3267,7 +3272,10 @@ public final class MobileShellComposite: MobileTerminalOutputSinking {
                     name: mac.displayName ?? host,
                     host: host,
                     port: port,
-                    attemptStartedAt: nil
+                    attemptStartedAt: nil,
+                    // As the `.iroh` branch above already does: name the Mac, so
+                    // this ticket is not a `manual-<host>:<port>` stranger.
+                    pairedMacDeviceID: mac.macDeviceID
                 )
                 let supportedRoutes = Self.supportedRoutes(
                     for: ticket,
@@ -3288,6 +3296,15 @@ public final class MobileShellComposite: MobileTerminalOutputSinking {
             )
             return nil
         }
+        // Fork (cmux Mochi): tell the DeviceLink client which Mac this socket is
+        // for, exactly as the foreground dial does before it builds a transport.
+        // The TLS-options closure the transport calls takes no arguments, so it
+        // can only read this shared target — and without setting it here the
+        // secondary connection offered the FOREGROUND Mac's key and pin to a
+        // different Mac. That fails in the handshake and looks like an
+        // unreachable machine: an 8 s timeout, a nil client, and a second paired
+        // Mac that silently never appears under "All Computers".
+        MobileDeviceLinkClient.shared.setActiveDialTarget(macDeviceID: mac.macDeviceID)
         let client = MobileCoreRPCClient(
             runtime: runtime,
             route: route,
@@ -3418,6 +3435,15 @@ public final class MobileShellComposite: MobileTerminalOutputSinking {
         guard await isAggregationScopeValid(scope) else { return }
         let macs = secondaryAggregationCandidateMacs(from: visibleLoadedMacs)
         let wanted = Set(macs.map(\.macDeviceID))
+        // Fork (cmux Mochi): with two paired Macs, "All Computers" showed only
+        // one Mac's workspaces. Everything below the foreground connection is
+        // silent, so name each stage: what the store returned, what survived the
+        // visibility filter, and which of those are secondary candidates.
+        MobileDeviceLinkDiagnostics.log(
+            "secondary aggregation: loaded=\(loadedMacs.count) visible=\(visibleLoadedMacs.count) "
+                + "candidates=\(macs.map { $0.macDeviceID.prefix(8) }.joined(separator: ",")) "
+                + "foreground=\(activeTicket?.macDeviceID.prefix(8) ?? "nil")"
+        )
         // Tear down subscriptions for Macs that are gone or are now the foreground.
         for (macID, subscription) in secondaryMacSubscriptions where !wanted.contains(macID) {
             subscription.cancel()
@@ -3612,6 +3638,11 @@ public final class MobileShellComposite: MobileTerminalOutputSinking {
         guard let pairedMacStore,
               secondaryMacSubscriptions[macID] == nil else { return }
         guard let handle = await makeSecondaryClient(for: mac) else {
+            // Fork (cmux Mochi): a nil client here is the whole difference
+            // between "All Computers" showing both Macs and showing one.
+            MobileDeviceLinkDiagnostics.log(
+                "secondary client: NIL for \(macID.prefix(8)) — this Mac will not appear"
+            )
             guard await isSecondaryMacStillVisible(
                 macID,
                 instanceTag: mac.instanceTag,
