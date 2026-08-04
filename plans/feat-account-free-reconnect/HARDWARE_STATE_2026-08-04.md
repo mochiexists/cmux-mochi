@@ -173,3 +173,54 @@ The iPhone 16 carries three bundles: `com.cmux-mochi.ios.endpoint-stability`
 (the real one), plus `com.cmux-mochi.ios` and `dev.cmux.ios.nightly`, which hold
 no pairings and correctly show no computers. They are only a source of confusion
 — delete the latter two.
+
+---
+
+# FIXED: durable connections (2026-08-04, late)
+
+`35e0e31dd8`. A stored-Mac reconnect built a synthetic attach ticket claiming
+`manual-<host>:<port>` as the Mac's device id. Upstream's post-connect check
+`applyHostReportedIdentity` compared that placeholder to the Mac's real id,
+called it `device_id_mismatch`, and disconnected — ~90 ms after mutual TLS, the
+build check and the instance-tag check had all passed. The dial reported success
+first, so the UI flashed connected then sat offline with a Reconnect button that
+could only repeat the cycle.
+
+Verified by UI test on BOTH phones: one connect, **zero**
+`connected -> disconnected` transitions, `list=connected connection=connected`
+still true at 290 s (16) and 156 s (17).
+
+Both phones now hold pairings to both Macs. The 17 was paired to the M4
+**headlessly** — mint over the Mac's local socket, inject via
+`DEVICECTL_CHILD_CMUX_DOGFOOD_ATTACH_URL` at launch. No QR, no tapping. The same
+trick makes delete-and-repair scriptable.
+
+## Open, reported from the device 2026-08-04 17:14
+
+Screenshot: connected to `🍋's MacBook…` (the **M4**, so the M4 dials fine), one
+workspace `cat` listed.
+
+1. **The machine filter does nothing.** Changing the selection at the top does
+   not change the listed chats.
+2. **Rows do not say which machine they belong to** in All Machines, so a
+   combined list is unreadable.
+3. **Only one chat shows**, which is why the list looks like a single machine.
+   `cat` was the workspace seen on the M5 during the 17's UI test, and it is
+   still the only row while the M4 is selected — so the list is probably not
+   re-fetched per machine and is showing one Mac's workspaces under the other's
+   name. Check `refreshSecondaryMacWorkspaces` / `switchToMac` and the
+   `workspacesByMac` keying before assuming the M4 returns nothing.
+
+Note `loadPairedMacs` never appeared in any device log during these runs — worth
+confirming it runs at all, since the computer list is built from it.
+
+4. **`enroll route <ipv4>:58525 failed: malformedResponse`** on the M4; IPv6
+   saved the pairing. A v6-less network would fail the pairing outright.
+
+## Test harness notes
+
+- Run the UI test with `PRODUCT_BUNDLE_IDENTIFIER=com.cmux-mochi.ios.<tag>` and
+  `CMUX_DEV_TAG=<tag>`. Without them `xcodebuild test` installs the UNTAGGED app
+  with an empty database, and every finding is meaningless.
+- The test's computer-name assertion is too strict: the list shows *workspace*
+  names, so it reports failures on a working phone. Fix the assertion.
