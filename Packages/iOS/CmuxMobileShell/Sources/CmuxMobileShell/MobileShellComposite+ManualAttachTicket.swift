@@ -44,7 +44,8 @@ extension MobileShellComposite {
         name: String,
         host: String,
         port: Int,
-        attemptStartedAt: Date?
+        attemptStartedAt: Date?,
+        pairedMacDeviceID: String? = nil
     ) async throws -> CmxAttachTicket {
         let directRoute = try Self.manualHostRoute(host: host, port: port)
         let displayName = name.isEmpty ? host : name
@@ -75,13 +76,17 @@ extension MobileShellComposite {
             }
             return try syntheticManualHostTicket(
                 displayName: displayName,
-                macDeviceID: "manual-\(host):\(port)",
+                macDeviceID: syntheticTicketMacDeviceID(
+                    pairedMacDeviceID: pairedMacDeviceID, host: host, port: port
+                ),
                 route: directRoute
             )
         }
         return try syntheticManualHostTicket(
             displayName: displayName,
-            macDeviceID: "manual-\(host):\(port)",
+            macDeviceID: syntheticTicketMacDeviceID(
+                pairedMacDeviceID: pairedMacDeviceID, host: host, port: port
+            ),
             route: directRoute
         )
     }
@@ -157,4 +162,24 @@ extension MobileShellComposite {
         let response = try MobileManualAttachTicketCreateResponse.decode(resultData)
         return try response.ticket.constrainingRoutes(to: [route], fallbackDisplayName: displayName)
     }
+
+    /// The device id a synthetic ticket should claim.
+    ///
+    /// Fork (cmux Mochi): the placeholder `manual-<host>:<port>` is fine when
+    /// the Mac is genuinely unknown, but a stored-Mac reconnect knows exactly
+    /// which Mac it dialed. Claiming the placeholder made the post-connect
+    /// identity check compare `manual-100.64.0.1:58525` against the Mac's real
+    /// device id, call it `device_id_mismatch`, and disconnect a connection that
+    /// had just passed mutual TLS and the build/instance-tag checks — about 90 ms
+    /// after reporting success. The UI then sat offline on a connected phone.
+    func syntheticTicketMacDeviceID(
+        pairedMacDeviceID: String?,
+        host: String,
+        port: Int
+    ) -> String {
+        let paired = pairedMacDeviceID?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let paired, !paired.isEmpty { return paired }
+        return "manual-\(host):\(port)"
+    }
+
 }

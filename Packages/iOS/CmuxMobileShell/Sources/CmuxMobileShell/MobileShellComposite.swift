@@ -139,6 +139,27 @@ public final class MobileShellComposite: MobileTerminalOutputSinking {
             // does not fire for the in-init assignment, so this only observes
             // real transitions. The throttle's `outageOpen` is the per-outage gate.
             guard oldValue != connectionState else { return }
+            // Fork (cmux Mochi): a DeviceLink dial reports connected and then the
+            // state is disconnected again seconds later, with the UI stuck
+            // offline. ~15 sites assign this; naming the edge with a stack is
+            // the only way to see which one drops a healthy connection.
+            if connectionState != .connected {
+                let frames = Thread.callStackSymbols.dropFirst(4).prefix(10)
+                    .map { line -> String in
+                        // "N binary address symbol + offset" -> symbol
+                        let parts = line.split(separator: " ", omittingEmptySubsequences: true)
+                        return parts.count > 3 ? String(parts[3]) : line
+                    }
+                    .filter { $0.contains("CmuxMobile") || $0.contains("cmux") }
+                MobileDeviceLinkDiagnostics.log(
+                    "connectionState \(oldValue) -> \(connectionState)\n    "
+                        + frames.joined(separator: "\n    ")
+                )
+            } else {
+                MobileDeviceLinkDiagnostics.log(
+                    "connectionState \(oldValue) -> \(connectionState)"
+                )
+            }
             if connectionState == .connected {
                 restartTerminalLanesForMountedSurfaces()
             } else {
@@ -1628,7 +1649,8 @@ public final class MobileShellComposite: MobileTerminalOutputSinking {
                 name: trimmedName,
                 host: normalizedHost,
                 port: port,
-                attemptStartedAt: pairingAttemptStartedAt
+                attemptStartedAt: pairingAttemptStartedAt,
+                pairedMacDeviceID: pairedMacDeviceID
             )
             guard isCurrentPairingAttempt(attemptID) else { return }
             let noThrowFailure = try await connect(
@@ -2270,6 +2292,12 @@ public final class MobileShellComposite: MobileTerminalOutputSinking {
     public func loadPairedMacs() async {
         guard let pairedMacStore,
               let scope = await currentScopeSnapshot() else {
+            // Fork (cmux Mochi): this empties the list, and the UI then shows
+            // the never-paired "Add Computer / Scan QR Code" state on a device
+            // that holds pairings. Say which half was missing.
+            MobileDeviceLinkDiagnostics.log(
+                "loadPairedMacs: ABORTED store=\(pairedMacStore != nil) scope=nil"
+            )
             storedPairedMacs = []
             pairedMacAliasIDsByRepresentativeID = [:]
             pairedMacs = []
@@ -2280,8 +2308,15 @@ public final class MobileShellComposite: MobileTerminalOutputSinking {
             loaded = try await pairedMacStore.loadAll(stackUserID: scope.userID, teamID: scope.teamID)
         } catch {
             mobileShellLog.error("paired mac store loadAll failed: \(String(describing: error), privacy: .public)")
+            MobileDeviceLinkDiagnostics.log("loadPairedMacs: store read FAILED \(error)")
             return
         }
+        // Rows on disk vs rows that survive the visibility filters. A store that
+        // returns nothing and a store whose rows are all filtered out look
+        // identical in the UI and have completely different causes.
+        MobileDeviceLinkDiagnostics.log(
+            "loadPairedMacs: scope=\(scope.userID) team=\(scope.teamID ?? "nil") loaded=\(loaded.count)"
+        )
         // The await above suspended the main actor; a sign-out, user switch, or
         // same-account team switch may have run meanwhile. Discard unless the
         // captured account/team scope is still current.
@@ -2291,6 +2326,11 @@ public final class MobileShellComposite: MobileTerminalOutputSinking {
         let visibleLoaded = await visibleStoredPairedMacs(from: loaded, scope: scope)
         guard await isScopeCurrent(scope) else {
             return
+        }
+        if visibleLoaded.count != loaded.count {
+            MobileDeviceLinkDiagnostics.log(
+                "loadPairedMacs: \(loaded.count - visibleLoaded.count) row(s) hidden as forgotten"
+            )
         }
         storedPairedMacs = visibleLoaded
         let supportedRouteKinds = runtime?.supportedRouteKinds ?? []
@@ -5081,6 +5121,16 @@ public final class MobileShellComposite: MobileTerminalOutputSinking {
                         .trimmingCharacters(in: .whitespacesAndNewlines)
                     let hasAuthenticatedIdentity = reportedDeviceID?.isEmpty == false
                     let reportedInstanceTag = hasAuthenticatedIdentity ? status.macInstanceTag : nil
+                    // Fork (cmux Mochi): a DeviceLink channel authorizes at the
+                    // TLS layer and sends no token, so if `status` only reports
+                    // an identity to *payload*-authenticated callers, this reads
+                    // as "no identity" and the phone disconnects a connection it
+                    // just proved cryptographically.
+                    MobileDeviceLinkDiagnostics.log(
+                        "post-connect status: macDeviceID=\(reportedDeviceID ?? "nil") "
+                            + "tag=\(status.macInstanceTag ?? "nil") authedIdentity=\(hasAuthenticatedIdentity) "
+                            + "expectation=\(String(describing: instanceTagExpectation))"
+                    )
                     guard macBuildIsCompatible(instanceTag: reportedInstanceTag) else {
                         mobileShellLog.error(
                             "rejecting route from incompatible Mac build reported=\(reportedInstanceTag ?? "missing", privacy: .public)"
