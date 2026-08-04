@@ -129,12 +129,43 @@ User-visible symptom: the workspace list and prior chat render, but tapping
 through never connects, while the Mac app is plainly running.
 
 **This is the next thing to fix, and it is NOT a DeviceLink transport problem** —
-mutual TLS, pinning and admission all succeed on both sides. Look at what
-consumes `dial finished: connected`: which state the shell sets after a
-successful stored-Mac dial, and what re-triggers the reconnect ~12 s later
-(`sync.transport=hybrid` is the last thing logged before the gap). Suspect the
-connected state is being set on a path the UI does not observe, or is
-immediately invalidated by the hybrid sync transport handshake.
+mutual TLS, pinning and admission all succeed on both sides.
+
+## CONFIRMED, with the mechanism (same day, on the iPhone 16)
+
+An idle app connects once and stays quiet. The loop starts the moment the user
+tries to use it, and then runs at roughly **one full cycle per second**:
+
+```
+[1313.017] reconnect scope … -> dial finished: connected -> sync.transport=hybrid
+[1314.050] reconnect scope … -> dial finished: connected -> sync.transport=hybrid
+[1314.934] reconnect scope … -> dial finished: connected -> sync.transport=hybrid
+[1315.751] reconnect scope …
+```
+
+The driver is **connection recovery**, not the reconnect path itself:
+`MobileShellComposite+ConnectionRecovery.swift:218,226-230` sets
+`connectionState = .disconnected` and clears the remote context, then :236 calls
+`reconnectActiveMacOutcome`. The redial succeeds — and recovery is triggered
+again immediately, so the connection is destroyed as fast as it is made and the
+UI never settles.
+
+**The missing fact is which trigger fires.** `recoverMobileConnection(trigger:)`
+(:64) accepts `.foreground`, `.liveness`, `.eventStreamEnded`,
+`.subscriptionStartFailed`, `.transportWriteTimedOut`, `.networkChange`,
+`.presencePush`, `.manual`. The shape — connect, then recover within ~1 s,
+forever — points at `.eventStreamEnded` or `.subscriptionStartFailed`: the
+DeviceLink channel opens, the event-stream subscription over it fails at once,
+recovery redials, repeat.
+
+`beginConnectionRecovery` already logs its trigger through
+`MobileDebugLog.anchormux` (:249), but those lines are NOT in the on-device
+debug log — capture them first (os_log / `devicectl device process
+launch --console`, or route that line into `MobileDeviceLinkDiagnostics`). One
+run with the trigger visible should end this.
+
+Do not re-derive: the transport is fine. `dial finished: connected` is true
+every single cycle.
 
 ## Stale apps on the phones
 
