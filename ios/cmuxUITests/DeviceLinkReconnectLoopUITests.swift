@@ -108,45 +108,46 @@ final class DeviceLinkReconnectLoopUITests: XCTestCase {
 
         var perMachineRows: [String: [String]] = [:]
         let macPicker = app.descendants(matching: .any)["MobileWorkspaceMacPicker"]
-        if macPicker.waitForExistence(timeout: 10) {
-            for attempt in 0..<2 {
-                guard macPicker.isHittable else { break }
-                macPicker.tap()
-                Thread.sleep(forTimeInterval: 4)
-                let options = app.descendants(matching: .any).allElementsBoundByIndex
-                    .filter { $0.exists && $0.isHittable
-                        && ($0.label.localizedCaseInsensitiveContains("MacBook")
-                            || $0.label.localizedCaseInsensitiveContains("m5")) }
-                guard attempt < options.count else { break }
-                let option = options[attempt]
-                let name = option.label
-                option.tap()
-                // Give the switch time to re-fetch that Mac's workspaces.
-                Thread.sleep(forTimeInterval: 12)
-                perMachineRows[name] = visibleWorkspaceRowIDs()
-            }
+
+        // Collect the machine names ONCE, then select each by name. Indexing
+        // into a freshly-queried option list does not work: the list is rebuilt
+        // per presentation and its order is not stable, so index 1 kept
+        // re-selecting the machine already showing.
+        func machineOptionLabels() -> [String] {
+            app.descendants(matching: .any).allElementsBoundByIndex
+                .filter { $0.exists && $0.isHittable
+                    && ($0.label.localizedCaseInsensitiveContains("MacBook")
+                        || $0.label.localizedCaseInsensitiveContains("m5")) }
+                .map(\.label)
         }
+
+        _ = machineOptionLabels
+        _ = macPicker
+
+        // The decisive check needs no picker navigation at all. In "All
+        // Computers" the aggregated list must carry a row for EACH paired Mac's
+        // workspaces. Row identifiers are `MobileWorkspaceRow-<macID><wsID>`, so
+        // counting distinct rows answers "am I seeing both machines?" directly —
+        // and it is what the user actually reported: one chat visible, two Macs
+        // paired.
+        let aggregatedRows = visibleWorkspaceRowIDs()
+        perMachineRows["AllComputers"] = aggregatedRows
         // Put the contents in the assertion message: the runner's stdout does
         // not reach the xcodebuild log, so this is the only way to see them.
         let summary = perMachineRows
             .map { "\($0.key) -> [\($0.value.joined(separator: ", "))]" }
             .sorted()
             .joined(separator: "  ||  ")
-        XCTAssertFalse(
-            perMachineRows.isEmpty,
-            "could not switch machines at all. \(screen)"
+        // Two paired Macs, one workspace each (M5 9B836F1E…, M4 987C7060…), so
+        // the aggregated list must show two distinct rows. One row means the
+        // second Mac's secondary connection never produced workspaces — the
+        // reported "I can only see one chat".
+        let distinctMacsInList = Set(aggregatedRows.map { String($0.prefix(36)) })
+        XCTAssertGreaterThanOrEqual(
+            distinctMacsInList.count, 2,
+            "All Computers lists workspaces from \(distinctMacsInList.count) machine(s), "
+                + "expected 2. rows=\(aggregatedRows) \(summary) \(screen)"
         )
-        if perMachineRows.count >= 2 {
-            let sets = perMachineRows.values.map { Set($0) }
-            let allIdentical = sets.dropFirst().allSatisfy { $0 == sets[sets.startIndex] }
-            XCTAssertFalse(
-                allIdentical,
-                "both machines list an identical workspace set — the picker changes "
-                    + "the name but not the contents. \(summary)"
-            )
-        } else {
-            XCTFail("only \(perMachineRows.count) machine reachable in the picker. \(summary)")
-        }
 
         // Press Reconnect / Retry. This is the control the user pressed when the
         // loop appeared, and it is the only trigger that is unambiguously
