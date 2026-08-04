@@ -224,3 +224,39 @@ confirming it runs at all, since the computer list is built from it.
   with an empty database, and every finding is meaningless.
 - The test's computer-name assertion is too strict: the list shows *workspace*
   names, so it reports failures on a working phone. Fix the assertion.
+
+## CORRECTION: 35e0e31dd8 fixes the disconnect the WRONG way
+
+Reported from the device: the M4 and the M5 both list the same `cat` workspace,
+and opening it loads nothing (it used to). That is a regression from the fix,
+not a pre-existing list bug.
+
+`applyHostReportedIdentity` (MobileShellComposite.swift ~2839) has two branches:
+
+- `ticket.macDeviceID.isEmpty` -> **adopt**: rebuild the ticket with the
+  Mac's reported id and call `adoptForegroundMacIdentity(reportedID)`, whose own
+  comment says it exists so "the Computers screen recognizes this Mac as
+  connected and secondary aggregation excludes it (no duplicate connection to
+  self)".
+- otherwise -> **verify**: `authenticatedDeviceMatches`, else
+  `rejectForegroundHostIdentity(reason: "device_id_mismatch")`.
+
+The old placeholder `manual-<host>:<port>` was neither empty nor real, so it took
+the verify branch and was rejected — the ~90 ms disconnect.
+
+`35e0e31dd8` put the REAL id in the ticket. That passes verification (hence the
+durable connection, which is genuine) but now **skips the adopt branch**, so
+`adoptForegroundMacIdentity` never runs and the foreground workspace aggregate is
+never re-keyed onto the real Mac. Both Macs then share one bucket: same single
+workspace under either selection, and terminals that will not load.
+
+**Likely correct fix:** give the synthetic stored-Mac ticket an EMPTY
+`macDeviceID` so upstream's adopt path runs and takes the Mac's reported id.
+That is the flow the adopt branch was written for. Keep `pairedMacDeviceID`
+flowing to `connect(...)` for route/pin selection; it is only the ticket's
+claimed id that must be empty.
+
+Verify with the UI test on the 17 (both Macs paired):
+- zero `connected -> disconnected`
+- switching Macs changes the listed workspaces
+- opening a workspace loads a terminal
