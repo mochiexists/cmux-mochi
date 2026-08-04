@@ -19,6 +19,9 @@ struct WorkspaceRow: View {
     var unreadIndicatorLeftShift: Double = MobileDisplaySettings.defaultUnreadIndicatorLeftShift
     var profilePictureLeftShift: Double = MobileDisplaySettings.defaultProfilePictureLeftShift
     var profilePictureSize: Double = MobileDisplaySettings.defaultProfilePictureSize
+    /// Name of the Mac this workspace lives on, shown only when the list
+    /// aggregates more than one machine.
+    var machineName: String? = nil
 
     var body: some View {
         HStack(alignment: .top, spacing: 0) {
@@ -62,6 +65,21 @@ struct WorkspaceRow: View {
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .lineLimit(previewLineLimit, reservesSpace: true)
+                // Fork (cmux Mochi): which machine this workspace lives on.
+                // Only set when the list is aggregating several Macs — with one
+                // machine selected the answer is already in the title bar, and
+                // repeating it on every row is noise. Without it, an aggregated
+                // list is unreadable: two Macs can hold workspaces with the same
+                // name (both of mine are called "cat"), so the rows are
+                // genuinely indistinguishable.
+                if let machineName, !machineName.isEmpty {
+                    Label(machineName, systemImage: "desktopcomputer")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                        .labelStyle(.titleAndIcon)
+                        .lineLimit(1)
+                        .accessibilityIdentifier("MobileWorkspaceRowMachine-\(workspace.id.rawValue)")
+                }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)

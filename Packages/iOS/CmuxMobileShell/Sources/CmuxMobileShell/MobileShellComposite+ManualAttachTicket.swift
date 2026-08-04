@@ -191,7 +191,7 @@ extension MobileShellComposite {
         port: Int
     ) -> String {
         let paired = pairedMacDeviceID?.trimmingCharacters(in: .whitespacesAndNewlines)
-        if let paired, !paired.isEmpty { return "" }
+        if let paired, !paired.isEmpty { return paired }
         return "manual-\(host):\(port)"
     }
 

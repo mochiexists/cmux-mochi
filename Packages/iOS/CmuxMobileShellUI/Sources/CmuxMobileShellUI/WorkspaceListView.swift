@@ -615,9 +615,63 @@ struct WorkspaceListView: View {
         .onMove(perform: moveGroupedRows)
     }
 
+    /// Machine names for the rows, keyed by device id — empty unless the list
+    /// aggregates more than one Mac, so a single-machine list stays clean.
+    var rowMachineNamesByMacDeviceID: [String: String] {
+        guard spansMultipleMachines else { return [:] }
+        var names: [String: String] = [:]
+        for workspace in workspaces {
+            guard let macDeviceID = workspace.macDeviceID, !macDeviceID.isEmpty,
+                  names[macDeviceID] == nil,
+                  let name = machineDisplayName(for: workspace) else { continue }
+            names[macDeviceID] = name
+        }
+        return names
+    }
+
+    /// Human name for the Mac a workspace lives on.
+    ///
+    /// Fork (cmux Mochi): `macDisplayName` is not stamped onto previews — the
+    /// secondary fetch and `adoptForegroundMacIdentity` both set only
+    /// `macDeviceID` — so resolve the name from the same machine snapshots the
+    /// filter menu uses. Falls back to a short device id so a row is never
+    /// attributed to nothing.
+    private func machineDisplayName(for workspace: MobileWorkspacePreview) -> String? {
+        guard let macDeviceID = workspace.macDeviceID, !macDeviceID.isEmpty else { return nil }
+        if let name = workspace.macDisplayName, !name.isEmpty { return name }
+        let snapshots = machineSnapshots ?? liveMachineSnapshots
+        if let match = snapshots.filterMachines.first(where: { $0.id == macDeviceID }) {
+            return match.name
+        }
+        if let match = snapshots.macPickerMachines.first(where: { $0.id == macDeviceID }) {
+            return match.name
+        }
+        return String(macDeviceID.prefix(8))
+    }
+
+    /// Whether the visible list currently mixes workspaces from several Macs.
+    ///
+    /// Fork (cmux Mochi): drives per-row machine attribution. Computed from the
+    /// rows actually on screen rather than from how many Macs are paired, so a
+    /// single-machine selection stays clean even with several Macs connected.
+    private var spansMultipleMachines: Bool {
+        var seen = Set<String>()
+        for workspace in workspaces {
+            guard let macDeviceID = workspace.macDeviceID, !macDeviceID.isEmpty else { continue }
+            seen.insert(macDeviceID)
+            if seen.count > 1 { return true }
+        }
+        return false
+    }
+
     @ViewBuilder
     private func workspaceRow(_ workspace: MobileWorkspacePreview, indented: Bool, enablesReorder: Bool) -> some View {
         let capabilities = workspace.actionCapabilities
+        // Fork (cmux Mochi): attribute the row when the list spans more than one
+        // Mac. Two machines can hold workspaces with identical names, so an
+        // aggregated list is otherwise unreadable — switching machines appears
+        // to change nothing even when it changed everything.
+        let machineName = spansMultipleMachines ? machineDisplayName(for: workspace) : nil
         WorkspaceNavigationRow(
             workspace: workspace,
             connectionStatus: workspace.macConnectionStatus ?? connectionStatus,
@@ -628,6 +682,7 @@ struct WorkspaceListView: View {
             unreadIndicatorLeftShift: unreadIndicatorLeftShift,
             profilePictureLeftShift: profilePictureLeftShift,
             profilePictureSize: profilePictureSize,
+            machineName: machineName,
             selectWorkspace: { id in _ = selectWorkspaceFromList(id) },
             renameWorkspace: capabilities.supportsWorkspaceActions ? renameWorkspace : nil,
             setPinned: capabilities.supportsWorkspaceActions ? setPinned : nil,

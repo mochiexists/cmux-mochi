@@ -2368,7 +2368,17 @@ public final class MobileShellComposite: MobileTerminalOutputSinking {
         macDeviceID: String,
         instanceTag: String? = nil
     ) async -> Bool {
-        guard let pairedMacStore else { return false }
+        // Fork (cmux Mochi): opening a workspace that belongs to a SECONDARY Mac
+        // has to switch the foreground here first. When that silently fails the
+        // chat opens to nothing, which is indistinguishable from a slow load.
+        MobileDeviceLinkDiagnostics.log(
+            "switchToMac \(macDeviceID.prefix(8)) tag=\(instanceTag ?? "nil") "
+                + "foreground=\(foregroundMacDeviceID?.prefix(8) ?? "nil")"
+        )
+        guard let pairedMacStore else {
+            MobileDeviceLinkDiagnostics.log("switchToMac: no paired mac store")
+            return false
+        }
         let switchAttemptID = beginMacSwitchAttempt()
         let liveForegroundRestoreBaseline = liveForegroundMacForSwitchRestore()
         defer { finishMacSwitchAttempt(switchAttemptID) }
@@ -2885,7 +2895,20 @@ public final class MobileShellComposite: MobileTerminalOutputSinking {
                 rejectForegroundHostIdentity(client: client, reason: "device_id_mismatch")
                 return
             }
-            MobileDeviceLinkDiagnostics.log("host identity: VERIFY-ONLY \(reportedID.prefix(12)) (no adoption)")
+            // Fork (cmux Mochi): adopt here too. The branch above adopts an
+            // identity it did not know; this one has just *verified* the Mac
+            // reports exactly the device id the ticket claims, which is a
+            // stronger reason to adopt, not a weaker one.
+            //
+            // Adoption is what stamps `macDeviceID` onto the foreground
+            // workspaces and moves them off `foregroundAnonymousKey`. A
+            // stored-Mac reconnect names its Mac in the ticket, so it always
+            // took this branch and the foreground rows stayed anonymous: the
+            // machine filter offered no machines, and rows in an aggregated list
+            // could not say which Mac they came from — with two Macs both
+            // hosting a workspace called "cat", the list was unreadable.
+            MobileDeviceLinkDiagnostics.log("host identity: VERIFIED-ADOPT \(reportedID.prefix(12))")
+            adoptForegroundMacIdentity(reportedID)
             resolvedTicket = ticket
         }
         guard remoteClient === client else { return }

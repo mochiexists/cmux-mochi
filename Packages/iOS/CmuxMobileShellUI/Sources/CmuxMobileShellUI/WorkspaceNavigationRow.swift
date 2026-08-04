@@ -14,6 +14,8 @@ struct WorkspaceNavigationRow: View {
     var unreadIndicatorLeftShift: Double = MobileDisplaySettings.defaultUnreadIndicatorLeftShift
     var profilePictureLeftShift: Double = MobileDisplaySettings.defaultProfilePictureLeftShift
     var profilePictureSize: Double = MobileDisplaySettings.defaultProfilePictureSize
+    /// Name of the Mac this workspace lives on; forwarded to ``WorkspaceRow``.
+    var machineName: String? = nil
     let selectWorkspace: (MobileWorkspacePreview.ID) -> Void
     /// Rename the workspace on the Mac. When `nil` (e.g. previews) the rename
     /// affordance is hidden.
@@ -66,7 +68,19 @@ struct WorkspaceNavigationRow: View {
         .accessibilityAddTraits(.isButton)
         .accessibilityIdentifier("MobileWorkspaceRow-\(workspace.id.rawValue)")
         .accessibilityLabel(workspace.name)
-        .accessibilityValue(workspace.accessibilitySummary(connectionStatus: connectionStatus))
+        // Fork (cmux Mochi): the machine belongs in the row's own accessibility
+        // value, not on the child Label. `children: .combine` above flattens
+        // descendants, so a child identifier is unreachable to VoiceOver and to
+        // UI tests alike — and an aggregated list where two Macs hold
+        // same-named workspaces is exactly where a screen reader needs it most.
+        .accessibilityValue(
+            [
+                workspace.accessibilitySummary(connectionStatus: connectionStatus),
+                machineName.map { "on \($0)" },
+            ]
+            .compactMap { $0 }
+            .joined(separator: ", ")
+        )
         .sheet(isPresented: $isRenaming) {
             WorkspaceRenameSheet(currentName: workspace.name) { newName in
                 renameWorkspace?(workspace.id, newName)
@@ -120,7 +134,8 @@ struct WorkspaceNavigationRow: View {
             previewLineLimit: previewLineLimit,
             unreadIndicatorLeftShift: unreadIndicatorLeftShift,
             profilePictureLeftShift: profilePictureLeftShift,
-            profilePictureSize: profilePictureSize
+            profilePictureSize: profilePictureSize,
+            machineName: machineName
         )
     }
 

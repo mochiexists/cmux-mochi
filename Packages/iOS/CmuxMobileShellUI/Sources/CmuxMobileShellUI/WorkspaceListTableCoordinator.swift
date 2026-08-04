@@ -409,6 +409,10 @@ final class WorkspaceListTableCoordinator: NSObject, UITableViewDelegate,
                 return AnyView(EmptyView())
             }
             let connectionStatus = workspace.macConnectionStatus ?? configuration.connectionStatus
+            // Fork (cmux Mochi): this UIKit-backed table is the list iOS
+            // actually renders, so per-row machine attribution has to live here
+            // too — editing only the SwiftUI row changed nothing on device.
+            let machineName = configuration.machineName(for: workspace)
             return AnyView(
                 WorkspaceRow(
                     workspace: workspace,
@@ -419,14 +423,20 @@ final class WorkspaceListTableCoordinator: NSObject, UITableViewDelegate,
                     previewLineLimit: configuration.previewLineLimit,
                     unreadIndicatorLeftShift: configuration.unreadIndicatorLeftShift,
                     profilePictureLeftShift: configuration.profilePictureLeftShift,
-                    profilePictureSize: configuration.profilePictureSize
+                    profilePictureSize: configuration.profilePictureSize,
+                    machineName: machineName
                 )
                 .accessibilityElement(children: .combine)
                 .accessibilityAddTraits(.isButton)
                 .accessibilityIdentifier("MobileWorkspaceRow-\(workspace.id.rawValue)")
                 .accessibilityLabel(workspace.name)
                 .accessibilityValue(
-                    workspace.accessibilitySummary(connectionStatus: connectionStatus)
+                    [
+                        workspace.accessibilitySummary(connectionStatus: connectionStatus),
+                        machineName.map { "on \($0)" },
+                    ]
+                    .compactMap { $0 }
+                    .joined(separator: ", ")
                 )
             )
         case .groupHeader(let groupID):

@@ -19,6 +19,18 @@ struct WorkspaceListTable: UIViewRepresentable {
     let profilePictureLeftShift: Double
     let profilePictureSize: Double
     let connectionStatus: MobileMacConnectionStatus
+    /// Human names for the Macs represented in this list, keyed by device id.
+    ///
+    /// Fork (cmux Mochi): empty when the list shows a single machine, so rows
+    /// stay clean; populated when it aggregates, where two Macs can hold
+    /// workspaces with identical names and the rows are otherwise ambiguous.
+    var machineNamesByMacDeviceID: [String: String] = [:]
+
+    /// The Mac name to show on a row, or `nil` to show none.
+    func machineName(for workspace: MobileWorkspacePreview) -> String? {
+        guard let macDeviceID = workspace.macDeviceID, !macDeviceID.isEmpty else { return nil }
+        return machineNamesByMacDeviceID[macDeviceID]
+    }
 
     let connectionRequiresReauth: Bool
     let connectionRecoveryFailed: Bool

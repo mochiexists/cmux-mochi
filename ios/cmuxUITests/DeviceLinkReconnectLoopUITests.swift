@@ -149,14 +149,97 @@ final class DeviceLinkReconnectLoopUITests: XCTestCase {
                 + "expected 2. rows=\(aggregatedRows) \(summary) \(screen)"
         )
 
+        // Every row in an aggregated list must name its machine, or two Macs
+        // holding same-named workspaces are indistinguishable.
+        // Read it off the row's accessibility VALUE: the row combines its
+        // children, so the machine label is only reachable there.
+        let attributed = app.descendants(matching: .any)
+            .matching(NSPredicate(format: "identifier BEGINSWITH 'MobileWorkspaceRow-'"))
+            .allElementsBoundByIndex
+            .filter(\.exists)
+            .map { "\($0.value ?? "")" }
+        let attributionCount = attributed.filter { $0.contains(" on ") }.count
+        XCTAssertGreaterThanOrEqual(
+            attributionCount, 2,
+            "aggregated rows do not name their machine (\(attributionCount) of "
+                + "\(aggregatedRows.count) rows). values=\(attributed) \(screen)"
+        )
+
+        // The machine filter must actually filter. Selecting one machine should
+        // leave strictly fewer rows than "all", and every survivor must belong
+        // to that machine.
+        // A SwiftUI Menu does not always publish its identifier on the element
+        // XCUITest can hit, so fall back to the visible "Filter" control.
+        var filterMenu = app.descendants(matching: .any)["MobileWorkspaceFilterMenu"]
+        if !filterMenu.exists || !filterMenu.isHittable {
+            let byLabel = app.buttons["Filter"]
+            if byLabel.exists { filterMenu = byLabel }
+        }
+        if filterMenu.waitForExistence(timeout: 10), filterMenu.isHittable {
+            filterMenu.tap()
+            Thread.sleep(forTimeInterval: 4)
+            let machineFilter = app.descendants(matching: .any)
+                .matching(NSPredicate(format: "identifier BEGINSWITH 'MobileWorkspaceFilterMachine-'"))
+                .allElementsBoundByIndex
+                .first { $0.exists && $0.isHittable }
+            if let machineFilter {
+                let filteredMacID = String(
+                    machineFilter.identifier.dropFirst("MobileWorkspaceFilterMachine-".count)
+                )
+                machineFilter.tap()
+                Thread.sleep(forTimeInterval: 10)
+                let filteredRows = visibleWorkspaceRowIDs()
+                XCTAssertFalse(
+                    filteredRows.isEmpty,
+                    "filtering to \(filteredMacID) emptied the list. all=\(aggregatedRows)"
+                )
+                XCTAssertTrue(
+                    filteredRows.allSatisfy { $0.hasPrefix(filteredMacID) },
+                    "filter to \(filteredMacID) left rows from other machines: \(filteredRows)"
+                )
+                XCTAssertLessThan(
+                    filteredRows.count, aggregatedRows.count,
+                    "filtering changed nothing — \(filteredRows.count) rows before and after"
+                )
+                // Restore the full list for the steps below, and make sure the
+                // menu is actually dismissed: a menu left open swallows every
+                // later tap, and the next step then reports rows that exist but
+                // are not hittable — which reads as a product bug and is not.
+                filterMenu.tap()
+                Thread.sleep(forTimeInterval: 3)
+                let showAll = app.descendants(matching: .any)["MobileWorkspaceFilterShowAll"]
+                if showAll.exists, showAll.isHittable {
+                    showAll.tap()
+                } else {
+                    // Dismiss by tapping outside the menu.
+                    app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.92)).tap()
+                }
+                Thread.sleep(forTimeInterval: 8)
+            } else {
+                XCTFail("filter menu opened but offered no machine entries. \(screen)")
+            }
+        } else {
+            XCTFail("no filter menu on a multi-machine list. \(screen)")
+        }
+
         // Opening a chat must actually load it. A row that opens to nothing is
         // the reported symptom: the list looked healthy, the tap did nothing
         // useful. The composer is the cheapest honest proof that the workspace
         // detail mounted against a live connection rather than an empty shell.
-        let firstRow = app.descendants(matching: .any)
-            .matching(NSPredicate(format: "identifier BEGINSWITH 'MobileWorkspaceRow-'"))
-            .allElementsBoundByIndex
-            .first { $0.exists && $0.isHittable }
+        func hittableRow() -> XCUIElement? {
+            app.descendants(matching: .any)
+                .matching(NSPredicate(format: "identifier BEGINSWITH 'MobileWorkspaceRow-'"))
+                .allElementsBoundByIndex
+                .first { $0.exists && $0.isHittable }
+        }
+        var firstRow = hittableRow()
+        if firstRow == nil {
+            // Something modal is still up. Dismiss and look once more before
+            // calling this a failure.
+            app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.92)).tap()
+            Thread.sleep(forTimeInterval: 5)
+            firstRow = hittableRow()
+        }
         if let firstRow {
             let openedRow = firstRow.identifier
             firstRow.tap()
@@ -169,6 +252,33 @@ final class DeviceLinkReconnectLoopUITests: XCTestCase {
                 "opening \(openedRow) did not load a chat — no composer after 40 s. "
                     + "buttons=\(afterOpen)"
             )
+
+            // Send a real message and require the Mac to answer. A chat that
+            // opens is not the same as a link that carries work: this is the
+            // only step that proves the round trip end to end, over DeviceLink,
+            // with no account anywhere in it.
+            if loaded {
+                let marker = "cmux-uitest-ping"
+                composer.tap()
+                composer.typeText("echo \(marker)\n")
+                // The Mac has to receive it, run it, and stream output back.
+                let echoed = app.descendants(matching: .any)
+                    .matching(NSPredicate(format: "label CONTAINS %@ OR value CONTAINS %@", marker, marker))
+                let deadline = Date().addingTimeInterval(90)
+                var sawEcho = false
+                while Date() < deadline {
+                    if echoed.allElementsBoundByIndex.contains(where: \.exists) {
+                        sawEcho = true
+                        break
+                    }
+                    Thread.sleep(forTimeInterval: 3)
+                }
+                XCTAssertTrue(
+                    sawEcho,
+                    "sent '\(marker)' over the DeviceLink connection and saw no response "
+                        + "within 90 s — the chat renders but the link carries no work."
+                )
+            }
         } else {
             XCTFail("no workspace row was tappable. rows=\(aggregatedRows) \(screen)")
         }

@@ -73,6 +73,7 @@ extension WorkspaceListView {
             profilePictureLeftShift: profilePictureLeftShift,
             profilePictureSize: profilePictureSize,
             connectionStatus: connectionStatus,
+            machineNamesByMacDeviceID: rowMachineNamesByMacDeviceID,
             connectionRequiresReauth: store?.connectionRequiresReauth ?? false,
             connectionRecoveryFailed: store?.connectionRecoveryFailed ?? false,
             isRecoveringConnection: store?.isRecoveringConnection ?? false,
