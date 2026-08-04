@@ -311,3 +311,26 @@ Do NOT re-derive that the rows themselves are correct — they are.
   the verify branch and left them anonymous.
 - Row attribution had to go in `WorkspaceListTableCoordinator` — the UIKit table
   is what iOS renders; editing the SwiftUI row alone changed nothing on device.
+
+## Update: the 17's filter failure is not yet established as a product bug
+
+Re-examined rather than trusted. Three things argue against a product fault:
+
+- `dialEndpointKey` includes the **display name**
+  (`host:<host>:<port>:name:<name>:instance:<tag>`), so two differently-named
+  Macs cannot coalesce into one representative — the collapse theory is wrong.
+- `WorkspaceListView` already refreshes the cached snapshot via
+  `.onChange(of: currentMachineSnapshots)`, so a stale `@State` is not obviously
+  it either.
+- On the SAME failing run the list holds rows from two distinct Macs and every
+  row is attributed with its machine name, so the identities ARE known to the UI.
+
+Meanwhile the iPhone 17 has repeatedly failed to start its test runner tonight
+("Lost pending connection to the test runner before launch", "Timed out while
+enabling automation mode") — it is on network rather than USB. The 16, whose
+runner is stable, passes this assertion every time.
+
+So the likely explanation is the test's own filter interaction on that device
+(the fallback taps a control matched by the label "Filter", which may not be the
+machine menu), not a broken filter. The failure text now dumps what the menu
+actually presented; capture that on a USB-connected 17 before calling it a bug.
