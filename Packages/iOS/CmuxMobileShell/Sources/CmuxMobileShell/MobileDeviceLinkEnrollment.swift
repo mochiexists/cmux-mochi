@@ -93,9 +93,16 @@ public struct MobileDeviceLinkEnroller: Sendable {
                 macFingerprint: payload.macFingerprint
             )
         } catch {
+            // Name the keychain error. `identityUnavailable` alone cannot tell
+            // "this device cannot make a key" from "it made one and cannot read
+            // it back", and those have opposite fixes.
+            MobileDeviceLinkDiagnostics.log("enroll: identity preparation failed: \(error)")
             throw MobileDeviceLinkEnrollmentError.identityUnavailable
         }
         guard let tlsOptions = client.tlsOptions(forPairingID: pairingID) else {
+            MobileDeviceLinkDiagnostics.log(
+                "enroll: no TLS options after preparing identity for \(pairingID.prefix(24))"
+            )
             throw MobileDeviceLinkEnrollmentError.identityUnavailable
         }
 
@@ -123,6 +130,11 @@ public struct MobileDeviceLinkEnroller: Sendable {
                     wasAlreadyEnrolled: outcome.wasAlreadyEnrolled
                 )
             } catch let error as MobileDeviceLinkEnrollmentError {
+                // Name the per-route failure. Without this the loop reports only
+                // the last route's verdict, so an enrollment the Mac completed
+                // over loopback still surfaced as a flat "unreachable" — the two
+                // sides disagreeing with no way to see where.
+                MobileDeviceLinkDiagnostics.log("enroll route \(host):\(port) failed: \(error)")
                 // A refusal or a pin mismatch is the Mac's final answer; trying
                 // the next address would only ask a different machine the same
                 // question.
@@ -133,6 +145,7 @@ public struct MobileDeviceLinkEnroller: Sendable {
                     lastError = error
                 }
             } catch {
+                MobileDeviceLinkDiagnostics.log("enroll route \(host):\(port) failed: \(error)")
                 lastError = .unreachable
             }
         }

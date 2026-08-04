@@ -62,6 +62,22 @@ struct KeychainItem {
         #endif
     }
 
+    /// Whether a status means "this build has no `application-identifier`".
+    ///
+    /// The data-protection keychain requires that entitlement, and an *unsigned*
+    /// build has none — which on iOS means the simulator, where `xcodebuild`
+    /// runs with `CODE_SIGNING_ALLOWED=NO` and Xcode embeds no entitlements at
+    /// all. Every DeviceLink read and write then fails with `-34018`, so the
+    /// device cannot hold a pairing: enrollment reports `identityUnavailable`
+    /// and reconnect has nothing to offer.
+    ///
+    /// A signed device build always has the entitlement and never reaches the
+    /// fallback, so this does not weaken storage anywhere it is real. It is the
+    /// same reasoning that already makes macOS use the file keychain.
+    static func isMissingEntitlement(_ status: OSStatus) -> Bool {
+        status == errSecMissingEntitlement
+    }
+
     private func baseQuery(dataProtection: Bool) -> [CFString: Any] {
         var query: [CFString: Any] = [
             kSecClass: kSecClassGenericPassword,
@@ -73,11 +89,17 @@ struct KeychainItem {
     }
 
     func read() throws -> Data? {
-        var query = baseQuery(dataProtection: Self.usesDataProtection)
-        query[kSecReturnData] = true
-        query[kSecMatchLimit] = kSecMatchLimitOne
-        var result: CFTypeRef?
-        let status = SecItemCopyMatching(query as CFDictionary, &result)
+        func attempt(dataProtection: Bool) -> (OSStatus, CFTypeRef?) {
+            var query = baseQuery(dataProtection: dataProtection)
+            query[kSecReturnData] = true
+            query[kSecMatchLimit] = kSecMatchLimitOne
+            var value: CFTypeRef?
+            return (SecItemCopyMatching(query as CFDictionary, &value), value)
+        }
+        var (status, result) = attempt(dataProtection: Self.usesDataProtection)
+        if Self.usesDataProtection, Self.isMissingEntitlement(status) {
+            (status, result) = attempt(dataProtection: false)
+        }
         switch status {
         case errSecSuccess:
             return result as? Data
@@ -91,7 +113,16 @@ struct KeychainItem {
     }
 
     func write(_ data: Data) throws {
-        let query = baseQuery(dataProtection: Self.usesDataProtection)
+        do {
+            try write(data, dataProtection: Self.usesDataProtection)
+        } catch KeychainStorageError.unexpectedStatus(let status)
+                    where Self.usesDataProtection && Self.isMissingEntitlement(status) {
+            try write(data, dataProtection: false)
+        }
+    }
+
+    private func write(_ data: Data, dataProtection: Bool) throws {
+        let query = baseQuery(dataProtection: dataProtection)
         let attributes: [CFString: Any] = [
             kSecValueData: data,
             kSecAttrAccessible: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly,
@@ -117,7 +148,10 @@ struct KeychainItem {
     }
 
     func delete() throws {
-        let status = SecItemDelete(baseQuery(dataProtection: Self.usesDataProtection) as CFDictionary)
+        var status = SecItemDelete(baseQuery(dataProtection: Self.usesDataProtection) as CFDictionary)
+        if Self.usesDataProtection, Self.isMissingEntitlement(status) {
+            status = SecItemDelete(baseQuery(dataProtection: false) as CFDictionary)
+        }
         guard status == errSecSuccess || status == errSecItemNotFound else {
             throw KeychainStorageError.unexpectedStatus(status)
         }
