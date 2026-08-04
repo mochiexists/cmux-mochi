@@ -178,24 +178,50 @@ final class DeviceLinkReconnectLoopUITests: XCTestCase {
         if filterMenu.waitForExistence(timeout: 10), filterMenu.isHittable {
             filterMenu.tap()
             Thread.sleep(forTimeInterval: 4)
-            let machineFilter = app.descendants(matching: .any)
-                .matching(NSPredicate(format: "identifier BEGINSWITH 'MobileWorkspaceFilterMachine-'"))
-                .allElementsBoundByIndex
-                .first { $0.exists && $0.isHittable }
+            // Match by LABEL, not identifier: SwiftUI does not carry
+            // `accessibilityIdentifier` into a presented Menu's items, so every
+            // entry arrives with an empty identifier. Reading the menu proved
+            // this — the entries are there, unlabelled by id.
+            func machineEntry() -> XCUIElement? {
+                app.descendants(matching: .any).allElementsBoundByIndex
+                    .first {
+                        $0.exists && $0.isHittable
+                            && $0.label != "All Machines"
+                            && ($0.label.localizedCaseInsensitiveContains("MacBook")
+                                || $0.label.localizedCaseInsensitiveContains("m5")
+                                || $0.label == "Computer")
+                    }
+            }
+            // The per-machine entries live under a "Machines" SUBMENU, not at
+            // the top level of the filter menu. Reading the menu's contents is
+            // what showed this: it offers "All Workspaces | Unread | Machines".
+            if machineEntry() == nil {
+                let machinesSubmenu = app.descendants(matching: .any)
+                    .matching(NSPredicate(format: "label == 'Machines'"))
+                    .allElementsBoundByIndex
+                    .first { $0.exists && $0.isHittable }
+                if let machinesSubmenu {
+                    machinesSubmenu.tap()
+                    Thread.sleep(forTimeInterval: 4)
+                }
+            }
+            let machineFilter = machineEntry()
             if let machineFilter {
-                let filteredMacID = String(
-                    machineFilter.identifier.dropFirst("MobileWorkspaceFilterMachine-".count)
-                )
+                let filteredMachine = machineFilter.label
                 machineFilter.tap()
                 Thread.sleep(forTimeInterval: 10)
                 let filteredRows = visibleWorkspaceRowIDs()
                 XCTAssertFalse(
                     filteredRows.isEmpty,
-                    "filtering to \(filteredMacID) emptied the list. all=\(aggregatedRows)"
+                    "filtering to '\(filteredMachine)' emptied the list. all=\(aggregatedRows)"
                 )
-                XCTAssertTrue(
-                    filteredRows.allSatisfy { $0.hasPrefix(filteredMacID) },
-                    "filter to \(filteredMacID) left rows from other machines: \(filteredRows)"
+                // Every survivor must come from ONE machine: row ids are
+                // `<macID><workspaceID>`, so a single distinct 36-char prefix
+                // means the filter really narrowed to one Mac.
+                let survivingMacs = Set(filteredRows.map { String($0.prefix(36)) })
+                XCTAssertEqual(
+                    survivingMacs.count, 1,
+                    "filter to '\(filteredMachine)' left rows from \(survivingMacs.count) machines: \(filteredRows)"
                 )
                 XCTAssertLessThan(
                     filteredRows.count, aggregatedRows.count,
@@ -216,7 +242,19 @@ final class DeviceLinkReconnectLoopUITests: XCTestCase {
                 }
                 Thread.sleep(forTimeInterval: 8)
             } else {
-                XCTFail("filter menu opened but offered no machine entries. \(screen)")
+                // Report what the menu DID contain. "No machine entries" can
+                // mean the product built no machines, or that the control this
+                // test tapped was not the machine menu at all — those have
+                // opposite fixes and the failure text must tell them apart.
+                let presented = app.descendants(matching: .any).allElementsBoundByIndex
+                    .filter { $0.exists && !$0.label.isEmpty }
+                    .prefix(24)
+                    .map { "\($0.label)[\($0.identifier)]" }
+                    .joined(separator: " | ")
+                XCTFail(
+                    "filter menu opened but offered no machine entries. "
+                        + "presented=\(presented) \(screen)"
+                )
             }
         } else {
             XCTFail("no filter menu on a multi-machine list. \(screen)")
