@@ -63,7 +63,7 @@ describe("device token route", () => {
         },
         body: JSON.stringify({
           deviceToken: "b".repeat(64),
-          bundleId: "dev.cmux.ios.push1",
+          bundleId: "com.cmux-mochi.ios.push1",
           platform: "ios",
         }),
       }),
@@ -99,7 +99,7 @@ describe("device token route", () => {
         },
         body: JSON.stringify({
           deviceToken: "b".repeat(64),
-          bundleId: "dev.cmux.ios.push1",
+          bundleId: "com.cmux-mochi.ios.push1",
           platform: "ios",
         }),
       }),
@@ -127,7 +127,7 @@ describe("device token route", () => {
             },
             body: JSON.stringify({
               deviceToken: index.toString(16).padStart(64, "0"),
-              bundleId: "dev.cmux.ios.push1",
+              bundleId: "com.cmux-mochi.ios.push1",
               platform: "ios",
             }),
           }),
@@ -159,7 +159,7 @@ describe("device token route", () => {
           headers,
           body: JSON.stringify({
             deviceToken,
-            bundleId: "dev.cmux.ios.push1",
+            bundleId: "com.cmux-mochi.ios.push1",
             platform: "ios",
           }),
         }),
