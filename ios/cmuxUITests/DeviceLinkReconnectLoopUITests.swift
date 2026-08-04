@@ -149,6 +149,30 @@ final class DeviceLinkReconnectLoopUITests: XCTestCase {
                 + "expected 2. rows=\(aggregatedRows) \(summary) \(screen)"
         )
 
+        // Opening a chat must actually load it. A row that opens to nothing is
+        // the reported symptom: the list looked healthy, the tap did nothing
+        // useful. The composer is the cheapest honest proof that the workspace
+        // detail mounted against a live connection rather than an empty shell.
+        let firstRow = app.descendants(matching: .any)
+            .matching(NSPredicate(format: "identifier BEGINSWITH 'MobileWorkspaceRow-'"))
+            .allElementsBoundByIndex
+            .first { $0.exists && $0.isHittable }
+        if let firstRow {
+            let openedRow = firstRow.identifier
+            firstRow.tap()
+            let composer = app.descendants(matching: .any)["MobileComposerField"]
+            let loaded = composer.waitForExistence(timeout: 40)
+            let afterOpen = app.buttons.allElementsBoundByIndex
+                .filter(\.exists).prefix(12).map(\.label).joined(separator: " | ")
+            XCTAssertTrue(
+                loaded,
+                "opening \(openedRow) did not load a chat — no composer after 40 s. "
+                    + "buttons=\(afterOpen)"
+            )
+        } else {
+            XCTFail("no workspace row was tappable. rows=\(aggregatedRows) \(screen)")
+        }
+
         // Press Reconnect / Retry. This is the control the user pressed when the
         // loop appeared, and it is the only trigger that is unambiguously
         // `.manual` — pressing it separates a user-driven redial from the
