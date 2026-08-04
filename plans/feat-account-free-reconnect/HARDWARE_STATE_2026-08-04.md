@@ -86,3 +86,59 @@ locally. Worth tightening to 0600 before this leaves dogfood.
 - `--simulator` resolves with `OS:latest`, so the name must exist on the newest
   installed runtime (only `MochiSync-iPhone-27beta` on iOS 27.0 here), not
   merely be booted.
+
+---
+
+# Open blocker (2026-08-04, later): the connection succeeds but does not stick
+
+## Simulator — FIXED and verified
+
+Cold-launch reconnect on `MochiSync-iPhone-27beta`, fresh log each run:
+
+```
+[0.232] dial candidates: 127.0.0.1:58525 …
+[0.244] client verify: server 8dd06915fb28 expected 8dd06915fb28 -> accept
+[0.276] dial finished: connected
+```
+
+Took three fixes, all committed: the Stack ticket-mint on the loopback dial
+(`c66e7a4758`), the missing keychain entitlement on unsigned simulator builds
+(`10e1f4d7a1`), and fail-closed loopback TLS. Pairing and reconnect both work.
+
+## iPhone 16 — the connection loops
+
+The dial **succeeds** and then is re-attempted every ~12–14 s, indefinitely:
+
+```
+[38372.841] dial finished: connected
+[38374.532] dial finished: connected
+[38388.600] dial finished: connected
+[38400.466] dial finished: connected
+```
+
+Between a success and the next attempt there is **no error and no disconnect
+line** — only `macupdate.hint caps=22 version=0.64.20` and
+`sync.transport=hybrid`. So nothing is tearing the transport down; something is
+re-invoking `reconnectActiveMacOutcome` because the session state never
+registers as connected.
+
+The Mac agrees the connection is good: `verify … -> admit`,
+`admitted pairedDevice`, repeatedly, about once a second.
+
+User-visible symptom: the workspace list and prior chat render, but tapping
+through never connects, while the Mac app is plainly running.
+
+**This is the next thing to fix, and it is NOT a DeviceLink transport problem** —
+mutual TLS, pinning and admission all succeed on both sides. Look at what
+consumes `dial finished: connected`: which state the shell sets after a
+successful stored-Mac dial, and what re-triggers the reconnect ~12 s later
+(`sync.transport=hybrid` is the last thing logged before the gap). Suspect the
+connected state is being set on a path the UI does not observe, or is
+immediately invalidated by the hybrid sync transport handshake.
+
+## Stale apps on the phones
+
+The iPhone 16 carries three bundles: `com.cmux-mochi.ios.endpoint-stability`
+(the real one), plus `com.cmux-mochi.ios` and `dev.cmux.ios.nightly`, which hold
+no pairings and correctly show no computers. They are only a source of confusion
+— delete the latter two.
