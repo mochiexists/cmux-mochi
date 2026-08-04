@@ -130,6 +130,14 @@ extension MobileShellComposite {
         probeCurrentConnection: Bool,
         resyncAfterHealthy: Bool
     ) {
+        // Fork (cmux Mochi): recovery tears the connection down and redials, so
+        // a trigger that fires on every successful connect is an infinite loop
+        // the user experiences as "it never connects". The existing log for
+        // this goes to anchormux, which the on-device debug log does not carry —
+        // so the loop was visible and its cause was not.
+        MobileDeviceLinkDiagnostics.log(
+            "connection recovery: trigger=\(trigger.description) probe=\(probeCurrentConnection)"
+        )
         startConnectionRecovery(
             trigger: trigger,
             expectedClient: expectedClient,
