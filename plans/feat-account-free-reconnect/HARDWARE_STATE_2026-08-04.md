@@ -260,3 +260,54 @@ Verify with the UI test on the 17 (both Macs paired):
 - zero `connected -> disconnected`
 - switching Macs changes the listed workspaces
 - opening a workspace loads a terminal
+
+---
+
+# Final state 2026-08-04
+
+Full UI test on both phones, both paired to both Macs, run unattended:
+
+| Check | iPhone 16 | iPhone 17 |
+|---|---|---|
+| Durable connection, no Reconnect button | pass | pass |
+| All Computers lists BOTH Macs (by id, not name) | pass | pass |
+| Every aggregated row names its machine | pass | pass |
+| Machine filter offers machines and filters | pass | **FAIL** |
+| Opening a chat loads a composer | pass | pass |
+| Command echoed back over DeviceLink | pass | pass |
+
+`Executed 1 test, 0 failures` on the 16; 1 failure on the 17.
+
+The phones are mirrored, which is why running both is worth it: the 16 has M5
+foreground / M4 secondary, the 17 has M4 foreground / M5 secondary. Each Mac is
+exercised in both roles.
+
+## Open: the filter offers no machines on the iPhone 17
+
+Reproducible across runs on the 17 and never on the 16, so not a flake.
+
+What makes it strange: on the SAME run, the aggregated list contains rows from
+two distinct Macs (that assertion passes) and every row is attributed with its
+machine name (that assertion passes too) — so the machine identities are known
+to the list. Only `filterMenuMachines` comes up empty.
+
+Look at `filterMenuMachines(machineSnapshots:visibleSelection:)` and
+`WorkspaceMachineSnapshots.filterMachines`, which deliberately hides the section
+for a single machine (`filterMachinesHideSingleMachineSection`). The likely
+divergence is `visibleMacSelection` differing between the two phones, or
+`filterMachines` being computed from a snapshot that lags the rendered rows.
+Do NOT re-derive that the rows themselves are correct — they are.
+
+## Fixes that got here
+
+- `35e0e31dd8` synthetic ticket claimed `manual-<host>:<port>`; upstream's
+  post-connect identity check rejected a Mac it had just verified, ~90 ms after
+  every successful connect.
+- `f498e83bed` secondary connections never set the DeviceLink dial target, so
+  they offered the FOREGROUND Mac's key to a different Mac — 8 s timeout, nil
+  client, second Mac silently absent. Found by Codex.
+- Verified-identity adoption: adoption is what stamps `macDeviceID` onto
+  foreground workspaces; a stored-Mac reconnect names its Mac so it always took
+  the verify branch and left them anonymous.
+- Row attribution had to go in `WorkspaceListTableCoordinator` — the UIKit table
+  is what iOS renders; editing the SwiftUI row alone changed nothing on device.
