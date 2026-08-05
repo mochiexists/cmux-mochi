@@ -201,6 +201,57 @@ git add ghostty
 git commit -m "Update ghostty submodule"
 ```
 
+## CI and runners
+
+**Pushing runs nothing.** Every workflow in this fork is `workflow_dispatch`-only —
+`nightly.yml` has its `push:` block commented out, `ci.yml` is paused for pushes and
+PRs, and `test-ios.yml` went manual-only on 2026-07-13. A branch push produces zero
+CI. Dispatch explicitly:
+
+```bash
+gh workflow run nightly.yml  -R mochiexists/cmux-mochi --ref <branch> -f force=true
+gh workflow run ci.yml       -R mochiexists/cmux-mochi --ref <branch>
+gh workflow run test-ios.yml -R mochiexists/cmux-mochi --ref <branch>
+```
+
+Always pass `-R mochiexists/cmux-mochi`; `gh` resolves to upstream in this fork.
+
+**macOS and iOS jobs belong on our own runner, never a hosted pool.** Signing,
+device work, and multi-display UI tests need our hardware. The runner is chosen
+indirectly, and upstream's hosted fallback wins whenever the repo variable is
+unset:
+
+| Workflow | Variable | Upstream fallback if unset |
+|---|---|---|
+| `test-ios.yml` | `MACOS_RUNNER_IOS` | `blacksmith-6vcpu-macos-26` |
+| `ci.yml` (unit) | `MACOS_RUNNER_15` | `warp-macos-15-arm64-6x` |
+| `ci.yml` (swift pkg) | `MACOS_RUNNER_DUAL_XCODE` | `blacksmith-6vcpu-macos-15` |
+| `ci.yml` (build + lag) | `MACOS_RUNNER_DISPLAY` | `warp-macos-15-arm64-6x` |
+| `ci.yml` (UI regressions) | `MACOS_RUNNER_DISPLAY` | `blacksmith-6vcpu-macos-15` |
+| `ci.yml` (release build) | `MACOS_RUNNER_26_RELEASE` | `blacksmith-6vcpu-macos-26` |
+
+`nightly.yml` is the exception — it names `m4-signing-runner` directly, which is
+why it is the only lane that has reliably worked. A dispatch that looks fine can
+sit queued for hours against a hosted pool we do not buy capacity from, and
+`test-ios.yml`'s `runner` input does not even offer our runner, so routing must
+come from the variable. Verify before dispatching:
+
+```bash
+gh variable list -R mochiexists/cmux-mochi
+gh api repos/mochiexists/cmux-mochi/actions/runners --jq '.runners[].name'
+```
+
+**Guard tests go stale against fork overlays.** `tests/*.py` and `tests/*.sh`
+assert the *upstream* shape of workflows and signing config. When an overlay
+commit changes our side, the matching guard usually is not re-stamped, and it
+fails as a fork-parity artifact rather than a real defect — while a `needs:` gate
+turns one red guard into a cascade that silently **skips** the Swift test jobs.
+Seen 2026-08-05: `test_ios_appstore_lane_identity.py` still minted profiles under
+upstream's team `7WLXT3NR37` (ours is `599WAZ6282`), and
+`test_ci_nightly_tag_push_auth.sh` still required a nightly tag-push step the
+fork deleted in `409930e7c5`. Before blaming your own change, re-run the guard at
+the previous head — if it fails identically, it is pre-existing.
+
 ## Release
 
 Use the `/release` command to prepare a new release. This will:
