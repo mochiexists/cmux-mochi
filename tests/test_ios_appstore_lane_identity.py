@@ -21,7 +21,14 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-TEAM_ID = "7WLXT3NR37"
+# Fork (cmux Mochi): the fixture signs as the fork's team, not upstream's.
+#
+# `upload-testflight.sh` defaults DEVELOPMENT_TEAM to 599WAZ6282 (Atlas Codes
+# LTD), and its pre-upload guard rejects an IPA whose profile carries any other
+# team. Minting the fake profile under upstream's 7WLXT3NR37 made every lane
+# assertion fail with "signed IPA bundle identity does not match lane" — the
+# guard working correctly against a fixture the fork rebase never re-stamped.
+TEAM_ID = "599WAZ6282"
 APPSTORE_BUNDLE_ID = "com.cmux.app"
 APPSTORE_APP_ID = f"{TEAM_ID}.{APPSTORE_BUNDLE_ID}"
 BETA_BUNDLE_ID = "dev.cmux.app.beta"
@@ -29,7 +36,7 @@ BETA_APP_ID = f"{TEAM_ID}.{BETA_BUNDLE_ID}"
 ASC_APP_ID = "6783338052"
 ASC_VERSION_ID = "version-1.0.0"
 ASC_BUILD_ID = "build-1.0.0"
-IDENTITY = f"Apple Distribution: Manaflow, Inc. ({TEAM_ID})"
+IDENTITY = f"Apple Distribution: Atlas Codes LTD ({TEAM_ID})"
 APPSTORE_MARKETING_VERSION = "1.0.0"
 BETA_MARKETING_VERSION = "1.0.4"
 
