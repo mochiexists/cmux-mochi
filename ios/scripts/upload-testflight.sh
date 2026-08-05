@@ -792,6 +792,12 @@ EXPORT_OPTIONS="$OUT_DIR/ExportOptions.plist"
 
 mkdir -p "$OUT_DIR"
 
+# Expand with the `${arr[@]+...}` guard at every use site below. Under bash 3.2
+# — still /bin/bash on macOS, including the signing runners — `set -u` treats an
+# EMPTY array as unbound, so a bare "${XCODE_AUTH_ARGS[@]}" aborts the script.
+# That is exactly the export-only lane, which has no ASC key by definition: the
+# beta export died before writing ExportOptions.plist. Harmless on bash 4.4+,
+# which is why CI (Ubuntu, bash 5) never saw it.
 XCODE_AUTH_ARGS=()
 if [[ -n "${ASC_API_KEY_ID:-}" && -n "${ASC_API_ISSUER_ID:-}" && -n "${ASC_API_KEY_PATH:-}" ]]; then
   XCODE_AUTH_ARGS=(
@@ -817,7 +823,7 @@ if [[ -z "$ARCHIVE_PATH" ]]; then
       -archivePath "$ARCHIVE_PATH" \
       -derivedDataPath "$DERIVED_DATA" \
       -allowProvisioningUpdates \
-      "${XCODE_AUTH_ARGS[@]}" \
+      ${XCODE_AUTH_ARGS[@]+"${XCODE_AUTH_ARGS[@]}"} \
       DEVELOPMENT_TEAM="$DEVELOPMENT_TEAM" \
       PRODUCT_BUNDLE_IDENTIFIER="$PRODUCT_BUNDLE_IDENTIFIER" \
       PRODUCT_DISPLAY_NAME="$PRODUCT_DISPLAY_NAME" \
@@ -951,7 +957,7 @@ xcodebuild -exportArchive \
   -exportPath "$EXPORT_PATH" \
   -exportOptionsPlist "$EXPORT_OPTIONS" \
   -allowProvisioningUpdates \
-  "${XCODE_AUTH_ARGS[@]}" \
+  ${XCODE_AUTH_ARGS[@]+"${XCODE_AUTH_ARGS[@]}"} \
   | tee "$OUT_DIR/export.log"
 
 IPA_PATH="$EXPORT_PATH/cmux.ipa"
