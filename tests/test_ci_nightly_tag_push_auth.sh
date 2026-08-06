@@ -16,6 +16,22 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 WORKFLOW_FILE="$ROOT_DIR/.github/workflows/nightly.yml"
 
+# Fork (cmux Mochi): the fork has no nightly tag to move.
+#
+# `409930e7c5 fork: re-apply Mochi CI/release workflow overlay` removed the
+# "Move nightly tag to built commit" step: this fork cuts nightlies ad-hoc from a
+# working branch and publishes only on main, so nothing ever repoints a `nightly`
+# tag. Asserting the step exists made the guard fail on a workflow that is
+# correct by design — and because `linux-preflight` gates on this job, that one
+# red guard cascaded into skipping the Swift test jobs entirely.
+#
+# Absence is therefore a pass. The auth assertions below still apply in full if
+# the step ever returns, so the regressions in the history above stay guarded.
+if ! grep -q '^      - name: Move nightly tag to built commit' "$WORKFLOW_FILE"; then
+  echo "PASS: no nightly tag push step in this workflow (fork publishes on main only)"
+  exit 0
+fi
+
 if ! awk '
   /^      - name: Move nightly tag to built commit/ { in_step=1; next }
   in_step && /^      - name:/ { in_step=0 }
