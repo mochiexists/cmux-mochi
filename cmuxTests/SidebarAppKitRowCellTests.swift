@@ -53,6 +53,8 @@ struct SidebarAppKitRowCellTests {
         workspaceId: UUID = UUID(),
         isActive: Bool = false,
         canClose: Bool = true,
+        isPrivacyBlurred: Bool = false,
+        title: String = "Workspace",
         settings: SidebarTabItemSettingsSnapshot? = nil
     ) -> SidebarWorkspaceRowModel {
         let resolvedSettings = settings
@@ -60,9 +62,9 @@ struct SidebarAppKitRowCellTests {
         return SidebarWorkspaceRowModel(
             workspaceId: workspaceId,
             index: 0,
-            snapshot: makeSnapshot(),
+            snapshot: makeSnapshot(title: title),
             settings: resolvedSettings,
-            isPrivacyBlurred: false,
+            isPrivacyBlurred: isPrivacyBlurred,
             isActive: isActive,
             isMultiSelected: false,
             canCloseWorkspace: canClose,
@@ -209,6 +211,40 @@ struct SidebarAppKitRowCellTests {
         let textView = try #require(row.subviews.compactMap { $0 as? SidebarRowTextView }.first)
         #expect(textView.stringValue == status)
         #expect(!textView.stringValue.contains(key))
+    }
+
+    /// A blurred workspace row must be unreadable, not merely unselectable.
+    ///
+    /// Existing privacy coverage is entirely about selection — blurred rows cannot
+    /// be selected, cycled to, or focused. Nothing asserted that the row is
+    /// actually redacted, so the AppKit sidebar shipped with a frost sized to the
+    /// cell's layout accumulator instead of its real height: the row stayed
+    /// partially legible while every selection test still passed.
+    @Test
+    func privacyBlurredRowRedactsTitleAndFrostsWholeRow() {
+        let cell = Self.configuredCell(
+            model: Self.makeModel(isPrivacyBlurred: true, title: "very secret")
+        )
+        cell.setFrameSize(NSSize(width: 260, height: 96))
+        cell.layoutSubtreeIfNeeded()
+
+        let probe = cell.privacyRedactionProbe
+        #expect(probe.isFrostVisible)
+        #expect(probe.frostCoversRow, "frost must cover the full row or text stays legible")
+        #expect(probe.displayedTitle != "very secret", "the real title must never be rendered")
+    }
+
+    @Test
+    func unblurredRowShowsItsTitleAndNoFrost() {
+        let cell = Self.configuredCell(
+            model: Self.makeModel(isPrivacyBlurred: false, title: "very secret")
+        )
+        cell.setFrameSize(NSSize(width: 260, height: 96))
+        cell.layoutSubtreeIfNeeded()
+
+        let probe = cell.privacyRedactionProbe
+        #expect(!probe.isFrostVisible)
+        #expect(probe.displayedTitle == "very secret")
     }
 
     @Test
