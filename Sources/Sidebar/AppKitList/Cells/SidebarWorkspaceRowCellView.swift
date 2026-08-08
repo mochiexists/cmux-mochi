@@ -153,6 +153,29 @@ final class SidebarWorkspaceRowTableCellView: NSTableCellView {
             || hitView === closeButton || hitView.isDescendant(of: closeButton)
     }
 
+    #if DEBUG
+    /// What this cell actually renders for privacy redaction.
+    ///
+    /// The frost view and title view are private, so without this there is no way
+    /// to assert the *visual* half of privacy mode — and that is precisely the half
+    /// that regressed: existing coverage only checks that blurred rows cannot be
+    /// selected, never that they are unreadable.
+    struct PrivacyRedactionProbe: Equatable {
+        let isFrostVisible: Bool
+        let frostCoversRow: Bool
+        let displayedTitle: String
+    }
+
+    var privacyRedactionProbe: PrivacyRedactionProbe {
+        PrivacyRedactionProbe(
+            isFrostVisible: !privacyFrostView.isHidden,
+            frostCoversRow: privacyFrostView.frame.height >= bounds.height
+                && privacyFrostView.frame.width >= backgroundView.frame.width,
+            displayedTitle: titleView.stringValue
+        )
+    }
+    #endif
+
     private func applyBackgroundStyle(_ style: SidebarWorkspaceRowBackgroundStyle) {
         backgroundView.layer?.backgroundColor = (style.color ?? .clear)
             .withAlphaComponent((style.color == nil ? 0 : style.opacity) * ((style.color?.alphaComponent) ?? 1)).cgColor
@@ -1058,7 +1081,24 @@ final class SidebarWorkspaceRowTableCellView: NSTableCellView {
             // nesting ("can't tell when a workspace is in a group").
             let bgX = outerPad + (model.isGrouped ? SidebarWorkspaceGroupingMetrics.memberIndent : 0)
             backgroundView.frame = NSRect(x: bgX, y: 0, width: max(0, width - outerPad - bgX), height: y)
-            privacyFrostView.frame = backgroundView.frame
+            // Redaction must cover the row, so it is sized from the row's own
+            // bounds — not from `y`.
+            //
+            // `y` is this cell's layout accumulator; the row's actual height comes
+            // from a SEPARATE computation (SidebarWorkspaceTableRowHeightCalculator
+            // via the height cache). When the two disagree, a frost sized to `y`
+            // leaves the remaining `bounds.height - y` strip legible, which is how
+            // a "blurred" workspace still showed its text. The group header cell
+            // never had this bug because it frosts `bounds.height` directly.
+            //
+            // max() so the frost also spans content that overflows the measured
+            // height rather than under-covering it.
+            privacyFrostView.frame = NSRect(
+                x: bgX,
+                y: 0,
+                width: max(0, width - outerPad - bgX),
+                height: max(y, bounds.height)
+            )
             railView.frame = NSRect(x: bgX + 4 - 1, y: 5, width: 3, height: max(0, y - 10))
             railView.layer?.cornerRadius = 1.5
             let indicatorLeading: CGFloat = 8 + (model.isGrouped ? 0 : 0)
