@@ -34,6 +34,9 @@
       <FileRef
          location = "group:CmuxSyncStore">
       </FileRef>
+      <FileRef
+         location = "group:DeviceLinkKit">
+      </FileRef>
    </Group>
    <Group
       location = "container:Packages/iOS"
