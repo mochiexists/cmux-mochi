@@ -191,6 +191,10 @@ import Testing
         #expect(connection.exited)
         #expect(didCloseOwningWindow)
         #expect(!owningWindow.isVisible)
+        try await waitForOwningWindowRemoval(
+            appDelegate: harness.appDelegate,
+            windowId: harness.windowId
+        )
         #expect(!harness.appDelegate.listMainWindowSummaries().contains {
             $0.windowId == harness.windowId
         })
@@ -459,6 +463,22 @@ import Testing
         let log = (try? String(contentsOf: logURL, encoding: .utf8)) ?? ""
         Issue.record("Timed out waiting for fake SSH argument '\(argument)': \(log)")
         return log
+    }
+
+    private func waitForOwningWindowRemoval(
+        appDelegate: AppDelegate,
+        windowId: UUID
+    ) async throws {
+        for _ in 0..<200 {
+            let summaryWasRemoved = !appDelegate.listMainWindowSummaries().contains {
+                $0.windowId == windowId
+            }
+            if summaryWasRemoved,
+               appDelegate.recoverableMainWindowRoute(windowId: windowId) == nil {
+                return
+            }
+            try await Task.sleep(for: .milliseconds(10))
+        }
     }
 
     @MainActor
