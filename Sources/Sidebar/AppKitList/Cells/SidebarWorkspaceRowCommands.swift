@@ -287,6 +287,7 @@ struct SidebarWorkspaceRowMenuBuilder {
 
         addPinItem(to: menu, tabManager: tabManager)
         addGroupSection(to: menu, tabManager: tabManager)
+        addPrivacyBlurItem(to: menu, tabManager: tabManager)
         menu.addItem(.separator())
         addTodoSection(to: menu, tabManager: tabManager)
         menu.addItem(.separator())
@@ -415,6 +416,25 @@ struct SidebarWorkspaceRowMenuBuilder {
                 }
             })
         }
+    }
+
+    private func addPrivacyBlurItem(to menu: NSMenu, tabManager: TabManager) {
+        let targetWorkspaces = targetIds.compactMap { id in
+            tabManager.tabs.first(where: { $0.id == id })
+        }
+        let shouldBlur = targetWorkspaces.contains {
+            !tabManager.isWorkspaceEffectivelyPrivacyBlurred($0)
+        }
+        let title = shouldBlur
+            ? label(
+                multi: String(localized: "contextMenu.blurWorkspaces", defaultValue: "Blur Workspaces"),
+                single: String(localized: "contextMenu.blurWorkspace", defaultValue: "Blur Workspace"))
+            : label(
+                multi: String(localized: "contextMenu.unblurWorkspaces", defaultValue: "Unblur Workspaces"),
+                single: String(localized: "contextMenu.unblurWorkspace", defaultValue: "Unblur Workspace"))
+        menu.addItem(item(title, enabled: !targetWorkspaces.isEmpty) { [weak tabManager] in
+            tabManager?.setWorkspacePrivacyBlurred(targetIds, isBlurred: shouldBlur)
+        })
     }
 
     private func todoTargetWorkspaces(_ tabManager: TabManager) -> [Workspace] {
