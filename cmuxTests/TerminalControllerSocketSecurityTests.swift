@@ -304,6 +304,39 @@ final class TerminalControllerSocketSecurityTests {
         XCTAssertTrue(wrongAuthThenPing[1].hasPrefix("ERROR:"))
     }
 
+    @Test func passwordModeAcceptsCapabilityWrappedShellTelemetry() throws {
+        let socketPath = makeSocketPath("password-capability")
+        let tabManager = TabManager()
+        let workspace = try XCTUnwrap(tabManager.selectedWorkspace)
+        let panelID = try XCTUnwrap(workspace.panels.keys.first)
+        let capability = try XCTUnwrap(
+            TerminalController.shared.socketClientCapabilityEnvironment()[
+                SocketClientCapabilityEnvelope.environmentKey
+            ]
+        )
+        let envelope = try XCTUnwrap(SocketClientCapabilityEnvelope(capability: capability))
+
+        TerminalController.shared.start(
+            tabManager: tabManager,
+            socketPath: socketPath,
+            accessMode: .password
+        )
+        try waitForSocket(at: socketPath)
+
+        let command = envelope.wrap(
+            "report_shell_state running --tab=\(workspace.id) --panel=\(panelID)"
+        )
+        let responses = try sendCommands([command], to: socketPath)
+
+        XCTAssertEqual(responses, ["OK"])
+        let deadline = Date().addingTimeInterval(2)
+        while workspace.panelShellActivityStates[panelID] != .commandRunning,
+              Date() < deadline {
+            RunLoop.current.run(mode: .default, before: Date(timeIntervalSinceNow: 0.01))
+        }
+        XCTAssertEqual(workspace.panelShellActivityStates[panelID], .commandRunning)
+    }
+
     @Test func testV2ControlFocusRoutesRejectPrivacyBlurredWorkspace() throws {
         let socketPath = makeSocketPath("privacy-routes")
         let tabManager = TabManager()

@@ -119,6 +119,43 @@ struct SocketClientAuthorizationTests {
         }
     }
 
+    @Test func passwordRejectsCapabilityWrappedControlCommands() throws {
+        let authority = SocketClientCapabilityAuthority(
+            secret: Data(repeating: 0xA5, count: SocketClientCapabilityAuthority.secureByteCount),
+            audience: "com.cmuxterm.test"
+        )
+        let capability = authority.issueCapability(
+            nonce: Data(repeating: 0x5A, count: SocketClientCapabilityAuthority.secureByteCount)
+        )
+        let envelope = try #require(SocketClientCapabilityEnvelope(capability: capability))
+
+        #expect(authorization.authorizedCommand(
+            envelope.wrap("ping"),
+            accessMode: .password,
+            peerProcessID: nil,
+            peerHasSameUID: true,
+            capabilityAuthority: authority,
+            isDescendant: { _ in false }
+        ) == nil)
+    }
+
+    @Test func passwordRejectsInvalidCapabilityWrappedTelemetry() {
+        let authority = SocketClientCapabilityAuthority(
+            secret: Data(repeating: 0xA5, count: SocketClientCapabilityAuthority.secureByteCount),
+            audience: "com.cmuxterm.test"
+        )
+        let envelope = SocketClientCapabilityEnvelope(capability: "not-a-valid-capability")
+
+        #expect(authorization.authorizedCommand(
+            envelope?.wrap("report_shell_state running --tab=test --panel=test") ?? "",
+            accessMode: .password,
+            peerProcessID: nil,
+            peerHasSameUID: true,
+            capabilityAuthority: authority,
+            isDescendant: { _ in false }
+        ) == nil)
+    }
+
     @Test func allowAllDoesNotRequireSameUser() {
         let authority = SocketClientCapabilityAuthority(
             secret: Data(repeating: 0xA5, count: SocketClientCapabilityAuthority.secureByteCount),
