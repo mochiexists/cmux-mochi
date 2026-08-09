@@ -183,6 +183,34 @@ struct SidebarAppKitRowCellTests {
         )
     }
 
+    private static func makeMenuCommands(
+        tabManager: TabManager,
+        targetIds: [UUID]
+    ) -> SidebarWorkspaceRowCommands {
+        guard let tab = tabManager.tabs.first(where: { targetIds.contains($0.id) }) else {
+            preconditionFailure("Menu targets must include a live workspace")
+        }
+        return SidebarWorkspaceRowCommands(
+            tab: tab,
+            tabManager: tabManager,
+            notificationStore: nil,
+            index: 0,
+            contextMenuWorkspaceIds: targetIds,
+            remoteContextMenuWorkspaceIds: [],
+            allRemoteContextMenuTargetsConnecting: false,
+            allRemoteContextMenuTargetsDisconnected: false,
+            contextMenuPinState: nil,
+            workspaceGroupMenuSnapshot: WorkspaceGroupMenuSnapshot(items: []),
+            refreshSnapshot: {},
+            readSelectedTabIds: { [] },
+            writeSelectedTabIds: { _ in },
+            readLastSelectionIndex: { nil },
+            writeLastSelectionIndex: { _ in },
+            setSelectionToTabs: {},
+            snapshotProvider: { nil }
+        )
+    }
+
     private static func configuredCell(
         model: SidebarWorkspaceRowModel
     ) -> SidebarWorkspaceRowTableCellView {
@@ -245,6 +273,47 @@ struct SidebarAppKitRowCellTests {
         let probe = cell.privacyRedactionProbe
         #expect(!probe.isFrostVisible)
         #expect(probe.displayedTitle == "very secret")
+    }
+
+    @Test
+    func workspacePrivacyMenuTogglesSingleAndMultipleTargets() throws {
+        let manager = TabManager()
+        let first = manager.tabs[0]
+        let second = manager.addWorkspace(select: false)
+
+        func performMenuItem(_ title: String, targetIds: [UUID]) throws {
+            let commands = Self.makeMenuCommands(tabManager: manager, targetIds: targetIds)
+            let menu = commands.makeContextMenu(onOpen: {}, onClose: {})
+            let index = try #require(menu.items.firstIndex { $0.title == title })
+            menu.performActionForItem(at: index)
+        }
+
+        try performMenuItem(
+            String(localized: "contextMenu.blurWorkspace", defaultValue: "Blur Workspace"),
+            targetIds: [first.id]
+        )
+        #expect(first.isPrivacyBlurred)
+
+        try performMenuItem(
+            String(localized: "contextMenu.unblurWorkspace", defaultValue: "Unblur Workspace"),
+            targetIds: [first.id]
+        )
+        #expect(!first.isPrivacyBlurred)
+
+        manager.setWorkspacePrivacyBlurred([first.id], isBlurred: true)
+        try performMenuItem(
+            String(localized: "contextMenu.blurWorkspaces", defaultValue: "Blur Workspaces"),
+            targetIds: [first.id, second.id]
+        )
+        #expect(first.isPrivacyBlurred)
+        #expect(second.isPrivacyBlurred)
+
+        try performMenuItem(
+            String(localized: "contextMenu.unblurWorkspaces", defaultValue: "Unblur Workspaces"),
+            targetIds: [first.id, second.id]
+        )
+        #expect(!first.isPrivacyBlurred)
+        #expect(!second.isPrivacyBlurred)
     }
 
     @Test
