@@ -1508,7 +1508,7 @@ class TerminalController {
                 _ = writeSocketResponse(Self.socketClientAccessDeniedResponse, to: socket)
                 return
             }
-            guard let trimmed = authorizedSocketCommand(
+            guard let socketAuthorization = authorizedSocketCommand(
                 receivedCommand,
                 peerProcessID: pid,
                 peerHasSameUID: peerHasSameUID
@@ -1520,6 +1520,7 @@ class TerminalController {
                 )
                 return
             }
+            let trimmed = socketAuthorization.command
             lineReader.clearLimits()
             if holdsPreauthorizationSlot {
                 holdsPreauthorizationSlot = false
@@ -1531,6 +1532,7 @@ class TerminalController {
                 if isEventsStreamRequest(trimmed) {
                     if let response = authResponseIfNeeded(
                         for: trimmed,
+                        bypassesPasswordAuthentication: socketAuthorization.bypassesPasswordAuthentication,
                         passwordAuthorization: &passwordAuthorization
                     ) {
                         if !writeSocketResponse(response, to: socket) {
@@ -1551,6 +1553,7 @@ class TerminalController {
 
                 let result = processSocketLine(
                     trimmed,
+                    bypassesPasswordAuthentication: socketAuthorization.bypassesPasswordAuthentication,
                     passwordAuthorization: passwordAuthorization
                 )
                 passwordAuthorization = result.passwordAuthorization
@@ -1571,6 +1574,7 @@ class TerminalController {
 
     private nonisolated func processSocketLine(
         _ command: String,
+        bypassesPasswordAuthentication: Bool,
         passwordAuthorization: SocketPasswordAuthorization
     ) -> SocketLineProcessingResult {
 #if DEBUG
@@ -1587,6 +1591,7 @@ class TerminalController {
         var nextPasswordAuthorization = passwordAuthorization
         if let response = authResponseIfNeeded(
             for: command,
+            bypassesPasswordAuthentication: bypassesPasswordAuthentication,
             passwordAuthorization: &nextPasswordAuthorization
         ) {
 #if DEBUG

@@ -139,6 +139,41 @@ struct SocketClientAuthorizationTests {
         ) == nil)
     }
 
+    @Test func passwordAllowsCapabilityWrappedShellTelemetry() throws {
+        let authority = SocketClientCapabilityAuthority(
+            secret: Data(repeating: 0xA5, count: SocketClientCapabilityAuthority.secureByteCount),
+            audience: "com.cmuxterm.test"
+        )
+        let capability = authority.issueCapability(
+            nonce: Data(repeating: 0x5A, count: SocketClientCapabilityAuthority.secureByteCount)
+        )
+        let envelope = try #require(SocketClientCapabilityEnvelope(capability: capability))
+        let commands = [
+            "report_tty /dev/ttys001",
+            "report_shell_state running",
+            "ports_kick prompt",
+            "report_pwd /tmp",
+            "report_git_branch main",
+            "clear_git_branch",
+            "report_pr 123",
+            "report_pr_action 123 merge",
+            "clear_pr",
+        ]
+
+        for command in commands {
+            let result = authorization.authorizationResult(
+                envelope.wrap(command),
+                accessMode: .password,
+                peerProcessID: nil,
+                peerHasSameUID: true,
+                capabilityAuthority: authority,
+                isDescendant: { _ in false }
+            )
+            #expect(result?.command == command)
+            #expect(result?.bypassesPasswordAuthentication == true)
+        }
+    }
+
     @Test func passwordRejectsInvalidCapabilityWrappedTelemetry() {
         let authority = SocketClientCapabilityAuthority(
             secret: Data(repeating: 0xA5, count: SocketClientCapabilityAuthority.secureByteCount),

@@ -70,6 +70,9 @@ if test "$_cmux_integration_enabled" != 0
     function _cmux_send --argument-names payload
         test -n "$payload"; or return 0
         test -n "$CMUX_SOCKET_PATH"; or return 0
+        if set -q CMUX_SOCKET_CAPABILITY; and test -n "$CMUX_SOCKET_CAPABILITY"
+            set payload "_cmux_capability_v1 $CMUX_SOCKET_CAPABILITY $payload"
+        end
         switch "$_CMUX_SEND_TOOL"
             case ncat
                 printf '%s\n' "$payload" | ncat -w 1 -U "$CMUX_SOCKET_PATH" --send-only >/dev/null 2>&1

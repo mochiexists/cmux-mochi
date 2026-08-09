@@ -15,6 +15,9 @@ _cmux_detect_send_tool() {
 
 _cmux_send() {
     local payload="$1"
+    if [[ -n "${CMUX_SOCKET_CAPABILITY:-}" ]]; then
+        payload="_cmux_capability_v1 ${CMUX_SOCKET_CAPABILITY} ${payload}"
+    fi
     case "$_CMUX_SEND_TOOL" in
         ncat)
             printf '%s\n' "$payload" | ncat -w 1 -U "$CMUX_SOCKET_PATH" --send-only

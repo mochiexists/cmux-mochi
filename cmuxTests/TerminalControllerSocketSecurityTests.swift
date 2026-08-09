@@ -307,6 +307,16 @@ final class TerminalControllerSocketSecurityTests {
     @Test func passwordModeAcceptsCapabilityWrappedShellTelemetry() throws {
         let socketPath = makeSocketPath("password-capability")
         let tabManager = TabManager()
+        let previousAppDelegate = AppDelegate.shared
+        let appDelegate = previousAppDelegate ?? AppDelegate()
+        AppDelegate.shared = appDelegate
+        let windowID = appDelegate.registerMainWindowContextForTesting(tabManager: tabManager)
+        defer {
+            TerminalController.shared.stop()
+            appDelegate.unregisterMainWindowContextForTesting(windowId: windowID)
+            AppDelegate.shared = previousAppDelegate
+            unlink(socketPath)
+        }
         let workspace = try XCTUnwrap(tabManager.selectedWorkspace)
         let panelID = try XCTUnwrap(workspace.panels.keys.first)
         let capability = try XCTUnwrap(
@@ -329,11 +339,7 @@ final class TerminalControllerSocketSecurityTests {
         let responses = try sendCommands([command], to: socketPath)
 
         XCTAssertEqual(responses, ["OK"])
-        let deadline = Date().addingTimeInterval(2)
-        while workspace.panelShellActivityStates[panelID] != .commandRunning,
-              Date() < deadline {
-            RunLoop.current.run(mode: .default, before: Date(timeIntervalSinceNow: 0.01))
-        }
+        TerminalMutationBus.shared.drainForTesting()
         XCTAssertEqual(workspace.panelShellActivityStates[panelID], .commandRunning)
     }
 

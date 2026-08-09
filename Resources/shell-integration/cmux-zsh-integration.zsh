@@ -42,6 +42,9 @@ _cmux_restore_status() {
 # where it shadows the system nc.
 _cmux_send() {
     local payload="$1"
+    if [[ -n "${CMUX_SOCKET_CAPABILITY:-}" ]]; then
+        payload="_cmux_capability_v1 ${CMUX_SOCKET_CAPABILITY} ${payload}"
+    fi
     if [[ -x /usr/bin/nc ]]; then
         # Apple's nc defines -N as `num_probes` (it is not OpenBSD's no-arg
         # shutdown-after-EOF flag), so the -N form fails option parsing; use

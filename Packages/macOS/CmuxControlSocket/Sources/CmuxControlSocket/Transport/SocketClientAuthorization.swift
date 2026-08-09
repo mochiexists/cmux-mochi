@@ -6,6 +6,16 @@ public struct SocketClientAuthorization {
     /// Creates an authorization helper with no retained process state.
     public init() {}
 
+    /// The authorized command plus any authentication already established by
+    /// the transport envelope.
+    public struct Result: Sendable {
+        /// The control-socket command after removing an accepted capability envelope.
+        public let command: String
+
+        /// Whether a verified, telemetry-scoped capability replaces password login.
+        public let bypassesPasswordAuthentication: Bool
+    }
+
     /// Returns whether a peer process is allowed to use cmux-only socket operations.
     ///
     /// A non-nil `peerProcessID` must resolve as a descendant of the trusted cmux
@@ -76,22 +86,73 @@ public struct SocketClientAuthorization {
         capabilityAuthority: SocketClientCapabilityAuthority,
         isDescendant: (pid_t) -> Bool
     ) -> String? {
+        authorizationResult(
+            command,
+            accessMode: accessMode,
+            peerProcessID: peerProcessID,
+            peerHasSameUID: peerHasSameUID,
+            capabilityAuthority: capabilityAuthority,
+            isDescendant: isDescendant
+        )?.command
+    }
+
+    /// Applies the current socket access mode and preserves whether a verified
+    /// terminal capability has already authenticated password-mode telemetry.
+    public func authorizationResult(
+        _ command: String,
+        accessMode: SocketControlMode,
+        peerProcessID: pid_t?,
+        peerHasSameUID: Bool,
+        capabilityAuthority: SocketClientCapabilityAuthority,
+        isDescendant: (pid_t) -> Bool
+    ) -> Result? {
         switch accessMode {
         case .off:
             return nil
         case .cmuxOnly:
-            return authorizedCommand(
+            guard let command = authorizedCommand(
                 command,
                 peerProcessID: peerProcessID,
                 peerHasSameUID: peerHasSameUID,
                 capabilityAuthority: capabilityAuthority,
                 isDescendant: isDescendant
-            )
-        case .automation, .password:
+            ) else {
+                return nil
+            }
+            return Result(command: command, bypassesPasswordAuthentication: false)
+        case .automation:
             guard peerHasSameUID else { return nil }
-            return SocketClientCapabilityCommand(command)?.command ?? command
+            return Result(
+                command: SocketClientCapabilityCommand(command)?.command ?? command,
+                bypassesPasswordAuthentication: false
+            )
+        case .password:
+            guard peerHasSameUID else { return nil }
+            guard let envelope = SocketClientCapabilityCommand(command) else {
+                return Result(command: command, bypassesPasswordAuthentication: false)
+            }
+            guard capabilityAuthority.verifies(envelope.capability),
+                  Self.isPasswordTelemetryCommand(envelope.command) else {
+                return nil
+            }
+            return Result(command: envelope.command, bypassesPasswordAuthentication: true)
         case .allowAll:
-            return SocketClientCapabilityCommand(command)?.command ?? command
+            return Result(
+                command: SocketClientCapabilityCommand(command)?.command ?? command,
+                bypassesPasswordAuthentication: false
+            )
         }
+    }
+
+    private static func isPasswordTelemetryCommand(_ command: String) -> Bool {
+        guard let commandName = command.split(whereSeparator: { $0.isWhitespace }).first else {
+            return false
+        }
+        if commandName.hasPrefix("report_") {
+            return true
+        }
+        return commandName == "ports_kick"
+            || commandName == "clear_git_branch"
+            || commandName == "clear_pr"
     }
 }

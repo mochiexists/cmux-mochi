@@ -47,8 +47,8 @@ extension TerminalController {
         _ command: String,
         peerProcessID: pid_t?,
         peerHasSameUID: Bool
-    ) -> String? {
-        return SocketClientAuthorization().authorizedCommand(
+    ) -> SocketClientAuthorization.Result? {
+        return SocketClientAuthorization().authorizationResult(
             command,
             accessMode: socketServer.accessMode,
             peerProcessID: peerProcessID,
@@ -134,9 +134,13 @@ extension TerminalController {
 
     nonisolated func authResponseIfNeeded(
         for command: String,
+        bypassesPasswordAuthentication: Bool,
         passwordAuthorization: inout SocketPasswordAuthorization
     ) -> String? {
         guard socketServer.accessMode.requiresPasswordAuth else {
+            return nil
+        }
+        if bypassesPasswordAuthentication {
             return nil
         }
         if let v2Response = passwordLoginV2ResponseIfNeeded(
