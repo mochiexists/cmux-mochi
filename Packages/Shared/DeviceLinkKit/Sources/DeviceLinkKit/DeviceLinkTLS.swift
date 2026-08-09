@@ -19,6 +19,8 @@ internal import Security
 /// TLS must be configured when the `NWConnection`/`NWListener` is *created*.
 /// These factories therefore hand back parameters for the transport layer to
 /// construct with, rather than trying to wrap an already-open stream.
+// lint:allow namespace-type — stateless Network.framework factory and parser;
+// all per-connection identity and authorization dependencies are parameters.
 public enum DeviceLinkTLS {
     /// The only application protocol DeviceLink speaks. Both ends advertise it
     /// and the client verifies the negotiated value, so this endpoint can never

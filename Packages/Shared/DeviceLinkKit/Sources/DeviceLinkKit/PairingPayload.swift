@@ -48,6 +48,8 @@ public struct PairingPayload: Sendable, Equatable {
 /// the app (`CFBundleURLName = dev.cmux.ios.attach`); the version discriminates
 /// the grammar. A `pair` host is also decoded so codes minted during
 /// development keep working.
+// lint:allow namespace-type — stateless codec that owns the versioned wire
+// grammar; all payload state remains on PairingPayload itself.
 public enum PairingPayloadCoder {
     /// Grammar version. Distinct from the removed bearer-carrying grammars so a
     /// stale code can never be misread as a valid one.

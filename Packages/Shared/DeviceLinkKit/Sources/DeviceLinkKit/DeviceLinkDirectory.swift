@@ -42,6 +42,8 @@ public protocol DeviceLinkDirectory: Sendable {
 }
 
 /// Chooses which endpoints to dial, and in what order.
+// lint:allow namespace-type — pure route-ordering policy with no dependency or
+// lifetime; keeping it separate avoids coupling the value and directory types.
 public enum EndpointResolution {
     /// Merges a stored route list with directory advertisements.
     ///

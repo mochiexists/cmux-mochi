@@ -17,6 +17,8 @@ import Foundation
 /// The id identifies nothing but this install. It is a random UUID, never sent
 /// anywhere, and is deliberately NOT derived from a device identifier so it cannot
 /// become a tracking vector.
+// Stateless policy for the reserved account-free identifier space.
+// lint:allow namespace-enum — an instance would imply identity it does not have.
 enum MobileLocalPairingScope {
     /// Namespace prefix. Stack user ids are opaque, but they are never issued with
     /// this prefix, so the two spaces cannot overlap.

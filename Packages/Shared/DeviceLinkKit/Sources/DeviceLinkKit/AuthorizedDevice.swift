@@ -40,6 +40,8 @@ public struct AuthorizedDevice: Sendable, Codable, Equatable, Identifiable {
 
 /// Normalization for device labels, which arrive from the peer and are
 /// therefore untrusted input rendered into notifications and CLI output.
+// lint:allow namespace-type — pure untrusted-input policy with no dependency
+// or lifetime to inject; an instance would carry no meaningful state.
 public enum DeviceLabel {
     /// Maximum stored length in Unicode scalars.
     public static let maximumLength = 64

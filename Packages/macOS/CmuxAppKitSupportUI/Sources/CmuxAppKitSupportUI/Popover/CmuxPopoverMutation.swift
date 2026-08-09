@@ -37,6 +37,8 @@ public final class CmuxPopoverVisibleUpdateScheduler {
     }
 }
 
+// lint:allow namespace-type — stateless AppKit mutation policy shared by
+// popover callers; all target state is supplied explicitly per operation.
 @MainActor
 public enum CmuxPopoverMutation {
     public static func performWithoutImplicitAnimation(_ body: () -> Void) {

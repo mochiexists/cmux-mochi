@@ -16,6 +16,8 @@ private let deviceLinkLog = Logger(subsystem: "com.cmux-mochi", category: "Devic
 /// device with the tooling here; the app's own file log is. Pairing failures
 /// that are invisible on hardware are exactly the ones that cost the most
 /// time, so every event goes to both.
+// lint:allow free-function — file-scoped dual-sink adapter shared by the
+// MobileShellComposite extension; it owns no state and is not package API.
 func logDeviceLink(_ message: String) {
     deviceLinkLog.info("\(message)")
     MobileDebugLog.shared.append("devicelink · \(message)")

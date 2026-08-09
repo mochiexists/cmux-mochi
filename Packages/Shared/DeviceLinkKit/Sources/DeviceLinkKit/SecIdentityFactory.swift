@@ -25,6 +25,8 @@ private func SecIdentityCreate(
     _ privateKey: SecKey
 ) -> Unmanaged<SecIdentity>?
 
+// lint:allow namespace-type — Security.framework FFI factory with no retained
+// dependency or lifetime; inputs fully describe each identity construction.
 public enum SecIdentityFactory {
     public enum FactoryError: Error, Equatable {
         case keyImportFailed(OSStatus)

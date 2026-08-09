@@ -10,6 +10,8 @@ import Foundation
 /// targets, so any agent evidence — a detected resume binding, a registered
 /// agent lifecycle, or a foreground command recognized as an agent CLI —
 /// exempts the pane. `force` (the CLI `--force` flag) always wins.
+// lint:allow namespace-type — pure send-policy decision with no dependency or
+// lifetime; every observation required for a verdict is an explicit argument.
 public enum ControlSurfaceSendGuard {
     /// Foreground command names that are legitimate text-send targets even
     /// though the shell reports a running command. Agent CLIs own the pane's

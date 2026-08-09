@@ -12,10 +12,14 @@ internal import Security
 /// key exposes one pairing, and the same fingerprint never appears to two Macs,
 /// so pairings cannot be correlated by an observer who sees both.
 public final class MobileDeviceLinkClient: @unchecked Sendable {
+    // lint:allow singleton — the transport supplies process-wide synchronous TLS
+    // callbacks, so the credential and active-dial state must share one owner.
     public static let shared = MobileDeviceLinkClient()
 
     private let identityStore: KeychainDeviceIdentityStore
     private let pinStore: KeychainServerPinStore
+    // lint:allow lock — protects the small cache/dial-target snapshot used by
+    // synchronous Network.framework callbacks that cannot await an actor.
     private let lock = NSLock()
     private var cachedIdentities: [String: SecIdentity] = [:]
     /// macDeviceID -> pairingID, so a dial can find the right key.
