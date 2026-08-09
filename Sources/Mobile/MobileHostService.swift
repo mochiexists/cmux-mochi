@@ -573,13 +573,19 @@ final class MobileHostService {
     /// Iroh is an account-authenticated transport and starts for every signed-in
     /// Mac. The legacy listener remains opt-in so existing Tailscale and private
     /// network users keep their route without making it a prerequisite for Iroh.
+    /// App-host tests skip both credential-backed transports: Xcode ad-hoc signs
+    /// each test build independently, so reusing their Keychain identities can
+    /// otherwise display an authorization dialog before the tests begin.
     nonisolated static func startupPlan(
         legacyListenerEnabled: Bool,
-        legacyListenerRunning: Bool
+        legacyListenerRunning: Bool,
+        runningUnderXCTest: Bool = false
     ) -> MobileHostStartupPlan {
         MobileHostStartupPlan(
-            activatesIroh: true,
-            startsLegacyListener: legacyListenerEnabled && !legacyListenerRunning
+            activatesIroh: !runningUnderXCTest,
+            startsLegacyListener: !runningUnderXCTest
+                && legacyListenerEnabled
+                && !legacyListenerRunning
         )
     }
 
@@ -754,9 +760,15 @@ final class MobileHostService {
     }
 
     func start() {
+        #if DEBUG
+        let runningUnderXCTest = Self.isRunningUnderXCTest
+        #else
+        let runningUnderXCTest = false
+        #endif
         let plan = Self.startupPlan(
             legacyListenerEnabled: Self.isListeningEnabled,
-            legacyListenerRunning: listener != nil
+            legacyListenerRunning: listener != nil,
+            runningUnderXCTest: runningUnderXCTest
         )
         guard plan.startsLegacyListener else {
             #if DEBUG
