@@ -22,6 +22,13 @@ final class HostSettingsActions: SettingsHostActions {
     /// Serializes font-size config writes so rapid slider saves persist in order.
     private let fontConfigWriter = FontConfigWriter()
 
+    /// Dials the advertised pairing routes so the Mobile section can show a
+    /// verified reachability state instead of an enumerated claim. Owned here
+    /// (constructor-scoped, not a singleton) because this bridge is the only
+    /// caller, and it coalesces overlapping checks across the section's
+    /// appearance and the user's refresh taps.
+    private let mobileRouteReachability = MobileRouteReachabilityService()
+
     /// AppKit window identifier the dedicated terminal-config window carries.
     /// Matches the value `ConfigSettingsView.configureWindow` assigns so the
     /// host reuses a config window opened from any entrypoint (the legacy
@@ -305,6 +312,16 @@ final class HostSettingsActions: SettingsHostActions {
                 observer.remove()
             }
         }
+    }
+
+    func verifyMobilePairingRouteReachability() async -> [String: CmxRouteReachability] {
+        // Probe the listener's own authoritative route list rather than a copy
+        // round-tripped through the settings package: the ids line up because
+        // `mobilePairingSnapshot(from:)` derives the displayed routes from this
+        // same list, and a route that vanished between display and check simply
+        // has no entry (so it stays unverified).
+        let routes = MobileHostService.shared.statusSnapshot().routes
+        return await mobileRouteReachability.verify(routes: routes)
     }
 
     func irohSettingsController() -> (any CmxIrohSettingsControlling)? {
