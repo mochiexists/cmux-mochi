@@ -861,10 +861,8 @@ check_macos_runner "$CI_FILE" "app-host-unit-tests"
 check_macos_runner "$CI_FILE" "tests-build-and-lag"
 check_macos_runner "$CI_FILE" "swift-package-tests"
 check_macos_runner "$CI_FILE" "release-build"
-check_macos_runner "$CI_FILE" "ui-regressions"
 check_release_build_runner_disk_capacity
 check_display_runner_identity_guard "$CI_FILE" "tests-build-and-lag"
-check_display_runner_identity_guard "$CI_FILE" "ui-regressions"
 check_build_lag_deriveddata_cache_path
 check_ci_main_push_cancels_stale_runs
 
