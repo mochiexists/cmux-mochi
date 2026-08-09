@@ -8968,22 +8968,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
             ))
         }
 
-        let content = UNMutableNotificationContent()
-        content.title = String(localized: "skills.sync.title", defaultValue: "cmux skills updated")
-        content.body = lines.joined(separator: "\n")
-        content.sound = nil
-
-        let request = UNNotificationRequest(
-            identifier: "skills.sync",
-            content: content,
-            trigger: nil
-        )
-
-        let center = UNUserNotificationCenter.current()
-        center.getNotificationSettings { settings in
+        let notificationTitle = String(localized: "skills.sync.title", defaultValue: "cmux skills updated")
+        let notificationBody = lines.joined(separator: "\n")
+        UNUserNotificationCenter.current().getNotificationSettings { settings in
             switch settings.authorizationStatus {
             case .authorized, .provisional:
-                center.add(request, withCompletionHandler: nil)
+                let content = UNMutableNotificationContent()
+                content.title = notificationTitle
+                content.body = notificationBody
+                content.sound = nil
+
+                let request = UNNotificationRequest(
+                    identifier: "skills.sync",
+                    content: content,
+                    trigger: nil
+                )
+                UNUserNotificationCenter.current().add(request, withCompletionHandler: nil)
             default:
                 break
             }

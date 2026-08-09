@@ -1363,8 +1363,6 @@ class TerminalController {
             return v2Result(id: request.id, v2SystemTop(params: request.params))
         case "system.memory":
             return v2Result(id: request.id, v2SystemMemory(params: request.params))
-        case "surface.read_text":
-            return v2Result(id: request.id, v2SurfaceReadText(params: request.params))
         case "workspace.env":
             return v2Result(id: request.id, v2WorkspaceEnv(params: request.params))
         case "workspace.remote.pty_sessions":
