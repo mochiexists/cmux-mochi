@@ -45,13 +45,16 @@ if grep -R "resolve-aws-cli.sh" "$ROOT_DIR/.github/workflows/nightly.yml" "$ROOT
   exit 1
 fi
 
-if ! grep -Fq "scripts/ci/upload-r2-object.py" "$ROOT_DIR/.github/workflows/nightly.yml"; then
-  echo "FAIL: nightly workflow must use the Python R2 uploader"
+# Fork overlay: cmux Mochi publishes appcasts through GitHub releases and must
+# never upload to upstream's R2 bucket. A rebase that re-introduces the R2
+# upload steps is a release-path regression, so the check is inverted here.
+if grep -Fq "scripts/ci/upload-r2-object.py" "$ROOT_DIR/.github/workflows/nightly.yml"; then
+  echo "FAIL: fork nightly workflow must not upload to upstream R2"
   exit 1
 fi
-if ! grep -Fq "scripts/ci/upload-r2-object.py" "$ROOT_DIR/.github/workflows/release.yml"; then
-  echo "FAIL: release workflow must use the Python R2 uploader"
+if grep -Fq "scripts/ci/upload-r2-object.py" "$ROOT_DIR/.github/workflows/release.yml"; then
+  echo "FAIL: fork release workflow must not upload to upstream R2"
   exit 1
 fi
 
-echo "PASS: Python R2 uploader signs appcast uploads without awscli"
+echo "PASS: Python R2 uploader stays tested; fork workflows stay off upstream R2"

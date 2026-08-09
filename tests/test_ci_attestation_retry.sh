@@ -12,6 +12,11 @@ check_attestation_retry() {
   local first_id="$3"
   local retry_step="$4"
   local subject_marker="$5"
+  # "required" (default): the retry must not carry continue-on-error, so a
+  # doubly-failed attestation fails the workflow. "optional": the fork's
+  # nightly overlay (409930e7c5) deliberately lets branch nightlies survive
+  # Sigstore outages; the retry still runs only after a first failure.
+  local retry_policy="${6:-required}"
 
   if ! awk -v first_step="$first_step" -v first_id="$first_id" -v action="$ACTION" -v subject="$subject_marker" '
     $0 ~ "^[[:space:]]*- name: " first_step "$" { in_step=1; next }
@@ -26,16 +31,25 @@ check_attestation_retry() {
     exit 1
   fi
 
-  if ! awk -v retry_step="$retry_step" -v first_id="$first_id" -v action="$ACTION" -v subject="$subject_marker" '
+  if ! awk -v retry_step="$retry_step" -v first_id="$first_id" -v action="$ACTION" -v subject="$subject_marker" -v retry_policy="$retry_policy" '
     $0 ~ "^[[:space:]]*- name: " retry_step "$" { in_step=1; next }
     in_step && /^      - name:/ { in_step=0 }
     in_step && index($0, "steps." first_id ".outcome == '\''failure'\''") { saw_outcome=1 }
     in_step && index($0, "uses: " action) { saw_action=1 }
     in_step && index($0, subject) { saw_subject=1 }
     in_step && /continue-on-error:/ { saw_retry_continue=1 }
-    END { exit !(saw_outcome && saw_action && saw_subject && !saw_retry_continue) }
+    END {
+      if (retry_policy == "optional") {
+        exit !(saw_outcome && saw_action && saw_subject && saw_retry_continue)
+      }
+      exit !(saw_outcome && saw_action && saw_subject && !saw_retry_continue)
+    }
   ' "$file"; then
-    echo "FAIL: $(basename "$file") retry attestation step must run only after first failure and remain required"
+    if [ "$retry_policy" = "optional" ]; then
+      echo "FAIL: $(basename "$file") retry attestation step must run only after first failure and stay continue-on-error (fork nightly overlay)"
+    else
+      echo "FAIL: $(basename "$file") retry attestation step must run only after first failure and remain required"
+    fi
     exit 1
   fi
 
@@ -47,11 +61,13 @@ check_attestation_retry \
   "Attest remote daemon nightly assets" \
   "attest-remote-daemon-nightly-assets" \
   "Retry remote daemon nightly asset attestation" \
-  'remote-daemon-assets/cmuxd-remote-manifest-${{ env.NIGHTLY_BUILD }}.json'
+  'remote-daemon-assets/cmuxd-remote-manifest-${{ env.NIGHTLY_BUILD }}.json' \
+  optional
 
 check_attestation_retry \
   "$ROOT_DIR/.github/workflows/release.yml" \
   "Attest remote daemon release assets" \
   "attest-remote-daemon-release-assets" \
   "Retry remote daemon release asset attestation" \
-  "remote-daemon-assets/cmuxd-remote-manifest.json"
+  "remote-daemon-assets/cmuxd-remote-manifest.json" \
+  optional
