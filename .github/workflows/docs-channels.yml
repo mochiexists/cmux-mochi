@@ -1,10 +1,17 @@
 name: Deploy docs channels
 
 on:
-  push:
-    branches: [main]
-    paths: ["web/**", "CHANGELOG.md"]
-    tags: ["v*"]
+  # Fork (cmux Mochi): docs deploys are disabled. Both jobs push upstream's
+  # `web/` docs site to Vercel using VERCEL_ORG_ID / VERCEL_*_DOCS_PROJECT_ID /
+  # VERCEL_TOKEN. This fork has none of those secrets and no Vercel project to
+  # deploy into, so every trigger failed at `vercel: No existing credentials`
+  # (2026-08-09: the first push to the rebased main). Left dispatch-only rather
+  # than deleted so the file stays rebase-clean against upstream.
+  # push:
+  #   branches: [main]
+  #   paths: ["web/**", "CHANGELOG.md"]
+  #   tags: ["v*"]
+  workflow_dispatch:
 
 permissions:
   contents: read

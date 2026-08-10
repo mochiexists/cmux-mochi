@@ -1,9 +1,14 @@
 name: Vercel auth health
 
 on:
+  # Fork (cmux Mochi): the daily canary is disabled. It checks upstream's
+  # VERCEL_TOKEN, which this fork does not have and will never have — we ship
+  # the macOS app, not the docs site — so the cron only produced a guaranteed
+  # daily red run. Kept dispatch-only so the file stays rebase-clean against
+  # upstream and can be run by hand if the fork ever gets a Vercel project.
+  # schedule:
+  #   - cron: "17 6 * * *"
   workflow_dispatch:
-  schedule:
-    - cron: "17 6 * * *"
 
 permissions:
   contents: read
