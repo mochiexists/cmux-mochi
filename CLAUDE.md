@@ -203,10 +203,20 @@ git commit -m "Update ghostty submodule"
 
 ## CI and runners
 
-**Pushing runs nothing.** Every workflow in this fork is `workflow_dispatch`-only —
-`nightly.yml` has its `push:` block commented out, `ci.yml` is paused for pushes and
-PRs, and `test-ios.yml` went manual-only on 2026-07-13. A branch push produces zero
-CI. Dispatch explicitly:
+**Pushing runs nothing, with one exception.** Every test/build workflow in this
+fork is `workflow_dispatch`-only — `nightly.yml` has its `push:` block commented
+out, `ci.yml` is paused for pushes and PRs, and `test-ios.yml` went manual-only on
+2026-07-13. `docs-channels.yml` and the `vercel-auth-health.yml` cron were disabled
+the same way on 2026-08-10 (upstream deploys the `web/` docs site to Vercel; this
+fork has no `VERCEL_TOKEN` and no project, so both could only ever fail). A branch
+push produces zero CI.
+
+The exception is **`release.yml`, which still fires on a `v*` tag push** — that is
+the fork's own release lane and must stay that way. The `sdk-publish-*` and
+`cmux-tui-release.yml` workflows also keep push triggers, but only on
+`mux-sdk-v*` / `cmux-sdk-v*` / `cmux-tui-v*` tags this fork never pushes.
+
+For everything else, dispatch explicitly:
 
 ```bash
 gh workflow run nightly.yml  -R mochiexists/cmux-mochi --ref <branch> -f force=true
