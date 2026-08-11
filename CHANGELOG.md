@@ -2,6 +2,24 @@
 
 All notable changes to cmux are documented here.
 
+## [0.64.202] - 2026-08-12
+
+cmux **Mochi** fork release based on upstream cmux 0.64.20.
+
+### Added
+- Added the upstream 0.64.20 feature set, including the native AppKit workspace sidebar, Browser Design Mode, terminal mouse forwarding, shared native SSH connections, workspace and surface reorder shortcuts, and resizable browser viewports.
+- Expanded the iOS beta host support with authenticated transport, cold-start and reconnect recovery, multi-Mac workspace routing, per-route reachability diagnostics, and the files gallery. The iOS companion remains a separate TestFlight build.
+
+### Changed
+- Made the native AppKit sidebar the default, with faster scrolling and full workspace-detail and settings support.
+- Improved mobile pairing and device identity so each Mac advertises and reconnects through its own verified route.
+
+### Fixed
+- Fully redacted Privacy Frost workspace rows: titles, notifications, branch and repository details, badges, progress, pull requests, ports, and other auxiliary text no longer remain legible through the translucent blur.
+- Restored the workspace Privacy Frost context-menu action and preserved normal row content when unblurred.
+- Preserved shell telemetry when socket control uses password mode, so foreground-job safety and workspace status remain accurate.
+- Included the upstream 0.64.20 sidebar, session restore, SSH, browser, terminal, and iOS reliability fixes listed below.
+
 ## [0.64.20] - 2026-07-19
 
 ### Added
