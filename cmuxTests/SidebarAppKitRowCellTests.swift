@@ -55,6 +55,7 @@ struct SidebarAppKitRowCellTests {
         canClose: Bool = true,
         isPrivacyBlurred: Bool = false,
         title: String = "Workspace",
+        latestNotificationText: String? = nil,
         settings: SidebarTabItemSettingsSnapshot? = nil
     ) -> SidebarWorkspaceRowModel {
         let resolvedSettings = settings
@@ -70,7 +71,7 @@ struct SidebarAppKitRowCellTests {
             canCloseWorkspace: canClose,
             accessibilityWorkspaceCount: 1,
             unreadCount: 0,
-            latestNotificationText: nil,
+            latestNotificationText: latestNotificationText,
             showsAgentActivity: resolvedSettings.details.showAgentActivity,
             rowSpacing: 8,
             isBeingDragged: false,
@@ -87,6 +88,18 @@ struct SidebarAppKitRowCellTests {
             isMetadataExpanded: false,
             isMarkdownExpanded: false
         )
+    }
+
+    private static func visibleText(in view: NSView) -> [String] {
+        guard !view.isHidden, view.alphaValue > 0 else { return [] }
+        var text: [String] = []
+        if let textField = view as? NSTextField {
+            text.append(textField.stringValue)
+        }
+        for subview in view.subviews {
+            text.append(contentsOf: visibleText(in: subview))
+        }
+        return text
     }
 
     private static func makeSwiftUIRow(
@@ -251,7 +264,11 @@ struct SidebarAppKitRowCellTests {
     @Test
     func privacyBlurredRowRedactsTitleAndFrostsWholeRow() {
         let cell = Self.configuredCell(
-            model: Self.makeModel(isPrivacyBlurred: true, title: "very secret")
+            model: Self.makeModel(
+                isPrivacyBlurred: true,
+                title: "very secret",
+                latestNotificationText: "~"
+            )
         )
         cell.setFrameSize(NSSize(width: 260, height: 96))
         cell.layoutSubtreeIfNeeded()
@@ -260,12 +277,20 @@ struct SidebarAppKitRowCellTests {
         #expect(probe.isFrostVisible)
         #expect(probe.frostCoversRow, "frost must cover the full row or text stays legible")
         #expect(probe.displayedTitle != "very secret", "the real title must never be rendered")
+        #expect(
+            !Self.visibleText(in: cell).contains("~"),
+            "auxiliary workspace text must not remain visible through translucent frost"
+        )
     }
 
     @Test
     func unblurredRowShowsItsTitleAndNoFrost() {
         let cell = Self.configuredCell(
-            model: Self.makeModel(isPrivacyBlurred: false, title: "very secret")
+            model: Self.makeModel(
+                isPrivacyBlurred: false,
+                title: "very secret",
+                latestNotificationText: "~"
+            )
         )
         cell.setFrameSize(NSSize(width: 260, height: 96))
         cell.layoutSubtreeIfNeeded()
@@ -273,6 +298,7 @@ struct SidebarAppKitRowCellTests {
         let probe = cell.privacyRedactionProbe
         #expect(!probe.isFrostVisible)
         #expect(probe.displayedTitle == "very secret")
+        #expect(Self.visibleText(in: cell).contains("~"))
     }
 
     @Test
