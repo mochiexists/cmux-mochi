@@ -467,6 +467,7 @@ final class SidebarWorkspaceRowTableCellView: NSTableCellView {
             fontSize: model.scaled(10),
             emphasis: model.isActive ? 1.0 : 0.9
         )
+        applyPrivacyRedaction(model.isPrivacyBlurred)
         privacyFrostView.isHidden = !model.isPrivacyBlurred
         topDropIndicator.layer?.backgroundColor = cmuxAccentNSColor().cgColor
         bottomDropIndicator.layer?.backgroundColor = cmuxAccentNSColor().cgColor
@@ -487,6 +488,54 @@ final class SidebarWorkspaceRowTableCellView: NSTableCellView {
                 )
                 : nil
         )
+    }
+
+    /// Frost is intentionally translucent, so privacy cannot depend on it
+    /// obscuring the workspace's rendered content. Keep only the generic title
+    /// in the view hierarchy while the row is blurred.
+    private func applyPrivacyRedaction(_ isBlurred: Bool) {
+        if isBlurred, isEditing {
+            endInlineRename(commit: false)
+        }
+        if !isEditing {
+            titleView.isHidden = false
+        }
+        guard isBlurred else { return }
+
+        var sensitiveViews: [NSView] = [
+            pinImageView,
+            mediaAudioView,
+            mediaMicView,
+            mediaCameraView,
+            leadingBadge,
+            trailingBadge,
+            renameField,
+            descriptionView,
+            subtitleView,
+            remoteTargetView,
+            remoteStatusView,
+            remoteReconnectButton,
+            metadataToggleButton,
+            markdownToggleButton,
+            logLine,
+            progressView,
+            branchIconView,
+            checklistSection,
+        ]
+        if let leadingSpinner {
+            sensitiveViews.append(leadingSpinner)
+        }
+        if let trailingSpinner {
+            sensitiveViews.append(trailingSpinner)
+        }
+        sensitiveViews.append(contentsOf: metadataRows)
+        sensitiveViews.append(contentsOf: markdownBlocks)
+        sensitiveViews.append(contentsOf: branchLines)
+        sensitiveViews.append(contentsOf: pullRequestRows)
+        sensitiveViews.append(contentsOf: portButtons)
+        for view in sensitiveViews {
+            view.isHidden = true
+        }
     }
 
     private func configureStatusSlot(
