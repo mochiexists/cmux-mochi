@@ -2,6 +2,16 @@
 
 All notable changes to cmux are documented here.
 
+## [0.64.203] - 2026-08-12
+
+cmux **Mochi** fork release based on upstream cmux 0.64.20.
+
+### Fixed
+- Fixed the control socket rejecting every capability-wrapped CLI command in password mode. The bundled CLI wraps all commands (including its own password login) when launched inside a cmux terminal, so password-mode sockets denied the CLI entirely — silently breaking agent hooks, session tracking, resume prefill after restart, notifications, and auto-naming. Wrapped commands now fall through to normal password authentication, while the password bypass stays reserved for verified shell telemetry.
+
+### Changed
+- Moved the iOS TestFlight lane onto the fork's own bundle identity and signing chain, with its beta marketing version tied to the macOS release.
+
 ## [0.64.202] - 2026-08-12
 
 cmux **Mochi** fork release based on upstream cmux 0.64.20.
