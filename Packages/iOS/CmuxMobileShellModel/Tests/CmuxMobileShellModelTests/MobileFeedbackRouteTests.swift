@@ -91,6 +91,7 @@ struct MobileFeedbackRouteTests {
     }
 
     @Test func releaseBetaBundleIsBeta() {
+        // Legacy upstream beta bundle id, still honored for already-installed builds.
         #expect(MobileBuildType.resolve(isDebugBuild: false, bundleIdentifier: "dev.cmux.app.beta") == .beta)
     }
 
@@ -99,6 +100,71 @@ struct MobileFeedbackRouteTests {
         #expect(MobileBuildType.resolve(isDebugBuild: false, bundleIdentifier: "com.cmux.app") == .prod)
         #expect(MobileBuildType.resolve(isDebugBuild: false, bundleIdentifier: "dev.cmux.app") == .prod)
         #expect(MobileBuildType.resolve(isDebugBuild: false, bundleIdentifier: nil) == .prod)
+    }
+
+    // MARK: - Declared build channel
+
+    @Test func declaredBetaChannelIsBetaOnTheSharedBundleID() {
+        // The internal TestFlight lane ships com.cmux-mochi.ios, the same bundle id
+        // the future App Store lane uses, so only CMUXBuildChannel separates them.
+        #expect(
+            MobileBuildType.resolve(
+                isDebugBuild: false,
+                bundleIdentifier: "com.cmux-mochi.ios",
+                buildChannel: "beta"
+            ) == .beta
+        )
+    }
+
+    @Test func sharedBundleIDWithoutAChannelIsProd() {
+        for channel in [nil, "", "   "] {
+            #expect(
+                MobileBuildType.resolve(
+                    isDebugBuild: false,
+                    bundleIdentifier: "com.cmux-mochi.ios",
+                    buildChannel: channel
+                ) == .prod
+            )
+        }
+    }
+
+    @Test func declaredChannelToleratesCaseAndSurroundingWhitespace() {
+        // xcconfig values reach Info.plist verbatim, so a stray space must not
+        // silently demote an internal TestFlight build to prod.
+        #expect(
+            MobileBuildType.resolve(
+                isDebugBuild: false,
+                bundleIdentifier: "com.cmux-mochi.ios",
+                buildChannel: "  Beta\n"
+            ) == .beta
+        )
+    }
+
+    @Test func unrecognizedChannelFallsBackToTheBundleID() {
+        #expect(
+            MobileBuildType.resolve(
+                isDebugBuild: false,
+                bundleIdentifier: "dev.cmux.app.beta",
+                buildChannel: "nonsense"
+            ) == .beta
+        )
+        #expect(
+            MobileBuildType.resolve(
+                isDebugBuild: false,
+                bundleIdentifier: "com.cmux-mochi.ios",
+                buildChannel: "nonsense"
+            ) == .prod
+        )
+    }
+
+    @Test func debugStillWinsOverADeclaredChannel() {
+        #expect(
+            MobileBuildType.resolve(
+                isDebugBuild: true,
+                bundleIdentifier: "com.cmux-mochi.ios",
+                buildChannel: "prod"
+            ) == .dev
+        )
     }
 
     // MARK: - Stamp formatting

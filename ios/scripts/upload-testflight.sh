@@ -253,7 +253,7 @@ Archives cmux iOS, exports an App Store Connect IPA, and uploads it to
 App Store Connect. The default lane is beta and preserves the existing
 TestFlight behavior:
 
-  bundle id: dev.cmux.app.beta
+  bundle id: com.cmux-mochi.ios
   profile:   cmux Beta Distribution
 
 The production App Store lane uses:
@@ -517,7 +517,7 @@ done
 
 case "$LANE" in
   beta)
-    PRODUCT_BUNDLE_IDENTIFIER="${IOS_BETA_BUNDLE_ID:-dev.cmux.app.beta}"
+    PRODUCT_BUNDLE_IDENTIFIER="${IOS_BETA_BUNDLE_ID:-com.cmux-mochi.ios}"
     PROVISIONING_PROFILE_NAME="${IOS_BETA_PROVISIONING_PROFILE_NAME:-cmux Beta Distribution}"
     PRODUCT_DISPLAY_NAME="${IOS_BETA_DISPLAY_NAME:-cmux BETA}"
     CRASH_REPORTING_ENABLED="YES"

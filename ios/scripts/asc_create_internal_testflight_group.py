@@ -4,7 +4,7 @@
 Creates a new internal beta group for dogfooding builds and outputs the group ID.
 
 Usage:
-  ./ios/scripts/asc_create_internal_testflight_group.py --bundle-id dev.cmux.app.beta --group-name "cmux internal"
+  ./ios/scripts/asc_create_internal_testflight_group.py --bundle-id com.cmux-mochi.ios --group-name "cmux internal"
 
 Auth comes from ASC environment:
   ASC_API_KEY_ID, ASC_API_ISSUER_ID, and either ASC_API_KEY_PATH or ASC_API_KEY_P8_BASE64.

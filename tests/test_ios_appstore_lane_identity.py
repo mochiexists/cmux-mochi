@@ -31,7 +31,11 @@ ROOT = Path(__file__).resolve().parents[1]
 TEAM_ID = "599WAZ6282"
 APPSTORE_BUNDLE_ID = "com.cmux.app"
 APPSTORE_APP_ID = f"{TEAM_ID}.{APPSTORE_BUNDLE_ID}"
-BETA_BUNDLE_ID = "dev.cmux.app.beta"
+# The beta/internal TestFlight lane now ships the fork's own registered id.
+# dev.cmux.app.beta belongs to the upstream cmux account and can never be
+# signed under TEAM_ID, so the fixture profile has to match the new default
+# in ios/scripts/upload-testflight.sh.
+BETA_BUNDLE_ID = "com.cmux-mochi.ios"
 BETA_APP_ID = f"{TEAM_ID}.{BETA_BUNDLE_ID}"
 ASC_APP_ID = "6783338052"
 ASC_VERSION_ID = "version-1.0.0"

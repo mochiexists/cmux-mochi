@@ -73,7 +73,7 @@ Info.plist value.
 beta. It builds the heavy GhosttyKit + Swift Release compile on a leased fleet
 Mac (same maclease pool as the device cloud reload, m1ultra excluded), so the
 build stays off this Mac's CPU. The fleet produces an UNSIGNED Release archive
-for the beta bundle id `dev.cmux.app.beta` (no signing material ever lands on
+for the beta bundle id `com.cmux-mochi.ios` (no signing material ever lands on
 the shared Macs), downloads it locally, then hands it to
 `ios/scripts/upload-testflight.sh --archive-path`, which does the local export,
 re-sign with the Apple Distribution cert (re-adding `aps-environment=production`),
@@ -136,7 +136,8 @@ Required GitHub secrets:
 - `ASC_API_KEY_P8_BASE64`
 - `IOS_DISTRIBUTION_CERTIFICATE_BASE64` (base64-encoded `.p12` for an Apple Distribution certificate on team `599WAZ6282`)
 - `IOS_DISTRIBUTION_CERTIFICATE_PASSWORD`
-- `IOS_BETA_PROVISIONING_PROFILE_BASE64` (base64-encoded App Store profile for `dev.cmux.app.beta`, with `aps-environment=production`)
+- `IOS_BETA_PROVISIONING_PROFILE_INTERNAL_BASE64` (base64-encoded App Store profile for `com.cmux-mochi.ios`, with `aps-environment=production`).
+  `IOS_BETA_PROVISIONING_PROFILE_BASE64` is still read as a fallback name for the same profile.
 
 ## App Store production lane
 

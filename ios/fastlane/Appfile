@@ -1,5 +1,7 @@
-# Public App Store iOS app identity. Beta dogfood ships under dev.cmux.app.beta;
-# this is the public listing.
+# Public App Store iOS app identity. This lane is upstream's and is NOT wired up
+# in the fork: both app_identifier and itc_team_id below belong to Manaflow.
+# The fork's beta/internal TestFlight dogfood ships com.cmux-mochi.ios under
+# team 599WAZ6282 via ios/scripts/upload-testflight.sh instead.
 app_identifier("com.cmux.app")
 itc_team_id("7WLXT3NR37") # Manaflow, Inc. (App Store Connect / dev team)
 team_id("7WLXT3NR37")

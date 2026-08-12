@@ -19,6 +19,13 @@ CMUX_IOS_APPSTORE_MARKETING_VERSION = 1.0.0
 MARKETING_VERSION = $(CMUX_IOS_BETA_MARKETING_VERSION)
 CURRENT_PROJECT_VERSION = 1
 
+// Distribution channel, baked into the CMUXBuildChannel Info.plist key that
+// MobileBuildType reads. The beta/internal TestFlight lane and the future App
+// Store lane both ship the same com.cmux-mochi.ios bundle id, so the bundle can
+// no longer tell them apart and the channel must be an explicit build setting.
+// Empty here (Debug resolves to dev via #if DEBUG); Release.xcconfig sets beta.
+CMUX_IOS_BUILD_CHANNEL =
+
 // Dev-build identity, surfaced in-app (Settings > About) so a DEBUG dogfood
 // build is tellable. Empty by default, so release/TestFlight builds show a clean
 // "1.0.0". ios/scripts/reload.sh overrides these on the xcodebuild command line

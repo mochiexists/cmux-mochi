@@ -4,12 +4,27 @@
 
 #include "Shared.xcconfig"
 
-PRODUCT_BUNDLE_IDENTIFIER = dev.cmux.app.beta
+// Matches PRODUCT_BUNDLE_IDENTIFIER in Shared.xcconfig. The upstream
+// dev.cmux.app.beta id this lane used to override with is registered to the
+// upstream cmux account, not to team 599WAZ6282, so it could never be signed or
+// uploaded here. com.cmux-mochi.ios is registered under this team with Push
+// Notifications, Time-Sensitive Notifications, and Sign in with Apple, and
+// web/services/apns/routePolicy.ts already lists it in PROD_BUNDLE_IDS, so it
+// routes to production APNs. Do NOT add an .internal/.beta suffix: that matches
+// routePolicy's DEV_TAGGED_BUNDLE_ID pattern and silently drops the build to the
+// APNs sandbox. Internal-only distribution is enforced by
+// testFlightInternalTestingOnly=YES in the export options instead.
+PRODUCT_BUNDLE_IDENTIFIER = com.cmux-mochi.ios
 DEVELOPMENT_TEAM = 599WAZ6282
 
 // Distinguish the TestFlight beta on-device from a future App Store "cmux"
 // (overrides PRODUCT_DISPLAY_NAME = cmux from Shared.xcconfig). Debug stays "cmux".
 PRODUCT_DISPLAY_NAME = cmux BETA
+
+// This lane is the beta/internal TestFlight channel. The bundle id is now shared
+// with the future App Store lane, so MobileBuildType resolves the channel from
+// this value rather than from the bundle id.
+CMUX_IOS_BUILD_CHANNEL = beta
 
 // TestFlight/App Store builds use production APNs. Debug keeps
 // Config/cmux.entitlements from Shared.xcconfig.

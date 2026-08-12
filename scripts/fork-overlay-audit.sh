@@ -103,7 +103,12 @@ require_file_contains ".github/workflows/nightly.yml" "blacksmith-6vcpu-macos-15
 require_file_contains ".github/workflows/nightly.yml" "https://github.com/mochiexists/cmux-mochi/releases/download/nightly/appcast.xml"
 require_file_absent ".github/workflows/nightly.yml" "files.cmux.com"
 
-require_file_contains ".github/workflows/ios-testflight.yml" "599WAZ6282.dev.cmux.app.beta"
+# The TestFlight lane must ship the fork's own bundle id under the fork's team.
+# The upstream dev.cmux.app.* ids are registered to the upstream cmux account,
+# so a build carrying one can never be signed or uploaded from this fork.
+require_file_contains ".github/workflows/ios-testflight.yml" "IOS_BETA_BUNDLE_ID: com.cmux-mochi.ios"
+require_file_contains ".github/workflows/ios-testflight.yml" 'EXPECTED_APP_ID="599WAZ6282.${BUNDLE_ID}"'
+require_file_contains "ios/Config/Release.xcconfig" "PRODUCT_BUNDLE_IDENTIFIER = com.cmux-mochi.ios"
 require_file_contains "ios/README.md" "team \`599WAZ6282\`"
 require_file_absent ".github/workflows/ios-testflight.yml" "7WLXT3NR37"
 require_file_absent "ios/README.md" "7WLXT3NR37"

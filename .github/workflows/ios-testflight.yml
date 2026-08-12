@@ -297,8 +297,13 @@ jobs:
       CMUX_TESTFLIGHT_EXTERNAL_GROUP_ID: ${{ vars.IOS_TESTFLIGHT_EXTERNAL_GROUP_ID }}
       CMUX_TESTFLIGHT_EXTERNAL_GROUP_NAME: ${{ vars.IOS_TESTFLIGHT_EXTERNAL_GROUP_NAME }}
       CMUX_TESTFLIGHT_ASSIGN_EXTERNAL_GROUP: "0"
-      # Internal builds use separate bundle ID and display name (set here so provisioning profile step can use it)
-      IOS_BETA_BUNDLE_ID: dev.cmux.app.internal
+      # The fork's single TestFlight bundle id, set here so the provisioning
+      # profile step can use it. The upstream dev.cmux.app.* ids this lane used
+      # to carry are registered to the upstream cmux account, not to team
+      # 599WAZ6282, so they could never be signed or uploaded from this fork.
+      # Internal-only distribution comes from testFlightInternalTestingOnly=YES,
+      # not from a distinct bundle id.
+      IOS_BETA_BUNDLE_ID: com.cmux-mochi.ios
       IOS_BETA_DISPLAY_NAME: cmux INTERNAL
     steps:
       - name: Checkout
@@ -404,17 +409,19 @@ jobs:
           IOS_BETA_PROVISIONING_PROFILE_INTERNAL_BASE64: ${{ secrets.IOS_BETA_PROVISIONING_PROFILE_INTERNAL_BASE64 }}
         run: |
           set -euo pipefail
-          # Determine which profile to use based on bundle ID
-          if [ "${IOS_BETA_BUNDLE_ID:-dev.cmux.app.beta}" = "dev.cmux.app.internal" ]; then
+          # Both TestFlight audiences now ship the same bundle id, so the profile
+          # is selected by which secret is configured rather than by bundle id.
+          # IOS_BETA_PROVISIONING_PROFILE_INTERNAL_BASE64 is the one this fork
+          # sets; IOS_BETA_PROVISIONING_PROFILE_BASE64 stays as a fallback name.
+          BUNDLE_ID="${IOS_BETA_BUNDLE_ID:-com.cmux-mochi.ios}"
+          EXPECTED_APP_ID="599WAZ6282.${BUNDLE_ID}"
+          SKIP_APS_ENVIRONMENT_CHECK=false
+          if [ -n "${IOS_BETA_PROVISIONING_PROFILE_INTERNAL_BASE64:-}" ]; then
             PROFILE_BASE64="${IOS_BETA_PROVISIONING_PROFILE_INTERNAL_BASE64}"
-            EXPECTED_APP_ID="599WAZ6282.dev.cmux.app.internal"
             PROFILE_TYPE="internal"
-            SKIP_APS_ENVIRONMENT_CHECK=false
           else
-            PROFILE_BASE64="${IOS_BETA_PROVISIONING_PROFILE_BASE64}"
-            EXPECTED_APP_ID="599WAZ6282.dev.cmux.app.beta"
+            PROFILE_BASE64="${IOS_BETA_PROVISIONING_PROFILE_BASE64:-}"
             PROFILE_TYPE="beta"
-            SKIP_APS_ENVIRONMENT_CHECK=false
           fi
 
           if [ -z "${PROFILE_BASE64:-}" ]; then
@@ -470,33 +477,27 @@ jobs:
           INPUT_MARKETING_VERSION_OVERRIDE: ${{ github.event.inputs.marketing_version_override }}
           # Display name for scheduled internal builds (auto-synced to internal group).
           IOS_BETA_DISPLAY_NAME: cmux INTERNAL
-          # Internal builds use separate bundle ID (dev.cmux.app.internal) so internal
-          # and external can coexist on same device.
-          IOS_BETA_BUNDLE_ID: dev.cmux.app.internal
+          # The fork's single TestFlight bundle id; internal-only distribution is
+          # enforced by testFlightInternalTestingOnly=YES, not by a distinct id.
+          IOS_BETA_BUNDLE_ID: com.cmux-mochi.ios
         run: |
           set -euo pipefail
           if [ -n "${INPUT_MARKETING_VERSION_OVERRIDE:-}" ]; then
-            # One-time operator escape hatch: upload latest main as another build
-            # of an already-approved beta marketing version, which avoids starting a
-            # fresh Beta App Review for that version. This path intentionally
-            # skips changelog-driven notes because ios/CHANGELOG.md tracks the
-            # current release line, not the reused older version.
-            # External overrides use external bundle ID and "cmux BETA" display name.
-            if [ -n "${INPUT_BUILD_NUMBER:-}" ]; then
-              echo "build_number is not supported together with marketing_version_override in the cloud override path" >&2
-              exit 1
-            fi
-            unset IOS_BETA_DISPLAY_NAME
-            unset IOS_BETA_BUNDLE_ID
-            ./ios/scripts/cloud-testflight.sh \
-              --external \
-              --marketing-version "$INPUT_MARKETING_VERSION_OVERRIDE" \
-              --skip-notes
+            # Upstream used this escape hatch to reuse an already-approved beta
+            # marketing version on the EXTERNAL lane, unsetting the bundle id so
+            # it fell back to dev.cmux.app.beta. That id belongs to the upstream
+            # cmux account, and this fork has no external TestFlight audience, so
+            # the path can only fail at signing. Reject it explicitly instead of
+            # letting it look like a supported option.
+            echo "marketing_version_override drives the external TestFlight lane, which this fork does not have." >&2
+            echo "This lane is internal-only (testFlightInternalTestingOnly=YES on com.cmux-mochi.ios)." >&2
+            echo "Dispatch without marketing_version_override." >&2
+            exit 1
           else
             # Reuse the checked-in CMUX_IOS_BETA_MARKETING_VERSION for scheduled betas.
             # Scheduled builds use:
             # - "cmux INTERNAL" display name
-            # - dev.cmux.app.internal bundle ID (separate app, can coexist with external)
+            # - com.cmux-mochi.ios bundle ID, uploaded internal-only
             # - assigned to internal TestFlight group for dogfooding within the team
             # --notes-from-range: auto-generate audience-appropriate "What to
             # Test" notes from the commits since the previous beta (skipped if we
@@ -527,7 +528,7 @@ jobs:
           {
             echo "### iOS TestFlight upload"
             echo
-            echo "- lane: \`beta\` (bundle id \`dev.cmux.app.internal\`, internal TestFlight)"
+            echo "- lane: \`beta\` (bundle id \`com.cmux-mochi.ios\`, internal TestFlight)"
             echo "- signing: manual (CI-imported iOS distribution cert + beta profile)"
             if [ -n "${INPUT_MARKETING_VERSION_OVERRIDE:-}" ]; then
               echo "- marketing version override: \`${INPUT_MARKETING_VERSION_OVERRIDE}\`"
@@ -535,7 +536,7 @@ jobs:
               echo "- marketing version: checked-in beta marketing version"
             fi
             echo "- build number (CFBundleVersion): \`${BUILD_NUMBER}\`"
-            echo "- audience: internal TestFlight group (cmux INTERNAL) on the dev.cmux.app.internal app; no beta review needed"
+            echo "- audience: internal TestFlight group (cmux INTERNAL) on the com.cmux-mochi.ios app; no beta review needed"
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Persist uploaded build metadata
@@ -567,10 +568,10 @@ jobs:
         run: |
           security delete-keychain ios-testflight.keychain >/dev/null 2>&1 || true
 
-  # NOTE: this lane uploads to dev.cmux.app.internal only, so there is no
-  # external-group assignment job here. The old assign-external-group job
-  # polled dev.cmux.app.beta for a build that now never arrives there and hung
-  # for its full 40-minute timeout on every run.
+  # NOTE: this lane uploads internal-only builds of com.cmux-mochi.ios, so there
+  # is no external-group assignment job here. The old assign-external-group job
+  # polled the upstream dev.cmux.app.beta app for a build that now never arrives
+  # there and hung for its full 40-minute timeout on every run.
   assign-internal-group:
     name: Assign build to internal TestFlight group
     needs: [decide, upload]
@@ -600,7 +601,10 @@ jobs:
         if: env.SHOULD_ASSIGN_ONLY == 'true'
         run: |
           set -euo pipefail
-          gh run download "$LAST_UPLOADED_RUN_ID" --repo manaflow-ai/cmux \
+          # Fork's own runs, not upstream's: the metadata artifact is produced by
+          # this repository's upload job, and the fork's GH_TOKEN cannot read
+          # manaflow-ai/cmux artifacts anyway.
+          gh run download "$LAST_UPLOADED_RUN_ID" --repo "$GITHUB_REPOSITORY" \
             -n ios-testflight-build-metadata \
             -D "$RUNNER_TEMP/ios-testflight-build"
           BUILD_NUMBER="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["build_number"])' "$RUNNER_TEMP/ios-testflight-build/ios-testflight-build.json")"
@@ -616,7 +620,7 @@ jobs:
             exit 1
           fi
           python3 ./ios/scripts/asc_assign_internal_testflight_group.py \
-            --bundle-id dev.cmux.app.internal \
+            --bundle-id com.cmux-mochi.ios \
             --build-number "$BUILD_NUMBER"
           ASSIGNMENT_STATE="unknown"
           if [ -f "$CMUX_TESTFLIGHT_ASSIGN_STATE_OUT_FILE" ]; then
