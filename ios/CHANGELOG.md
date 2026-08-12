@@ -44,6 +44,25 @@ for a different version), so bump the beta version with
 
 ---
 
+## [1.0.202] - 2026-08-12
+
+### Internal
+
+- First internal TestFlight cut on the fork's own App Store Connect app (`cmux Mochi`, bundle `com.cmux-mochi.ios`, team `599WAZ6282`). Earlier builds targeted upstream's `dev.cmux.app.beta`, which this fork could never sign for.
+- Installs SIDE BY SIDE with any older cmux iOS beta rather than updating it, because the bundle id changed. Delete the old one once this build is paired.
+- Version now tracks the macOS release: iOS `1.0.202` is the companion to macOS `0.64.202`.
+- Internal-only distribution. This build cannot be promoted to external testers.
+- Multi-Mac pairing reworked: per-Mac identities with pinned TLS dialing, a stored-Mac dial claims the Mac it actually dialed, and each secondary Mac is offered its own key instead of the foreground Mac's.
+- Reconnect works without an account, and an already-paired device can re-enroll instead of getting stuck.
+- Unpairing now destroys the device credential. Delete-and-re-pair is covered end to end.
+- Pairing failures are visible on hardware: TLS handshake failures say why, and a failed paired-Mac write is surfaced instead of reported as success.
+- Account-free journey: Macs without an account stay in their own scope and the choice is remembered. A Stack auth failure no longer evicts a ticket-authorized session.
+- Worth hitting: pair both Macs, confirm All Computers lists workspaces from both, then unpair and re-pair. Background and foreground repeatedly and confirm the terminal reconnects.
+
+### External
+
+- Not applicable. This lane is internal only.
+
 ## [1.0.4] - 2026-07-09
 
 ### Internal
