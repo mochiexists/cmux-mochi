@@ -131,11 +131,18 @@ public struct SocketClientAuthorization {
             guard let envelope = SocketClientCapabilityCommand(command) else {
                 return Result(command: command, bypassesPasswordAuthentication: false)
             }
-            guard capabilityAuthority.verifies(envelope.capability),
-                  Self.isPasswordTelemetryCommand(envelope.command) else {
-                return nil
-            }
-            return Result(command: envelope.command, bypassesPasswordAuthentication: true)
+            // Only verified shell telemetry skips password login. Every other
+            // wrapped command falls through to password authentication rather
+            // than being denied: the CLI wraps all commands (including its
+            // `auth` login line) whenever CMUX_SOCKET_CAPABILITY is set, and
+            // a wrapped command carries no more privilege than the same line
+            // sent unwrapped.
+            let bypassesPasswordAuthentication = capabilityAuthority.verifies(envelope.capability)
+                && Self.isPasswordTelemetryCommand(envelope.command)
+            return Result(
+                command: envelope.command,
+                bypassesPasswordAuthentication: bypassesPasswordAuthentication
+            )
         case .allowAll:
             return Result(
                 command: SocketClientCapabilityCommand(command)?.command ?? command,
