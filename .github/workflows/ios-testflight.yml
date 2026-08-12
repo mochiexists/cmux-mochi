@@ -9,7 +9,7 @@ on:
         required: false
         default: ""
       marketing_version_override:
-        description: Optional one-time MARKETING_VERSION override (for example 1.0.1)
+        description: UNSUPPORTED in the fork (external lane only) -- leave blank or the run fails
         required: false
         default: ""
       force:
