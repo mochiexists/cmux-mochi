@@ -119,7 +119,7 @@ struct SocketClientAuthorizationTests {
         }
     }
 
-    @Test func passwordRejectsCapabilityWrappedControlCommands() throws {
+    @Test func passwordFallsBackToPasswordAuthForCapabilityWrappedControlCommands() throws {
         let authority = SocketClientCapabilityAuthority(
             secret: Data(repeating: 0xA5, count: SocketClientCapabilityAuthority.secureByteCount),
             audience: "com.cmuxterm.test"
@@ -129,14 +129,21 @@ struct SocketClientAuthorizationTests {
         )
         let envelope = try #require(SocketClientCapabilityEnvelope(capability: capability))
 
-        #expect(authorization.authorizedCommand(
-            envelope.wrap("ping"),
-            accessMode: .password,
-            peerProcessID: nil,
-            peerHasSameUID: true,
-            capabilityAuthority: authority,
-            isDescendant: { _ in false }
-        ) == nil)
+        // The CLI wraps every command (including its own `auth <password>`
+        // login line) whenever CMUX_SOCKET_CAPABILITY is set, so a denial
+        // here locks the bundled CLI out of password-mode sockets entirely.
+        for command in ["ping", "auth secret", "list-workspaces"] {
+            let result = authorization.authorizationResult(
+                envelope.wrap(command),
+                accessMode: .password,
+                peerProcessID: nil,
+                peerHasSameUID: true,
+                capabilityAuthority: authority,
+                isDescendant: { _ in false }
+            )
+            #expect(result?.command == command)
+            #expect(result?.bypassesPasswordAuthentication == false)
+        }
     }
 
     @Test func passwordAllowsCapabilityWrappedShellTelemetry() throws {
@@ -174,21 +181,27 @@ struct SocketClientAuthorizationTests {
         }
     }
 
-    @Test func passwordRejectsInvalidCapabilityWrappedTelemetry() {
+    @Test func passwordDoesNotBypassAuthForInvalidCapabilityWrappedTelemetry() throws {
         let authority = SocketClientCapabilityAuthority(
             secret: Data(repeating: 0xA5, count: SocketClientCapabilityAuthority.secureByteCount),
             audience: "com.cmuxterm.test"
         )
-        let envelope = SocketClientCapabilityEnvelope(capability: "not-a-valid-capability")
+        let envelope = try #require(SocketClientCapabilityEnvelope(capability: "not-a-valid-capability"))
+        let command = "report_shell_state running --tab=test --panel=test"
 
-        #expect(authorization.authorizedCommand(
-            envelope?.wrap("report_shell_state running --tab=test --panel=test") ?? "",
+        // An unverifiable capability grants nothing, but the command itself
+        // is no more privileged than the same line sent unwrapped: it must
+        // fall through to password authentication, not be denied outright.
+        let result = authorization.authorizationResult(
+            envelope.wrap(command),
             accessMode: .password,
             peerProcessID: nil,
             peerHasSameUID: true,
             capabilityAuthority: authority,
             isDescendant: { _ in false }
-        ) == nil)
+        )
+        #expect(result?.command == command)
+        #expect(result?.bypassesPasswordAuthentication == false)
     }
 
     @Test func allowAllDoesNotRequireSameUser() {
