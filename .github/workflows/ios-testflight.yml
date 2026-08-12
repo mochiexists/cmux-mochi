@@ -388,6 +388,14 @@ jobs:
           security set-keychain-settings -lut 21600 "$KEYCHAIN_NAME"
           security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_NAME"
           security import "$CERT_PATH" -k "$KEYCHAIN_NAME" -P "$IOS_DISTRIBUTION_CERTIFICATE_PASSWORD" -T /usr/bin/codesign -T /usr/bin/security
+          # An Apple Distribution certificate chains through the WWDR G3
+          # intermediate. Without it in this keychain the identity imports but is
+          # never *valid*, so `find-identity -v` below reports 0 identities.
+          # GitHub-hosted runners ship WWDR in the System keychain, which is why
+          # this lane worked upstream and fails on a self-hosted runner -- and the
+          # list-keychains call below replaces the search list with only this
+          # keychain, so a WWDR in the login keychain would not be consulted.
+          ./scripts/import-apple-wwdr-intermediate.sh "$KEYCHAIN_NAME"
           security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_NAME"
           security list-keychains -d user -s "$KEYCHAIN_NAME"
           security find-identity -v -p codesigning "$KEYCHAIN_NAME"
