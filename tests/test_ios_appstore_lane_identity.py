@@ -42,7 +42,10 @@ ASC_VERSION_ID = "version-1.0.0"
 ASC_BUILD_ID = "build-1.0.0"
 IDENTITY = f"Apple Distribution: Atlas Codes LTD ({TEAM_ID})"
 APPSTORE_MARKETING_VERSION = "1.0.0"
-BETA_MARKETING_VERSION = "1.0.4"
+# Must match CMUX_IOS_BETA_MARKETING_VERSION in ios/Config/Shared.xcconfig:
+# the archive assertions below compare against what upload-testflight.sh reads
+# out of that file.
+BETA_MARKETING_VERSION = "1.0.202"
 
 FAILURES: list[str] = []
 
@@ -643,7 +646,7 @@ def test_upload_beta_lane_uses_beta_marketing_version(tmp: Path, fakebin: Path) 
         info = plistlib.loads(zf.read("Payload/cmux.app/Info.plist"))
     _check(
         info.get("CFBundleIdentifier") == BETA_BUNDLE_ID,
-        "final signed beta IPA Info.plist is dev.cmux.app.beta",
+        "final signed beta IPA Info.plist carries the beta bundle id",
     )
     _check(
         info.get("CFBundleShortVersionString") == BETA_MARKETING_VERSION,
