@@ -86,6 +86,20 @@ struct MobilePairingConnectionTransitionTests {
         #expect(next == .ready(ready))
     }
 
+    @Test("A momentary connection drop does not instantly bring the QR back")
+    func connectedDropDoesNotInstantlyReturnToReady() {
+        let ready = makeReady()
+        // On a lossy network (e.g. mobile data) an attached phone's connection
+        // blips constantly. Each drop must not slam the window straight back to
+        // the QR; the paired layout holds while a grace period runs.
+        let next = MobilePairingModel.connectionTransition(
+            from: .connected(ready),
+            activeConnectionCount: 1,
+            baselineConnectionCount: 1
+        )
+        #expect(next != .ready(ready))
+    }
+
     @Test("Connected stays connected while the new phone remains attached")
     func connectedStaysConnectedWithActiveConnections() {
         let ready = makeReady()
