@@ -30,6 +30,13 @@ final class MobilePairingModel {
         /// A phone has attached to the listener; show a paired/success state
         /// instead of the QR + spinner.
         case connected(Ready)
+        /// An attached phone's connection just dropped. Hold the paired layout
+        /// (with a reconnecting hint) instead of flashing the QR back for every
+        /// blip on a lossy network; falls back to ``ready(_:)`` only when the
+        /// grace period expires without the phone returning. Entered only from
+        /// ``connected(_:)`` — a first attach that never stabilized still shows
+        /// the QR.
+        case reconnecting(Ready)
         /// Neither an authenticated Iroh identity nor a released-client
         /// Tailscale compatibility route is available yet.
         case needsReachableTransport
@@ -113,6 +120,13 @@ final class MobilePairingModel {
     /// refresh from several places) can't overwrite a newer result with a stale
     /// ticket. Each run captures its value and bails after an `await` if superseded.
     private var refreshGeneration = 0
+    /// How long a dropped connection may stay away before ``State/reconnecting(_:)``
+    /// gives up and the QR returns. Injectable so expiry is testable without
+    /// waiting out the real grace period.
+    private let reconnectGrace: Duration
+    /// Pending fallback for the current ``State/reconnecting(_:)`` stretch.
+    /// Cancelled the moment the connection count moves the state anywhere else.
+    private var reconnectGraceTask: Task<Void, Never>?
 
     /// Creates a pairing model.
     ///
@@ -125,9 +139,16 @@ final class MobilePairingModel {
     ///     to 600. Covers only the RPC/v1 fallback token the mint produces as a
     ///     side effect; displayed Iroh and compatibility QRs carry no token and
     ///     never expire.
-    init(host: MobileHostService? = nil, ticketTTL: TimeInterval = 600) {
+    ///   - reconnectGrace: How long a dropped connection may stay away before
+    ///     the reconnecting hold falls back to the QR. Defaults to 10 seconds.
+    init(
+        host: MobileHostService? = nil,
+        ticketTTL: TimeInterval = 600,
+        reconnectGrace: Duration = .seconds(10)
+    ) {
         self.host = host ?? .shared
         self.ticketTTL = ticketTTL
+        self.reconnectGrace = reconnectGrace
     }
 
     private var coordinator: AuthCoordinator? { AppDelegate.shared?.auth?.coordinator }
@@ -260,6 +281,8 @@ final class MobilePairingModel {
     func stopObserving() {
         connectionObservationTask?.cancel()
         connectionObservationTask = nil
+        reconnectGraceTask?.cancel()
+        reconnectGraceTask = nil
     }
 
     /// Watches the mobile host's connection status while a code is displayed and
@@ -293,13 +316,57 @@ final class MobilePairingModel {
                     }
                     return
                 }
-                self.state = Self.connectionTransition(
-                    from: self.state,
-                    activeConnectionCount: status.activeConnectionCount,
-                    baselineConnectionCount: baseline
+                self.applyConnectionCount(
+                    status.activeConnectionCount,
+                    baseline: baseline,
+                    generation: generation
                 )
             }
         }
+    }
+
+    /// Applies a connection-count change and manages the reconnect grace timer:
+    /// entering ``State/reconnecting(_:)`` arms the fallback to the QR, leaving
+    /// it (the phone came back, or a refresh replaced the ticket) disarms it.
+    private func applyConnectionCount(_ count: Int, baseline: Int, generation: Int) {
+        let next = Self.connectionTransition(
+            from: state,
+            activeConnectionCount: count,
+            baselineConnectionCount: baseline
+        )
+        state = next
+        if case .reconnecting = next {
+            armReconnectGraceFallback(generation: generation)
+        } else {
+            reconnectGraceTask?.cancel()
+            reconnectGraceTask = nil
+        }
+    }
+
+    /// Starts (or restarts) the timer that returns a lingering
+    /// ``State/reconnecting(_:)`` to ``State/ready(_:)`` so the QR comes back
+    /// after a real disconnect. A reattach cancels it via
+    /// ``applyConnectionCount(_:baseline:generation:)``; a refresh supersedes it
+    /// through the generation guard.
+    private func armReconnectGraceFallback(generation: Int) {
+        reconnectGraceTask?.cancel()
+        reconnectGraceTask = Task { [weak self, reconnectGrace] in
+            try? await Task.sleep(for: reconnectGrace)
+            guard !Task.isCancelled,
+                  let self,
+                  generation == self.refreshGeneration,
+                  let expired = Self.reconnectGraceExpiryState(from: self.state) else { return }
+            self.state = expired
+        }
+    }
+
+    /// The state to settle into when the reconnect grace period runs out: the
+    /// QR returns. `nil` when the model has since moved on (reattached,
+    /// refreshed, or torn down), meaning expiry must change nothing. Pure, so
+    /// expiry is unit tested without a timer.
+    static func reconnectGraceExpiryState(from current: State) -> State? {
+        guard case let .reconnecting(ready) = current else { return nil }
+        return .ready(ready)
     }
 
     /// Returns whether a displayed legacy compatibility code should be
@@ -310,7 +377,7 @@ final class MobilePairingModel {
     ) -> Bool {
         let ready: Ready
         switch current {
-        case let .ready(value), let .connected(value):
+        case let .ready(value), let .connected(value), let .reconnecting(value):
             ready = value
         default:
             return false
@@ -348,9 +415,12 @@ final class MobilePairingModel {
     /// the `baselineConnectionCount` captured when the code was displayed. A
     /// connection *above* the baseline (a phone that attached after the QR was
     /// shown) flips a displayed ticket from `.ready` to `.connected`; dropping
-    /// back to the baseline flips it back so the QR returns. All other states
-    /// pass through unchanged. Pure, so the transition is unit tested without a
-    /// live host.
+    /// back to the baseline enters `.reconnecting`, which holds the paired
+    /// layout while the grace timer runs instead of flashing the QR back on
+    /// every blip of a lossy network. A reattach during the hold returns to
+    /// `.connected`; only grace expiry (see ``reconnectGraceExpiryState(from:)``)
+    /// brings the QR back. All other states pass through unchanged. Pure, so
+    /// the transition is unit tested without a live host.
     static func connectionTransition(
         from current: State,
         activeConnectionCount: Int,
@@ -361,7 +431,9 @@ final class MobilePairingModel {
         case let .ready(ready) where connected:
             return .connected(ready)
         case let .connected(ready) where !connected:
-            return .ready(ready)
+            return .reconnecting(ready)
+        case let .reconnecting(ready) where connected:
+            return .connected(ready)
         default:
             return current
         }

@@ -136,6 +136,7 @@ struct MobilePairingView: View {
         switch model.state {
         case let .ready(ready): return ready.reachableViaIroh
         case let .connected(ready): return ready.reachableViaIroh
+        case let .reconnecting(ready): return ready.reachableViaIroh
         case .needsReachableTransport: return false
         default: return nil
         }
@@ -145,6 +146,7 @@ struct MobilePairingView: View {
         switch model.state {
         case let .ready(ready): return ready.reachableViaTailscale
         case let .connected(ready): return ready.reachableViaTailscale
+        case let .reconnecting(ready): return ready.reachableViaTailscale
         case .needsReachableTransport: return false
         default: return nil
         }
@@ -231,6 +233,8 @@ struct MobilePairingView: View {
             readyContent(ready)
         case let .connected(ready):
             connectedContent(ready)
+        case let .reconnecting(ready):
+            reconnectingContent(ready)
         }
     }
 

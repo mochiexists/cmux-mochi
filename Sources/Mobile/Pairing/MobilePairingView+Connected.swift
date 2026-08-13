@@ -19,6 +19,24 @@ extension MobilePairingView {
         .frame(maxWidth: .infinity, minHeight: 200)
     }
 
+    /// Shown while an attached phone's connection blips: keeps the paired
+    /// layout with a reconnecting hint instead of flashing the QR back. The
+    /// model returns to the QR only when the grace period expires.
+    @ViewBuilder
+    func reconnectingContent(_ ready: MobilePairingModel.Ready) -> some View {
+        VStack(spacing: 12) {
+            ProgressView()
+                .controlSize(.regular)
+            Text(String(localized: "mobile.pairing.reconnecting.title", defaultValue: "iPhone reconnecting…"))
+                .cmuxFont(.title3, weight: .semibold)
+            Text(String(localized: "mobile.pairing.reconnecting.subtitle", defaultValue: "The connection dropped for a moment. If your iPhone doesn't come back shortly, the pairing code will reappear."))
+                .multilineTextAlignment(.center)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity, minHeight: 200)
+    }
+
     var steps: some View {
         VStack(alignment: .leading, spacing: 10) {
             step(1, String(localized: "mobile.pairing.step.install", defaultValue: "Install cmux on your iPhone and open it."))

@@ -128664,6 +128664,40 @@
         }
       }
     },
+    "mobile.pairing.reconnecting.subtitle": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The connection dropped for a moment. If your iPhone doesn't come back shortly, the pairing code will reappear."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "接続が一時的に切断されました。iPhoneがまもなく復帰しない場合は、ペアリングコードが再表示されます。"
+          }
+        }
+      }
+    },
+    "mobile.pairing.reconnecting.title": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "iPhone reconnecting…"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "iPhoneを再接続中…"
+          }
+        }
+      }
+    },
     "mobile.pairing.refresh": {
       "extractionState": "manual",
       "localizations": {
