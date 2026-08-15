@@ -6,10 +6,14 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/lib/mobile-attach.sh"
 # shellcheck source=scripts/lib/dev-secrets.sh
 source "$SCRIPT_DIR/lib/dev-secrets.sh"
+# Fork identity (app name, bundle id, feed). Generated from fork-identity.json
+# by scripts/inject-fork-identity.sh; never hardcode these values here.
+# shellcheck source=scripts/fork-identity.env
+source "$SCRIPT_DIR/fork-identity.env"
 
-APP_NAME="cmux DEV"
-BUNDLE_ID="com.cmuxterm.app.debug"
-BASE_APP_NAME="cmux DEV"
+APP_NAME="$CMUX_APP_NAME DEV"
+BUNDLE_ID="$CMUX_BUNDLE_ID.debug"
+BASE_APP_NAME="$CMUX_APP_NAME DEV"
 DERIVED_DATA=""
 NAME_SET=0
 BUNDLE_SET=0
@@ -197,16 +201,16 @@ write_last_socket_path() {
   local slug=""
 
   case "$bundle_id" in
-    com.cmuxterm.app)
+    "$CMUX_BUNDLE_ID")
       marker_name="last-socket-path"
       tmp_marker="/tmp/cmux-last-socket-path"
       ;;
-    com.cmuxterm.app.nightly)
+    "$CMUX_BUNDLE_ID".nightly)
       marker_name="nightly-last-socket-path"
       tmp_marker="/tmp/cmux-nightly-last-socket-path"
       ;;
-    com.cmuxterm.app.nightly.*)
-      slug="$(sanitize_path "${bundle_id#com.cmuxterm.app.nightly.}")"
+    "$CMUX_BUNDLE_ID".nightly.*)
+      slug="$(sanitize_path "${bundle_id#$CMUX_BUNDLE_ID.nightly.}")"
       if [[ -n "$slug" ]]; then
         marker_name="nightly-${slug}-last-socket-path"
         tmp_marker="/tmp/cmux-nightly-${slug}-last-socket-path"
@@ -215,12 +219,12 @@ write_last_socket_path() {
         tmp_marker="/tmp/cmux-nightly-last-socket-path"
       fi
       ;;
-    com.cmuxterm.app.staging)
+    "$CMUX_BUNDLE_ID".staging)
       marker_name="staging-last-socket-path"
       tmp_marker="/tmp/cmux-staging-last-socket-path"
       ;;
-    com.cmuxterm.app.staging.*)
-      slug="$(sanitize_path "${bundle_id#com.cmuxterm.app.staging.}")"
+    "$CMUX_BUNDLE_ID".staging.*)
+      slug="$(sanitize_path "${bundle_id#$CMUX_BUNDLE_ID.staging.}")"
       if [[ -n "$slug" ]]; then
         marker_name="staging-${slug}-last-socket-path"
         tmp_marker="/tmp/cmux-staging-${slug}-last-socket-path"
@@ -229,15 +233,15 @@ write_last_socket_path() {
         tmp_marker="/tmp/cmux-staging-last-socket-path"
       fi
       ;;
-    com.cmuxterm.app.debug)
+    "$CMUX_BUNDLE_ID".debug)
       slug="${TAG_SLUG:-}"
       if [[ -n "$slug" ]]; then
         marker_name="dev-${slug}-last-socket-path"
         tmp_marker="/tmp/cmux-dev-${slug}-last-socket-path"
       fi
       ;;
-    com.cmuxterm.app.debug.*)
-      slug="$(sanitize_path "${bundle_id#com.cmuxterm.app.debug.}")"
+    "$CMUX_BUNDLE_ID".debug.*)
+      slug="$(sanitize_path "${bundle_id#$CMUX_BUNDLE_ID.debug.}")"
       if [[ -n "$slug" ]]; then
         marker_name="dev-${slug}-last-socket-path"
         tmp_marker="/tmp/cmux-dev-${slug}-last-socket-path"
@@ -567,10 +571,10 @@ if [[ -n "$TAG" ]]; then
   TAG_ID="$(sanitize_bundle "$TAG")"
   TAG_SLUG="$(sanitize_path "$TAG")"
   if [[ "$NAME_SET" -eq 0 ]]; then
-    APP_NAME="cmux DEV ${TAG_SLUG}"
+    APP_NAME="$CMUX_APP_NAME DEV ${TAG_SLUG}"
   fi
   if [[ "$BUNDLE_SET" -eq 0 ]]; then
-    BUNDLE_ID="com.cmuxterm.app.debug.${TAG_ID}"
+    BUNDLE_ID="$CMUX_BUNDLE_ID.debug.${TAG_ID}"
   fi
   if [[ "$DERIVED_SET" -eq 0 ]]; then
     DERIVED_DATA="$(tagged_derived_data_path "$TAG_SLUG")"

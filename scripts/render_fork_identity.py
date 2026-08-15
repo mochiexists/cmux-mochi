@@ -64,9 +64,11 @@ def escape_for_xcconfig(url: str) -> str:
 
     xcconfig treats `//` as the start of a comment anywhere on a line, which
     would truncate `https://host/path` to `https:`. Rebuilding the separator
-    from a single-slash variable is the standard workaround.
+    from a single-slash variable is the standard workaround: the emitted text
+    holds one literal slash plus one expanded slash, so no literal `//` ever
+    appears in the source and the resolved value still has exactly two.
     """
-    return url.replace("//", "/${CMUX_SLASH}/", 1)
+    return url.replace("//", "/${CMUX_SLASH}", 1)
 
 
 def build_fields(data: dict, channel: str) -> dict:
