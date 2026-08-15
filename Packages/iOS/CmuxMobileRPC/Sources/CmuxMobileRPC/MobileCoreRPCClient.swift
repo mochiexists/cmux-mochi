@@ -588,7 +588,9 @@ public final class MobileCoreRPCClient: MobileSyncing, Sendable {
         switch transportRequest.authorizationMode {
         case .stackBearer, .legacyTailscaleBearer, .userAuthorizedTailscalePairing:
             true
-        case .transportAdmission:
+        // Fork (cmux Mochi): an attach ticket IS the credential, so the
+        // transport never carries a Stack bearer.
+        case .transportAdmission, .attachTicket:
             false
         }
     }
@@ -617,7 +619,11 @@ public final class MobileCoreRPCClient: MobileSyncing, Sendable {
                 return false
             }
             return authorization.authorizes(host: host, port: port)
-        case .transportAdmission:
+        // Fork (cmux Mochi): a caller-supplied Stack bearer must never cross a
+        // ticket transport. The ticket already authorizes the session, and
+        // attaching a bearer would hand the Mac a second, unrelated credential
+        // that the ticket's expiry does not bound.
+        case .transportAdmission, .attachTicket:
             return false
         }
     }

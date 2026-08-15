@@ -11123,6 +11123,9 @@ C0DE71B10000000000000002 /* AppDelegate+AgentChatNotifications.swift */ = {isa =
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = "$(CMUX_FORK_BUNDLE_ID).debug";
 				PRODUCT_NAME = "$(CMUX_FORK_APP_NAME) DEV";
+				// Pin the Swift module name: the app product is renamed for the
+				// fork, but cmuxTests imports the module as cmux_DEV.
+				PRODUCT_MODULE_NAME = cmux_DEV;
 				OTHER_SWIFT_FLAGS = (
 					"-Xllvm",
 					"-global-isel=0",

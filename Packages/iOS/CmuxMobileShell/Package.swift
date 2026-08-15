@@ -20,6 +20,7 @@ let package = Package(
     ],
     dependencies: [
         .package(path: "../../Shared/CMUXMobileCore"),
+        .package(path: "../../Shared/DeviceLinkKit"),
         .package(path: "../../Shared/CmuxAgentChat"),
         .package(path: "../CmuxMobileChanges"),
         .package(path: "../CmuxMobileDiagnostics"),

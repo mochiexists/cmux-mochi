@@ -11,7 +11,7 @@ public struct MobileFeedbackStamp: Equatable, Sendable {
     public let appVersion: String
     /// `CFBundleVersion` (build number). Empty when unavailable.
     public let appBuild: String
-    /// The running bundle identifier, e.g. `"dev.cmux.app.beta"`.
+    /// The running bundle identifier, e.g. `"com.cmux-mochi.ios"`.
     public let bundleIdentifier: String
     /// The OS version string, e.g. `"iOS 18.5"`. Empty when unavailable.
     public let osVersion: String

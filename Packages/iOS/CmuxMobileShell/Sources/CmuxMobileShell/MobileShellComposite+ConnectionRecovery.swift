@@ -175,6 +175,20 @@ extension MobileShellComposite {
         resyncAfterHealthy: Bool,
         preclaimedAttempt: MobileConnectionRecoveryOwner.Attempt?
     ) {
+        // Fork (cmux Mochi): recovery tears the connection down and redials, so
+        // a trigger that fires on every successful connect is an infinite loop
+        // the user experiences as "it never connects". The existing log goes to
+        // anchormux, which the on-device debug log does not carry — so the loop
+        // was visible on the phone and its cause was not.
+        //
+        // Logged HERE, not in `beginConnectionRecovery`: a reproduction on the
+        // iPhone 16 showed the loop running with neither that function's log nor
+        // the launch path's `reconnect gate` line, which means it arrives
+        // through a caller that reaches this one directly.
+        MobileDeviceLinkDiagnostics.log(
+            "connection recovery: trigger=\(trigger.description) probe=\(probeCurrentConnection) "
+                + "preclaimed=\(preclaimedAttempt != nil) state=\(connectionState)"
+        )
         guard pairedMacStore != nil else {
             guard connectionState == .connected else { return }
             // Preview/legacy clients can have a live RPC shell without durable
@@ -643,6 +657,12 @@ extension MobileShellComposite {
                 pinnedRoutes,
                 supportedKinds: supportedKinds,
                 preferNonLoopback: Self.prefersNonLoopbackRoutes
+            )
+            // The candidate list, not the stored list. Routes are filtered and
+            // reordered between the two, and a candidate silently dropped here
+            // is invisible in every other log line.
+            MobileShellComposite.logStoredMacDialCandidates(
+                candidates.map { "\($0.host):\($0.port)" }
             )
             for route in candidates {
                 guard ifStillCurrent?() ?? true else { return .superseded }

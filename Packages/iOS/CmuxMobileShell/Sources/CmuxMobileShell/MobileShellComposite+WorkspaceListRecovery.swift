@@ -122,6 +122,14 @@ extension MobileShellComposite {
     /// Reconnect button both call this.
     public func reconnectOrRefresh() async {
         let listStatus = workspaceListConnectionStatus
+        // Fork (cmux Mochi): this is the only path that tears down a LIVE
+        // connection on the strength of what the workspace list believes. If
+        // the list never reports connected, every invocation kills a healthy
+        // DeviceLink connection and redials — the loop the user sees as "it
+        // never connects". Log both halves so the disagreement is visible.
+        MobileDeviceLinkDiagnostics.log(
+            "reconnectOrRefresh: list=\(listStatus) connection=\(connectionState)"
+        )
         if connectionState == .connected, listStatus == .connected {
             await refreshWorkspaces()
             return

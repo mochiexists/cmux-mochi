@@ -21,8 +21,22 @@ extension MobileRootAuthGate {
     ) {
         if stackAuthenticated {
             store.signIn()
-        } else if !isRestoringSession {
-            store.signOut()
+            return
         }
+        guard !isRestoringSession else { return }
+        // Fork (cmux Mochi): a DeviceLink pairing is not a Stack session, and
+        // never becomes one. Signing the shell out here because no account is
+        // present revokes an authentication the account system never granted:
+        // the device's own key is the credential.
+        //
+        // The damage is indirect and so was hard to read. Paired Macs are looked
+        // up by scope, scope resolution requires a signed-in shell, so this made
+        // the store return nothing — the UI reported "no computers paired" while
+        // a DeviceLink connection was live underneath. On hardware it fired
+        // ~49 s after a successful cold-launch reconnect.
+        if MobileDeviceLinkClient.shared.hasAnyPairedDevice() {
+            return
+        }
+        store.signOut()
     }
 }

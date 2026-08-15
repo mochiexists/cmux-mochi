@@ -8986,7 +8986,8 @@ public final class MobileShellComposite: MobileTerminalOutputSinking {
         clearPairingVersionWarning()
     }
 
-    private func beginPairingValidationAttempt(method: String? = nil) -> UUID {
+    // internal (not private): reached from the fork's DeviceLink extension.
+    func beginPairingValidationAttempt(method: String? = nil) -> UUID {
         let attemptID = UUID()
         pairingAttemptID = attemptID
         if let method {
@@ -9145,7 +9146,9 @@ public final class MobileShellComposite: MobileTerminalOutputSinking {
         clearRemoteConnectionContext()
     }
 
-    private func applyPairingValidationFailure(_ category: MobilePairingFailureCategory) {
+    // internal (not private): the fork's DeviceLink extension reports
+    // pairing failures through this same path.
+    func applyPairingValidationFailure(_ category: MobilePairingFailureCategory) {
         if pairingAttemptMethod == nil {
             _ = beginPairingValidationAttempt(method: "qr")
         }
@@ -9154,12 +9157,14 @@ public final class MobileShellComposite: MobileTerminalOutputSinking {
 
     /// Clear the error and its guidance together (never bare `connectionError
     /// = nil`) so guidance cannot linger under a cleared headline.
-    private func clearPairingError() {
+    // internal (not private): reached from the fork's DeviceLink extension.
+    func clearPairingError() {
         connectionError = nil
         connectionErrorGuidance = nil
     }
 
-    private func clearPairingVersionWarning() {
+    // internal (not private): reached from the fork's DeviceLink extension.
+    func clearPairingVersionWarning() {
         pairingVersionWarning = nil
         pendingPairingVersionWarningURL = nil
         pendingPairingVersionWarningWasUserEntered = false

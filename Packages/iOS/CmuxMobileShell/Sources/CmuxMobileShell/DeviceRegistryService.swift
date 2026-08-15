@@ -6,7 +6,7 @@ import os
 import UIKit
 #endif
 
-private let deviceRegistryLog = Logger(subsystem: "com.cmuxterm.app", category: "DeviceRegistry")
+private let deviceRegistryLog = Logger(subsystem: "com.cmux-mochi", category: "DeviceRegistry")
 
 /// HTTP client for the team-scoped device registry (`/api/devices`).
 ///

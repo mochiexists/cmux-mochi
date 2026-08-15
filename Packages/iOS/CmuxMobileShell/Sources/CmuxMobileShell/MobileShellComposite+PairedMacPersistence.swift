@@ -33,13 +33,28 @@ extension MobileShellComposite {
               !ticket.macDeviceID.isEmpty,
               ticket.macDeviceID != "manual-ticket-request",
               !ticket.macDeviceID.hasPrefix("manual-") else { return true }
-        let stackUserID = identityProvider?.currentUserID
-        let scope = await currentScopeSnapshot(userID: stackUserID)
+        // Fork (cmux Mochi): store account-free pairings under this install's local
+        // scope rather than nil. A nil scope is unreadable by aggregation (which
+        // refuses nil to avoid reading every account's Macs), so Macs saved that way
+        // could never be listed together — each new pairing displaced the last.
+        let scope = await currentScopeSnapshot(userID: identityProvider?.currentUserID)
+        let stackUserID = scope?.userID ?? identityProvider?.currentUserID
         let ticketDisplayName = displayNameOverride ?? ticket.macDisplayName
-        var accepted = true
+        // Starts false and is earned by an actual write. It was initialised to
+        // `true`, so every early return below — and a write closure that never
+        // ran at all — reported success while persisting nothing. A pairing then
+        // logged "persisted=true" with an empty store, and the phone had no Mac
+        // to dial on the next cold launch: the exact failure this function
+        // exists to prevent, reported as a success.
+        var accepted = false
         await performSerializedPairedMacWrite(ifStillCurrent: ifStillCurrent) { [weak self] in
             guard let self else { return }
-            if let scope, await !self.isScopeCurrent(scope) { return }
+            if let scope, await !self.isScopeCurrent(scope) {
+                pairedMacPersistenceLog.error(
+                    "paired mac not persisted: scope changed during write"
+                )
+                return
+            }
             let scopedMacs = (try? await pairedMacStore.loadAll(
                 stackUserID: stackUserID, teamID: scope?.teamID
             )) ?? []
@@ -126,6 +141,29 @@ extension MobileShellComposite {
                         teamID: scope?.teamID,
                         now: Date()
                     )
+                    // `upsert` returns Void, and the build-compatibility wrapper
+                    // DROPS a write for a Mac whose instance tag does not match
+                    // this build's scope — silently, without throwing. Assuming
+                    // success here is what produced a "pairing persisted=true"
+                    // log against an empty store. Read the row back: the only
+                    // trustworthy evidence that the write survived every wrapper
+                    // between here and the database.
+                    let stored = (try? await pairedMacStore.loadAll(
+                        stackUserID: stackUserID, teamID: scope?.teamID
+                    )) ?? []
+                    accepted = stored.contains { $0.macDeviceID == ticket.macDeviceID }
+                    if !accepted {
+                        pairedMacPersistenceLog.error(
+                            """
+                            paired mac write was dropped for \
+                            \(ticket.macDeviceID, privacy: .public) tag=\
+                            \(instanceTag ?? "nil", privacy: .public) — most likely \
+                            build-compatibility: this iOS build's scope does not match \
+                            the Mac's instance tag
+                            """
+                        )
+                        return
+                    }
                 }
                 if !userAuthorizedTailscaleRoutes.isEmpty {
                     // The user just proved control of this Mac by entering its
