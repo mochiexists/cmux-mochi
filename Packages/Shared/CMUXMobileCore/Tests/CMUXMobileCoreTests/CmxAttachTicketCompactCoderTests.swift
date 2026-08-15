@@ -43,7 +43,7 @@ private func legacyDecoder() -> JSONDecoder {
     return decoder
 }
 
-@Test func compactEncodeUsesShortKeysAndNeverCarriesAuthTokenNameOrExpiry() throws {
+@Test func compactEncodeUsesShortKeysAndCarriesTokenUnderShortKey() throws {
     let ticket = try CmxAttachTicket(
         workspaceID: "workspace-1",
         terminalID: "terminal-9",
@@ -62,9 +62,12 @@ private func legacyDecoder() -> JSONDecoder {
     let data = try encodeLegacyCompatibility(ticket)
     let json = try #require(String(data: data, encoding: .utf8))
 
+    // Fork (cmux Mochi): the token IS carried, under the short key `k` — the QR is
+    // the credential here (see CmxAttachTicketCompactCoder). The long-form key
+    // names must still never appear; the grammar stays compact.
     #expect(!json.contains("auth_token"))
     #expect(!json.contains("authToken"))
-    #expect(!json.contains("ticket-secret"))
+    #expect(json.contains("\"k\":\"ticket-secret\""))
     #expect(!json.contains("workspaceID"))
     #expect(!json.contains("version"))
     #expect(json.contains("\"v\":1"))
@@ -75,11 +78,12 @@ private func legacyDecoder() -> JSONDecoder {
     #expect(json.contains("\"pc\":1"))
     #expect(json.contains("\"av\":\"0.64.15\""))
     #expect(json.contains("\"ab\":\"42\""))
-    // The grammar no longer carries the display name or an expiry: the name
-    // arrives post-handshake via `mobile.host.status`, and a pairing QR never
-    // expires.
+    // The display name still never travels: it arrives post-handshake via
+    // `mobile.host.status`. The expiry DOES travel now (fork), under `x`, encoded
+    // as seconds since the reference date rather than since 1970 — hence
+    // 4_000_000_000 does not appear literally.
     #expect(!json.contains("Studio"))
-    #expect(!json.contains("4000000000"))
+    #expect(json.contains("\"x\":"))
     let object = try #require(
         try JSONSerialization.jsonObject(with: data) as? [String: Any]
     )
@@ -177,12 +181,16 @@ private func legacyDecoder() -> JSONDecoder {
     #expect(decodedHints.isEmpty)
     #expect(decoded.routes[0] == ticket.routes[0])
     #expect(decoded.routes[2] == ticket.routes[2])
-    // Dropped by design: the auth token never authorizes anything, the name
-    // arrives via `mobile.host.status`, and a pairing QR never expires.
-    #expect(decoded.authToken == nil)
+    // Fork (cmux Mochi): the token and expiry SURVIVE the round trip. Upstream
+    // drops them because there the token authorizes nothing (Stack auth is the
+    // sole gate) and a QR never expires; this fork's host authorizes on the
+    // ticket alone, so the QR must carry the credential or a signed-out phone
+    // has nothing to present. The display name still arrives via
+    // `mobile.host.status`, so it stays dropped.
+    #expect(decoded.authToken == ticket.authToken)
+    #expect(decoded.expiresAt == ticket.expiresAt)
     #expect(decoded.macDisplayName == nil)
-    #expect(decoded.expiresAt == nil)
-    #expect(!decoded.isExpired(at: .distantFuture))
+    #expect(decoded.isExpired(at: .distantFuture))
 }
 
 @Test func compactDecodeKeepsLegacyEmailPayloadsWorking() throws {
@@ -421,5 +429,10 @@ private func legacyDecoder() -> JSONDecoder {
     let compact = try encodeLegacyCompatibility(ticket)
 
     #expect(compact.count < legacy.count)
-    #expect(compact.count <= 150)
+    // Fork (cmux Mochi): the ceiling rises from 150 because this fork's QR carries
+    // the attach token and its real expiry — without them a signed-out phone has
+    // no credential to present. That is ~70 bytes of unavoidable growth. The QR
+    // gets denser (a real cost in poor light), so keep a ceiling here so further
+    // payload growth still shows up in review.
+    #expect(compact.count <= 260)
 }

@@ -11300,7 +11300,7 @@ C0DE71B10000000000000002 /* AppDelegate+AgentChatNotifications.swift */ = {isa =
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
 				SWIFT_VERSION = 5.0;
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/cmux DEV.app/Contents/MacOS/cmux DEV";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/$(CMUX_FORK_APP_NAME) DEV.app/Contents/MacOS/$(CMUX_FORK_APP_NAME) DEV";
 				TEST_TARGET_NAME = cmux;
 			};
 			name = Debug;
@@ -11318,7 +11318,7 @@ C0DE71B10000000000000002 /* AppDelegate+AgentChatNotifications.swift */ = {isa =
 				PRODUCT_BUNDLE_IDENTIFIER = "$(CMUX_FORK_BUNDLE_ID_TESTS)";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_VERSION = 5.0;
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/cmux.app/Contents/MacOS/cmux";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/$(CMUX_FORK_APP_NAME).app/Contents/MacOS/$(CMUX_FORK_APP_NAME)";
 				TEST_TARGET_NAME = cmux;
 			};
 			name = Release;

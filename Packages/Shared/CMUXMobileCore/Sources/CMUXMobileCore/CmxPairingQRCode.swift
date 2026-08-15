@@ -114,6 +114,19 @@ public struct CmxPairingQRCode: Sendable {
                 }
                 return "r=\(hostPortString(host: host, port: port))"
             })
+            // Fork (cmux Mochi): carry the attach token (`k`) and its expiry
+            // (`x`). Upstream's v2 grammar is route discovery only, because
+            // there the phone authenticates with its Stack account. This fork's
+            // host authorizes on the ticket alone, so the code has to BE the
+            // credential -- otherwise a signed-out phone scans it, dials the
+            // route, and hangs with nothing to present. Bearer-grade by
+            // construction: keep TTLs short.
+            if let token = normalizedNonEmpty(ticket.authToken) {
+                compatibilityItems.append("k=\(percentEncodeQueryValue(token))")
+            }
+            if let expiresAt = ticket.expiresAt {
+                compatibilityItems.append("x=\(Int(expiresAt.timeIntervalSince1970))")
+            }
             items = compatibilityItems
         }
         // The scheme is channel-specific (see ``CmxPairingURLScheme``): a dev
@@ -289,8 +302,11 @@ private extension CmxPairingQRCode {
             macAppVersion: queryValue(named: "av", in: components),
             macAppBuild: queryValue(named: "ab", in: components),
             routes: routes,
-            expiresAt: nil,
-            authToken: nil
+            // Fork (cmux Mochi): read back the credential the encoder writes.
+            expiresAt: queryInt(named: "x", in: components).map {
+                Date(timeIntervalSince1970: TimeInterval($0))
+            },
+            authToken: queryValue(named: "k", in: components)
         )
         try ticket.validate()
         return ticket

@@ -1,4 +1,5 @@
 public import CMUXMobileCore
+public import Network
 
 /// Builds Network.framework TCP transports for host/port routes.
 public struct CmxNetworkByteTransportFactory: CmxRouteAwareByteTransportFactory {
@@ -6,6 +7,16 @@ public struct CmxNetworkByteTransportFactory: CmxRouteAwareByteTransportFactory 
     public var maximumReceiveLength: Int
     public var connectTimeoutNanoseconds: UInt64
     private let tailscaleRouteAuthority: any CmxTailscaleRouteAuthorizing
+
+    /// Fork (cmux Mochi): supplies DeviceLink's mutual-TLS options for a paired
+    /// Mac. Taking a closure keeps this package free of DeviceLinkKit, so the
+    /// transport holds no opinion about how identities are stored.
+    ///
+    /// A tailnet dial with no options available proceeds without TLS only for
+    /// upstream's own authorization modes; an attach-ticket dial requires them,
+    /// because the fork's pairing host is TLS-only and a plaintext dial could
+    /// only reach something that is not our Mac.
+    public var deviceLinkTLSOptions: (@Sendable () -> NWProtocolTLS.Options?)?
 
     public init(
         supportedKinds: [CmxAttachTransportKind] = [.tailscale, .debugLoopback],
@@ -79,6 +90,14 @@ public struct CmxNetworkByteTransportFactory: CmxRouteAwareByteTransportFactory 
                 guard authorization.authorizes(host: host, port: port) else {
                     throw CmxNetworkByteTransportError.tailscaleAuthorizationUnavailable
                 }
+            case .attachTicket:
+                // Fork (cmux Mochi): the ticket IS the credential, and the Mac
+                // additionally refuses any non-tailnet connection, so no
+                // separate route grant is required here.
+                guard deviceLinkTLSOptions?() != nil else {
+                    // Fail closed: the fork's pairing host is mutual-TLS only.
+                    throw CmxNetworkByteTransportError.tailscaleAuthorizationUnavailable
+                }
             case .stackBearer, .transportAdmission:
                 // A generic Stack bearer never opts into the legacy risk.
                 throw CmxNetworkByteTransportError.tailscaleAuthorizationUnavailable
@@ -87,7 +106,8 @@ public struct CmxNetworkByteTransportFactory: CmxRouteAwareByteTransportFactory 
                 request: request,
                 tailscaleRouteAuthority: tailscaleRouteAuthority,
                 maximumReceiveLength: maximumReceiveLength,
-                connectTimeoutNanoseconds: connectTimeoutNanoseconds
+                connectTimeoutNanoseconds: connectTimeoutNanoseconds,
+                tlsOptions: deviceLinkTLSOptions?()
             )
         case .debugLoopback:
             guard request.authorizationMode == .stackBearer else {

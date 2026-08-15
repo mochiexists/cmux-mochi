@@ -99,11 +99,17 @@ public actor CmxNetworkByteTransport: CmxByteTransport {
     private var tailscalePathRevision: UInt64 = 0
     private var tailscaleAuthorizationInvalidated = false
 
+    /// - Parameter tlsOptions: When present, the connection is established over
+    ///   TLS with these options. Fork (cmux Mochi): DeviceLink supplies mutual
+    ///   TLS options here (client identity plus the Mac's pinned key), which is
+    ///   why a `nil` value must never reach a pairing route — see
+    ///   ``CmxNetworkByteTransportFactory``.
     public init(
         host: String,
         port: Int,
         maximumReceiveLength: Int = CmxNetworkByteTransport.defaultMaximumReceiveLength,
-        connectTimeoutNanoseconds: UInt64 = CmxNetworkByteTransport.defaultConnectTimeoutNanoseconds
+        connectTimeoutNanoseconds: UInt64 = CmxNetworkByteTransport.defaultConnectTimeoutNanoseconds,
+        tlsOptions: NWProtocolTLS.Options? = nil
     ) throws {
         let normalizedHost = host.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalizedHost.isEmpty else {
@@ -121,7 +127,7 @@ public actor CmxNetworkByteTransport: CmxByteTransport {
 
         let tcpOptions = NWProtocolTCP.Options()
         tcpOptions.noDelay = true
-        let parameters = NWParameters(tls: nil, tcp: tcpOptions)
+        let parameters = NWParameters(tls: tlsOptions, tcp: tcpOptions)
         connection = NWConnection(
             host: NWEndpoint.Host(normalizedHost),
             port: nwPort,
@@ -187,7 +193,11 @@ public actor CmxNetworkByteTransport: CmxByteTransport {
         preparedTailscaleRoute: CmxPreparedTailscaleRoute,
         tailscaleRouteAuthority: any CmxTailscaleRouteAuthorizing,
         maximumReceiveLength: Int,
-        connectTimeoutNanoseconds: UInt64 = CmxNetworkByteTransport.defaultConnectTimeoutNanoseconds
+        connectTimeoutNanoseconds: UInt64 = CmxNetworkByteTransport.defaultConnectTimeoutNanoseconds,
+        // Fork (cmux Mochi): the pairing host is mutual-TLS only, so a tailnet
+        // dial carries DeviceLink's options. Optional so upstream's plaintext
+        // paths and the tests that exercise them are unaffected.
+        tlsOptions: NWProtocolTLS.Options? = nil
     ) throws {
         guard maximumReceiveLength > 0 else {
             throw CmxNetworkByteTransportError.invalidMaximumReceiveLength(maximumReceiveLength)
@@ -203,7 +213,7 @@ public actor CmxNetworkByteTransport: CmxByteTransport {
 
         let tcpOptions = NWProtocolTCP.Options()
         tcpOptions.noDelay = true
-        let parameters = NWParameters(tls: nil, tcp: tcpOptions)
+        let parameters = NWParameters(tls: tlsOptions, tcp: tcpOptions)
         parameters.requiredInterface = preparedTailscaleRoute.requiredInterface
         connection = NWConnection(
             host: preparedTailscaleRoute.proof.peerAddress.nwHost,

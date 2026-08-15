@@ -1,5 +1,6 @@
 internal import CMUXMobileCore
 import Foundation
+import Network
 
 /// Defers the actor-isolated route proof until `connect()` while preserving the
 /// synchronous transport-factory contract. The proven interface is set on
@@ -9,6 +10,7 @@ actor CmxPreparingTailscaleByteTransport: CmxByteTransport {
     private let tailscaleRouteAuthority: any CmxTailscaleRouteAuthorizing
     private let maximumReceiveLength: Int
     private let connectTimeoutNanoseconds: UInt64
+    private let tlsOptions: NWProtocolTLS.Options?
     private var preparationTask: Task<any CmxByteTransport, any Error>?
     private var transport: (any CmxByteTransport)?
     private var isClosed = false
@@ -17,12 +19,14 @@ actor CmxPreparingTailscaleByteTransport: CmxByteTransport {
         request: CmxByteTransportRequest,
         tailscaleRouteAuthority: any CmxTailscaleRouteAuthorizing,
         maximumReceiveLength: Int,
-        connectTimeoutNanoseconds: UInt64
+        connectTimeoutNanoseconds: UInt64,
+        tlsOptions: NWProtocolTLS.Options? = nil
     ) {
         self.request = request
         self.tailscaleRouteAuthority = tailscaleRouteAuthority
         self.maximumReceiveLength = maximumReceiveLength
         self.connectTimeoutNanoseconds = connectTimeoutNanoseconds
+        self.tlsOptions = tlsOptions
     }
 
     func connect() async throws {
@@ -82,7 +86,8 @@ actor CmxPreparingTailscaleByteTransport: CmxByteTransport {
                         preparedTailscaleRoute: prepared,
                         tailscaleRouteAuthority: authority,
                         maximumReceiveLength: maximumReceiveLength,
-                        connectTimeoutNanoseconds: connectTimeoutNanoseconds
+                        connectTimeoutNanoseconds: connectTimeoutNanoseconds,
+                        tlsOptions: tlsOptions
                     )
                 } catch is CancellationError {
                     throw CancellationError()

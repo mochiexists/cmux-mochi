@@ -165,6 +165,11 @@ struct CmxTailscaleRouteProofValidator {
             guard authorization.authorizes(host: host, port: port) else {
                 throw CmxTailscaleRouteProofError.authorizationEvidenceMismatch
             }
+        case .attachTicket:
+            // Fork (cmux Mochi): the ticket authorizes the dial itself, and the
+            // checks below still pin the destination to a real Tailscale peer
+            // address reachable over a single Tailscale interface.
+            break
         case .stackBearer, .transportAdmission:
             throw CmxTailscaleRouteProofError.unsupportedAuthorizationMode
         }
