@@ -778,7 +778,10 @@ final class MobileHostService {
         tcpOptions.noDelay = true
         let candidate: NWListener
         do {
-            candidate = try NWListener(using: NWParameters(tls: nil, tcp: tcpOptions), on: endpointPort)
+            candidate = try NWListener(
+                using: Self.deviceLinkListenerParameters(tcp: tcpOptions),
+                on: endpointPort
+            )
         } catch {
             return nil
         }
@@ -927,7 +930,7 @@ final class MobileHostService {
         do {
             let tcpOptions = NWProtocolTCP.Options()
             tcpOptions.noDelay = true
-            let parameters = NWParameters(tls: nil, tcp: tcpOptions)
+            let parameters = try Self.deviceLinkListenerParameters(tcp: tcpOptions)
             let nextListener = try makeListener(
                 parameters: parameters,
                 usePreferredPort: usePreferredPort,
@@ -1178,10 +1181,12 @@ final class MobileHostService {
             }
             #endif
 
-            let transport = CmxNetworkByteTransport(acceptedConnection: connection)
+            // Fork (cmux Mochi): admission comes from the completed DeviceLink
+            // handshake rather than from merely reaching the listener.
+            guard let admitted = await Self.admitDeviceLinkConnection(connection) else { return }
             await Self.acceptTransport(
-                transport,
-                authorization: .legacyPrivateNetworkListener,
+                admitted.transport,
+                authorization: admitted.authorization,
                 isCurrent: {
                     await MobileHostService.shared.canAcceptConnection(
                         generation: generation
