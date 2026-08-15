@@ -21,11 +21,15 @@ public struct CmxNetworkByteTransportFactory: CmxRouteAwareByteTransportFactory 
     public init(
         supportedKinds: [CmxAttachTransportKind] = [.tailscale, .debugLoopback],
         maximumReceiveLength: Int = CmxNetworkByteTransport.defaultMaximumReceiveLength,
-        connectTimeoutNanoseconds: UInt64 = CmxNetworkByteTransport.defaultConnectTimeoutNanoseconds
+        connectTimeoutNanoseconds: UInt64 = CmxNetworkByteTransport.defaultConnectTimeoutNanoseconds,
+        // Fork (cmux Mochi): supplied at construction so a factory is never
+        // briefly live without the TLS options its tailnet dials require.
+        deviceLinkTLSOptions: (@Sendable () -> NWProtocolTLS.Options?)? = nil
     ) {
         self.supportedKinds = supportedKinds
         self.maximumReceiveLength = maximumReceiveLength
         self.connectTimeoutNanoseconds = max(1, connectTimeoutNanoseconds)
+        self.deviceLinkTLSOptions = deviceLinkTLSOptions
         tailscaleRouteAuthority = CmxSystemTailscaleRouteAuthority()
     }
 
