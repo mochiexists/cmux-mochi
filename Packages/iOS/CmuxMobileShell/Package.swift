@@ -35,6 +35,7 @@ let package = Package(
             name: "CmuxMobileShell",
             dependencies: [
                 "CMUXMobileCore",
+                "DeviceLinkKit",
                 "CmuxAgentChat",
                 "CmuxMobileChanges",
                 "CmuxMobileDiagnostics",
@@ -72,6 +73,7 @@ let package = Package(
                 "CmuxMobileShell",
                 "CmuxMobileShellReleaseGateSupport",
                 "CMUXMobileCore",
+                "DeviceLinkKit",
                 "CmuxAgentChat",
                 "CmuxMobileBrowserStream",
                 "CmuxMobileChanges",

@@ -11,9 +11,9 @@ source "$SCRIPT_DIR/lib/dev-secrets.sh"
 # shellcheck source=scripts/fork-identity.env
 source "$SCRIPT_DIR/fork-identity.env"
 
-APP_NAME="$CMUX_APP_NAME DEV"
-BUNDLE_ID="$CMUX_BUNDLE_ID.debug"
-BASE_APP_NAME="$CMUX_APP_NAME DEV"
+APP_NAME="$CMUX_FORK_APP_NAME DEV"
+BUNDLE_ID="$CMUX_FORK_BUNDLE_ID.debug"
+BASE_APP_NAME="$CMUX_FORK_APP_NAME DEV"
 DERIVED_DATA=""
 NAME_SET=0
 BUNDLE_SET=0
@@ -201,16 +201,16 @@ write_last_socket_path() {
   local slug=""
 
   case "$bundle_id" in
-    "$CMUX_BUNDLE_ID")
+    "$CMUX_FORK_BUNDLE_ID")
       marker_name="last-socket-path"
       tmp_marker="/tmp/cmux-last-socket-path"
       ;;
-    "$CMUX_BUNDLE_ID".nightly)
+    "$CMUX_FORK_BUNDLE_ID".nightly)
       marker_name="nightly-last-socket-path"
       tmp_marker="/tmp/cmux-nightly-last-socket-path"
       ;;
-    "$CMUX_BUNDLE_ID".nightly.*)
-      slug="$(sanitize_path "${bundle_id#$CMUX_BUNDLE_ID.nightly.}")"
+    "$CMUX_FORK_BUNDLE_ID".nightly.*)
+      slug="$(sanitize_path "${bundle_id#$CMUX_FORK_BUNDLE_ID.nightly.}")"
       if [[ -n "$slug" ]]; then
         marker_name="nightly-${slug}-last-socket-path"
         tmp_marker="/tmp/cmux-nightly-${slug}-last-socket-path"
@@ -219,12 +219,12 @@ write_last_socket_path() {
         tmp_marker="/tmp/cmux-nightly-last-socket-path"
       fi
       ;;
-    "$CMUX_BUNDLE_ID".staging)
+    "$CMUX_FORK_BUNDLE_ID".staging)
       marker_name="staging-last-socket-path"
       tmp_marker="/tmp/cmux-staging-last-socket-path"
       ;;
-    "$CMUX_BUNDLE_ID".staging.*)
-      slug="$(sanitize_path "${bundle_id#$CMUX_BUNDLE_ID.staging.}")"
+    "$CMUX_FORK_BUNDLE_ID".staging.*)
+      slug="$(sanitize_path "${bundle_id#$CMUX_FORK_BUNDLE_ID.staging.}")"
       if [[ -n "$slug" ]]; then
         marker_name="staging-${slug}-last-socket-path"
         tmp_marker="/tmp/cmux-staging-${slug}-last-socket-path"
@@ -233,15 +233,15 @@ write_last_socket_path() {
         tmp_marker="/tmp/cmux-staging-last-socket-path"
       fi
       ;;
-    "$CMUX_BUNDLE_ID".debug)
+    "$CMUX_FORK_BUNDLE_ID".debug)
       slug="${TAG_SLUG:-}"
       if [[ -n "$slug" ]]; then
         marker_name="dev-${slug}-last-socket-path"
         tmp_marker="/tmp/cmux-dev-${slug}-last-socket-path"
       fi
       ;;
-    "$CMUX_BUNDLE_ID".debug.*)
-      slug="$(sanitize_path "${bundle_id#$CMUX_BUNDLE_ID.debug.}")"
+    "$CMUX_FORK_BUNDLE_ID".debug.*)
+      slug="$(sanitize_path "${bundle_id#$CMUX_FORK_BUNDLE_ID.debug.}")"
       if [[ -n "$slug" ]]; then
         marker_name="dev-${slug}-last-socket-path"
         tmp_marker="/tmp/cmux-dev-${slug}-last-socket-path"
@@ -571,10 +571,10 @@ if [[ -n "$TAG" ]]; then
   TAG_ID="$(sanitize_bundle "$TAG")"
   TAG_SLUG="$(sanitize_path "$TAG")"
   if [[ "$NAME_SET" -eq 0 ]]; then
-    APP_NAME="$CMUX_APP_NAME DEV ${TAG_SLUG}"
+    APP_NAME="$CMUX_FORK_APP_NAME DEV ${TAG_SLUG}"
   fi
   if [[ "$BUNDLE_SET" -eq 0 ]]; then
-    BUNDLE_ID="$CMUX_BUNDLE_ID.debug.${TAG_ID}"
+    BUNDLE_ID="$CMUX_FORK_BUNDLE_ID.debug.${TAG_ID}"
   fi
   if [[ "$DERIVED_SET" -eq 0 ]]; then
     DERIVED_DATA="$(tagged_derived_data_path "$TAG_SLUG")"
@@ -994,7 +994,7 @@ if [[ -n "$TAG" && "$APP_NAME" != "$SEARCH_APP_NAME" ]]; then
       echo "$CMUX_DEBUG_LOG" > /tmp/cmux-last-debug-log-path || true
       /usr/libexec/PlistBuddy -c "Add :LSEnvironment dict" "$INFO_PLIST" 2>/dev/null || true
       set_plist_url_scheme "$INFO_PLIST" "$CMUX_AUTH_CALLBACK_SCHEME_VALUE"
-      set_plist_env "$INFO_PLIST" CMUX_BUNDLE_ID "$BUNDLE_ID"
+      set_plist_env "$INFO_PLIST" CMUX_FORK_BUNDLE_ID "$BUNDLE_ID"
       set_plist_env "$INFO_PLIST" CMUXD_UNIX_PATH "$CMUXD_SOCKET"
       set_plist_env "$INFO_PLIST" CMUX_SOCKET_PATH "$CMUX_SOCKET_PATH_VALUE"
       set_plist_env "$INFO_PLIST" CMUX_DEBUG_LOG "$CMUX_DEBUG_LOG"
@@ -1115,7 +1115,7 @@ if [[ "$LAUNCH" -eq 1 ]]; then
     -u CMUXD_UNIX_PATH
     -u CMUX_TAG
     -u CMUX_DEBUG_LOG
-    -u CMUX_BUNDLE_ID
+    -u CMUX_FORK_BUNDLE_ID
     -u CMUX_BUNDLED_CLI_PATH
     -u CMUX_SHELL_INTEGRATION
     -u CMUX_SHELL_INTEGRATION_DIR
@@ -1145,7 +1145,7 @@ if [[ "$LAUNCH" -eq 1 ]]; then
   fi
   TAG_LAUNCH_ENV=(
     CMUX_TAG="${TAG_SLUG:-}"
-    CMUX_BUNDLE_ID="$BUNDLE_ID"
+    CMUX_FORK_BUNDLE_ID="$BUNDLE_ID"
     CMUX_AUTH_CALLBACK_SCHEME="$LAUNCH_AUTH_CALLBACK_SCHEME"
     CMUX_SOCKET_ENABLE=1
     CMUX_SOCKET_MODE=allowAll

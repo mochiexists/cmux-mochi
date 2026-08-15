@@ -29,8 +29,8 @@ spec.loader.exec_module(render)
 
 
 def resolve_xcconfig_value(raw: str) -> str:
-    """Expand ${CMUX_SLASH} the way Xcode would, to get the effective value."""
-    return raw.replace("${CMUX_SLASH}", "/")
+    """Expand ${CMUX_FORK_SLASH} the way Xcode would, for the effective value."""
+    return raw.replace("${CMUX_FORK_SLASH}", "/")
 
 
 def test_feed_url_survives_xcconfig_comment_syntax() -> None:
@@ -111,12 +111,35 @@ def test_rendering_is_deterministic() -> None:
     print("ok: rendering is deterministic")
 
 
+
+def test_generated_names_stay_namespaced() -> None:
+    """Every generated variable must carry the CMUX_FORK_ prefix.
+
+    Upstream already owns CMUX_* names at runtime -- CMUX_BUNDLE_ID is the
+    bundle id of the app a CLI should talk to, exported by
+    scripts/cmux-debug-cli.sh. A generated variable reusing one of those names
+    silently shadows it for anything that sources fork-identity.env.
+    """
+    env_text = (ROOT / "scripts" / "fork-identity.env").read_text()
+    offenders = [
+        line.split("=", 1)[0]
+        for line in env_text.splitlines()
+        if line and not line.startswith("#") and "=" in line
+        and not line.startswith(("CMUX_FORK_", "CMUX_UPSTREAM_"))
+    ]
+    assert not offenders, (
+        f"generated variables are not namespaced: {offenders}; "
+        "they would shadow upstream's CMUX_* runtime contracts"
+    )
+    print("ok: generated variable names stay namespaced")
+
 def main() -> int:
     test_feed_url_survives_xcconfig_comment_syntax()
     test_every_channel_renders_a_distinct_identity()
     test_unknown_channel_is_rejected()
     test_committed_artifacts_match_their_source()
     test_rendering_is_deterministic()
+    test_generated_names_stay_namespaced()
     print("\nall fork identity tests passed")
     return 0
 

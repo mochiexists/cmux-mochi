@@ -20,20 +20,20 @@ XCCONFIG_TEMPLATE = """\
 //   * as the project-level baseConfigurationReference in cmux.xcodeproj
 //   * via `xcodebuild -xcconfig` from scripts/reload.sh
 //
-// The Xcode project references these as $(CMUX_*) rather than hardcoding fork
+// The Xcode project references these as $(CMUX_FORK_*) rather than hardcoding fork
 // identity, which holds the project file's fork diff to a fixed handful of
 // lines that upstream rebases do not touch.
 
-CMUX_SLASH = /
+CMUX_FORK_SLASH = /
 
-CMUX_CHANNEL = {channel}
-CMUX_APP_NAME = {app_name}
-CMUX_BUNDLE_ID = {bundle_id}
-CMUX_BUNDLE_ID_TESTS = {bundle_id}.tests
-CMUX_BUNDLE_ID_UITESTS = {bundle_id}.uitests
-CMUX_URL_SCHEME = {url_scheme}
-CMUX_APP_ICON_NAME = {app_icon}
-CMUX_SPARKLE_FEED_URL = {sparkle_feed_escaped}
+CMUX_FORK_CHANNEL = {channel}
+CMUX_FORK_APP_NAME = {app_name}
+CMUX_FORK_BUNDLE_ID = {bundle_id}
+CMUX_FORK_BUNDLE_ID_TESTS = {bundle_id}.tests
+CMUX_FORK_BUNDLE_ID_UITESTS = {bundle_id}.uitests
+CMUX_FORK_URL_SCHEME = {url_scheme}
+CMUX_FORK_APP_ICON_NAME = {app_icon}
+CMUX_FORK_SPARKLE_FEED_URL = {sparkle_feed_escaped}
 CMUX_FORK_TEAM_ID = {team_id}
 CMUX_FORK_REPO = {repo}
 """
@@ -43,14 +43,14 @@ ENV_TEMPLATE = """\
 # Source of truth: fork-identity.json (channel: {channel})
 # Shell: `source scripts/fork-identity.env`
 # Python: read fork-identity.json directly rather than parsing this file.
-CMUX_CHANNEL="{channel}"
-CMUX_APP_NAME="{app_name}"
-CMUX_BUNDLE_ID="{bundle_id}"
-CMUX_BUNDLE_ID_TESTS="{bundle_id}.tests"
-CMUX_BUNDLE_ID_UITESTS="{bundle_id}.uitests"
-CMUX_URL_SCHEME="{url_scheme}"
-CMUX_APP_ICON_NAME="{app_icon}"
-CMUX_SPARKLE_FEED_URL="{sparkle_feed}"
+CMUX_FORK_CHANNEL="{channel}"
+CMUX_FORK_APP_NAME="{app_name}"
+CMUX_FORK_BUNDLE_ID="{bundle_id}"
+CMUX_FORK_BUNDLE_ID_TESTS="{bundle_id}.tests"
+CMUX_FORK_BUNDLE_ID_UITESTS="{bundle_id}.uitests"
+CMUX_FORK_URL_SCHEME="{url_scheme}"
+CMUX_FORK_APP_ICON_NAME="{app_icon}"
+CMUX_FORK_SPARKLE_FEED_URL="{sparkle_feed}"
 CMUX_FORK_TEAM_ID="{team_id}"
 CMUX_FORK_SIGNING_CERT="{signing_cert}"
 CMUX_FORK_NOTARY_PROFILE="{notary_profile}"
@@ -68,7 +68,7 @@ def escape_for_xcconfig(url: str) -> str:
     holds one literal slash plus one expanded slash, so no literal `//` ever
     appears in the source and the resolved value still has exactly two.
     """
-    return url.replace("//", "/${CMUX_SLASH}", 1)
+    return url.replace("//", "/${CMUX_FORK_SLASH}", 1)
 
 
 def build_fields(data: dict, channel: str) -> dict:

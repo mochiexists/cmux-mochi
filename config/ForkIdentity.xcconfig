@@ -5,19 +5,19 @@
 //   * as the project-level baseConfigurationReference in cmux.xcodeproj
 //   * via `xcodebuild -xcconfig` from scripts/reload.sh
 //
-// The Xcode project references these as $(CMUX_*) rather than hardcoding fork
+// The Xcode project references these as $(CMUX_FORK_*) rather than hardcoding fork
 // identity, which holds the project file's fork diff to a fixed handful of
 // lines that upstream rebases do not touch.
 
-CMUX_SLASH = /
+CMUX_FORK_SLASH = /
 
-CMUX_CHANNEL = stable
-CMUX_APP_NAME = cmux Mochi
-CMUX_BUNDLE_ID = com.cmux-mochi
-CMUX_BUNDLE_ID_TESTS = com.cmux-mochi.tests
-CMUX_BUNDLE_ID_UITESTS = com.cmux-mochi.uitests
-CMUX_URL_SCHEME = cmux
-CMUX_APP_ICON_NAME = AppIcon
-CMUX_SPARKLE_FEED_URL = https:/${CMUX_SLASH}/github.com/mochiexists/cmux-mochi/releases/latest/download/appcast.xml
+CMUX_FORK_CHANNEL = stable
+CMUX_FORK_APP_NAME = cmux Mochi
+CMUX_FORK_BUNDLE_ID = com.cmux-mochi
+CMUX_FORK_BUNDLE_ID_TESTS = com.cmux-mochi.tests
+CMUX_FORK_BUNDLE_ID_UITESTS = com.cmux-mochi.uitests
+CMUX_FORK_URL_SCHEME = cmux
+CMUX_FORK_APP_ICON_NAME = AppIcon
+CMUX_FORK_SPARKLE_FEED_URL = https:/${CMUX_FORK_SLASH}github.com/mochiexists/cmux-mochi/releases/latest/download/appcast.xml
 CMUX_FORK_TEAM_ID = 599WAZ6282
 CMUX_FORK_REPO = mochiexists/cmux-mochi
