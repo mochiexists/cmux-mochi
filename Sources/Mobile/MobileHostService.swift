@@ -321,12 +321,15 @@ final class MobileHostService {
     }
 
     private let callbackQueue = DispatchQueue(label: "dev.cmux.mobile.host-listener")
-    private let routeResolver = MobileRouteResolver()
+    // internal (not private): read by the fork's DeviceLink extension.
+    let routeResolver = MobileRouteResolver()
     private let ticketStore = MobileAttachTicketStore()
     private var listener: NWListener?
-    private var listenerGeneration = UUID()
+    // internal (not private): read by the fork's DeviceLink extension.
+    var listenerGeneration = UUID()
     private var listenerUsesEphemeralFallback = false
-    private var listenerPort: Int?
+    // internal (not private): read by the fork's DeviceLink extension.
+    var listenerPort: Int?
     /// The preferred port the active start-sequence targeted (regardless of an
     /// ephemeral fallback). Used to decide whether a settings change needs a
     /// restart. `nil` while stopped.
@@ -1294,6 +1297,29 @@ final class MobileHostService {
             return await stackAuthorization(request)
         case .irohAdmission:
             return nil
+        case .pairedDevice:
+            // The mutual-TLS handshake already proved possession of an
+            // authorized private key, and the pairing is Mac-wide, so no
+            // further per-request gate applies.
+            //
+            // Enrollment is allowed through rather than refused: a device that
+            // re-presents a key this Mac already trusts is retrying, and the
+            // handler answers `already_enrolled` for it. Refusing here made
+            // every re-pair after the first fail, and turned a lost enrollment
+            // response into a dead end instead of the harmless retry the design
+            // relies on. It cannot enroll a *different* key, because the
+            // fingerprint comes from the handshake rather than the request.
+            return nil
+        case .enrollmentCandidate:
+            // An unknown key, admitted solely because an enrollment window is
+            // open. It may enroll and do nothing else.
+            guard isDeviceLinkEnrollmentMethod(request.method) else {
+                return .failure(MobileHostRPCError(
+                    code: "unauthorized",
+                    message: "Pair this device before using it."
+                ))
+            }
+            return nil
         }
     }
 
@@ -1313,6 +1339,14 @@ final class MobileHostService {
                     ? Set([irohArtifactLaneCapability])
                     : Set()
             )
+        case .pairedDevice:
+            // A paired device holds a key this Mac authorized, so it already
+            // knows which Mac it reached -- identity here is not a disclosure.
+            return MobileHostPublicStatusCache.result(includeIdentity: true)
+        case .enrollmentCandidate:
+            // Not yet paired: routes only. Identity arrives with the pairing
+            // payload the user scanned, not from an unenrolled caller's probe.
+            return MobileHostPublicStatusCache.result(includeIdentity: false)
         }
     }
 

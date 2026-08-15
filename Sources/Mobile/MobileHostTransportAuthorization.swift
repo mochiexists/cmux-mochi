@@ -15,6 +15,14 @@ import os
 enum MobileHostConnectionAuthorizationContext: Equatable, Sendable {
     case stackBearer
     case irohAdmission(CmxIrohAdmittedPeer)
+    /// Fork (cmux Mochi): a device that completed mutual TLS with a key in this
+    /// Mac's authorized-devices table. Like ``irohAdmission``, the transport
+    /// handshake -- not a per-request bearer -- is the credential.
+    case pairedDevice(fingerprint: String, label: String)
+    /// Fork (cmux Mochi): an unknown key admitted **only** because an
+    /// enrollment window is open. Its RPC surface is the enrollment verb and
+    /// nothing else.
+    case enrollmentCandidate(fingerprint: String)
 }
 
 extension MobileHostConnectionAuthorizationContext {
