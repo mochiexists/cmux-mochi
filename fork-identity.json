@@ -1,0 +1,38 @@
+{
+  "_comment": "Canonical fork identity. Single source of truth for every place cmux Mochi differs from upstream cmux in name, bundle id, URL scheme, update feed, or signing. Generated artifacts (config/ForkIdentity.xcconfig, scripts/fork-identity.env) are produced from this file by scripts/inject-fork-identity.sh -- never edit those by hand. Prose context lives in FORK.md.",
+
+  "upstream": {
+    "repo": "manaflow-ai/cmux",
+    "bundle_id": "com.cmuxterm.app",
+    "app_name": "cmux",
+    "_comment": "Recorded so --check can scan for upstream identity that leaked back in after a rebase."
+  },
+
+  "repo": {
+    "owner": "mochiexists",
+    "name": "cmux-mochi"
+  },
+
+  "signing": {
+    "team_id": "599WAZ6282",
+    "developer_id_cert": "33FD69D8",
+    "notary_profile": "cmux-mochi-notary"
+  },
+
+  "channels": {
+    "stable": {
+      "app_name": "cmux Mochi",
+      "bundle_id": "com.cmux-mochi",
+      "url_scheme": "cmux",
+      "app_icon": "AppIcon",
+      "sparkle_feed": "https://github.com/mochiexists/cmux-mochi/releases/latest/download/appcast.xml"
+    },
+    "alpha": {
+      "app_name": "cmux Mochi ALPHA",
+      "bundle_id": "com.cmux-mochi.alpha",
+      "url_scheme": "cmux-alpha",
+      "app_icon": "AppIcon-Nightly",
+      "sparkle_feed": "https://github.com/mochiexists/cmux-mochi/releases/download/nightly/appcast.xml"
+    }
+  }
+}
