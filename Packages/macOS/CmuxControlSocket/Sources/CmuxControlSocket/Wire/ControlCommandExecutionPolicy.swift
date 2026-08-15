@@ -95,6 +95,13 @@ public enum ControlCommandExecutionPolicy: Sendable, Equatable {
         "browser.profiles.delete",
         "browser.import.cookies",
         "mobile.attach_ticket.create",
+        // Fork (cmux Mochi): DeviceLink pairing management. These are local
+        // socket only by design — the network dispatch deliberately does not
+        // carry them, so a paired phone cannot enumerate, invite, or evict its
+        // siblings.
+        "mobile.pairing.code.create",
+        "mobile.pairing.device.list",
+        "mobile.pairing.device.revoke",
         // `mobile.terminal.set_font` only validates params and emits a push
         // event via thread-safe MobileHostService statics, so it runs on the worker
         // like the other mobile data-plane verbs. Without this entry the policy
@@ -133,6 +140,16 @@ public enum ControlCommandExecutionPolicy: Sendable, Equatable {
         // mutation takes one synchronous controlResolveOnMain hop.
         "workspace.remote.terminal_session_launching",
         "workspace.remote.terminal_session_connected",
+        "surface.ingest",
+        "surface.screenshot",
+        // `workspace.screenshot` waits on WebKit snapshot callbacks for
+        // browser/agent/artifact panes, so it follows the same worker-lane
+        // contract as `surface.screenshot` (UI reads hop to main via
+        // v2MainSync).
+        "workspace.screenshot",
+        "surface.text",
+        "artifact.open",
+        "artifact.list",
         "remote.tmux.sessions",
         "remote.tmux.attach",
         "remote.tmux.detach",

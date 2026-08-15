@@ -119,6 +119,91 @@ struct SocketClientAuthorizationTests {
         }
     }
 
+    @Test func passwordFallsBackToPasswordAuthForCapabilityWrappedControlCommands() throws {
+        let authority = SocketClientCapabilityAuthority(
+            secret: Data(repeating: 0xA5, count: SocketClientCapabilityAuthority.secureByteCount),
+            audience: "com.cmuxterm.test"
+        )
+        let capability = authority.issueCapability(
+            nonce: Data(repeating: 0x5A, count: SocketClientCapabilityAuthority.secureByteCount)
+        )
+        let envelope = try #require(SocketClientCapabilityEnvelope(capability: capability))
+
+        // The CLI wraps every command (including its own `auth <password>`
+        // login line) whenever CMUX_SOCKET_CAPABILITY is set, so a denial
+        // here locks the bundled CLI out of password-mode sockets entirely.
+        for command in ["ping", "auth secret", "list-workspaces"] {
+            let result = authorization.authorizationResult(
+                envelope.wrap(command),
+                accessMode: .password,
+                peerProcessID: nil,
+                peerHasSameUID: true,
+                capabilityAuthority: authority,
+                isDescendant: { _ in false }
+            )
+            #expect(result?.command == command)
+            #expect(result?.bypassesPasswordAuthentication == false)
+        }
+    }
+
+    @Test func passwordAllowsCapabilityWrappedShellTelemetry() throws {
+        let authority = SocketClientCapabilityAuthority(
+            secret: Data(repeating: 0xA5, count: SocketClientCapabilityAuthority.secureByteCount),
+            audience: "com.cmuxterm.test"
+        )
+        let capability = authority.issueCapability(
+            nonce: Data(repeating: 0x5A, count: SocketClientCapabilityAuthority.secureByteCount)
+        )
+        let envelope = try #require(SocketClientCapabilityEnvelope(capability: capability))
+        let commands = [
+            "report_tty /dev/ttys001",
+            "report_shell_state running",
+            "ports_kick prompt",
+            "report_pwd /tmp",
+            "report_git_branch main",
+            "clear_git_branch",
+            "report_pr 123",
+            "report_pr_action 123 merge",
+            "clear_pr",
+        ]
+
+        for command in commands {
+            let result = authorization.authorizationResult(
+                envelope.wrap(command),
+                accessMode: .password,
+                peerProcessID: nil,
+                peerHasSameUID: true,
+                capabilityAuthority: authority,
+                isDescendant: { _ in false }
+            )
+            #expect(result?.command == command)
+            #expect(result?.bypassesPasswordAuthentication == true)
+        }
+    }
+
+    @Test func passwordDoesNotBypassAuthForInvalidCapabilityWrappedTelemetry() throws {
+        let authority = SocketClientCapabilityAuthority(
+            secret: Data(repeating: 0xA5, count: SocketClientCapabilityAuthority.secureByteCount),
+            audience: "com.cmuxterm.test"
+        )
+        let envelope = try #require(SocketClientCapabilityEnvelope(capability: "not-a-valid-capability"))
+        let command = "report_shell_state running --tab=test --panel=test"
+
+        // An unverifiable capability grants nothing, but the command itself
+        // is no more privileged than the same line sent unwrapped: it must
+        // fall through to password authentication, not be denied outright.
+        let result = authorization.authorizationResult(
+            envelope.wrap(command),
+            accessMode: .password,
+            peerProcessID: nil,
+            peerHasSameUID: true,
+            capabilityAuthority: authority,
+            isDescendant: { _ in false }
+        )
+        #expect(result?.command == command)
+        #expect(result?.bypassesPasswordAuthentication == false)
+    }
+
     @Test func allowAllDoesNotRequireSameUser() {
         let authority = SocketClientCapabilityAuthority(
             secret: Data(repeating: 0xA5, count: SocketClientCapabilityAuthority.secureByteCount),
