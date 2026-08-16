@@ -5,7 +5,13 @@ public enum SocketPathMarkerFiles {
     public static let stableTmpPath = "/tmp/cmux-last-socket-path"
     public static let nightlyBundleIdentifier = "com.cmuxterm.app.nightly"
     public static let stagingBundleIdentifier = "com.cmuxterm.app.staging"
-    public static let defaultBaseDebugBundleIdentifier = "com.cmuxterm.app.debug"
+    // Fork identity. This is the base the tagged-build parser matches against to
+    // recover a tag slug from the bundle id, so it MUST track the fork's real
+    // bundle id: with upstream's value here, `com.cmux-mochi.debug.<tag>` fails
+    // the prefix test, never resolves as `.dev(slug:)`, and every tagged build
+    // silently falls back to the single shared /tmp/cmux-debug.sock.
+    // Source of truth: fork-identity.json (`bundle_id` + ".debug").
+    public static let defaultBaseDebugBundleIdentifier = "com.cmux-mochi.debug"
     public static let defaultDebugSocketPath = "/tmp/cmux-debug.sock"
     public static let defaultNightlySocketPath = "/tmp/cmux-nightly.sock"
     public static let defaultStagingSocketPath = "/tmp/cmux-staging.sock"
