@@ -1,6 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Fork identity (app name, bundle id) generated from fork-identity.json. The
+# tagged app is named and bundled by reload.sh from these same values, so the
+# CLI path and CMUX_BUNDLE_ID below must derive from them rather than hardcode
+# upstream's, or this helper resolves a path/domain no fork build ever creates.
+# shellcheck source=scripts/fork-identity.env
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/fork-identity.env"
+
 if [[ -z "${CMUX_TAG:-}" ]]; then
   cat >&2 <<'EOF'
 CMUX_TAG is required.
@@ -59,7 +66,7 @@ EOF
   exit 1
 fi
 
-cli_path="${HOME}/Library/Developer/Xcode/DerivedData/cmux-${tag_slug}/Build/Products/Debug/cmux DEV ${tag_slug}.app/Contents/Resources/bin/cmux"
+cli_path="${HOME}/Library/Developer/Xcode/DerivedData/cmux-${tag_slug}/Build/Products/Debug/${CMUX_FORK_APP_NAME} DEV ${tag_slug}.app/Contents/Resources/bin/cmux"
 if [[ ! -x "$cli_path" ]]; then
   cat >&2 <<EOF
 Tagged cmux CLI not found:
@@ -81,6 +88,6 @@ unset CMUXD_UNIX_PATH
 unset CMUX_DEBUG_LOG
 export CMUX_SOCKET_PATH="$socket_path"
 export CMUX_TAG="$tag_slug"
-export CMUX_BUNDLE_ID="com.cmuxterm.app.debug.${tag_bundle_id}"
+export CMUX_BUNDLE_ID="${CMUX_FORK_BUNDLE_ID}.debug.${tag_bundle_id}"
 export CMUX_BUNDLED_CLI_PATH="$cli_path"
 exec "$cli_path" "$@"
