@@ -10,7 +10,7 @@ import Testing
 #endif
 
 extension AgentNotificationRegressionTests {
-    // Generous for loaded CI runners: subprocess spawn, signal propagation,
+    // Generous for loaded CI runners: subprocess spawn, same-PID exec,
     // and marker writes can take multiple seconds there. A long timeout only
     // slows the failure path.
     func waitForMarker(at url: URL, timeout: Duration = .seconds(15)) async -> Bool {
@@ -31,18 +31,26 @@ extension AgentNotificationRegressionTests {
         )
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         let initialScript = root.appendingPathComponent("initial.sh")
-        let scopedScript = root.appendingPathComponent("scoped.sh")
+        let scopedScript = root.appendingPathComponent("hooks")
+        let cmuxExecutable = root.appendingPathComponent("cmux")
         let readyMarker = root.appendingPathComponent("ready")
+        let execRequestMarker = root.appendingPathComponent("exec-requested")
         let execMarker = root.appendingPathComponent("execed")
         try """
         touch '\(readyMarker.path)'
-        trap 'exec /bin/sh "\(scopedScript.path)"' USR1
-        while :; do sleep 1; done
+        while [ ! -f '\(execRequestMarker.path)' ]; do sleep 0.05; done
+        cd "\(root.path)"
+        exec "\(cmuxExecutable.path)" hooks codex monitor --surface '\(fixture.panelId.uuidString)'
         """.write(to: initialScript, atomically: true, encoding: .utf8)
         try """
         export CMUX_SURFACE_ID='\(fixture.panelId.uuidString)'
-        exec /bin/sh -c 'touch "\(execMarker.path)"; exec sleep 30'
+        touch '\(execMarker.path)'
+        while true; do /bin/sleep 1; done
         """.write(to: scopedScript, atomically: true, encoding: .utf8)
+        try FileManager.default.createSymbolicLink(
+            atPath: cmuxExecutable.path,
+            withDestinationPath: "/bin/zsh"
+        )
 
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/bin/sh")
@@ -71,16 +79,23 @@ extension AgentNotificationRegressionTests {
             nowNanoseconds: DispatchTime.now().uptimeNanoseconds
         )
         #expect(cachedMiss == nil)
-        #expect(Darwin.kill(process.processIdentifier, SIGUSR1) == 0)
+        try Data().write(to: execRequestMarker, options: .atomic)
         #expect(await waitForMarker(at: execMarker))
 
-        #expect(
-            fixture.appDelegate.liveAgentDeliveryTarget(forAgentPID: process.processIdentifier)
-                == AgentDeliveryTargetCandidate(
-                    workspaceId: fixture.source.id,
-                    surfaceId: fixture.panelId
-                )
+        let expectedTarget = AgentDeliveryTargetCandidate(
+            workspaceId: fixture.source.id,
+            surfaceId: fixture.panelId
         )
+        let resolutionDeadline = ContinuousClock.now + .seconds(5)
+        var resolvedTarget: AgentDeliveryTargetCandidate?
+        while ContinuousClock.now < resolutionDeadline {
+            resolvedTarget = fixture.appDelegate.liveAgentDeliveryTarget(
+                forAgentPID: process.processIdentifier
+            )
+            if resolvedTarget == expectedTarget { break }
+            try? await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(resolvedTarget == expectedTarget)
     }
 
     @Test("Local PID routing excludes remote TTY device namespaces")

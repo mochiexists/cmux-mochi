@@ -35,22 +35,30 @@ def find_sibling_ids(text: str, sibling: str) -> tuple[str, str]:
     return build.group(1), build.group(2)
 
 
-def next_free_id(text: str, seed: int) -> str:
-    """Mint an unused 24-hex-digit object id."""
+def next_free_id(text: str, seed: int, taken: set[str]) -> str:
+    """Mint a 24-hex-digit object id unused by the file and not yet handed out.
+
+    `taken` is load-bearing: two ids minted for the same file (build file and
+    file reference) are both absent from `text` at mint time, so without it
+    each call walks up to the same first-free value and the pair collides.
+    Xcode then fails to read the project outright.
+    """
     while True:
         candidate = f"B8B0FA{seed:018X}"
-        if candidate not in text:
+        if candidate not in text and candidate not in taken:
+            taken.add(candidate)
             return candidate
         seed += 1
 
 
-def wire(text: str, name: str, sibling_build: str, sibling_ref: str, seed: int) -> tuple[str, int]:
+def wire(text: str, name: str, sibling_build: str, sibling_ref: str,
+         seed: int, taken: set[str]) -> tuple[str, int]:
     if f"/* {name} */" in text:
         print(f"skip (already wired): {name}")
         return text, seed
 
-    build_id = next_free_id(text, seed)
-    ref_id = next_free_id(text, seed + 1)
+    build_id = next_free_id(text, seed, taken)
+    ref_id = next_free_id(text, seed + 1, taken)
     seed += 2
 
     # 1. PBXBuildFile, beside the sibling's.
@@ -105,8 +113,9 @@ def main() -> int:
     sibling_build, sibling_ref = find_sibling_ids(text, sibling)
 
     seed = 1
+    taken: set[str] = set()
     for name in args.files:
-        text, seed = wire(text, name, sibling_build, sibling_ref, seed)
+        text, seed = wire(text, name, sibling_build, sibling_ref, seed, taken)
 
     PBX.write_text(text)
     return 0

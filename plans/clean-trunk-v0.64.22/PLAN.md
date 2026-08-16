@@ -156,6 +156,73 @@ Sentry startup policy
 
 - Orphan: `MobileShellComposite+ForgottenMacs.swift` no longer exists upstream.
 
+## Progress (overnight run, 2026-08-16)
+
+Both platforms build on the clean trunk with DeviceLink integrated.
+
+| Layer | State |
+|---|---|
+| L0 identity | **Done (macOS)**. Generated from `fork-identity.json`; app builds as `cmux Mochi DEV clean-trunk` / `com.cmux-mochi.debug.clean.trunk`. iOS bundle identity is **not** forked yet — the simulator build is still `dev.cmux.ios`. |
+| L1 CI lanes | **Not started.** |
+| L2 upstreamable fixes | **Done** for the socket trio (password-mode capability, shell telemetry, `surface.send_text` guard). Not yet split into PR-ready commits for upstream. |
+| L3 DeviceLinkKit | **Done.** Unmodified from the fork; 46 tests in 9 suites pass. |
+| L4 DeviceLink host | **Done.** Mutual TLS on both listener sites, fingerprint admission, tailnet enforcement. |
+| L5 attach tickets | **Done** for the shared core, transport, and RPC client. |
+| L6 pairing UX | **Not started.** The phone still shows upstream's onboarding. |
+| L7 Mac features | **Not started.** |
+
+### Verified
+
+- macOS app: `** BUILD SUCCEEDED **`, runs as the fork identity.
+- iOS app: `** BUILD SUCCEEDED **` for iPhone 16 Pro simulator; installs, launches, renders.
+- Package tests: DeviceLinkKit 46, CMUXMobileCore 346, CmuxMobileRPC 171,
+  CmuxMobileTransport 42, CmuxControlSocket 356 — all passing.
+
+### Not verified
+
+- **No end-to-end pairing run.** The simulator app launches but has not been
+  paired to a Mac. `~/.secrets/cmuxterm-dev.env` is absent, so
+  `ios/scripts/reload.sh` cannot auto-sign-in; run `scripts/setup-team-dev.sh`
+  once to enable it. The accountless DeviceLink path should not need it, but
+  that path depends on L6, which is not ported.
+- **No physical iPhone 16 run.** `xcrun devicectl list devices` shows only
+  simulators; no physical device was attached during the run.
+- Full `cmux-unit` suite: see the run log; package suites above are green.
+
+### Decisions taken during the run
+
+- **zig split.** The clean trunk's ghostty needs 0.16.0, the old worktree's
+  needs 0.15.2. 0.16.0 is installed as a sidecar at
+  `~/.local/zig/zig-aarch64-macos-0.16.0/`; global `zig` stays 0.15.2, so the
+  old worktree is untouched. Build with
+  `CMUX_ZIG=$HOME/.local/zig/zig-aarch64-macos-0.16.0/zig`.
+- **Entitlements.** The fork removes `keychain-access-groups`,
+  `application-identifier`, `team-identifier`, and the web-browser
+  public-key-credential entitlement rather than re-teaming them; reproduced
+  exactly, because upstream's values name team `7WLXT3NR37`.
+- **Name collisions found.** `CMUX_BUNDLE_ID` is an upstream runtime contract,
+  so every generated variable is namespaced `CMUX_FORK_*`. Upstream also added
+  its own `KeychainDeviceIdentityStore` inside CmuxMobileShell, so the fork's
+  client names DeviceLinkKit's explicitly.
+- **`PRODUCT_MODULE_NAME` pinned** to `cmux_DEV`: renaming the app product
+  renamed the Swift module and broke `@testable import cmux_DEV`.
+- One fork hunk was **deliberately dropped**: the privacy-blur guard in
+  `controlSurfaceSelect`, which depends on the unported privacy layer. It
+  returns with L7.
+
+### Next actions, in order
+
+1. Port L6 (pairing UX) — the phone cannot pair accountlessly without it.
+   `OnboardingPage.swift` and `MobileShellComposite+ForgottenMacs.swift` no
+   longer exist upstream and need re-homing.
+2. Resolve the remaining iOS conflicts: `MobileShellComposite.swift`,
+   `+ManualAttachTicket`, `+PairedMacPersistence`, `CMUXMobileRootView`,
+   `SignInView`, and the six `WorkspaceList*` / `WorkspaceRow` files.
+3. Fork the iOS bundle identity (`ios/Config/*.xcconfig`) the same way as macOS.
+4. L1 CI lanes, then L7 Mac features.
+5. Re-merge `CmxNetworkByteTransportFactorySecurityTests.swift` — the fork's
+   transport security tests are not yet carried.
+
 ## Gates
 
 Do not start the next layer until the current gate is green.

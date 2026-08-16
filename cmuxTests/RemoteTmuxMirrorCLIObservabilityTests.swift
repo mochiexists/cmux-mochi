@@ -58,7 +58,8 @@ struct RemoteTmuxMirrorCLIObservabilityTests {
             routing: routing,
             surfaceID: activeSurfaceID,
             hasSurfaceIDParam: true,
-            text: "explicit pane input"
+            text: "explicit pane input",
+            force: false
         )
         #expect(explicitSend == .surfaceUnavailable(activeSurfaceID))
 
@@ -66,7 +67,8 @@ struct RemoteTmuxMirrorCLIObservabilityTests {
             routing: routing,
             surfaceID: nil,
             hasSurfaceIDParam: false,
-            text: "active pane input"
+            text: "active pane input",
+            force: false
         )
         #expect(defaultSend == .surfaceUnavailable(activeSurfaceID))
     }
@@ -193,7 +195,8 @@ struct RemoteTmuxMirrorCLIObservabilityTests {
             routing: routing,
             surfaceID: nil,
             hasSurfaceIDParam: false,
-            text: "must not reach a synthetic pane"
+            text: "must not reach a synthetic pane",
+            force: false
         )
         #expect(send == .noFocusedSurface)
     }
@@ -221,7 +224,8 @@ struct RemoteTmuxMirrorCLIObservabilityTests {
             routing: routing,
             surfaceID: nil,
             hasSurfaceIDParam: false,
-            text: "must fail closed at the dead transport"
+            text: "must fail closed at the dead transport",
+            force: false
         )
         #expect(defaultSend == .surfaceUnavailable(seededSurfaceID))
 

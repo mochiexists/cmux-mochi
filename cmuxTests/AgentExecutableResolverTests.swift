@@ -512,6 +512,13 @@ struct AgentExecutableResolverTests {
         expectTrue(AgentSessionProviderID.codex.shouldAutoStartSession)
         expectTrue(AgentSessionProviderID.opencode.shouldAutoStartSession)
         expectFalse(AgentSessionProviderID.claude.shouldAutoStartSession)
+
+        expectTrue(AgentSessionProviderID.codex.shouldAutoStartSession(restoredFromSession: false))
+        expectFalse(AgentSessionProviderID.codex.shouldAutoStartSession(restoredFromSession: true))
+        expectTrue(AgentSessionProviderID.opencode.shouldAutoStartSession(restoredFromSession: false))
+        expectFalse(AgentSessionProviderID.opencode.shouldAutoStartSession(restoredFromSession: true))
+        expectFalse(AgentSessionProviderID.claude.shouldAutoStartSession(restoredFromSession: false))
+        expectFalse(AgentSessionProviderID.claude.shouldAutoStartSession(restoredFromSession: true))
     }
 
     @Test
