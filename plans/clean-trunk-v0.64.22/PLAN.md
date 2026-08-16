@@ -162,7 +162,7 @@ Both platforms build on the clean trunk with DeviceLink integrated.
 
 | Layer | State |
 |---|---|
-| L0 identity | **Done (macOS)**. Generated from `fork-identity.json`; app builds as `cmux Mochi DEV clean-trunk` / `com.cmux-mochi.debug.clean.trunk`. iOS bundle identity is **not** forked yet — the simulator build is still `dev.cmux.ios`. |
+| L0 identity | **Done for the app build; partial for the tooling around it.** Generated from `fork-identity.json`; app builds as `cmux Mochi DEV clean-trunk` / `com.cmux-mochi.debug.clean.trunk`. iOS bundle identity is **not** forked yet — the simulator build is still `dev.cmux.ios`. See "Identity leakage in the tooling layer" below: the dev/mobile scripts still spoke upstream identity, which broke pairing outright. |
 | L1 CI lanes | **Not started.** |
 | L2 upstreamable fixes | **Done** for the socket trio (password-mode capability, shell telemetry, `surface.send_text` guard). Not yet split into PR-ready commits for upstream. |
 | L3 DeviceLinkKit | **Done.** Unmodified from the fork; 46 tests in 9 suites pass. |
@@ -188,6 +188,126 @@ Both platforms build on the clean trunk with DeviceLink integrated.
 - **No physical iPhone 16 run.** `xcrun devicectl list devices` shows only
   simulators; no physical device was attached during the run.
 - Full `cmux-unit` suite: see the run log; package suites above are green.
+
+### Identity leakage in the tooling layer
+
+The L0 work injected identity into the **Xcode build settings** (pbxproj +
+xcconfig). It did not touch the scripts that name the app from *outside* the
+app process, and those had reverted to upstream's identity on the clean trunk.
+
+The useful distinction:
+
+- **Self-correcting.** Swift inside the app can ask `Bundle.main.bundleIdentifier`.
+  `CLI/CLISocketPathResolver.swift` hardcodes `com.cmuxterm.app.debug`, but only
+  as a last-resort fallback after `CMUX_BUNDLE_ID` and `Bundle.main`. Harmless.
+- **Load-bearing.** Shell/CI/python that must name the app with no process to
+  ask — `defaults write <domain>`, `pkill -f <app path>`, DerivedData paths.
+  A wrong literal here fails silently.
+
+`scripts/inject-fork-identity.sh --scan` counts 429 hits / 139 files, but only
+**85 hits across 27 files are in the load-bearing external contexts**; the other
+317 are in-app Swift (fallbacks and test inputs).
+
+Fixed this run:
+
+| file | was | now |
+|---|---|---|
+| `scripts/lib/mobile-attach.sh` | `com.cmuxterm.app.debug.<tag>` | `$CMUX_FORK_BUNDLE_ID.debug.<tag>` |
+| `scripts/lib/mobile-attach.sh` | `cmux DEV <slug>.app` | `$CMUX_FORK_APP_NAME DEV <slug>.app` |
+| `scripts/lib/mobile-attach.sh` | `pkill -f "cmux DEV …"` | fork app name |
+| `scripts/cmux-debug-cli.sh` | upstream bundle id + CLI path | fork identity |
+
+`mobile-attach.sh` now sources `fork-identity.env` itself, because several
+callers source the lib without sourcing the env.
+
+**Why this mattered.** `cmux_attach_enable_pairing_host` writes
+`mobile.iOSPairingHost.enabled=true`, and the comment is explicit that it must
+land **before** the Mac app launches (it is read in
+`applicationDidFinishLaunching`). It was writing to
+`com.cmuxterm.app.debug.<tag>` — a domain no fork build ever reads. The pairing
+listener therefore never bound, minting never succeeded, and no phone or
+simulator could pair. This presents as a launch-ordering problem, which is
+probably the "dev must launch before the main app" symptom remembered from
+earlier attempts — but ordering cannot fix it, because the default was landing
+in the wrong domain regardless of order.
+
+Verified after the fix: `node scripts/lib/mobile-attach.test.mjs` → 37/37 pass.
+
+**Guard gap.** `--scan` searches only for the upstream *bundle id*. The app-name
+literals (`cmux DEV <slug>.app`) contain no bundle id and slipped through.
+Scanning for `"cmux DEV "` matches 43 files, mostly Swift test literals, so a
+naive gate would block everything; the guard should scan app-name patterns
+scoped to load-bearing contexts (`scripts/`, `.github/`, `tests/`, `ios/scripts/`).
+Not yet implemented.
+
+### Tag isolation was broken fork-wide (fixed, verified)
+
+The most consequential instance of the identity leak. Two constants held
+upstream's debug bundle id:
+
+- `SocketPathMarkerFiles.defaultBaseDebugBundleIdentifier`
+- `SocketControlSettings.baseDebugBundleIdentifier`
+
+The tagged app is `com.cmux-mochi.debug.<tag>`, which fails
+`hasPrefix("com.cmuxterm.app.debug.")`, so it never resolved as `.dev(slug:)`
+and **every tagged Debug build fell back to the single shared
+`/tmp/cmux-debug.sock`**. Confirmed by `lsof` before the fix.
+
+Consequences: `cmux-debug-cli.sh --tag` could never reach a tagged app;
+`cmux_attach_ensure_mac` timed out on a tagged socket that was never created,
+so auto-pair was impossible; and any two builds collided regardless of tag.
+
+Fixed in `aa14254fea` (5 sites incl. stable/debug channel comparisons).
+Verified after a tagged rebuild:
+
+- binds `/tmp/cmux-debug-clean-trunk.sock` (was `/tmp/cmux-debug.sock`)
+- `CMUX_TAG=clean-trunk scripts/cmux-debug-cli.sh list-workspaces` → `workspace:1`
+- iOS pairing listener bound (`*:58465` in the app's TCP listeners)
+
+**Classification rule learned.** An upstream literal is load-bearing when it is
+*compared against* the running identity, and harmless when it is only a
+*fallback* for it. `CLISocketPathResolver`'s literal is a fallback (it is
+reached only after `CMUX_BUNDLE_ID` and `Bundle.main.bundleIdentifier`); these
+two were comparisons. An earlier pass in this run wrongly dismissed all in-app
+Swift hits as self-correcting, which is how this survived.
+
+### Attach chain: current state
+
+| step | state |
+|---|---|
+| tagged Mac app builds + launches | ✅ |
+| tagged debug socket bound | ✅ `/tmp/cmux-debug-clean-trunk.sock` |
+| tag-bound CLI reaches the app | ✅ |
+| `mobile.iOSPairingHost.enabled` on correct domain | ✅ |
+| iOS pairing listener bound | ✅ `*:58465` |
+| iOS app builds + installs to isolated sim | ✅ `cmux-dev-clean-trunk` |
+| mint attach ticket | ❌ `route_representation_unavailable` |
+| simulator pairs | blocked on mint |
+
+Tailscale is up (`timapple-m5` 100.112.69.84; `iphone172` online), so the
+tailnet is not the gap. Next suspect is the ported route layer:
+`MobileRouteResolver`, `MobileHostStatusRouteProbe`, `MobileHostTailnetInterface`,
+`MobileRouteReachabilityService` — all fork-added and never exercised
+end-to-end until now.
+
+Separately, `ios/scripts/reload.sh` refuses to launch unpaired without dev
+credentials; `~/.secrets/cmuxterm-dev.env` is absent (one-time
+`scripts/setup-team-dev.sh`).
+
+### Test-suite state (not yet attributable)
+
+A `cmux-unit` run reached **3398 passed / 271 failed** before dying at
+`** BUILD INTERRUPTED **` under memory pressure — a partial run, not a result.
+
+All 39 failing test files are byte-identical to `v0.64.22`, and failures are
+deterministic (two runs, identical counts). A hypothesis that stale
+`socketControlMode=automation` caused them was **disproved**: forcing `full`
+gave bit-identical results (164/76 for the largest class), and the
+`auth pineapple` line that prompted it is the test's own fixture.
+
+Attribution still requires running the same tests on pristine `v0.64.22` in a
+scratch worktree. Until that runs, these failures are **unattributed** — not
+"pre-existing".
 
 ### Decisions taken during the run
 
