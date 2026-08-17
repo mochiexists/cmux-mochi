@@ -323,6 +323,53 @@ Attribution still requires running the same tests on pristine `v0.64.22` in a
 scratch worktree. Until that runs, these failures are **unattributed** — not
 "pre-existing".
 
+### Accountless pairing: the attach-ticket route is a dead end
+
+The simulator cannot pair over an attach ticket at all, and no amount of fixing
+that path changes it. `mobile.attach_ticket.create` returns a ticket whose keys
+are `auth_token, expiresAt, macAppBuild, macAppVersion, macDeviceID,
+macDisplayName, macPairingCompatibilityVersion, routes, version, workspaceID` --
+**no DeviceLink fingerprint**. The phone therefore cannot call
+`prepareIdentity(forPairingID:macFingerprint:)`, never pins the Mac, and
+`currentPairingTLSOptions()` returns nil. The fork's listener is mutual-TLS
+only, so the dial dies before the first byte.
+
+The fork already contains the right answer, and it is better: the **v3
+`PairingPayload`** (`MobileHostDeviceLink+Pairing.swift`) carries routes, the
+Mac's public-key fingerprint, and a single-use enrollment ticket whose only
+power is to add one public key -- and deliberately **no bearer credential**,
+because "the previous grammar put a working auth token in the QR, so a
+photographed code was usable for the token's whole lifetime". Its
+`routeDescription` explicitly accepts `.debugLoopback`, so the simulator is an
+intended consumer.
+
+**The Mac never emits it.** The surface is declared in three places and
+implemented in one:
+
+| declared | implemented |
+|---|---|
+| `mobile.pairing.code.create` in `ControlCommandExecutionPolicy` | no worker handler |
+| `MobileHostDeviceLink.makePairingURL` | zero callers |
+| iOS `PairingPayloadCoder.decode` + `mobile.pairing.device.enroll` | complete |
+
+Next task: implement the `mobile.pairing.code.create` worker handler returning
+`makePairingURL()`. A first attempt was written and then reverted (see below);
+it is reconstructible from this description.
+
+### Unresolved: tagged control socket stops binding
+
+Since ~12:13 on 2026-08-17 the tagged Mac app runs normally but never binds
+`/tmp/cmux-debug-clean-trunk.sock` and logs nothing about the control socket.
+Falsified so far: the pairing-RPC change (reverted, still absent), launch timing
+(+90s), a stale `.sock.lock` (removed, still absent), `socketControlMode` (unset
+in the tagged domain and only commented examples in settings.json/cmux.json).
+
+This invalidated an earlier bisect: a "socket BOUND without my change" result
+was a false positive, and the RPC work was reverted on that bad signal. Treat
+any socket-bind observation as unreliable until this is root-caused; it must be
+resolved before further pairing work, since every verification path runs through
+that socket.
+
 ### Decisions taken during the run
 
 - **zig split.** The clean trunk's ghostty needs 0.16.0, the old worktree's
