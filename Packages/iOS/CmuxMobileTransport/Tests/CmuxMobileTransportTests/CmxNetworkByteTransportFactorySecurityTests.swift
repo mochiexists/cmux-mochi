@@ -258,3 +258,73 @@ private func legacyTailscaleRequest() throws -> CmxByteTransportRequest {
         )
     )
 }
+
+// MARK: - DeviceLink admission
+
+/// A DeviceLink pairing admits itself through the mutual-TLS handshake: this
+/// device's key against the Mac's pinned fingerprint. That is stronger evidence
+/// than the bearer grants beside it, so `.transportAdmission` is accepted on the
+/// routes a paired device actually dials — but only when there is an identity to
+/// offer, which is what keeps the fork's TLS-only listener reachable without
+/// weakening anything for a build that holds no pairing.
+@Test func acceptsTransportAdmissionWhenADeviceLinkIdentityExists() throws {
+    let factory = CmxNetworkByteTransportFactory(
+        supportedKinds: [.debugLoopback, .tailscale],
+        deviceLinkTLSOptions: { NWProtocolTLS.Options() }
+    )
+
+    let tailscale = try CmxAttachRoute(
+        id: "tailscale",
+        kind: .tailscale,
+        endpoint: .hostPort(host: "100.64.1.2", port: 49831)
+    )
+    _ = try factory.makeTransport(
+        for: CmxByteTransportRequest(
+            route: tailscale,
+            expectedPeerDeviceID: "mac-1",
+            authorizationMode: .transportAdmission
+        )
+    )
+
+    let loopback = try CmxAttachRoute(
+        id: "loopback",
+        kind: .debugLoopback,
+        endpoint: .hostPort(host: "127.0.0.1", port: 49831)
+    )
+    _ = try factory.makeTransport(
+        for: CmxByteTransportRequest(
+            route: loopback,
+            expectedPeerDeviceID: "mac-1",
+            authorizationMode: .transportAdmission
+        )
+    )
+}
+
+/// Fail closed: without an identity there is no handshake to admit on, so the
+/// same request must be refused rather than falling back to plaintext.
+@Test func refusesTransportAdmissionWithoutADeviceLinkIdentity() throws {
+    let factory = CmxNetworkByteTransportFactory(
+        supportedKinds: [.debugLoopback, .tailscale],
+        deviceLinkTLSOptions: { nil }
+    )
+
+    for (id, kind, host) in [
+        ("tailscale", CmxAttachTransportKind.tailscale, "100.64.1.2"),
+        ("loopback", CmxAttachTransportKind.debugLoopback, "127.0.0.1"),
+    ] {
+        let route = try CmxAttachRoute(
+            id: id,
+            kind: kind,
+            endpoint: .hostPort(host: host, port: 49831)
+        )
+        #expect(throws: CmxNetworkByteTransportError.tailscaleAuthorizationUnavailable) {
+            _ = try factory.makeTransport(
+                for: CmxByteTransportRequest(
+                    route: route,
+                    expectedPeerDeviceID: "mac-1",
+                    authorizationMode: .transportAdmission
+                )
+            )
+        }
+    }
+}
