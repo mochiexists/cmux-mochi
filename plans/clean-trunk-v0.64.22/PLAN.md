@@ -391,6 +391,46 @@ a keychain identity at all (`-34018`).
 `stack || attachTicket`, so a device that had just paired still rendered the
 sign-in screen (`de228f0917`). The simulator now reaches the workspace UI.
 
+### L5 gap confirmed: subscriptions outlive the ticket that authorized them
+
+Verified 2026-08-17 on this branch. `dropSubscriptionsWithExpiredTickets` does
+not exist anywhere in the tree — the expiry binding was never ported — and
+`MobileHostConnection.EventSubscription` (`MobileHostService.swift:1901`) carries
+only `topics` and `transport`:
+
+```swift
+private struct EventSubscription: Sendable {
+    let topics: Set<String>
+    let transport: MobileHostEventTransport
+}
+```
+
+`MobileAttachTicketStore.validAuthorization` enforces expiry **per request**, so
+a ticket cannot authorize a *new* call after it lapses — but an already-created
+subscription keeps streaming, because event delivery
+(`deliverEventFrames`, `MobileHostService.swift:532`) consults only topics. A
+phone that paired with a 10-minute ticket keeps receiving terminal render grids
+indefinitely.
+
+Note this is also an **upstream** gap (see L2): upstream's `EventSubscription`
+binds no credential lifetime either, so the fix is a candidate to upstream.
+
+Design when this is picked up:
+
+1. `EventSubscription` gains `credentialExpiresAt: Date?` — `nil` for
+   credentials with no expiry (`pairedDevice`, `irohAdmission`, stack session).
+2. The subscribe handler (`MobileHostService.swift:2450`) resolves it from the
+   request's `attach_token` via
+   `validAuthorization(authToken:)?.ticket.expiresAt`.
+3. `deliverEventFrames` drops expired subscriptions before enqueuing.
+4. Regression test that fails if the hook is silently dropped — the plan's
+   original warning, and the reason it went missing in the first place.
+
+**Deliberately not implemented in this pass.** It changes the hot event path,
+and a mistake there drops legitimate frames — which would look exactly like the
+connection bug just fixed. It wants review and a device run, neither of which
+was available at the end of this session.
+
 ### RESOLVED: the phone now pairs, dials, and holds a live session
 
 The account-free path is complete on the simulator. From a cold install, with
