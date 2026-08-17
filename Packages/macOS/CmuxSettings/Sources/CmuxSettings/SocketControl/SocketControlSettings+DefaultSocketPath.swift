@@ -11,10 +11,7 @@ extension SocketControlSettings {
         probeStableDefaultPathEntry: (String) -> StableDefaultSocketPathEntry = inspectStableDefaultSocketPathEntry
     ) -> String {
         if isDebugBuild,
-           isBareDebugBundleIdentifier(
-               bundleIdentifier,
-               baseDebugBundleIdentifier: baseDebugBundleIdentifier
-           ),
+           isBareDebugBundleIdentifier(bundleIdentifier),
            launchTag(environment: environment) == nil,
            environment["CMUX_SOCKET_PATH"]?.isEmpty != false,
            let xctestPath = xctestDebugSocketPath(environment: environment) {
@@ -32,13 +29,6 @@ extension SocketControlSettings {
             baseDebugBundleIdentifier: baseDebugBundleIdentifier
         )
     }
-}
-
-private func isBareDebugBundleIdentifier(
-    _ bundleIdentifier: String?,
-    baseDebugBundleIdentifier: String
-) -> Bool {
-    bundleIdentifier?.trimmingCharacters(in: .whitespacesAndNewlines) == baseDebugBundleIdentifier
 }
 
 private func xctestDebugSocketPath(environment: [String: String]) -> String? {

@@ -200,3 +200,36 @@ import CmuxSettings
         #expect(path == "/tmp/cmux-debug-ci-split-theme.sock")
     }
 }
+
+// MARK: - Vendor-agnostic bundle identifier classification
+
+/// Anchoring channel detection to one vendor's bundle identifier makes every
+/// fork build classify as stable, which hands tagged DEV builds the release
+/// socket path. These cases pin the structural parse instead.
+@Test func bundleClassificationIsVendorAgnostic() {
+    for vendor in ["com.cmuxterm.app", "com.cmux-mochi", "org.example.someFork"] {
+        #expect(SocketControlSettings.isStableBundleIdentifier(vendor))
+        #expect(!SocketControlSettings.isDebugLikeBundleIdentifier(vendor))
+        #expect(!SocketControlSettings.isStagingBundleIdentifier(vendor))
+        #expect(!SocketControlSettings.isTaggedDevBuild(bundleIdentifier: vendor))
+
+        let debug = "\(vendor).debug"
+        #expect(!SocketControlSettings.isStableBundleIdentifier(debug))
+        #expect(SocketControlSettings.isDebugLikeBundleIdentifier(debug))
+        #expect(!SocketControlSettings.isTaggedDevBuild(bundleIdentifier: debug))
+
+        let tagged = "\(vendor).debug.clean-trunk"
+        #expect(!SocketControlSettings.isStableBundleIdentifier(tagged))
+        #expect(SocketControlSettings.isDebugLikeBundleIdentifier(tagged))
+        #expect(SocketControlSettings.isTaggedDevBuild(bundleIdentifier: tagged))
+
+        let staging = "\(vendor).staging"
+        #expect(SocketControlSettings.isStagingBundleIdentifier(staging))
+        #expect(!SocketControlSettings.isStableBundleIdentifier(staging))
+        #expect(!SocketControlSettings.isDebugLikeBundleIdentifier(staging))
+    }
+
+    // An empty or absent identifier is not a stable build.
+    #expect(!SocketControlSettings.isStableBundleIdentifier(nil))
+    #expect(!SocketControlSettings.isStableBundleIdentifier("   "))
+}

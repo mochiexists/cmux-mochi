@@ -126,13 +126,10 @@ public struct SocketControlSettings {
             return false
         }
 
-        if bundleIdentifier.hasPrefix("\(baseDebugBundleIdentifier).") {
-            return false
-        }
-
-        guard bundleIdentifier == baseDebugBundleIdentifier else {
-            return false
-        }
+        // Only the bare, untagged DEV build qualifies: a tagged build
+        // (`<vendor>.debug.<tag>`) owns its own socket and must not be
+        // treated as the shared default.
+        guard isBareDebugBundleIdentifier(bundleIdentifier) else { return false }
 
         return launchTag(environment: environment) == nil
     }
@@ -212,7 +209,7 @@ public struct SocketControlSettings {
         stableDefaultSocketCanBeReclaimed: (String) -> Bool = { _ in true }
     ) -> String {
         guard !isDebugBuild,
-              normalizedBundleIdentifier(bundleIdentifier) == "com.cmux-mochi",
+              isStableBundleIdentifier(bundleIdentifier),
               isStableReleaseSocketPath(preferredPath, currentUserID: currentUserID) else {
             return preferredPath
         }
@@ -323,7 +320,7 @@ public struct SocketControlSettings {
 
     private static func shouldReserveStableSocketPath(bundleIdentifier: String?, isDebugBuild: Bool) -> Bool {
         if isDebugBuild { return true }
-        return normalizedBundleIdentifier(bundleIdentifier) != "com.cmux-mochi"
+        return !isStableBundleIdentifier(bundleIdentifier)
     }
 
     private static func isStableReleaseSocketPath(_ path: String, currentUserID: uid_t) -> Bool {
@@ -404,24 +401,61 @@ public struct SocketControlSettings {
         return trimmed.isEmpty ? nil : trimmed
     }
 
-    /// Whether the bundle identifier is a debug build identifier.
-    public static func isDebugLikeBundleIdentifier(_ bundleIdentifier: String?) -> Bool {
-        guard let bundleIdentifier else { return false }
-        return bundleIdentifier == "com.cmux-mochi.debug"
-            || bundleIdentifier.hasPrefix("com.cmux-mochi.debug.")
+    /// Channel components that mark a non-stable build inside a bundle
+    /// identifier shaped `<vendor>.<channel>[.<tag>]`.
+    private static let channelTokens: Set<String> = ["debug", "nightly", "staging"]
+
+    /// The channel and optional tag encoded in a bundle identifier.
+    private struct BundleChannel {
+        let token: String
+        let tag: String?
     }
 
-    /// Whether the bundle identifier is a tagged DEV build (`com.cmuxterm.app.debug.<tag>`).
+    /// Parses the channel out of a bundle identifier by structure rather than
+    /// by matching one vendor's prefix. Anchoring these checks to a literal
+    /// identifier means any fork or rename silently classifies every build as
+    /// stable — which hands tagged DEV builds the release socket path.
+    private static func bundleChannel(_ bundleIdentifier: String?) -> BundleChannel? {
+        guard let bundleIdentifier = normalizedBundleIdentifier(bundleIdentifier) else { return nil }
+        let parts = bundleIdentifier
+            .split(separator: ".", omittingEmptySubsequences: false)
+            .map(String.init)
+        guard let index = parts.indices.first(where: { index in
+            index >= 1 && channelTokens.contains(parts[index])
+        }) else { return nil }
+        let rawTag = parts.dropFirst(index + 1).joined(separator: ".")
+        return BundleChannel(token: parts[index], tag: rawTag.isEmpty ? nil : rawTag)
+    }
+
+    /// Whether the identifier names the bare, untagged DEV build
+    /// (`<vendor>.debug` with no tag component).
+    static func isBareDebugBundleIdentifier(_ bundleIdentifier: String?) -> Bool {
+        guard let channel = bundleChannel(bundleIdentifier) else { return false }
+        return channel.token == "debug" && channel.tag == nil
+    }
+
+    /// Whether the bundle identifier names a stable build (no channel component).
+    public static func isStableBundleIdentifier(_ bundleIdentifier: String?) -> Bool {
+        guard normalizedBundleIdentifier(bundleIdentifier) != nil else { return false }
+        return bundleChannel(bundleIdentifier) == nil
+    }
+
+    /// Whether the bundle identifier is a debug build identifier.
+    public static func isDebugLikeBundleIdentifier(_ bundleIdentifier: String?) -> Bool {
+        bundleChannel(bundleIdentifier)?.token == "debug"
+    }
+
+    /// Whether the bundle identifier is a tagged DEV build (`<vendor>.debug.<tag>`).
     public static func isTaggedDevBuild(bundleIdentifier: String? = Bundle.main.bundleIdentifier) -> Bool {
-        guard let bundleIdentifier else { return false }
-        return bundleIdentifier.hasPrefix("\(baseDebugBundleIdentifier).")
+        guard let channel = bundleChannel(bundleIdentifier), channel.token == "debug" else {
+            return false
+        }
+        return channel.tag != nil
     }
 
     /// Whether the bundle identifier is a staging build identifier.
     public static func isStagingBundleIdentifier(_ bundleIdentifier: String?) -> Bool {
-        guard let bundleIdentifier else { return false }
-        return bundleIdentifier == "com.cmuxterm.app.staging"
-            || bundleIdentifier.hasPrefix("com.cmuxterm.app.staging.")
+        bundleChannel(bundleIdentifier)?.token == "staging"
     }
 
     /// The directory holding the control socket and its marker files.
