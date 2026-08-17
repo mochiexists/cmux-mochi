@@ -41,6 +41,7 @@ public final class MobileCoreRPCClient: MobileSyncing, Sendable {
         route: CmxAttachRoute,
         ticket: CmxAttachTicket,
         allowsStackAuthFallback: Bool = false,
+        usesDeviceLinkIdentity: Bool = false,
         legacyTailscaleAuthorizationEvidence: CmxLegacyTailscaleAuthorizationEvidence? = nil,
         userTailscalePairingAuthorization: CmxUserTailscalePairingAuthorization? = nil,
         connectAttemptRegistry: MobileRPCConnectAttemptRegistry = MobileRPCConnectAttemptRegistry(),
@@ -57,6 +58,13 @@ public final class MobileCoreRPCClient: MobileSyncing, Sendable {
         self.ticket = ticket
         let authorizationMode: CmxTransportAuthorizationMode
         if route.kind == .iroh {
+            authorizationMode = .transportAdmission
+        } else if usesDeviceLinkIdentity {
+            // Fork (cmux Mochi): the mutual-TLS handshake already proves which
+            // device this is, exactly as it does for iroh, so the request needs
+            // no bearer on top. Without this branch a DeviceLink ticket carries
+            // no token, falls through to `.stackBearer`, and a deliberately
+            // account-free pairing is asked for a Stack token it can never have.
             authorizationMode = .transportAdmission
         } else if route.kind == .tailscale,
                   case let .hostPort(host, port) = route.endpoint,

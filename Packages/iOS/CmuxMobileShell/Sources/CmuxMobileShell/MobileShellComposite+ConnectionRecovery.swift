@@ -619,7 +619,23 @@ extension MobileShellComposite {
                 persistedRoutes: legacyTailscaleRoutes
             ) != nil
         }
-        if firstRoute.kind == .iroh || hasAuthorizedLegacyTailscaleRoute {
+        // Fork (cmux Mochi): a Mac this device holds a DeviceLink key and pin
+        // for is dialed directly, with that identity, over mutual TLS. The
+        // manual-host branch below exists to decide whether a route may carry
+        // the Stack bearer and to fetch an attach ticket for it — a question
+        // with no answer for a pairing whose credential IS the device key, so
+        // it refuses every route as untrusted and the pairing can never connect.
+        let hasDeviceLinkCredential = MobileDeviceLinkClient.shared
+            .hasUsableCredential(forMacDeviceID: pairedMacDeviceID)
+        MobileShellComposite.logStoredMacDialDecision(
+            mac: pairedMacDeviceID,
+            routeKinds: pinnedRoutes.map(\.kind.rawValue),
+            hasDeviceLinkCredential: hasDeviceLinkCredential,
+            canConnect: firstRoute.kind == .iroh
+                || hasAuthorizedLegacyTailscaleRoute
+                || hasDeviceLinkCredential
+        )
+        if firstRoute.kind == .iroh || hasAuthorizedLegacyTailscaleRoute || hasDeviceLinkCredential {
             do {
                 let ticket = try Self.storedMacTicket(
                     name: name,

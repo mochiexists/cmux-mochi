@@ -141,6 +141,21 @@ public final class MobileDeviceLinkClient: @unchecked Sendable {
         return pairingID
     }
 
+    /// Whether this device holds a usable key and pin for one specific Mac.
+    ///
+    /// The reconnect path asks this to decide whether it may dial that Mac
+    /// directly with its own identity, rather than going through the
+    /// bearer-oriented ticket exchange (which has no answer for a pairing whose
+    /// credential *is* the device key). `forgetPairing` is the only other way
+    /// to resolve a Mac to its pairing, and that one destroys it.
+    public func hasUsableCredential(forMacDeviceID macDeviceID: String) -> Bool {
+        lock.lock()
+        let pairingID = pairingIDsByMacDeviceID[macDeviceID]
+        lock.unlock()
+        guard let pairingID else { return false }
+        return hasUsableCredential(forPairingID: pairingID)
+    }
+
     /// Whether this device has paired with any Mac.
     ///
     /// The reconnect gate asks this: holding a key and a pin is exactly as good
