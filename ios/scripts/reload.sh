@@ -646,6 +646,13 @@ reload_simulator() {
   # compiled Swift is fast enough to compile but produces materially
   # slower runtime code. Keep Debug configuration so codesigning and
   # debug info still work, but force the compiler to optimize.
+  #
+  # Sign the simulator build (ad-hoc). An unsigned app carries no
+  # application-identifier entitlement, so every DeviceLink keychain read and
+  # write fails with errSecMissingEntitlement (-34018): the device cannot hold
+  # a TLS identity, and pairing dies at "identity preparation failed" before it
+  # ever dials the Mac. CODE_SIGNING_REQUIRED=NO keeps this working without a
+  # provisioning profile.
   xcodebuild \
     -workspace "$WORKSPACE" \
     -scheme "$SCHEME" \
@@ -662,7 +669,9 @@ reload_simulator() {
     CMUX_API_BASE_URL="$CMUX_IOS_SIMULATOR_API_BASE_URL_VALUE" \
     CMUX_IROH_BROKER_BASE_URL="$CMUX_IOS_IROH_BROKER_BASE_URL_VALUE" \
     EXCLUDED_SOURCE_FILE_NAMES=Info.plist \
-    CODE_SIGNING_ALLOWED=NO \
+    CODE_SIGNING_ALLOWED=YES \
+    CODE_SIGNING_REQUIRED=NO \
+    CODE_SIGN_IDENTITY="-" \
     SWIFT_OPTIMIZATION_LEVEL=-O \
     SWIFT_COMPILATION_MODE=wholemodule \
     GCC_OPTIMIZATION_LEVEL=s \
