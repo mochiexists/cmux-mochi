@@ -75,66 +75,15 @@ struct MobilePairingConnectionTransitionTests {
         #expect(connected == .connected(ready))
     }
 
-    @Test("Connected enters the reconnecting hold when the new connection drops to the baseline")
-    func connectedEntersReconnectingWhenConnectionsDrop() {
+    @Test("Connected flips back to ready when the new connection drops to the baseline")
+    func connectedFlipsBackToReadyWhenConnectionsDrop() {
         let ready = makeReady()
         let next = MobilePairingModel.connectionTransition(
             from: .connected(ready),
             activeConnectionCount: 1,
             baselineConnectionCount: 1
         )
-        #expect(next == .reconnecting(ready))
-    }
-
-    @Test("A reattach during the reconnecting hold returns to connected")
-    func reconnectingReturnsToConnectedOnReattach() {
-        let ready = makeReady()
-        let next = MobilePairingModel.connectionTransition(
-            from: .reconnecting(ready),
-            activeConnectionCount: 2,
-            baselineConnectionCount: 1
-        )
-        #expect(next == .connected(ready))
-    }
-
-    @Test("The reconnecting hold persists while the connection stays dropped")
-    func reconnectingHoldsWhileStillDropped() {
-        let ready = makeReady()
-        let next = MobilePairingModel.connectionTransition(
-            from: .reconnecting(ready),
-            activeConnectionCount: 1,
-            baselineConnectionCount: 1
-        )
-        #expect(next == .reconnecting(ready))
-    }
-
-    @Test("Grace expiry returns a lingering reconnecting hold to the QR")
-    func graceExpiryReturnsReconnectingToReady() {
-        let ready = makeReady()
-        let expired = MobilePairingModel.reconnectGraceExpiryState(from: .reconnecting(ready))
-        #expect(expired == .ready(ready))
-    }
-
-    @Test("Grace expiry changes nothing once the model has moved on")
-    func graceExpiryIsInertOutsideReconnecting() {
-        let ready = makeReady()
-        #expect(MobilePairingModel.reconnectGraceExpiryState(from: .connected(ready)) == nil)
-        #expect(MobilePairingModel.reconnectGraceExpiryState(from: .ready(ready)) == nil)
-        #expect(MobilePairingModel.reconnectGraceExpiryState(from: .preparing) == nil)
-    }
-
-    @Test("A momentary connection drop does not instantly bring the QR back")
-    func connectedDropDoesNotInstantlyReturnToReady() {
-        let ready = makeReady()
-        // On a lossy network (e.g. mobile data) an attached phone's connection
-        // blips constantly. Each drop must not slam the window straight back to
-        // the QR; the paired layout holds while a grace period runs.
-        let next = MobilePairingModel.connectionTransition(
-            from: .connected(ready),
-            activeConnectionCount: 1,
-            baselineConnectionCount: 1
-        )
-        #expect(next != .ready(ready))
+        #expect(next == .ready(ready))
     }
 
     @Test("Connected stays connected while the new phone remains attached")

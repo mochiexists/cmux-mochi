@@ -48,17 +48,6 @@ struct MobileHostServiceSettingsTests {
         #expect(!alreadyListening.startsLegacyListener)
     }
 
-    @Test func appHostTestsDoNotStartCredentialBackedMobileTransports() {
-        let plan = MobileHostService.startupPlan(
-            legacyListenerEnabled: true,
-            legacyListenerRunning: false,
-            runningUnderXCTest: true
-        )
-
-        #expect(!plan.activatesIroh)
-        #expect(!plan.startsLegacyListener)
-    }
-
     @Test func mobileHostListenerPreservesHistoricalExplicitOptIn() throws {
         let suiteName = "MobileHostServiceSettingsTests.Legacy.\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: suiteName))

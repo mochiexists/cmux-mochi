@@ -49,8 +49,7 @@ extension RemoteTmuxMirrorCLIObservabilityTests {
                 routing: harness.routing(),
                 surfaceID: nil,
                 hasSurfaceIDParam: false,
-                text: "route through active pane",
-                force: false
+                text: "route through active pane"
             )
             #expect(implicitSend == .surfaceUnavailable(activeSurfaceID))
 
@@ -58,8 +57,7 @@ extension RemoteTmuxMirrorCLIObservabilityTests {
                 routing: harness.routing(),
                 surfaceID: harness.outerPanelID,
                 hasSurfaceIDParam: true,
-                text: "do not alias a cached wrapper",
-                force: false
+                text: "do not alias a cached wrapper"
             )
             #expect(explicitSend == .surfaceNotTerminal(harness.outerPanelID))
             #expect(TerminalController.shared.controlSurfaceFocus(

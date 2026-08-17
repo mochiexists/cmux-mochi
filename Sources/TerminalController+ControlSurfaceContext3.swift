@@ -253,7 +253,9 @@ extension TerminalController {
         surfaceID: UUID?,
         hasSurfaceIDParam: Bool,
         text: String,
-        force: Bool
+        // Defaulted so upstream call sites that predate the fork's send guard
+        // keep compiling; the guard is opt-in at the call site that needs it.
+        force: Bool = false
     ) -> ControlSurfaceSendResolution {
         guard let tabManager = resolveTabManager(routing: routing) else {
             return .tabManagerUnavailable

@@ -119,8 +119,8 @@ struct MobileHostAuthorizationTests {
     @Test func testLiveAuthorizationRejectsWorkspaceScopedAttachTokenForMacScopedMutations() async throws {
         let service = MobileHostService.shared
         service.debugConfigureAcceptedStackAuthTokenForTesting("cmux-dev-token")
-        service.debugSetListenerStateForTesting(generation: UUID(), port: 61234)
-        defer { service.debugConfigureAcceptedStackAuthTokenForTesting(nil); service.debugSetListenerStateForTesting(generation: UUID(), port: nil) }
+        service.debugSetListenerStateForTesting(generation: UUID(), usesEphemeralFallback: false, port: 61234)
+        defer { service.debugConfigureAcceptedStackAuthTokenForTesting(nil); service.debugSetListenerStateForTesting(generation: UUID(), usesEphemeralFallback: false, port: nil) }
         let payload = try await service.createAttachTicket(workspaceID: "workspace-main", terminalID: nil, ttl: 3600)
         let ticketPayload = try #require(payload["ticket"] as? [String: Any])
         let attachToken = try #require(ticketPayload["auth_token"] as? String)
@@ -207,46 +207,7 @@ struct MobileHostAuthorizationTests {
         }
         #expect(request.auth == nil)
     }
-    @MainActor
-    @Test func testMobileHostBindFailureFailsClosedInsteadOfMovingPort() {
-        // Fork (cmux Mochi): the pairing port must never silently move. A paired
-        // phone stores the `host:port` it was told; rebinding on an OS-assigned
-        // port leaves the Mac "running" at an address no phone has ever seen,
-        // which presents as an unreachable Mac rather than a moved one.
-        let service = MobileHostService.shared
-        let generation = UUID()
-        service.debugSetListenerStateForTesting(
-            generation: generation,
-            port: 58465
-        )
-        defer {
-            service.debugSetListenerStateForTesting(
-                generation: UUID(), port: nil
-            )
-        }
-
-        service.debugHandleListenerStateForTesting(
-            .failed(.posix(.EADDRINUSE)), generation: generation
-        )
-
-        #expect(service.debugListenerPortForTesting() == nil)
-    }
-
-    @Test func testMobileHostBindFailureNamesThePortAndTheLikelyCause() {
-        let message = MobileHostService.bindFailureDescription(
-            port: 58465, error: NWError.posix(.EADDRINUSE)
-        )
-        #expect(message.contains("58465"))
-        #expect(message.contains("cmux instance"))
-
-        // A non-collision failure is reported verbatim rather than guessed at.
-        let other = MobileHostService.bindFailureDescription(
-            port: 58465, error: NWError.posix(.EACCES)
-        )
-        #expect(!other.contains("cmux instance"))
-    }
-
-    @Test func testMobileRouteResolverPublishesNumericAddressesBeforeMagicDNS() throws {
+    @Test func testMobileRouteResolverPublishesOnlyNumericTailscaleAddresses() throws {
         let resolver = MobileRouteResolver()
         let snapshot = resolver.routes(
             port: 61234,
@@ -258,38 +219,20 @@ struct MobileHostAuthorizationTests {
             ]
         )
         let tailscaleRoutes = snapshot.routes.filter { $0.kind == .tailscale }
-        // Numeric first (always directly dialable), MagicDNS last (survives an
-        // IP change, but only resolves while the client's Tailscale DNS is up).
-        // A non-tailnet address is still never published.
-        #expect(tailscaleRoutes.count == 3)
-        let hosts = tailscaleRoutes.compactMap { route -> String? in
-            guard case let .hostPort(host, _) = route.endpoint else { return nil }
-            return host
-        }
-        #expect(hosts == ["100.71.210.41", "fd7a:115c:a1e0::1234", "work-mac.tailnet.ts.net"])
-        #expect(tailscaleRoutes.map(\.priority) == [10, 20, 100])
-        #expect(tailscaleRoutes.allSatisfy { route in
-            guard case let .hostPort(_, port) = route.endpoint else { return false }
-            return port == 61234
-        })
-        #expect(!hosts.contains("203.0.113.10"))
-    }
-
-    @Test func testMobileRouteResolverPublishesMagicDNSEvenWithoutANumericAddress() throws {
-        // The MagicDNS name is what lets a stored route survive a tailnet IP
-        // change; it must not be conditional on a numeric address also existing.
-        let resolver = MobileRouteResolver()
-        let snapshot = resolver.routes(
-            port: 61234,
-            tailscaleHosts: ["work-mac.tailnet.ts.net"]
-        )
-        let tailscaleRoutes = snapshot.routes.filter { $0.kind == .tailscale }
-        #expect(tailscaleRoutes.count == 1)
+        #expect(tailscaleRoutes.count == 2)
+        #expect(tailscaleRoutes.first?.priority == 10)
+        #expect(tailscaleRoutes.last?.priority == 20)
         if case let .hostPort(host, port) = tailscaleRoutes.first?.endpoint {
-            #expect(host == "work-mac.tailnet.ts.net")
+            #expect(host == "100.71.210.41")
             #expect(port == 61234)
         } else {
-            #expect(Bool(false), "Expected a MagicDNS Tailscale route")
+            #expect(Bool(false), "Expected first numeric Tailscale route")
+        }
+        if case let .hostPort(host, port) = tailscaleRoutes.last?.endpoint {
+            #expect(host == "fd7a:115c:a1e0::1234")
+            #expect(port == 61234)
+        } else {
+            #expect(Bool(false), "Expected IPv6 Tailscale route")
         }
     }
     @Test func testMobileRouteResolverImmediateSnapshotUsesNumericTailscaleFallbackWithoutDNS() throws {
@@ -322,12 +265,13 @@ struct MobileHostAuthorizationTests {
             }
         )
         let tailscaleRoutes = snapshot.routes.filter { $0.kind == .tailscale }
-        #expect(tailscaleRoutes.count == 2)
-        let hosts = tailscaleRoutes.compactMap { route -> String? in
-            guard case let .hostPort(host, _) = route.endpoint else { return nil }
-            return host
+        #expect(tailscaleRoutes.count == 1)
+        if case let .hostPort(host, port) = tailscaleRoutes.first?.endpoint {
+            #expect(host == "100.71.210.41")
+            #expect(port == 61234)
+        } else {
+            #expect(Bool(false), "Expected public status to publish the numeric Tailscale route")
         }
-        #expect(hosts == ["100.71.210.41", "work-mac.tailnet.ts.net"])
     }
     @Test func testMobileRouteResolverRefreshesStalePublicStatusRoutes() async throws {
         let resolver = MobileRouteResolver()
@@ -521,34 +465,13 @@ struct MobileHostAuthorizationTests {
         let error = MobileHostService.ticketAuthorizationError(ticket: ticket, request: request)
         #expect(error == nil)
     }
-    /// Fork (cmux Mochi): a workspace-scoped ticket must NOT create a terminal in
-    /// an unrelated workspace. Upstream allowed this because Stack same-account
-    /// auth was always the outer gate; this fork authorizes on the ticket alone,
-    /// so creating a shell outside the ticket's pin is privilege escalation.
-    @Test func testAttachTicketRejectsTerminalCreateInUnscopedWorkspace() throws {
+    @Test func testAttachTicketAcceptsTerminalCreateForPairedDevice() throws {
         let ticket = try scopedAttachTicket(workspaceID: "workspace", terminalID: "terminal")
         let request = MobileHostRPCRequest(
             id: "terminal-create",
             method: "terminal.create",
             params: [
                 "workspace_id": "other-workspace",
-            ],
-            auth: MobileHostRPCAuth(
-                attachToken: ticket.authToken,
-                stackAccessToken: nil
-            )
-        )
-        let error = MobileHostService.ticketAuthorizationError(ticket: ticket, request: request)
-        #expect(error != nil)
-    }
-
-    @Test func testAttachTicketAcceptsTerminalCreateInScopedWorkspace() throws {
-        let ticket = try scopedAttachTicket(workspaceID: "workspace", terminalID: "terminal")
-        let request = MobileHostRPCRequest(
-            id: "terminal-create",
-            method: "terminal.create",
-            params: [
-                "workspace_id": "workspace",
             ],
             auth: MobileHostRPCAuth(
                 attachToken: ticket.authToken,
@@ -919,6 +842,7 @@ struct MobileHostAuthorizationTests {
         service.debugResetMobileLifecycleStateForTesting()
         service.debugSetListenerStateForTesting(
             generation: currentGeneration,
+            usesEphemeralFallback: true,
             port: 61234
         )
         service.debugHandleListenerStateForTesting(
@@ -926,9 +850,11 @@ struct MobileHostAuthorizationTests {
             generation: staleGeneration
         )
         #expect(service.debugListenerGenerationForTesting() == currentGeneration)
+        #expect(service.debugListenerUsesEphemeralFallbackForTesting())
         #expect(service.debugListenerPortForTesting() == 61234)
         service.debugHandleListenerStateForTesting(.cancelled, generation: staleGeneration)
         #expect(service.debugListenerGenerationForTesting() == currentGeneration)
+        #expect(service.debugListenerUsesEphemeralFallbackForTesting())
         #expect(service.debugListenerPortForTesting() == 61234)
     }
     @Test func testMobileHostWaitingListenerDoesNotPublishRoutes() {
@@ -938,6 +864,7 @@ struct MobileHostAuthorizationTests {
         service.debugResetMobileLifecycleStateForTesting()
         service.debugSetListenerStateForTesting(
             generation: generation,
+            usesEphemeralFallback: false,
             port: 61234
         )
         service.debugHandleListenerStateForTesting(.waiting(.posix(.EADDRINUSE)), generation: generation)

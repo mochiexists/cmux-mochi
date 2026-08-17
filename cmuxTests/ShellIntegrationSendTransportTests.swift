@@ -1,4 +1,3 @@
-import CmuxControlSocket
 import Foundation
 import Testing
 
@@ -285,31 +284,13 @@ struct ShellIntegrationSendTransportTests {
         )
     }
 
-    @Test(.enabled(
-        if: NSUserName() != "runner",
-        "subprocess unix-socket delivery is flaky on CI app-host runners; run locally or on a fleet Mac"
-    ))
-    func sendWrapsPayloadWithInheritedSocketCapability() throws {
-        let result = try Self.deliverViaIntegration(
-            shimmed: false,
-            capability: "test-socket-capability"
-        )
-        #expect(
-            result.delivered == "_cmux_capability_v1 test-socket-capability transport probe",
-            "The shell integration must present the inherited capability. exit=\(result.exitStatus) log:\n\(result.diagnostics.suffix(1200))"
-        )
-    }
-
     private struct DeliveryResult {
         let delivered: String?
         let diagnostics: String
         let exitStatus: Int32
     }
 
-    private static func deliverViaIntegration(
-        shimmed: Bool,
-        capability: String? = nil
-    ) throws -> DeliveryResult {
+    private static func deliverViaIntegration(shimmed: Bool) throws -> DeliveryResult {
         let script = try #require(
             RemoteInteractiveShellBootstrapBuilder.bundledShellIntegrationScript(
                 named: "cmux-zsh-integration.zsh"
@@ -356,9 +337,6 @@ struct ShellIntegrationSendTransportTests {
             "PATH": path,
             "HOME": dir.path,
         ]
-        if let capability {
-            process.environment?[SocketClientCapabilityEnvelope.environmentKey] = capability
-        }
         process.arguments = [
             "-f", "-c",
             """

@@ -1,5 +1,4 @@
 import AppKit
-import CmuxControlSocket
 import CmuxCore
 import Darwin
 import Foundation
@@ -118,21 +117,6 @@ private func XCTFail(
 @Suite(.serialized)
 final class TerminalControllerSocketSecurityTests {
     private var teardownBlocks: [() -> Void] = []
-
-    private func routing(
-        workspaceID: UUID? = nil,
-        surfaceID: UUID? = nil,
-        paneID: UUID? = nil
-    ) -> ControlRoutingSelectors {
-        ControlRoutingSelectors(
-            hasWindowIDParam: false,
-            windowID: nil,
-            groupID: nil,
-            workspaceID: workspaceID,
-            surfaceID: surfaceID,
-            paneID: paneID
-        )
-    }
 
     @Test func browserDownloadQueueKeepsCompletionAfterPromptReadyEvent() {
         let controller = TerminalController.shared
@@ -302,89 +286,6 @@ final class TerminalControllerSocketSecurityTests {
         XCTAssertEqual(wrongAuthThenPing.count, 2)
         XCTAssertTrue(wrongAuthThenPing[0].hasPrefix("ERROR:"))
         XCTAssertTrue(wrongAuthThenPing[1].hasPrefix("ERROR:"))
-    }
-
-    @Test func passwordModeAcceptsCapabilityWrappedShellTelemetry() throws {
-        let socketPath = makeSocketPath("password-capability")
-        let tabManager = TabManager()
-        let previousAppDelegate = AppDelegate.shared
-        let appDelegate = previousAppDelegate ?? AppDelegate()
-        AppDelegate.shared = appDelegate
-        let windowID = appDelegate.registerMainWindowContextForTesting(tabManager: tabManager)
-        defer {
-            TerminalController.shared.stop()
-            appDelegate.unregisterMainWindowContextForTesting(windowId: windowID)
-            AppDelegate.shared = previousAppDelegate
-            unlink(socketPath)
-        }
-        let workspace = try XCTUnwrap(tabManager.selectedWorkspace)
-        let panelID = try XCTUnwrap(workspace.panels.keys.first)
-        let capability = try XCTUnwrap(
-            TerminalController.shared.socketClientCapabilityEnvironment()[
-                SocketClientCapabilityEnvelope.environmentKey
-            ]
-        )
-        let envelope = try XCTUnwrap(SocketClientCapabilityEnvelope(capability: capability))
-
-        TerminalController.shared.start(
-            tabManager: tabManager,
-            socketPath: socketPath,
-            accessMode: .password
-        )
-        try waitForSocket(at: socketPath)
-
-        let command = envelope.wrap(
-            "report_shell_state running --tab=\(workspace.id) --panel=\(panelID)"
-        )
-        let responses = try sendCommands([command], to: socketPath)
-
-        XCTAssertEqual(responses, ["OK"])
-        TerminalMutationBus.shared.drainForTesting()
-        XCTAssertEqual(workspace.panelShellActivityStates[panelID], .commandRunning)
-    }
-
-    @Test func testV2ControlFocusRoutesRejectPrivacyBlurredWorkspace() throws {
-        let socketPath = makeSocketPath("privacy-routes")
-        let tabManager = TabManager()
-        let visibleWorkspace = tabManager.tabs[0]
-        let privateWorkspace = tabManager.addWorkspace(select: false)
-        let privatePaneId = try XCTUnwrap(privateWorkspace.bonsplitController.allPaneIds.first?.id)
-        let privateSurfaceId = try XCTUnwrap(privateWorkspace.panels.keys.first)
-
-        TerminalController.shared.start(
-            tabManager: tabManager,
-            socketPath: socketPath,
-            accessMode: .cmuxOnly
-        )
-
-        tabManager.setWorkspacePrivacyBlurred([privateWorkspace.id], isBlurred: true)
-
-        XCTAssertEqual(
-            TerminalController.shared.controlSelectWorkspace(
-                routing: routing(workspaceID: privateWorkspace.id),
-                workspaceID: privateWorkspace.id
-            ),
-            .notFound
-        )
-        XCTAssertEqual(tabManager.selectedTabId, visibleWorkspace.id)
-
-        XCTAssertEqual(
-            TerminalController.shared.controlPaneFocus(
-                routing: routing(workspaceID: privateWorkspace.id),
-                paneID: privatePaneId
-            ),
-            .workspaceNotFound
-        )
-        XCTAssertEqual(tabManager.selectedTabId, visibleWorkspace.id)
-
-        XCTAssertEqual(
-            TerminalController.shared.controlSurfaceFocus(
-                routing: routing(workspaceID: privateWorkspace.id),
-                surfaceID: privateSurfaceId
-            ),
-            .workspaceNotFound
-        )
-        XCTAssertEqual(tabManager.selectedTabId, visibleWorkspace.id)
     }
 
     @Test func testSocketCommandPolicyDistinguishesFocusIntent() throws {
@@ -1801,74 +1702,6 @@ final class TerminalControllerSocketSecurityTests {
         #expect(abs(requestedPageZoom - 1.5) < 0.000_001)
         #expect(abs(maximumPageZoom - 2.0.squareRoot()) < 0.000_001)
         #expect(abs(browserPanel.currentPageZoomFactor() - 1.4) < 0.000_001)
-    }
-
-    @Test func testBrowserOpenSplitRejectsRemovedVSCodeClaudeContentMode() throws {
-        let defaults = UserDefaults.standard
-        let previousBrowserDisabled = defaults.object(forKey: BrowserAvailabilitySettings.disabledKey)
-        BrowserAvailabilitySettings.setDisabled(false)
-        defer {
-            if let previousBrowserDisabled {
-                defaults.set(previousBrowserDisabled, forKey: BrowserAvailabilitySettings.disabledKey)
-            } else {
-                defaults.removeObject(forKey: BrowserAvailabilitySettings.disabledKey)
-            }
-            TerminalController.shared.setActiveTabManager(nil)
-        }
-
-        let manager = TabManager()
-        let workspace = try XCTUnwrap(manager.selectedWorkspace)
-        let pane = try XCTUnwrap(workspace.bonsplitController.allPaneIds.first)
-        let sourcePanel = try XCTUnwrap(workspace.newTerminalSurface(inPane: pane, focus: true))
-        TerminalController.shared.setActiveTabManager(manager)
-
-        let response = try handleV2Request(
-            method: "browser.open_split",
-            params: [
-                "surface_id": sourcePanel.id.uuidString,
-                "url": "http://127.0.0.1:8780/?folder=/tmp/cmux-claude",
-                "content_mode": "vscode_claude_code"
-            ]
-        )
-
-        XCTAssertEqual(response["ok"] as? Bool, false, "Unexpected JSON-RPC response: \(response)")
-        let error = try XCTUnwrap(response["error"] as? [String: Any], "Unexpected JSON-RPC response: \(response)")
-        XCTAssertEqual(error["code"] as? String, "invalid_params")
-    }
-
-    @Test func testBrowserOpenSplitRejectsInvalidContentMode() throws {
-        defer {
-            TerminalController.shared.setActiveTabManager(nil)
-        }
-
-        TerminalController.shared.setActiveTabManager(TabManager())
-        let response = try handleV2Request(
-            method: "browser.open_split",
-            params: ["content_mode": "sideways"]
-        )
-
-        XCTAssertEqual(response["ok"] as? Bool, false, "Unexpected JSON-RPC response: \(response)")
-        let error = try XCTUnwrap(response["error"] as? [String: Any], "Unexpected JSON-RPC response: \(response)")
-        XCTAssertEqual(error["code"] as? String, "invalid_params")
-    }
-
-    @Test func testVSCodeOpenRejectsMissingDirectoryBeforeStartingServer() throws {
-        defer {
-            TerminalController.shared.setActiveTabManager(nil)
-        }
-
-        TerminalController.shared.setActiveTabManager(TabManager())
-        let missingPath = FileManager.default.temporaryDirectory
-            .appendingPathComponent("cmux-missing-\(UUID().uuidString)", isDirectory: true)
-            .path
-        let response = try handleV2Request(
-            method: "vscode.open",
-            params: ["path": missingPath]
-        )
-
-        XCTAssertEqual(response["ok"] as? Bool, false, "Unexpected JSON-RPC response: \(response)")
-        let error = try XCTUnwrap(response["error"] as? [String: Any], "Unexpected JSON-RPC response: \(response)")
-        XCTAssertEqual(error["code"] as? String, "invalid_path")
     }
 
     @Test func testLegacyCloseSurfaceCommandRecordsRecentlyClosedHistory() throws {

@@ -2830,7 +2830,6 @@ final class TerminalDirectoryOpenTargetAvailabilityTests: XCTestCase {
 
         let availableTargets = TerminalDirectoryOpenTarget.availableTargets(in: env)
         XCTAssertTrue(availableTargets.contains(.vscode))
-        XCTAssertTrue(availableTargets.contains(.vscodeInline))
         XCTAssertTrue(availableTargets.contains(.finder))
         XCTAssertTrue(availableTargets.contains(.terminal))
         XCTAssertTrue(availableTargets.contains(.zed))

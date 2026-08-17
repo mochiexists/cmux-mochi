@@ -127,6 +127,7 @@ private func testRoute(
             isRunning: true,
             port: 58_465,
             configuredPort: 58_465,
+            usesEphemeralFallback: false,
             routes: [route],
             activeConnectionCount: 0,
             lastErrorDescription: nil

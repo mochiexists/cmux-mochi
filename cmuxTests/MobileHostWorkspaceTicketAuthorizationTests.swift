@@ -242,11 +242,13 @@ struct MobileHostWorkspaceTicketAuthorizationTests {
         let service = MobileHostService.shared
         service.debugSetListenerStateForTesting(
             generation: UUID(),
+            usesEphemeralFallback: false,
             port: 61_234
         )
         defer {
             service.debugSetListenerStateForTesting(
                 generation: UUID(),
+                usesEphemeralFallback: false,
                 port: nil
             )
         }
@@ -288,6 +290,7 @@ struct MobileHostWorkspaceTicketAuthorizationTests {
         let service = MobileHostService.shared
         service.debugSetListenerStateForTesting(
             generation: UUID(),
+            usesEphemeralFallback: false,
             port: nil
         )
 

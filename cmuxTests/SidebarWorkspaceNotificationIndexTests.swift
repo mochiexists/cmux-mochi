@@ -214,7 +214,6 @@ struct SidebarWorkspaceContextMenuTargetAggregateTests {
             index: 0,
             workspaceCount: 3,
             workspace: SidebarWorkspaceSnapshotRefreshPolicyTests.snapshot(),
-            isPrivacyBlurred: false,
             isActive: false,
             isMultiSelected: isMultiSelected,
             hasUserCustomTitle: false,

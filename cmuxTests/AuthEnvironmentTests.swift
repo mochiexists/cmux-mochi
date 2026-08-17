@@ -89,7 +89,7 @@ struct AuthEnvironmentTests {
         #expect(
             AuthEnvironment.callbackScheme(
                 environment: ["CMUX_TAG": "Safari Auth!"],
-                bundleIdentifier: "com.cmux-mochi.debug.safari-auth",
+                bundleIdentifier: "com.cmuxterm.app.debug.safari-auth",
                 isDebugBuild: true
             ) == "cmux-dev-safari-auth"
         )
@@ -100,14 +100,14 @@ struct AuthEnvironmentTests {
         #expect(
             AuthEnvironment.callbackScheme(
                 environment: ["CMUX_TAG": "safari-auth"],
-                bundleIdentifier: "com.cmux-mochi",
+                bundleIdentifier: "com.cmuxterm.app",
                 isDebugBuild: false
             ) == "cmux"
         )
         #expect(
             AuthEnvironment.callbackScheme(
                 environment: ["CMUX_TAG": "safari-auth"],
-                bundleIdentifier: "com.cmux-mochi.nightly",
+                bundleIdentifier: "com.cmuxterm.app.nightly",
                 isDebugBuild: false
             ) == "cmux-nightly"
         )
