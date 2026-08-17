@@ -391,6 +391,29 @@ a keychain identity at all (`-34018`).
 `stack || attachTicket`, so a device that had just paired still rendered the
 sign-in screen (`de228f0917`). The simulator now reaches the workspace UI.
 
+### Latent: a stored MagicDNS route cannot be dialed
+
+Seen on the iPhone run. The dial's first attempt failed with
+`nonNumericPeer` and only the retry connected, because
+`CmxTailscaleRouteProofValidator` requires a numeric tailnet address:
+
+```swift
+guard let peerAddress = CmxTailscaleIPAddress(host) else {
+    throw CmxTailscaleRouteProofError.nonNumericPeer
+}
+```
+
+The Mac deliberately publishes `<host>.<tailnet>.ts.net` alongside the
+numeric routes — `makePairingPayload` waits for MagicDNS precisely because it
+is "the only locator that survives a tailnet IP change, and the loss is
+invisible until a reconnect fails months later".
+
+Today the numeric routes mask it. After a tailnet IP change — the exact case
+MagicDNS exists for — MagicDNS is the only surviving route, and reconnect
+would fail with a proof error rather than a network one. The fix is to
+resolve the name to a tailnet address before proving it (or to prove the
+resolved peer), not to relax the range check.
+
 ### L5 gap confirmed: subscriptions outlive the ticket that authorized them
 
 Verified 2026-08-17 on this branch. `dropSubscriptionsWithExpiredTickets` does
@@ -462,8 +485,10 @@ problem:
 3. The direct-dial branch never named the Mac, so the client could not choose
    which pairing key to offer.
 
-**Still outstanding:** the same run on a physical iPhone. Per `CLAUDE.md`, iOS
-work is not complete until it runs on the phone as well as the simulator.
+**Physical iPhone: verified** (iPhone 16 Pro Max, over Tailscale, cold install).
+Needed three more gates that a simulator never reaches, since it dials loopback
+— see `1f28179159`. Sustained session confirmed:
+`sync.subscribe_ok topics=12` and repeating `sync.liveness probe_ok`.
 
 ### Historical: the DeviceLink dial ran through the bearer machinery
 
