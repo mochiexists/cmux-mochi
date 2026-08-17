@@ -735,6 +735,33 @@ final class MobileHostService {
         return false
     }
 
+    /// Why a pairing listener could not bind, naming the port and the cause.
+    ///
+    /// The pairing port is fixed by design — a paired phone stores the
+    /// `host:port` it was told, so moving to an OS-assigned port would leave
+    /// this Mac reachable at an address no phone has ever seen. That makes a
+    /// bind failure an actionable conflict to report rather than something to
+    /// route around, and the port has to appear in the message for the reader
+    /// to know which one to free.
+    nonisolated static func bindFailureDescription(port: Int, error: NWError) -> String {
+        let cause: String
+        if case let .posix(code) = error {
+            switch code {
+            case .EADDRINUSE:
+                cause = "another process is already listening on it"
+            case .EADDRNOTAVAIL:
+                cause = "that address is not available on this machine"
+            case .EACCES:
+                cause = "this process is not permitted to bind it"
+            default:
+                cause = String(describing: error)
+            }
+        } else {
+            cause = String(describing: error)
+        }
+        return "Mobile pairing could not bind port \(port): \(cause)."
+    }
+
     /// Applies an explicitly-requested pairing port.
     ///
     /// Make-before-break: when a running listener must move to a different port, a

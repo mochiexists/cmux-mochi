@@ -11,6 +11,46 @@ import Testing
 @Suite(.serialized)
 @MainActor
 struct MobileHostAuthorizationTests {
+
+    /// Fork (cmux Mochi): the pairing port must never silently move. A paired
+    /// phone stores the `host:port` it was told; rebinding on an OS-assigned
+    /// port leaves the Mac "running" at an address no phone has ever seen,
+    /// which presents as an unreachable Mac rather than a moved one.
+    ///
+    /// Upstream deliberately does the opposite (it moves to a ready candidate
+    /// port), so this is the assertion that catches the divergence being
+    /// silently undone by a future rebase.
+    @Test func testMobileHostBindFailureFailsClosedInsteadOfMovingPort() {
+        let service = MobileHostService.shared
+        let generation = UUID()
+        // usesEphemeralFallback: false is the fixed pairing port -- the case
+        // where the address is part of what a paired phone stored.
+        service.debugSetListenerStateForTesting(
+            generation: generation, usesEphemeralFallback: false, port: 58465
+        )
+        defer {
+            service.debugSetListenerStateForTesting(
+                generation: UUID(), usesEphemeralFallback: false, port: nil
+            )
+        }
+
+        service.debugHandleListenerStateForTesting(
+            .failed(.posix(.EADDRINUSE)), generation: generation
+        )
+
+        #expect(service.debugListenerPortForTesting() == nil)
+    }
+
+    /// A bind failure has to name the port to be actionable: the port is fixed
+    /// by design, so the reader's next step is freeing that specific one.
+    @Test func testMobileHostBindFailureNamesThePortAndTheLikelyCause() {
+        let message = MobileHostService.bindFailureDescription(
+            port: 58465, error: NWError.posix(.EADDRINUSE)
+        )
+        #expect(message.contains("58465"))
+        #expect(message.lowercased().contains("already listening"))
+    }
+
     @Test func testAttachTicketStoreKeepsMultipleTicketsForSameTerminal() throws {
         let store = MobileAttachTicketStore()
         let route = try CmxAttachRoute(
