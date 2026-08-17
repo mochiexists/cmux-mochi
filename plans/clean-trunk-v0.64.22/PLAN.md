@@ -221,11 +221,41 @@ entirely — synchronous, main-thread, no timeout, no fallback. It is one securi
 prompt away from wedging a *user's* app at launch, not merely a test host. This
 change only made the existing guard reachable.
 
-### L7 status
+### L7 resume-alias: verified, and the emitter is right but the gate is wrong
 
-Unblocked: the suite runs. The resume-alias port itself was never implicated and
-can now be verified properly against the 75 `resumeCommand` assertions; the WIP
-is parked as `stash@{0}` in `~/cmux-clean-trunk` on `m4-macbook-pro`.
+Run on `m4-macbook-pro` with the test host working, against the with-fix
+baseline of 266 failures:
+
+- **All 5 restored alias tests pass** — the `cc`/`ccy`/`cx`/`cxy` emitter
+  produces exactly the strings the removed tests specify, including the
+  yolo-detection rules and codex's `resume` subcommand vs claude's `--resume`.
+- **6 newly failing, of which 4 are real:**
+  `SessionRestorableAgentSnapshotPermissionModeTests` x3 and
+  `SocketListenerAcceptPolicyTests.testCodexResumeCommandDropsStartupImagesAndPlacesSessionBeforeFlags`.
+  (The other 2 are `AppDelegateShortcutRoutingTests` focus tests, the same
+  flaky cluster as the `_NSWindowTransformAnimation` over-release crash.)
+
+**Why:** the alias form drops arguments the wrapper form replays.
+`ccy '--resume' '<id>'` carries no `--permission-mode`, no `--model`, no codex
+startup-image flags. The gate only checked captured *environment*; it never
+checked captured *arguments*, so a session needing extra flags silently resumes
+without them — e.g. with the wrong permission mode. That is worse than not
+shipping the feature, so it stays unlanded.
+
+**The correct rule for the next attempt.** Use the alias only when it is
+*equivalent* to the captured command: take the captured resume argv, subtract
+the flags the alias itself encodes (`--dangerously-skip-permissions` for `ccy`,
+`--dangerously-bypass-approvals-and-sandbox` for `cxy`), and require the
+remainder to be exactly `[resumeToken, sessionId]`. Anything else — an observed
+`permissionMode`, a model, codex image flags — must take the wrapper form.
+
+That satisfies both test sets, which is the evidence it is the right rule: the
+alias tests build snapshots with no `permissionMode`, while the permission-mode
+tests set one explicitly.
+
+WIP parked as `stash@{0}` in `~/cmux-clean-trunk` on `m4-macbook-pro`.
+
+### L7 status
 
 ### L7 — Mac feature ports
 
