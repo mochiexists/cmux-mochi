@@ -1386,6 +1386,10 @@ class TerminalController {
             return v2AsyncResultCall(id: request.id, timeoutSeconds: 30) {
                 await self.v2MobileAttachTicketCreate(params: request.params)
             }
+        case "mobile.pairing.code.create":
+            return v2AsyncResultCall(id: request.id, timeoutSeconds: 30) {
+                await self.v2MobilePairingCodeCreate(params: request.params)
+            }
         case "mobile.terminal.set_font":
             return v2Result(id: request.id, v2MobileTerminalSetFont(params: request.params))
         case "system.ping":
@@ -2444,6 +2448,7 @@ class TerminalController {
             "system.memory",
             "mobile.host.status",
             "mobile.attach_ticket.create",
+            "mobile.pairing.code.create",
             "mobile.terminal.set_font",
             "mobile.workspace.list",
             "mobile.terminal.create",
@@ -14027,6 +14032,8 @@ class TerminalController {
             result = v2MobileHostStatus(params: request.params, includePrivateMetadata: false)
         case "mobile.attach_ticket.create":
             result = await v2MobileAttachTicketCreate(params: request.params)
+        case "mobile.pairing.code.create":
+            result = await v2MobilePairingCodeCreate(params: request.params)
         case "mobile.workspace.list", "workspace.list":
             result = v2MobileWorkspaceList(params: request.params)
         case "mobile.workspace.changes.summary",
