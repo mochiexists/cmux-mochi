@@ -328,3 +328,65 @@ private func legacyTailscaleRequest() throws -> CmxByteTransportRequest {
         }
     }
 }
+
+// MARK: - MagicDNS route resolution
+
+private func magicDNSRequest(host: String) throws -> CmxByteTransportRequest {
+    CmxByteTransportRequest(
+        route: try CmxAttachRoute(
+            id: "tailscale",
+            kind: .tailscale,
+            endpoint: .hostPort(host: host, port: 49831)
+        ),
+        expectedPeerDeviceID: "mac-1",
+        authorizationMode: .transportAdmission
+    )
+}
+
+/// The Mac publishes a MagicDNS name because it is the only locator that
+/// survives a tailnet IP change, but the route proof requires a numeric peer.
+/// Resolving it here is what keeps that durable route dialable; without this it
+/// is the one route that can never be used, which stays invisible until the
+/// numeric routes beside it go stale.
+@Test func resolvesMagicDNSRouteToItsTailnetAddress() async throws {
+    let resolved = try await CmxPreparingTailscaleByteTransport.requestResolvingMagicDNS(
+        magicDNSRequest(host: "work-mac.tailnet.ts.net"),
+        resolveHost: { _ in ["100.112.69.84", "fd7a:115c:a1e0::e53a:4555"] }
+    )
+    #expect(resolved.route.endpoint == .hostPort(host: "100.112.69.84", port: 49831))
+    // Everything else about the request must survive the rewrite.
+    #expect(resolved.route.kind == .tailscale)
+    #expect(resolved.expectedPeerDeviceID == "mac-1")
+    #expect(resolved.authorizationMode == .transportAdmission)
+}
+
+/// A numeric route is already provable and must not be re-resolved.
+@Test func leavesNumericRoutesUntouched() async throws {
+    let request = try magicDNSRequest(host: "100.112.69.84")
+    let resolved = try await CmxPreparingTailscaleByteTransport.requestResolvingMagicDNS(
+        request,
+        resolveHost: { _ in
+            Issue.record("a numeric peer must not be resolved")
+            return []
+        }
+    )
+    #expect(resolved == request)
+}
+
+/// Fail closed: a name that resolves outside the tailnet is not a peer this
+/// transport may dial, and must not be rewritten into one.
+@Test func refusesNamesResolvingOutsideTheTailnet() async throws {
+    await #expect(throws: CmxTailscaleRouteProofError.nonNumericPeer) {
+        _ = try await CmxPreparingTailscaleByteTransport.requestResolvingMagicDNS(
+            magicDNSRequest(host: "evil.example.com"),
+            resolveHost: { _ in ["93.184.216.34", "10.0.0.5"] }
+        )
+    }
+    // A name that resolves to nothing is the same answer.
+    await #expect(throws: CmxTailscaleRouteProofError.nonNumericPeer) {
+        _ = try await CmxPreparingTailscaleByteTransport.requestResolvingMagicDNS(
+            magicDNSRequest(host: "missing.tailnet.ts.net"),
+            resolveHost: { _ in [] }
+        )
+    }
+}
