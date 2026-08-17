@@ -143,7 +143,42 @@ QR/DeviceLink code minting, and the reconnecting-grace state.
   reason to exist. Expect to re-decide this surface at every sync.
 - Orphan: `OnboardingPage.swift` no longer exists upstream; re-home those changes.
 
-### L7 is gated on a runnable test host
+### RESOLVED: the 271/259 failures are upstream's, not ours
+
+Run 2026-08-17 on `m4-macbook-pro` (provisioned as a test host: zig 0.16 via
+`install-zig-ci.sh`, GhosttyKit cache-hit on the identical ghostty SHA,
+worktrees at `~/cmux-clean-trunk` and `~/cmux-base-v06422`).
+
+| run | passed | failed |
+|---|---|---|
+| this branch | 3384 | 259 |
+| pristine `v0.64.22` | 3384 | 258 |
+
+Diffing the failing test names: **256 inherited from upstream, 3 unique to this
+branch** — and 2 upstream failures that this branch actually fixes.
+
+Of the 3:
+
+- `AccessibilityInsertTextRegressionTests.testDirectInsertTextUsesTypedInputSemantics` — **passes in isolation**; order-dependent pollution, not a port regression.
+- `KoreanIMEReturnCommitRegressionTests.testReturnAfterKoreanCommitAlsoSendsReturnToSurface` — **passes in isolation**; same.
+- `GhosttyConfigTests.testThemesListIncludesCmuxUserThemesDirectory` — fails reliably, but the subject and the test are **byte-identical to upstream** (the only config-related diff in the whole range is `config/ForkIdentity.xcconfig`). The test hardcodes `com.cmuxterm.app` as the Application Support directory, while config discovery resolves through `Bundle.main.bundleIdentifier` — so under fork identity the fixture is not where the app looks, and discovery falls through to a real `~/.config/ghostty/config` on the host. The identity footgun again, this time on the test side. Fix by deriving the directory from the running identity rather than the literal.
+
+**So the port introduced no functional test regressions.** Two flakes and one
+identity-coupled test.
+
+**A test hangs the suite.**
+`SessionPersistenceTests.testAgentHookSurfaceResumeStartupInputRunsWhenSavedWorkingDirectoryWasDeleted`
+wedged for 2h43m. The suite only completes with
+`-test-timeouts-enabled YES -default-test-execution-time-allowance 120`; that is
+why it had never run to completion. Worth fixing or quarantining.
+
+### L7 is gated on a runnable test host — now unblocked
+
+`m4-macbook-pro` is a working host (see above), so the L7 verification problem
+below is solved; the resume-alias port can be re-applied and checked against the
+75 `resumeCommand` assertions there.
+
+
 
 Attempted 2026-08-17 with the smallest candidate — the `cx/cxy/cc/ccy` resume
 aliases, whose six tests still exist in `36009e17ec`'s diff and whose shell half
