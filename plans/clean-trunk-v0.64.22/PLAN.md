@@ -387,9 +387,41 @@ Four separate gaps had to be closed; each was fully implemented but orphaned:
 Plus `7d15c4b86e`: the simulator build must be signed or DeviceLink cannot hold
 a keychain identity at all (`-34018`).
 
-**Remaining (L6 pairing UX):** the phone pairs and persists, but the root view
-still gates the workspace UI on a Stack session, so the simulator sits on the
-login screen after a successful pairing. That is the next task.
+**L6 pairing UX — done.** `MobileRootAuthGate.isAuthenticated` was
+`stack || attachTicket`, so a device that had just paired still rendered the
+sign-in screen (`de228f0917`). The simulator now reaches the workspace UI.
+
+### Next blocker: the DeviceLink dial runs through the bearer machinery
+
+After pairing, the phone must dial the Mac (enrollment closes its own
+transport). `ce3ff37439` wires that dial and the `setActiveDialTarget` call it
+needs, which gets as far as:
+
+```
+dialing stored mac 24d04160-… -> 127.0.0.1:64662 100.112.69.84:64662 …
+dial finished: 127.0.0.1:64662 state=disconnected     (~2ms per route)
+```
+
+All four routes fail in ~2ms — before any network I/O — and the UI reports
+"This pairing route is not trusted" (`mobile.pairing.secureRouteRequired`,
+category `.unsupportedRoute`).
+
+Root cause: the stored-Mac dial goes through `connectManualHost` →
+`manualHostTicket`, which tries to *acquire an attach ticket* for the route.
+That whole path exists to decide whether a route may carry the Stack bearer
+(`MobileShellRouteAuthPolicy.routeAllowsStackAuth`). A DeviceLink pairing has
+no bearer — the device key is the credential — so the question is inapplicable,
+and the answer it produces is a refusal.
+
+Proof the transport is never reached: `deviceLinkTLSOptions` logs
+"transport asked for TLS options" on every call, and that line never appears.
+The dial dies during ticket acquisition, before any transport is created.
+
+**This needs a decision, not just wiring:** a DeviceLink-native dial that skips
+ticket acquisition and opens a transport with the pinned identity directly. The
+transport half already supports it (`CmxNetworkByteTransportFactory` accepts
+`deviceLinkTLSOptions` and the app supplies the closure); what is missing is a
+reconnect path that uses it instead of `connectManualHost`.
 
 **Not yet done:** the same run on a physical iPhone (deferred at the user's
 request while the phones were busy). Per `CLAUDE.md`, iOS work is not complete
