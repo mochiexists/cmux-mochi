@@ -2357,8 +2357,16 @@ public final class MobileShellComposite: MobileTerminalOutputSinking {
             finishStoredMacReconnectAttempt(generation: generation)
             return .failed(.noRoute)
         }
-        guard isSignedIn,
-              let scope = await currentScopeSnapshot(userID: stackUserID) else {
+        let resolvedScope = await currentScopeSnapshot(userID: stackUserID)
+        // An account-free pairing lives under this install's local scope, so
+        // "not signed in" and "no scope" are the two ways this silently does
+        // nothing -- and they need opposite fixes. Name which one it was.
+        MobileShellComposite.logStoredMacReconnectScope(
+            isSignedIn: isSignedIn,
+            requestedUserID: stackUserID,
+            resolvedUserID: resolvedScope?.userID
+        )
+        guard isSignedIn, let scope = resolvedScope else {
             finishStoredMacReconnectAttempt(generation: generation)
             return .failed(.authorizationFailed)
         }
@@ -2439,6 +2447,12 @@ public final class MobileShellComposite: MobileTerminalOutputSinking {
             candidates.append(activeMac)
         }
         candidates.append(contentsOf: allMacs.filter { $0.id != activeMac?.id })
+        // Distinguishes "the pairing is not in the store for this scope" from
+        // "it is, but every route was filtered before dialing" -- opposite fixes,
+        // and both look like a silent reconnect failure from outside.
+        logDeviceLink(
+            "reconnect candidates active=\(activeMac == nil ? 0 : 1) all=\(allMacs.count)"
+        )
         // A newer attempt may have started while we awaited the store read; if so,
         // let it own the flags rather than marking ourselves the active reconnect.
         guard generation == storedMacReconnectGeneration else { return .superseded }
@@ -2515,6 +2529,15 @@ public final class MobileShellComposite: MobileTerminalOutputSinking {
             let localHasIroh = localRoutes.contains { $0.kind == .iroh }
             let localCanConnectSecurely = localHasIroh
                 || localRoutes.contains { $0.kind == .debugLoopback }
+                // Fork (cmux Mochi): this device holds a private key for that Mac
+                // and its pinned fingerprint, so the dial is mutually authenticated
+                // regardless of route -- stronger than the bearer grants beside it,
+                // which is why they do not apply. Without this a paired phone never
+                // dialed at all: a physical device has no loopback route and no
+                // grandfathered Tailscale grant, so this evaluated false and the
+                // reconnect returned silently, looking like an unreachable Mac.
+                || MobileDeviceLinkClient.shared
+                    .hasUsableCredential(forMacDeviceID: mac.macDeviceID)
                 || localRoutes.contains { route in
                     Self.legacyTailscaleAuthorizationEvidence(
                         for: route,

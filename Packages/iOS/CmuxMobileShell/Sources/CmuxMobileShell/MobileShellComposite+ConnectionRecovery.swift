@@ -608,7 +608,18 @@ extension MobileShellComposite {
                 )
                 : nil
         )
-        guard let firstRoute = pinnedRoutes.first else { return .failed(.unsupportedRoute) }
+        guard let firstRoute = pinnedRoutes.first else {
+            // Routes are filtered and reordered before a dial; a stored Mac
+            // whose rows all get dropped here is indistinguishable from one
+            // that was never saved, and on a physical device the surviving set
+            // differs from the simulator's.
+            logDeviceLink(
+                "dial aborted: no dialable route "
+                    + "stored=\(routes.map(\.kind.rawValue).joined(separator: ",")) "
+                    + "supported=\(supportedKinds.map(\.rawValue).joined(separator: ","))"
+            )
+            return .failed(.unsupportedRoute)
+        }
 
         var outcome: StoredMacReconnectOutcome = .failed(.unknown)
 
@@ -629,7 +640,12 @@ extension MobileShellComposite {
             .hasUsableCredential(forMacDeviceID: pairedMacDeviceID)
         MobileShellComposite.logStoredMacDialDecision(
             mac: pairedMacDeviceID,
-            routeKinds: pinnedRoutes.map(\.kind.rawValue),
+            routeKinds: pinnedRoutes.map { route in
+                guard case let .hostPort(host, port) = route.endpoint else {
+                    return route.kind.rawValue
+                }
+                return "\(route.kind.rawValue)@\(host):\(port)"
+            },
             hasDeviceLinkCredential: hasDeviceLinkCredential,
             canConnect: firstRoute.kind == .iroh
                 || hasAuthorizedLegacyTailscaleRoute

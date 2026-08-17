@@ -170,7 +170,17 @@ struct CmxTailscaleRouteProofValidator {
             // checks below still pin the destination to a real Tailscale peer
             // address reachable over a single Tailscale interface.
             break
-        case .stackBearer, .transportAdmission:
+        case .transportAdmission:
+            // Fork (cmux Mochi): a DeviceLink dial is mutually authenticated by
+            // this device's key against the Mac's pinned fingerprint, so it
+            // authorizes itself exactly as the ticket above does. The checks
+            // below still pin the destination to a real Tailscale peer.
+            //
+            // This is the gate that made a paired *phone* unable to reconnect
+            // while the simulator worked: the simulator dials loopback, which
+            // never reaches this proof.
+            break
+        case .stackBearer:
             throw CmxTailscaleRouteProofError.unsupportedAuthorizationMode
         }
         guard let peerAddress = CmxTailscaleIPAddress(host) else {

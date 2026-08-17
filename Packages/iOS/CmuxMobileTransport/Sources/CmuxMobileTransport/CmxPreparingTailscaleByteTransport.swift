@@ -92,6 +92,15 @@ actor CmxPreparingTailscaleByteTransport: CmxByteTransport {
                 } catch is CancellationError {
                     throw CancellationError()
                 } catch {
+                    #if DEBUG
+                    // Flattening every preparation failure into one case makes a
+                    // route proof that failed for a *nameable* reason (wrong
+                    // peer range, no Tailscale interface, unsatisfied path)
+                    // indistinguishable from a missing authorization. Surface
+                    // the reason in dev builds; release keeps the single case so
+                    // no caller has to learn a new one.
+                    if error is CmxTailscaleRouteProofError { throw error }
+                    #endif
                     throw CmxNetworkByteTransportError.tailscaleAuthorizationUnavailable
                 }
             }
