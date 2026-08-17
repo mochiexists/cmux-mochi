@@ -79,6 +79,16 @@ public final class MobileCoreRPCClient: MobileSyncing, Sendable {
             authorizationMode = .userAuthorizedTailscalePairing(
                 userTailscalePairingAuthorization
             )
+        } else if ticket.authToken?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false {
+            // Fork (cmux Mochi): a ticket that carries its own token IS the
+            // credential -- the host authorizes on it alone. Without this branch
+            // every ticket route fell through to `.stackBearer`, so a signed-out
+            // phone (the whole point of an accountless attach ticket) demanded a
+            // Stack token it cannot have and failed with `authorizationFailed`.
+            // `.attachTicket` is consumed by `transportUsesStackBearer`,
+            // `canSendStackBearer`, the transport factory and the route proof;
+            // this is the only place that produces it.
+            authorizationMode = .attachTicket
         } else {
             authorizationMode = .stackBearer
         }
@@ -511,7 +521,13 @@ public final class MobileCoreRPCClient: MobileSyncing, Sendable {
         // is rejected host-side with `missingStackTokens`. Always present the
         // Stack token for authorized requests; attach_token rides along as
         // supplementary route/workspace context.
-        let shouldSendStackAuth = requestNeedsAuth
+        // Fork (cmux Mochi): the paragraph above describes UPSTREAM's host, where
+        // Stack auth is the sole gate. This fork's host authorizes on the attach
+        // ticket alone, so a request already covered by a live attach_token must
+        // not additionally demand a Stack bearer -- doing so made every
+        // signed-out ticket connection fail with `authorizationFailed` even
+        // though the ticket itself was valid and accepted.
+        let shouldSendStackAuth = requestNeedsAuth && auth["attach_token"] == nil
         if shouldSendStackAuth {
             guard canSendStackBearer else {
                 throw MobileShellConnectionError.insecureManualRoute

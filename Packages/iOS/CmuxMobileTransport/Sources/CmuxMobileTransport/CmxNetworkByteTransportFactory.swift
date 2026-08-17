@@ -114,7 +114,22 @@ public struct CmxNetworkByteTransportFactory: CmxRouteAwareByteTransportFactory 
                 tlsOptions: deviceLinkTLSOptions?()
             )
         case .debugLoopback:
-            guard request.authorizationMode == .stackBearer else {
+            switch request.authorizationMode {
+            case .stackBearer:
+                break
+            case .attachTicket:
+                // Fork (cmux Mochi): the ticket IS the credential, and this is
+                // the route a simulator attaches over (see
+                // MobileAttachTarget.simulatorInjection, which selects only
+                // loopback routes). The tailscale branch above already accepts
+                // `.attachTicket`; leaving it out here is what made every
+                // simulator pairing fail with `unsupportedAuthorizationMode`.
+                // Fail closed on TLS: the fork's listener applies
+                // `deviceLinkListenerParameters` at every site, loopback included.
+                guard deviceLinkTLSOptions?() != nil else {
+                    throw CmxNetworkByteTransportError.tailscaleAuthorizationUnavailable
+                }
+            case .legacyTailscaleBearer, .userAuthorizedTailscalePairing, .transportAdmission:
                 throw CmxNetworkByteTransportError.unsupportedAuthorizationMode(
                     request.authorizationMode
                 )
@@ -126,7 +141,8 @@ public struct CmxNetworkByteTransportFactory: CmxRouteAwareByteTransportFactory 
                 host: host,
                 port: port,
                 maximumReceiveLength: maximumReceiveLength,
-                connectTimeoutNanoseconds: connectTimeoutNanoseconds
+                connectTimeoutNanoseconds: connectTimeoutNanoseconds,
+                tlsOptions: deviceLinkTLSOptions?()
             )
         case .iroh, .websocket:
             throw CmxNetworkByteTransportError.unsupportedRouteKind(route.kind)

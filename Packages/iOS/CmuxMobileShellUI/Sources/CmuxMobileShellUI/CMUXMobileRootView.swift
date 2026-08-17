@@ -588,10 +588,17 @@ struct CMUXMobileRootView: View {
     /// sign-in that completes after mount) so the restoring gate always resolves
     /// even when the auth state never transitions while this view is mounted.
     private func reconnectStoredMacIfNeeded() {
+        // An injected attach ticket carries its own credential, so it has to be
+        // able to start before any Stack session exists -- the same rule
+        // `onOpenURL` already applies for a scanned ticket. This check sits
+        // above the authenticated-only stored-Mac reconnect because that guard
+        // would otherwise return first and silently drop the injected ticket on
+        // a signed-out launch.
+        if !authManager.isRestoringSession, connectUITestAttachURLIfNeeded() {
+            return
+        }
         guard isAuthenticated, !authManager.isRestoringSession else { return }
-        let startedUITestAttachURL = connectUITestAttachURLIfNeeded()
-        guard !startedUITestAttachURL,
-              MobileRootAuthGate.shouldReconnectStoredMac(
+        guard MobileRootAuthGate.shouldReconnectStoredMac(
                 stackAuthenticated: authManager.isAuthenticated,
                 attachTicketAuthenticated: hasActiveAttachTicketAuthentication,
                 isRestoringSession: authManager.isRestoringSession,
@@ -761,8 +768,18 @@ struct CMUXMobileRootView: View {
         //     kept intact for the XCUITest harness.
         // No-op unless one of those env vars is set, so normal launches are
         // unaffected.
-        guard isAuthenticated,
-              let attachURL = UITestConfig.dogfoodAttachURL ?? UITestConfig.attachURL else {
+        guard let attachURL = UITestConfig.dogfoodAttachURL ?? UITestConfig.attachURL else {
+            return false
+        }
+        // An attach ticket carries its own credential in this fork: the host
+        // authorizes on the ticket alone, which is why `onOpenURL` routes
+        // `MobileRootAuthGate.isAttachURL` straight to `connectAttachURL`
+        // without checking `isAuthenticated`. The injected-launch path had kept
+        // upstream's Stack-session gate, so a signed-out simulator silently
+        // ignored CMUX_DOGFOOD_ATTACH_URL and never paired. Apply the same rule
+        // here; only non-attach pairing URLs still need a Stack session.
+        let isTicketAttach = isRawAttachURL(attachURL)
+        guard isTicketAttach || isAuthenticated else {
             return false
         }
         // The configured launch route owns startup even after it is consumed.
@@ -770,6 +787,12 @@ struct CMUXMobileRootView: View {
         // restore from silently racing or replacing that explicit route.
         guard let startupAttempt = startupConnectionCoordinator.claimInjectedAttach() else {
             return true
+        }
+        if isTicketAttach {
+            // Mirror `connectAttachURL`: the ticket is the credential, so the
+            // shell must treat the session as authenticated before connecting.
+            didAuthenticateWithAttachTicket = true
+            syncShellAuthentication(true)
         }
         Task {
             await dogfoodAttachPreparation.run {
