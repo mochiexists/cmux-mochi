@@ -696,13 +696,23 @@ final class MobileHostService {
     /// Iroh is an account-authenticated transport and starts for every signed-in
     /// Mac. The legacy listener remains opt-in so existing Tailscale and private
     /// network users keep their route without making it a prerequisite for Iroh.
+    /// - Parameter suppressLegacyListenerForXCTest: Fork (cmux Mochi): starting
+    ///   the legacy listener reads this Mac's DeviceLink identity from the
+    ///   keychain synchronously on the main thread. Debug builds are ad-hoc
+    ///   signed, so every rebuild has a new code-signing hash and the keychain
+    ///   ACL treats it as a different app; securityd then raises a confirmation
+    ///   dialog nobody answers under `xcodebuild test`, and the host wedges
+    ///   before XCTest connects. Tests publish routes without a listener instead.
     nonisolated static func startupPlan(
         legacyListenerEnabled: Bool,
-        legacyListenerRunning: Bool
+        legacyListenerRunning: Bool,
+        suppressLegacyListenerForXCTest: Bool = false
     ) -> MobileHostStartupPlan {
         MobileHostStartupPlan(
             activatesIroh: true,
-            startsLegacyListener: legacyListenerEnabled && !legacyListenerRunning
+            startsLegacyListener: legacyListenerEnabled
+                && !legacyListenerRunning
+                && !suppressLegacyListenerForXCTest
         )
     }
 
@@ -906,9 +916,32 @@ final class MobileHostService {
     }
 
     func start() {
+        // Fork (cmux Mochi): under XCTest with no explicit pairing preference,
+        // do not start the legacy listener at all.
+        //
+        // Starting it reads this Mac's DeviceLink identity out of the keychain
+        // synchronously on the main thread (`hostIdentity()` ->
+        // `SecItemCopyMatching`). Debug builds are ad-hoc signed, so every
+        // rebuild has a new CDHash and the login-keychain ACL treats it as a
+        // different app — securityd then raises a confirmation dialog that no
+        // one answers under `xcodebuild test`, and the host wedges before XCTest
+        // can connect ("The test runner hung before establishing connection").
+        //
+        // `canPublishRoutesWithoutListenerForXCTest` was written for exactly
+        // this, but it lived only in the `else` branch below and so was
+        // unreachable: the DEBUG default for `mobile.iOSPairingHost.enabled` is
+        // ON, which is precisely the case it needed to cover. Feed it into the
+        // plan instead, so the guard it guards can actually be taken.
+        #if DEBUG
+        let suppressLegacyListenerForXCTest =
+            Self.canPublishRoutesWithoutListenerForXCTest(defaults: .standard)
+        #else
+        let suppressLegacyListenerForXCTest = false
+        #endif
         let plan = Self.startupPlan(
             legacyListenerEnabled: Self.isListeningEnabled,
-            legacyListenerRunning: listener != nil
+            legacyListenerRunning: listener != nil,
+            suppressLegacyListenerForXCTest: suppressLegacyListenerForXCTest
         )
         guard plan.startsLegacyListener else {
             #if DEBUG

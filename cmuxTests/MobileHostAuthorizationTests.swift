@@ -12,6 +12,48 @@ import Testing
 @MainActor
 struct MobileHostAuthorizationTests {
 
+    /// Under XCTest the legacy listener must not start.
+    ///
+    /// Starting it reads this Mac's DeviceLink identity from the keychain
+    /// synchronously on the main thread. Debug builds are ad-hoc signed, so
+    /// every rebuild has a new code-signing hash and the keychain ACL treats it
+    /// as a different app; securityd raises a confirmation dialog nobody answers
+    /// under `xcodebuild test` and the host wedges before XCTest can connect
+    /// ("The test runner hung before establishing connection"). The suite could
+    /// not be run at all until this was fixed.
+    ///
+    /// The guard for this already existed but was unreachable: it lived only on
+    /// the branch taken when the listener does *not* start, while the DEBUG
+    /// default for `mobile.iOSPairingHost.enabled` is ON — precisely the case it
+    /// was written to cover.
+    @Test func testXCTestSuppressesLegacyListenerEvenWhenPairingDefaultsOn() {
+        // The debug-default-ON state: enabled, not already running.
+        #expect(
+            MobileHostService.startupPlan(
+                legacyListenerEnabled: true,
+                legacyListenerRunning: false,
+                suppressLegacyListenerForXCTest: true
+            ).startsLegacyListener == false
+        )
+        // Iroh still comes up; only the keychain-touching listener is skipped.
+        #expect(
+            MobileHostService.startupPlan(
+                legacyListenerEnabled: true,
+                legacyListenerRunning: false,
+                suppressLegacyListenerForXCTest: true
+            ).activatesIroh
+        )
+        // Outside XCTest the default stays ON, so a dev Mac still advertises.
+        #expect(
+            MobileHostService.startupPlan(
+                legacyListenerEnabled: true,
+                legacyListenerRunning: false,
+                suppressLegacyListenerForXCTest: false
+            ).startsLegacyListener
+        )
+    }
+
+
     /// Fork (cmux Mochi): the pairing port must never silently move. A paired
     /// phone stores the `host:port` it was told; rebinding on an OS-assigned
     /// port leaves the Mac "running" at an address no phone has ever seen,
