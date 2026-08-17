@@ -16,11 +16,18 @@ public struct MobileRootAuthGate {
     ///   - stackAuthenticated: Whether Stack auth is established.
     ///   - attachTicketAuthenticated: Whether a temporary attach ticket grants access. Defaults to `false`.
     /// - Returns: `true` when either source authenticates the user.
+    /// Fork (cmux Mochi): a device paired through DeviceLink holds a private key
+    /// and the Mac's pin. That is a durable credential — more durable than an
+    /// attach ticket, which expires — so it authenticates the root view just as
+    /// an account session does. Without it a device that paired successfully
+    /// still rendered the sign-in screen, and an account-free pairing could
+    /// never reach the workspace it had just earned access to.
     public static func isAuthenticated(
         stackAuthenticated: Bool,
-        attachTicketAuthenticated: Bool = false
+        attachTicketAuthenticated: Bool = false,
+        pairedDeviceAuthenticated: Bool = false
     ) -> Bool {
-        stackAuthenticated || attachTicketAuthenticated
+        stackAuthenticated || attachTicketAuthenticated || pairedDeviceAuthenticated
     }
 
     /// Whether the restoring-session UI should be shown.

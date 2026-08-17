@@ -261,3 +261,35 @@ import Testing
         }
     }
 }
+
+/// A DeviceLink pairing authenticates the root view on its own.
+///
+/// Without this a device that paired successfully still rendered the sign-in
+/// screen: the credential it had just earned was not one the gate recognised,
+/// so an account-free pairing could never reach its workspace.
+@Test func pairedDeviceIdentityAuthenticatesWithoutAnAccount() {
+    #expect(
+        MobileRootAuthGate.isAuthenticated(
+            stackAuthenticated: false,
+            attachTicketAuthenticated: false,
+            pairedDeviceAuthenticated: true
+        )
+    )
+    // No credential of any kind is still unauthenticated.
+    #expect(
+        !MobileRootAuthGate.isAuthenticated(
+            stackAuthenticated: false,
+            attachTicketAuthenticated: false,
+            pairedDeviceAuthenticated: false
+        )
+    )
+    // The existing credentials keep working, and the default keeps callers that
+    // predate device pairing unchanged.
+    #expect(MobileRootAuthGate.isAuthenticated(stackAuthenticated: true))
+    #expect(
+        MobileRootAuthGate.isAuthenticated(
+            stackAuthenticated: false, attachTicketAuthenticated: true
+        )
+    )
+    #expect(!MobileRootAuthGate.isAuthenticated(stackAuthenticated: false))
+}

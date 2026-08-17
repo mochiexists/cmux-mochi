@@ -35,6 +35,8 @@ struct CMUXMobileRootView: View {
     #endif
     @State private var pendingAttachURL: String?
     @State private var didAuthenticateWithAttachTicket = false
+    /// Whether this device holds a DeviceLink key and pin for some Mac.
+    @State private var hasPairedDeviceIdentity = false
     @State private var didExceedStartupRestoringGate = false
     @State private var isShowingAddDeviceSheet = false
     @State private var pairingPresentation: PairingPresentation = .manual
@@ -191,10 +193,20 @@ struct CMUXMobileRootView: View {
             // so kick off the stored-Mac reconnect here too. Without this the
             // workspace list's initial-connection status could never resolve
             // because nothing updates `didFinishStoredMacReconnectAttempt`.
+            // A pairing stored by an earlier launch is a credential this launch
+            // still holds, so resolve it before the first render decides whether
+            // to show the sign-in screen.
+            refreshPairedDeviceIdentity()
             reconnectStoredMacIfNeeded()
             #if os(iOS)
             updateOnboardingMacDiscoveryKeepAlive()
             #endif
+        }
+        .onChange(of: store.connectionState) { _, _ in
+            // Pairing can complete from several entrypoints (scanner, paste,
+            // injected launch URL); they all move the connection state, so this
+            // is the one place that catches every one of them.
+            refreshPairedDeviceIdentity()
         }
         #if os(iOS)
         // A notification tap can arrive before the workspace (or terminal) it
@@ -541,8 +553,21 @@ struct CMUXMobileRootView: View {
     private var isAuthenticated: Bool {
         MobileRootAuthGate.isAuthenticated(
             stackAuthenticated: authManager.isAuthenticated,
-            attachTicketAuthenticated: hasActiveAttachTicketAuthentication
+            attachTicketAuthenticated: hasActiveAttachTicketAuthentication,
+            pairedDeviceAuthenticated: hasPairedDeviceIdentity
         )
+    }
+
+    /// Mirrors the durable DeviceLink credential into view state.
+    ///
+    /// Read into `@State` rather than queried inline: the keychain-backed answer
+    /// is not observable, so a view that read it directly would keep rendering
+    /// the sign-in screen after a pairing until some unrelated change happened
+    /// to invalidate the body.
+    private func refreshPairedDeviceIdentity() {
+        let paired = MobileDeviceLinkClient.shared.hasAnyPairedDevice()
+        guard paired != hasPairedDeviceIdentity else { return }
+        hasPairedDeviceIdentity = paired
     }
 
     private var shouldShowRestoringStoredMac: Bool {
@@ -600,6 +625,7 @@ struct CMUXMobileRootView: View {
         guard isAuthenticated, !authManager.isRestoringSession else { return }
         guard MobileRootAuthGate.shouldReconnectStoredMac(
                 stackAuthenticated: authManager.isAuthenticated,
+                hasPairedDeviceIdentity: hasPairedDeviceIdentity,
                 attachTicketAuthenticated: hasActiveAttachTicketAuthentication,
                 isRestoringSession: authManager.isRestoringSession,
                 connectionState: store.connectionState
@@ -798,6 +824,9 @@ struct CMUXMobileRootView: View {
             await dogfoodAttachPreparation.run {
                 await store.connectPairingURL(attachURL)
             }
+            // A v3 pairing earns a durable device credential rather than a
+            // ticket, so pick it up before the next render.
+            refreshPairedDeviceIdentity()
             startupConnectionCoordinator.finishInjectedAttach(startupAttempt)
         }
         return true
