@@ -281,8 +281,22 @@ Swift hits as self-correcting, which is how this survived.
 | `mobile.iOSPairingHost.enabled` on correct domain | ✅ |
 | iOS pairing listener bound | ✅ `*:58465` |
 | iOS app builds + installs to isolated sim | ✅ `cmux-dev-clean-trunk` |
-| mint attach ticket | ❌ `route_representation_unavailable` |
-| simulator pairs | blocked on mint |
+| mint attach ticket | ✅ fixed in `b737095d90` |
+| simulator pairs | in progress |
+
+**Mint root cause (fixed).** `MobileAttachTicketStore.compactAttachURL` kept
+upstream's round-trip guard `decoded.authToken == nil`. That invariant holds
+only where the compact coder strips the token. This fork deliberately encodes
+it (`CompactAttachTicket.swift:56` writes `k`, line 74 reads it back) because
+the host authorizes on the ticket alone and a signed-out phone must receive the
+credential. The guard therefore failed unconditionally, so **every**
+`simulator_injection` mint threw `invalidAttachURL`, which the attach scripts
+report as `route_representation_unavailable`. The routes were never the
+problem: the Mac publishes a valid `debug_loopback` route at `127.0.0.1`,
+exactly what a simulator needs. Guard now asserts the token round-trips intact.
+
+This is a third instance of the same porting hazard as the identity leaks: an
+upstream invariant retained beside a fork change that invalidates it.
 
 Tailscale is up (`timapple-m5` 100.112.69.84; `iphone172` online), so the
 tailnet is not the gap. Next suspect is the ported route layer:
