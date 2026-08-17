@@ -535,7 +535,14 @@ public final class MobileCoreRPCClient: MobileSyncing, Sendable {
         // not additionally demand a Stack bearer -- doing so made every
         // signed-out ticket connection fail with `authorizationFailed` even
         // though the ticket itself was valid and accepted.
-        let shouldSendStackAuth = requestNeedsAuth && auth["attach_token"] == nil
+        // A transport that authorizes on its own -- mutual TLS, for iroh and for
+        // a DeviceLink pairing -- carries no Stack bearer at all
+        // (`transportUsesStackBearer` is false for both). Demanding one here
+        // rejected the request during preparation, so the connection failed
+        // before it was ever dialed and no transport was constructed.
+        let shouldSendStackAuth = requestNeedsAuth
+            && auth["attach_token"] == nil
+            && transportUsesStackBearer
         if shouldSendStackAuth {
             guard canSendStackBearer else {
                 throw MobileShellConnectionError.insecureManualRoute

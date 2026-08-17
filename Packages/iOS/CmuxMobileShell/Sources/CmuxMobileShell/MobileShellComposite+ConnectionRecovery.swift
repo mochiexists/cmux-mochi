@@ -642,6 +642,17 @@ extension MobileShellComposite {
                     routes: pinnedRoutes,
                     pairedMacDeviceID: pairedMacDeviceID
                 )
+                // Name the Mac before dialing: the transport asks for TLS
+                // options through a closure that knows only "give me an
+                // identity", so without this the DeviceLink client cannot tell
+                // which pairing key to offer and the dial fails closed.
+                MobileShellComposite.logStoredMacDialStarted(
+                    mac: pairedMacDeviceID,
+                    endpoints: pinnedRoutes.compactMap { route in
+                        guard case let .hostPort(host, port) = route.endpoint else { return nil }
+                        return "\(host):\(port)"
+                    }
+                )
                 let noThrowFailure = try await connect(
                     ticket: ticket,
                     legacyTailscaleRoutes: legacyTailscaleRoutes,
@@ -650,11 +661,17 @@ extension MobileShellComposite {
                     ifStillCurrent: ifStillCurrent
                 )
                 guard ifStillCurrent?() ?? true else { return .superseded }
+                MobileShellComposite.logStoredMacDialFinished(
+                    outcome: "direct failure=\(noThrowFailure.map(String.init(describing:)) ?? "none") state=\(connectionState)"
+                )
                 if noThrowFailure == .noSupportedRoute {
                     outcome = .failed(.unsupportedRoute)
                 }
             } catch {
                 guard ifStillCurrent?() ?? true else { return .superseded }
+                MobileShellComposite.logStoredMacDialFinished(
+                    outcome: "direct threw \(String(describing: error))"
+                )
                 outcome = .failed(Self.diagnosticFailureKind(for: error))
                 if let automaticReconnectAccountID {
                     recordAutomaticReconnectBackoff(

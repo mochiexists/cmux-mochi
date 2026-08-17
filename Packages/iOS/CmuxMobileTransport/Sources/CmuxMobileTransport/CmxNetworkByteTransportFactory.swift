@@ -102,7 +102,16 @@ public struct CmxNetworkByteTransportFactory: CmxRouteAwareByteTransportFactory 
                     // Fail closed: the fork's pairing host is mutual-TLS only.
                     throw CmxNetworkByteTransportError.tailscaleAuthorizationUnavailable
                 }
-            case .stackBearer, .transportAdmission:
+            case .transportAdmission:
+                // Fork (cmux Mochi): a DeviceLink pairing admits itself through
+                // the mutual-TLS handshake -- this device's key against the
+                // Mac's pinned fingerprint. That is strictly stronger evidence
+                // than the bearer grants above, so it needs no separate route
+                // authorization. Fail closed when there is no identity to offer.
+                guard deviceLinkTLSOptions?() != nil else {
+                    throw CmxNetworkByteTransportError.tailscaleAuthorizationUnavailable
+                }
+            case .stackBearer:
                 // A generic Stack bearer never opts into the legacy risk.
                 throw CmxNetworkByteTransportError.tailscaleAuthorizationUnavailable
             }
@@ -129,7 +138,15 @@ public struct CmxNetworkByteTransportFactory: CmxRouteAwareByteTransportFactory 
                 guard deviceLinkTLSOptions?() != nil else {
                     throw CmxNetworkByteTransportError.tailscaleAuthorizationUnavailable
                 }
-            case .legacyTailscaleBearer, .userAuthorizedTailscalePairing, .transportAdmission:
+            case .transportAdmission:
+                // Same reasoning as the tailscale branch: a DeviceLink pairing
+                // admits itself over mutual TLS. This is the route a paired
+                // simulator reconnects over, since it shares the Mac's network
+                // stack and cannot dial the Mac's own tailnet address.
+                guard deviceLinkTLSOptions?() != nil else {
+                    throw CmxNetworkByteTransportError.tailscaleAuthorizationUnavailable
+                }
+            case .legacyTailscaleBearer, .userAuthorizedTailscalePairing:
                 throw CmxNetworkByteTransportError.unsupportedAuthorizationMode(
                     request.authorizationMode
                 )
