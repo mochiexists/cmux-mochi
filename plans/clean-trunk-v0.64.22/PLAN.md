@@ -391,7 +391,41 @@ a keychain identity at all (`-34018`).
 `stack || attachTicket`, so a device that had just paired still rendered the
 sign-in screen (`de228f0917`). The simulator now reaches the workspace UI.
 
-### Next blocker: the DeviceLink dial runs through the bearer machinery
+### RESOLVED: the phone now pairs, dials, and holds a live session
+
+The account-free path is complete on the simulator. From a cold install, with
+no account anywhere in the loop:
+
+```
+pairing persisted=true
+dial decision … credential=true canConnect=true
+post-pairing dial connected=true
+sync.subscribe_ok topics=12 transport=renderGrid
+changes.summary ok requested=1 summaries=1
+sync.liveness probe_ok (repeating)
+```
+
+The workspace list renders the Mac's real workspace.
+
+Three more joined halves, in `0c35d4f772` — all of which refused the
+connection *before a socket was opened*, which is why the
+`deviceLinkTLSOptions` probe never fired and made this look like a network
+problem:
+
+1. The RPC client demanded a Stack bearer for any request without an
+   `attach_token`, including one whose transport authorizes on its own. It
+   failed during request preparation. Fix: consult `transportUsesStackBearer`,
+   already false for `.transportAdmission` and `.attachTicket`.
+2. The transport factory grouped `.transportAdmission` with `.stackBearer` and
+   refused it on both route kinds. Fix: accept it, failing closed when there is
+   no identity to offer (`b6d34779fc` pins both directions).
+3. The direct-dial branch never named the Mac, so the client could not choose
+   which pairing key to offer.
+
+**Still outstanding:** the same run on a physical iPhone. Per `CLAUDE.md`, iOS
+work is not complete until it runs on the phone as well as the simulator.
+
+### Historical: the DeviceLink dial ran through the bearer machinery
 
 After pairing, the phone must dial the Mac (enrollment closes its own
 transport). `ce3ff37439` wires that dial and the `setActiveDialTarget` call it
@@ -417,11 +451,9 @@ Proof the transport is never reached: `deviceLinkTLSOptions` logs
 "transport asked for TLS options" on every call, and that line never appears.
 The dial dies during ticket acquisition, before any transport is created.
 
-**This needs a decision, not just wiring:** a DeviceLink-native dial that skips
-ticket acquisition and opens a transport with the pinned identity directly. The
-transport half already supports it (`CmxNetworkByteTransportFactory` accepts
-`deviceLinkTLSOptions` and the app supplies the closure); what is missing is a
-reconnect path that uses it instead of `connectManualHost`.
+Resolved by `c7e49e4c11`: a Mac this device holds a DeviceLink key and pin for
+takes the direct-dial branch, which opens a transport with the pinned identity
+instead of exchanging for an attach ticket.
 
 **Not yet done:** the same run on a physical iPhone (deferred at the user's
 request while the phones were busy). Per `CLAUDE.md`, iOS work is not complete
