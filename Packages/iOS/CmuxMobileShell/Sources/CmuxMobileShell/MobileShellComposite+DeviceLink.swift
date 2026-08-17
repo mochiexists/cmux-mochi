@@ -82,6 +82,21 @@ extension MobileShellComposite {
                 applyPairingValidationFailure(.pairingNotSaved)
                 return .failed
             }
+            // Enrollment runs on its own short-lived transport and closes it, so
+            // a completed pairing leaves no channel to use. Dial through the
+            // stored-Mac reconnect path rather than `connect(ticket:)`: the
+            // ticket carries no bearer (the device key is the credential), and
+            // the ticket path treats a tokenless route as a manual host and
+            // tries to exchange for one. Reconnect is the path built to offer a
+            // DeviceLink identity for a Mac this device has already stored.
+            let didConnect = await reconnectActiveMacIfAvailable(
+                stackUserID: identityProvider?.currentUserID
+            )
+            logDeviceLink("post-pairing dial connected=\(didConnect)")
+            // The pairing itself succeeded and is durable either way. A dial
+            // that did not land is a reachability problem for the ordinary
+            // retry path to solve, not a reason to tell the user their code
+            // was bad and send them back to the QR screen.
             return .connected
         } catch let error as MobileDeviceLinkEnrollmentError {
             logDeviceLink("enrollment failed \(String(describing: error))")

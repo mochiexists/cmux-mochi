@@ -664,6 +664,15 @@ extension MobileShellComposite {
             MobileShellComposite.logStoredMacDialCandidates(
                 candidates.map { "\($0.host):\($0.port)" }
             )
+            // Name the Mac before dialing. The transport asks for TLS options
+            // through a closure that knows only "give me an identity", so
+            // without this the DeviceLink client cannot tell which pairing key
+            // to offer and the handshake fails immediately — indistinguishable
+            // from the Mac being switched off.
+            MobileShellComposite.logStoredMacDialStarted(
+                mac: pairedMacDeviceID,
+                endpoints: candidates.map { "\($0.host):\($0.port)" }
+            )
             for route in candidates {
                 guard ifStillCurrent?() ?? true else { return .superseded }
                 await connectManualHost(
@@ -680,6 +689,9 @@ extension MobileShellComposite {
                    foregroundMacDeviceID == pairedMacDeviceID {
                     break
                 }
+                MobileShellComposite.logStoredMacDialFinished(
+                    outcome: "\(route.host):\(route.port) state=\(connectionState)"
+                )
             }
         }
 
