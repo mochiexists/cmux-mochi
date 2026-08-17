@@ -1610,6 +1610,17 @@ final class MobileHostService {
         }
     }
 
+    /// The lifetime of the credential behind an attach token, if it has one.
+    ///
+    /// Returns `nil` for a request with no attach token — a paired device or an
+    /// iroh peer holds a credential that does not expire — so a subscription it
+    /// creates is never dropped for age.
+    func credentialExpiry(forAttachToken token: String?) -> Date? {
+        guard let token = token?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !token.isEmpty else { return nil }
+        return ticketStore.validAuthorization(authToken: token)?.ticket.expiresAt
+    }
+
     private func ticketAuthorizationResultIfNeeded(for request: MobileHostRPCRequest) -> MobileHostRPCResult? {
         // The Stack same-account gate already authorized this request; an
         // attach ticket only narrows scope while it is current (a workspace-
@@ -1901,6 +1912,13 @@ actor MobileHostConnection {
     private struct EventSubscription: Sendable {
         let topics: Set<String>
         let transport: MobileHostEventTransport
+        /// When the credential that authorized this subscription lapses.
+        ///
+        /// `nil` for credentials that do not expire — a paired device, an iroh
+        /// peer, or a Stack session — which is why binding this cannot revoke a
+        /// pairing early: only a subscription that named a finite lifetime can
+        /// ever be dropped for reaching it.
+        let credentialExpiresAt: Date?
     }
 
     private struct ResponseTask: Sendable {
@@ -1934,6 +1952,7 @@ actor MobileHostConnection {
     private var receiveBuffer = Data()
     private var firstFrameTimeoutTask: Task<Void, Never>?
     private var idleTimeoutTask: Task<Void, Never>?
+    private var subscriptionExpiryTask: Task<Void, Never>?
     private var responseTasks: [UUID: ResponseTask] = [:]
     /// PTY-writing requests are ordered PER SURFACE: ordering is only a
     /// property of one terminal, and a connection-wide FIFO would let one
@@ -2450,7 +2469,13 @@ actor MobileHostConnection {
             subscribe(
                 streamID: streamID,
                 topics: topics,
-                transport: selectedTransport
+                transport: selectedTransport,
+                // Bind the authorizing credential's lifetime. Without this the
+                // subscription outlives the ticket that created it: delivery
+                // never makes a request, so per-request validation never sees it.
+                credentialExpiresAt: await MobileHostService.shared.credentialExpiry(
+                    forAttachToken: request.auth?.attachToken
+                )
             )
             if topics.contains("terminal.render_grid") {
                 // Anchor negotiation: "screen" clients own their local
@@ -2503,12 +2528,14 @@ actor MobileHostConnection {
     func subscribe(
         streamID: String,
         topics: Set<String>,
-        transport: MobileHostEventTransport = .control
+        transport: MobileHostEventTransport = .control,
+        credentialExpiresAt: Date? = nil
     ) {
         let previousTopics = subscriptions[streamID]?.topics
         subscriptions[streamID] = EventSubscription(
             topics: topics,
-            transport: transport
+            transport: transport,
+            credentialExpiresAt: credentialExpiresAt
         )
         eventQueue.updateSubscribedTopics(currentSubscribedTopics())
         MobileHostEventSubscriptionTracker.replace(
@@ -2517,6 +2544,52 @@ actor MobileHostConnection {
         )
         idleTimeoutTask?.cancel()
         idleTimeoutTask = nil
+        scheduleSubscriptionExpiry(at: credentialExpiresAt)
+    }
+
+    /// Wakes once at `date` to drop whatever has lapsed by then.
+    ///
+    /// Enforcing expiry here rather than in the delivery path keeps the hot
+    /// fan-out untouched: a dropped subscription simply stops contributing
+    /// topics, and the existing queue admission already ignores topics nobody
+    /// subscribes to.
+    private func scheduleSubscriptionExpiry(at date: Date?) {
+        guard let date else { return }
+        let delay = date.timeIntervalSinceNow
+        subscriptionExpiryTask?.cancel()
+        subscriptionExpiryTask = Task { [weak self] in
+            if delay > 0 {
+                try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+            }
+            guard !Task.isCancelled else { return }
+            await self?.dropSubscriptionsWithExpiredTickets()
+        }
+    }
+
+    /// Drops subscriptions whose authorizing ticket has lapsed.
+    ///
+    /// Upstream binds no credential lifetime to a subscription, so one created
+    /// with a ten-minute attach ticket keeps streaming for as long as the
+    /// connection lives: per-request validation cannot see it, because delivery
+    /// never makes a request. A subscription must not outlive the credential
+    /// that authorized it.
+    @discardableResult
+    func dropSubscriptionsWithExpiredTickets(now: Date = Date()) -> Int {
+        let expired = MobileHostSubscriptionExpiryPolicy.expiredStreamIDs(
+            expiries: subscriptions.mapValues(\.credentialExpiresAt),
+            now: now
+        )
+        guard !expired.isEmpty else { return 0 }
+        for streamID in expired {
+            guard let subscription = subscriptions.removeValue(forKey: streamID) else { continue }
+            MobileHostEventSubscriptionTracker.replace(
+                previousTopics: subscription.topics,
+                nextTopics: []
+            )
+        }
+        eventQueue.updateSubscribedTopics(currentSubscribedTopics())
+        cmuxDebugLog("mobile.subscription.expired count=\(expired.count)")
+        return expired.count
     }
 
     /// Remove a subscription by id. Returns true if it existed.
@@ -2770,7 +2843,11 @@ actor MobileHostConnection {
         where subscription.transport == .irohServerEvents {
             subscriptions[streamID] = EventSubscription(
                 topics: subscription.topics,
-                transport: .control
+                transport: .control,
+                // Carry the credential lifetime across the lane change: a
+                // downgrade must not launder a subscription into one that
+                // never expires.
+                credentialExpiresAt: subscription.credentialExpiresAt
             )
         }
     }
