@@ -391,28 +391,17 @@ a keychain identity at all (`-34018`).
 `stack || attachTicket`, so a device that had just paired still rendered the
 sign-in screen (`de228f0917`). The simulator now reaches the workspace UI.
 
-### Latent: a stored MagicDNS route cannot be dialed
+### RESOLVED: the MagicDNS route is dialable
 
-Seen on the iPhone run. The dial's first attempt failed with
-`nonNumericPeer` and only the retry connected, because
-`CmxTailscaleRouteProofValidator` requires a numeric tailnet address:
+Found on the iPhone run: the dial's first attempt failed with `nonNumericPeer`
+and only the retry connected, because the route proof requires a numeric peer
+while the Mac also publishes `<host>.<tailnet>.ts.net` — the only locator that
+survives a tailnet IP change. That durable route was the one route that could
+never be dialed.
 
-```swift
-guard let peerAddress = CmxTailscaleIPAddress(host) else {
-    throw CmxTailscaleRouteProofError.nonNumericPeer
-}
-```
-
-The Mac deliberately publishes `<host>.<tailnet>.ts.net` alongside the
-numeric routes — `makePairingPayload` waits for MagicDNS precisely because it
-is "the only locator that survives a tailnet IP change, and the loss is
-invisible until a reconnect fails months later".
-
-Today the numeric routes mask it. After a tailnet IP change — the exact case
-MagicDNS exists for — MagicDNS is the only surviving route, and reconnect
-would fail with a proof error rather than a network one. The fix is to
-resolve the name to a tailnet address before proving it (or to prove the
-resolved peer), not to relax the range check.
+Fixed in `11a2ac91d2` by resolving the name before proving it; the resolved
+address still passes every existing check. On device the dial now connects on
+its first attempt instead of after a failure.
 
 ### L5 gap confirmed: subscriptions outlive the ticket that authorized them
 
