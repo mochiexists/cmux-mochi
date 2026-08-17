@@ -46,10 +46,8 @@ public struct MobileIOSBuildScope: Sendable, Equatable {
         infoDictionary: [String: Any]? = Bundle.main.infoDictionary,
         bundleIdentifier: String? = Bundle.main.bundleIdentifier
     ) -> MobileIOSBuildScope? {
-        let prefix = taggedBundleIdentifierPrefix
         if let bundleIdentifier,
-           bundleIdentifier.hasPrefix(prefix),
-           let scope = MobileIOSBuildScope(String(bundleIdentifier.dropFirst(prefix.count))) {
+           let scope = taggedScope(fromBundleIdentifier: bundleIdentifier) {
             return scope
         }
 
@@ -59,6 +57,23 @@ public struct MobileIOSBuildScope: Sendable, Equatable {
         }
 
         return nil
+    }
+
+    /// Recovers the tag from a `<vendor>.ios.<tag>` bundle identifier.
+    ///
+    /// Matching a literal vendor prefix means a fork or rename resolves *no*
+    /// scope for any tagged build, so every tag shares the stable partition and
+    /// the build-compatibility policy drops each saved-Mac write as belonging to
+    /// another build -- pairing succeeds and then silently fails to persist.
+    /// Match the structure instead, so any vendor resolves its own tag.
+    private static func taggedScope(
+        fromBundleIdentifier bundleIdentifier: String
+    ) -> MobileIOSBuildScope? {
+        let parts = bundleIdentifier
+            .split(separator: ".", omittingEmptySubsequences: false)
+            .map(String.init)
+        guard let index = parts.firstIndex(of: "ios"), index >= 1 else { return nil }
+        return MobileIOSBuildScope(parts.dropFirst(index + 1).joined(separator: "."))
     }
 
     /// A filesystem- and header-safe encoding of ``value``.
