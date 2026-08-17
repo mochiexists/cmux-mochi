@@ -172,38 +172,42 @@ wedged for 2h43m. The suite only completes with
 `-test-timeouts-enabled YES -default-test-execution-time-allowance 120`; that is
 why it had never run to completion. Worth fixing or quarantining.
 
-### L7 is gated on a runnable test host — now unblocked
+### L7 attempt 2: the resume-alias port hangs the app at startup
 
-`m4-macbook-pro` is a working host (see above), so the L7 verification problem
-below is solved; the resume-alias port can be re-applied and checked against the
-75 `resumeCommand` assertions there.
+With `m4-macbook-pro` as a working host the alias port was re-attempted and
+**reverted again — this time with evidence rather than caution.**
 
+Control, run on that host back-to-back against the same DerivedData:
 
+| worktree state | result |
+|---|---|
+| branch + alias change | `cmux Mochi DEV encountered an error (The test runner hung before establishing connection.)` |
+| branch, change stashed | 223 tests execute normally |
+| pristine `v0.64.22` | 219 tests execute normally |
 
-Attempted 2026-08-17 with the smallest candidate — the `cx/cxy/cc/ccy` resume
-aliases, whose six tests still exist in `36009e17ec`'s diff and whose shell half
-is already ported (`cmux-zsh-integration.zsh` defines all four aliases). The
-emitter side is genuinely missing: `AgentResumeCommandBuilder` has no `style:`
-parameter.
+So the alias change hangs the **app**, before any test runs. Not a failing
+assertion — the host never finishes launching.
 
-The port stalled on verification, not implementation. `snapshot.resumeCommand`
-has **75 assertions** across the test target, and they disagree about the
-expected form: the removed tests expect the alias form
-(`cd '<wd>' && ccy '--resume' '<id>'`) for env-less launches, while a *currently
-passing* test expects the wrapper form with `CLAUDE_CONFIG_DIR` and
-`--model`/`--permission-mode` replayed, and `ForkParentFallbackResidualTests`
-expects the wrapper's `cd -- '<cwd>'` prefix. Captured environment looked like
-the discriminator, but confirming that against all 75 requires running the
-suite.
+A first hypothesis was that it flipped `resumeCommand` from `nil` to non-`nil`
+for snapshots with no captured launch (the "unknown launch resolves to the yolo
+alias" case), which matters because session restore gates
+`enterAgentHibernation` on `resumeCommand != nil` in two places
+(`DockSplitStore+SessionRestore.swift:299`, `Workspace.swift:1723`). A
+nil-preserving version — substituting the alias only where the captured form
+already produced a command — **still hangs**, so that explanation is wrong and
+the cause is elsewhere in the change (the builder additions in
+`RestorableAgentSession.swift`, or the restored tests' effect on host startup).
 
-The work was reverted rather than landed compile-only: changing the default
-resume form for every agent session on an unverifiable rule is how a silent
-regression ships.
+Next step for whoever picks this up: bisect the change itself — apply only the
+`AgentResumeCommandBuilder` additions (unused) and run; that separates the
+builder from the snapshot gate and the tests.
 
-**So the VM dependency is not only about attributing the 271 failures.** Any L7
-feature whose subject already has assertions in `cmuxTests` needs a runnable
-host to port safely. The features that do *not* — self-contained new surfaces
-with their own new tests — can still proceed here.
+The work-in-progress is preserved as `stash@{0}` ("alias-wip") in
+`~/cmux-clean-trunk` on `m4-macbook-pro`.
+
+**The general lesson stands:** this feature is not a test-restore. Compile-only
+verification would have shipped an app that wedges at launch with a stored agent
+session, which is precisely what running it on a real host caught.
 
 ### L7 — Mac feature ports
 
