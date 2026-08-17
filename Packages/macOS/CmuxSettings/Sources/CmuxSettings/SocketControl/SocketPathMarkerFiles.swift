@@ -5,13 +5,7 @@ public enum SocketPathMarkerFiles {
     public static let stableTmpPath = "/tmp/cmux-last-socket-path"
     public static let nightlyBundleIdentifier = "com.cmuxterm.app.nightly"
     public static let stagingBundleIdentifier = "com.cmuxterm.app.staging"
-    // Fork identity. This is the base the tagged-build parser matches against to
-    // recover a tag slug from the bundle id, so it MUST track the fork's real
-    // bundle id: with upstream's value here, `com.cmux-mochi.debug.<tag>` fails
-    // the prefix test, never resolves as `.dev(slug:)`, and every tagged build
-    // silently falls back to the single shared /tmp/cmux-debug.sock.
-    // Source of truth: fork-identity.json (`bundle_id` + ".debug").
-    public static let defaultBaseDebugBundleIdentifier = "com.cmux-mochi.debug"
+    public static let defaultBaseDebugBundleIdentifier = "com.cmuxterm.app.debug"
     public static let defaultDebugSocketPath = "/tmp/cmux-debug.sock"
     public static let defaultNightlySocketPath = "/tmp/cmux-nightly.sock"
     public static let defaultStagingSocketPath = "/tmp/cmux-staging.sock"
@@ -75,7 +69,59 @@ public enum SocketPathMarkerFiles {
         if bundleId.hasPrefix("\(baseDebugBundleIdentifier).") {
             return .dev(slug: bundleSuffixSlug(bundleId, prefix: "\(baseDebugBundleIdentifier)."))
         }
+        // The comparisons above are all anchored to one vendor's bundle id, so
+        // any rename or fork falls through to `.stable` and every tagged build
+        // silently collapses onto the single stable socket. Recover the channel
+        // from the bundle id's own shape (`<base>.<channel>[.<slug>]`) instead,
+        // which is vendor-agnostic and leaves the results above unchanged.
+        if let structural = structuralVariant(bundleId, environment: environment) {
+            return structural
+        }
         return .stable
+    }
+
+    /// Channel segments a bundle id may carry after its base identifier.
+    private static let channelTokens: Set<String> = ["debug", "nightly", "staging"]
+
+    /// Derives the variant from the bundle id's structure rather than from a
+    /// hardcoded vendor prefix.
+    ///
+    /// Matches the *first* channel token at index >= 1 so a base identifier is
+    /// always present and a tag that happens to be named after another channel
+    /// (`…debug.nightly`) still resolves as the channel it was built for.
+    private static func structuralVariant(
+        _ bundleId: String,
+        environment: [String: String]
+    ) -> SocketPathVariant? {
+        let parts = bundleId
+            .split(separator: ".", omittingEmptySubsequences: false)
+            .map(String.init)
+        guard let index = parts.indices.first(where: { index in
+            index >= 1 && channelTokens.contains(parts[index])
+        }) else {
+            return nil
+        }
+        let rawSlug = parts.dropFirst(index + 1).joined(separator: ".")
+        let slug = rawSlug.isEmpty ? nil : sanitizeSocketSlug(rawSlug)
+        switch parts[index] {
+        case "debug":
+            if let slug {
+                return .dev(slug: slug)
+            }
+            // Untagged debug builds still honour an explicit CMUX_TAG, matching
+            // the `bundleId == baseDebugBundleIdentifier` branch above.
+            if let tag = normalized(environment["CMUX_TAG"]),
+               let tagSlug = sanitizeSocketSlug(tag) {
+                return .dev(slug: tagSlug)
+            }
+            return .dev(slug: nil)
+        case "nightly":
+            return .nightly(slug: slug)
+        case "staging":
+            return .staging(slug: slug)
+        default:
+            return nil
+        }
     }
 
     public static func defaultSocketPath(
