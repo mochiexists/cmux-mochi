@@ -352,23 +352,48 @@ implemented in one:
 | `MobileHostDeviceLink.makePairingURL` | zero callers |
 | iOS `PairingPayloadCoder.decode` + `mobile.pairing.device.enroll` | complete |
 
-Next task: implement the `mobile.pairing.code.create` worker handler returning
-`makePairingURL()`. A first attempt was written and then reverted (see below);
-it is reconstructible from this description.
+### Retracted: "tagged control socket stops binding"
 
-### Unresolved: tagged control socket stops binding
+This section previously recorded the socket as an unresolved blocker. **That was
+wrong.** The socket binds normally; it just takes ~20-40s after launch, and the
+checks that reported it absent ran too early. The app was serving
+`socket.command.end` the whole time, which a narrow grep had missed.
 
-Since ~12:13 on 2026-08-17 the tagged Mac app runs normally but never binds
-`/tmp/cmux-debug-clean-trunk.sock` and logs nothing about the control socket.
-Falsified so far: the pairing-RPC change (reverted, still absent), launch timing
-(+90s), a stale `.sock.lock` (removed, still absent), `socketControlMode` (unset
-in the tagged domain and only commented examples in settings.json/cmux.json).
+The lesson worth keeping is the earlier one: a "socket BOUND without my change"
+result was a false positive, and working code was reverted on that single bad
+signal. Confirm a bind by polling to a timeout, not by one immediate check.
 
-This invalidated an earlier bisect: a "socket BOUND without my change" result
-was a false positive, and the RPC work was reverted on that bad signal. Treat
-any socket-bind observation as unreliable until this is root-caused; it must be
-resolved before further pairing work, since every verification path runs through
-that socket.
+### Account-free pairing works end to end (simulator)
+
+The v3 `PairingPayload` path is now complete and verified on the simulator from
+a cold install:
+
+```
+decoded code, routes=4
+client verify: server d7db2564cd12 expected d7db2564cd12 -> accept
+enrolled ok via 127.0.0.1
+pairing persisted=true
+```
+
+Four separate gaps had to be closed; each was fully implemented but orphaned:
+
+| Gap | Fix |
+| --- | --- |
+| `makePairingURL` had no caller | `mobile.pairing.code.create` handler (`e0df5cef41`) |
+| `connectDeviceLinkPairing` had no caller | route v3 URLs ahead of the ticket decoder (`e4f73182c3`) |
+| `deviceLinkEnrollmentResult` had no caller | dispatch at the connection layer (`fca93bc825`) |
+| saved-Mac writes silently dropped | resolve the iOS build scope structurally (`6bc7bddfe3`) |
+
+Plus `7d15c4b86e`: the simulator build must be signed or DeviceLink cannot hold
+a keychain identity at all (`-34018`).
+
+**Remaining (L6 pairing UX):** the phone pairs and persists, but the root view
+still gates the workspace UI on a Stack session, so the simulator sits on the
+login screen after a successful pairing. That is the next task.
+
+**Not yet done:** the same run on a physical iPhone (deferred at the user's
+request while the phones were busy). Per `CLAUDE.md`, iOS work is not complete
+until it runs on the phone as well as the simulator.
 
 ### Decisions taken during the run
 
