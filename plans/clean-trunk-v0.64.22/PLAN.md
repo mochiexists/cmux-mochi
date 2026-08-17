@@ -91,7 +91,7 @@ be opened as upstream PRs, and then **leave our overlay permanently**.
 - `fix(socket): let capability-wrapped commands use password auth`
 - `fix(socket): preserve shell telemetry in password mode`
 - `fix(socket): refuse surface.send_text into live non-agent foreground jobs`
-- Ticket-expiry subscription drop (see L5 — upstream's `EventSubscription` binds
+- Ticket-expiry subscription drop — **done** (`031b54d6e0`), ready to upstream: upstream's `EventSubscription` binds no credential lifetime either
   no credential lifetime, so a subscription outlives the ticket that authorized it)
 - `fix(ios): survive an empty Xcode auth-arg array on bash 3.2`
 
@@ -403,45 +403,24 @@ Fixed in `11a2ac91d2` by resolving the name before proving it; the resolved
 address still passes every existing check. On device the dial now connects on
 its first attempt instead of after a failure.
 
-### L5 gap confirmed: subscriptions outlive the ticket that authorized them
+### RESOLVED: L5 subscription expiry
 
-Verified 2026-08-17 on this branch. `dropSubscriptionsWithExpiredTickets` does
-not exist anywhere in the tree — the expiry binding was never ported — and
-`MobileHostConnection.EventSubscription` (`MobileHostService.swift:1901`) carries
-only `topics` and `transport`:
+`dropSubscriptionsWithExpiredTickets` was never ported and
+`EventSubscription` bound no credential lifetime, so a subscription created
+with a ten-minute attach ticket streamed for the life of the connection.
+Per-request validation cannot cover it: delivery never makes a request.
 
-```swift
-private struct EventSubscription: Sendable {
-    let topics: Set<String>
-    let transport: MobileHostEventTransport
-}
-```
+Fixed in `031b54d6e0`. Enforced by pruning the subscription set on a timer,
+**not** in `deliverEventFrames` — the hot fan-out is untouched, and a dropped
+subscription simply stops contributing topics, which the existing queue
+admission already ignores. A transport downgrade carries the expiry across.
 
-`MobileAttachTicketStore.validAuthorization` enforces expiry **per request**, so
-a ticket cannot authorize a *new* call after it lapses — but an already-created
-subscription keeps streaming, because event delivery
-(`deliverEventFrames`, `MobileHostService.swift:532`) consults only topics. A
-phone that paired with a 10-minute ticket keeps receiving terminal render grids
-indefinitely.
+Safe by construction: the expiry defaults to `nil` and `nil` is never
+dropped, so a paired device / iroh peer / account session cannot be revoked
+by this. Verified on device: a live DeviceLink session ran 70s+ with zero
+subscriptions dropped.
 
-Note this is also an **upstream** gap (see L2): upstream's `EventSubscription`
-binds no credential lifetime either, so the fix is a candidate to upstream.
-
-Design when this is picked up:
-
-1. `EventSubscription` gains `credentialExpiresAt: Date?` — `nil` for
-   credentials with no expiry (`pairedDevice`, `irohAdmission`, stack session).
-2. The subscribe handler (`MobileHostService.swift:2450`) resolves it from the
-   request's `attach_token` via
-   `validAuthorization(authToken:)?.ticket.expiresAt`.
-3. `deliverEventFrames` drops expired subscriptions before enqueuing.
-4. Regression test that fails if the hook is silently dropped — the plan's
-   original warning, and the reason it went missing in the first place.
-
-**Deliberately not implemented in this pass.** It changes the hot event path,
-and a mistake there drops legitimate frames — which would look exactly like the
-connection bug just fixed. It wants review and a device run, neither of which
-was available at the end of this session.
+Still an **L2 upstreaming candidate** — upstream has the same hole.
 
 ### RESOLVED: the phone now pairs, dials, and holds a live session
 
