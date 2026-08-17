@@ -3875,6 +3875,26 @@ public final class MobileShellComposite: MobileTerminalOutputSinking {
         }
         clearPairingError()
         clearPairingVersionWarning()
+
+        // A v3 pairing payload is not an attach ticket. It carries a Mac
+        // fingerprint plus a single-use enrollment ticket instead of a bearer,
+        // so it must enroll over mutual TLS; handing it to the ticket decoder
+        // below just fails as an invalid code. This is the only grammar that
+        // can pair against the TLS-only DeviceLink listener, since a ticket
+        // has no fingerprint for the phone to pin.
+        if Self.isDeviceLinkPairingURL(rawURL) {
+            guard let payload = Self.deviceLinkPairingPayload(from: rawURL) else {
+                applyPairingValidationFailure(.invalidCode)
+                if connectionState != .connected {
+                    connectionState = .disconnected
+                    macConnectionStatus = .unavailable
+                    clearRemoteConnectionContext()
+                }
+                return .failed
+            }
+            return await connectDeviceLinkPairing(payload: payload)
+        }
+
         let ticket: CmxAttachTicket
         do {
             ticket = try CmxAttachTicketInput.decode(rawURL)
