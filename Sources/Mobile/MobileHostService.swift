@@ -1250,6 +1250,18 @@ final class MobileHostService {
                         }
                     )
                 }
+                // Enrollment must be answered here rather than in the generic
+                // dispatch: the enrolling key's fingerprint comes from the TLS
+                // handshake that carried this request, and only this layer holds
+                // that authorization context. Without this the method passed the
+                // enrollment-candidate gate and then fell through to
+                // "Unknown mobile method", so no device could ever pair.
+                if Self.isDeviceLinkEnrollmentMethod(request.method) {
+                    return await Self.deviceLinkEnrollmentResult(
+                        for: request,
+                        authorization: authorization
+                    )
+                }
                 let result = await TerminalController.shared.mobileHostHandleRPC(
                     request,
                     executionContext: MobileHostRPCExecutionContext(
