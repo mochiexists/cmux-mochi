@@ -269,7 +269,14 @@ final class MobileAttachTicketStore {
         ),
         let decoded = try? coder.decode(data),
         decoded.routes == ticket.routes,
-        decoded.authToken == nil else {
+        // Upstream asserts the token is absent, because there the compact coder
+        // deliberately strips it (Stack auth is the sole gate on that host).
+        // This fork encodes `authToken` as `k` (see CmxAttachTicketCompactCoder)
+        // because the host authorizes on the ticket alone, so a signed-out phone
+        // must receive the credential. Asserting `== nil` here therefore always
+        // failed and made every simulator_injection mint throw invalidAttachURL.
+        // The invariant we actually want is that the token round-trips intact.
+        decoded.authToken == ticket.authToken else {
             throw MobileAttachTicketStoreError.invalidAttachURL
         }
         return url
