@@ -1257,10 +1257,21 @@ final class MobileHostService {
                 // enrollment-candidate gate and then fell through to
                 // "Unknown mobile method", so no device could ever pair.
                 if Self.isDeviceLinkEnrollmentMethod(request.method) {
-                    return await Self.deviceLinkEnrollmentResult(
+                    let enrollment = await Self.deviceLinkEnrollmentResult(
                         for: request,
                         authorization: authorization
                     )
+                    // Enrollment is the one step whose failure the phone can only
+                    // report as a generic refusal, so record the outcome here.
+                    // Logs the status only: the ticket is single-use and the
+                    // request body carries it.
+                    switch enrollment {
+                    case .ok:
+                        cmuxDebugLog("devicelink.enroll.outcome ok")
+                    case .failure(let error):
+                        cmuxDebugLog("devicelink.enroll.outcome refused code=\(error.code)")
+                    }
+                    return enrollment
                 }
                 let result = await TerminalController.shared.mobileHostHandleRPC(
                     request,
