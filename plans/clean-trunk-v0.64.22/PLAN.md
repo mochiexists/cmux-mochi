@@ -143,6 +143,33 @@ QR/DeviceLink code minting, and the reconnecting-grace state.
   reason to exist. Expect to re-decide this surface at every sync.
 - Orphan: `OnboardingPage.swift` no longer exists upstream; re-home those changes.
 
+### L7 is gated on a runnable test host
+
+Attempted 2026-08-17 with the smallest candidate — the `cx/cxy/cc/ccy` resume
+aliases, whose six tests still exist in `36009e17ec`'s diff and whose shell half
+is already ported (`cmux-zsh-integration.zsh` defines all four aliases). The
+emitter side is genuinely missing: `AgentResumeCommandBuilder` has no `style:`
+parameter.
+
+The port stalled on verification, not implementation. `snapshot.resumeCommand`
+has **75 assertions** across the test target, and they disagree about the
+expected form: the removed tests expect the alias form
+(`cd '<wd>' && ccy '--resume' '<id>'`) for env-less launches, while a *currently
+passing* test expects the wrapper form with `CLAUDE_CONFIG_DIR` and
+`--model`/`--permission-mode` replayed, and `ForkParentFallbackResidualTests`
+expects the wrapper's `cd -- '<cwd>'` prefix. Captured environment looked like
+the discriminator, but confirming that against all 75 requires running the
+suite.
+
+The work was reverted rather than landed compile-only: changing the default
+resume form for every agent session on an unverifiable rule is how a silent
+regression ships.
+
+**So the VM dependency is not only about attributing the 271 failures.** Any L7
+feature whose subject already has assertions in `cmuxTests` needs a runnable
+host to port safely. The features that do *not* — self-contained new surfaces
+with their own new tests — can still proceed here.
+
 ### L7 — Mac feature ports
 
 Independent of the mobile stack; port one feature at a time, each with its tests.
