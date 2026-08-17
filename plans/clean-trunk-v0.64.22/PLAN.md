@@ -172,42 +172,60 @@ wedged for 2h43m. The suite only completes with
 `-test-timeouts-enabled YES -default-test-execution-time-allowance 120`; that is
 why it had never run to completion. Worth fixing or quarantining.
 
-### L7 attempt 2: the resume-alias port hangs the app at startup
+### RESOLVED: the suite was unrunnable, and it was never the alias port
 
-With `m4-macbook-pro` as a working host the alias port was re-attempted and
-**reverted again — this time with evidence rather than caution.**
+**Retraction.** An earlier entry here claimed the resume-alias port hung the app
+at startup, based on a stash/unstash control. That conclusion was wrong twice
+over: `git checkout stash@{0} -- <paths>` *stages* files, so a later
+`git checkout --` restored them from the index rather than reverting, and the
+variable actually isolated was "was the binary rebuilt", not "was my code
+present". A hard-reset tree with a **comment-only** change hung identically,
+and so did a pristine `v0.64.22` build.
 
-Control, run on that host back-to-back against the same DerivedData:
+**Actual cause.** Starting the legacy mobile-host listener reads this Mac's
+DeviceLink identity from the keychain synchronously on the main thread
+(`MobileHostDeviceLink.hostIdentity()` -> `KeychainDeviceIdentityStore` ->
+`SecItemCopyMatching`). Debug builds are **ad-hoc signed**, so every rebuild
+carries a new CDHash, and a login-keychain ACL matches by code signature — each
+new build is a different app to securityd, which raises a confirmation dialog
+that nobody answers under `xcodebuild test`. The host blocks before XCTest can
+connect. `security dump-keychain` showed the item
+`dev.cmux.devicelink.identity.com.cmux-mochi.debug.dev` was created by the
+morning's build, which is exactly why that one run passed 3384 tests and every
+later build hung.
 
-| worktree state | result |
-|---|---|
-| branch + alias change | `cmux Mochi DEV encountered an error (The test runner hung before establishing connection.)` |
-| branch, change stashed | 223 tests execute normally |
-| pristine `v0.64.22` | 219 tests execute normally |
+Diagnosed by a Fable subagent from a `sample` of the wedged host; Gatekeeper,
+quarantine, TCC and stale `testmanagerd` were ruled out with evidence.
 
-So the alias change hangs the **app**, before any test runs. Not a failing
-assertion — the host never finishes launching.
+**Fixed** in `0033254fe3`: `canPublishRoutesWithoutListenerForXCTest` already
+existed for this but was unreachable — it sat only on the branch taken when the
+listener does not start, while `mobile.iOSPairingHost.enabled` defaults ON in
+DEBUG. It now feeds `startupPlan`, with a unit test pinning the rule.
 
-A first hypothesis was that it flipped `resumeCommand` from `nil` to non-`nil`
-for snapshots with no captured launch (the "unknown launch resolves to the yolo
-alias" case), which matters because session restore gates
-`enterAgentHibernation` on `resumeCommand != nil` in two places
-(`DockSplitStore+SessionRestore.swift:299`, `Workspace.swift:1723`). A
-nil-preserving version — substituting the alias only where the captured form
-already produced a command — **still hangs**, so that explanation is wrong and
-the cause is elsewhere in the change (the builder additions in
-`RestorableAgentSession.swift`, or the restored tests' effect on host startup).
+Verified on `m4-macbook-pro`, fresh binary, no machine workaround: **3375
+passed / 266 failed, no hang** (previously: zero tests executed).
 
-Next step for whoever picks this up: bisect the change itself — apply only the
-`AgentResumeCommandBuilder` additions (unused) and run; that separates the
-builder from the snapshot gate and the tests.
+A machine-local workaround also exists and needs no code:
+`defaults write com.cmux-mochi.debug "mobile.iOSPairingHost.enabled" -bool false`.
 
-The work-in-progress is preserved as `stash@{0}` ("alias-wip") in
-`~/cmux-clean-trunk` on `m4-macbook-pro`.
+**Known regression from the fix.**
+`TerminalOffscreenStartupTests.testMobileAttachTicketCreateCanFilterRoutesForQRPairing`
+now fails: it calls `MobileHostService.shared.start()` and waits for
+`mobile.host.status` to report routes, but the without-listener fallback
+publishes none, so the wait never satisfies. Options: have the fallback publish
+the routes the resolver would yield for the configured port, or let the test opt
+into a real listener.
 
-**The general lesson stands:** this feature is not a test-restore. Compile-only
-verification would have shipped an app that wedges at launch with a stored agent
-session, which is precisely what running it on a real host caught.
+**The deeper fix, not done.** The keychain read should come off the startup path
+entirely — synchronous, main-thread, no timeout, no fallback. It is one securityd
+prompt away from wedging a *user's* app at launch, not merely a test host. This
+change only made the existing guard reachable.
+
+### L7 status
+
+Unblocked: the suite runs. The resume-alias port itself was never implicated and
+can now be verified properly against the 75 `resumeCommand` assertions; the WIP
+is parked as `stash@{0}` in `~/cmux-clean-trunk` on `m4-macbook-pro`.
 
 ### L7 — Mac feature ports
 
