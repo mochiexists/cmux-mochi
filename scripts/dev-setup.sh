@@ -9,7 +9,7 @@
 # Flow (--surface both):
 #   1. Load dev sign-in creds (dogfood account wins; --agent forces agent).
 #   2. Enable the iOS pairing host on the tagged build (opt-in, default OFF):
-#        defaults write com.cmuxterm.app.debug.<tag-id> mobile.iOSPairingHost.enabled -bool true
+#        defaults write <fork-bundle-id>.debug.<tag-id> mobile.iOSPairingHost.enabled -bool true
 #      Written BEFORE the macOS launch so a single build binds the NWListener on
 #      first launch. NOTE: the first bind per bundle id triggers a one-time macOS
 #      "Local Network" permission prompt; click Allow.
@@ -134,7 +134,11 @@ dev_setup__sanitize_bundle() {
 
 TAG_SLUG="$(dev_setup__sanitize_path "$TAG")"
 TAG_ID="$(dev_setup__sanitize_bundle "$TAG")"
-BUNDLE_ID="com.cmuxterm.app.debug.${TAG_ID}"
+# Derive the domain from this fork's identity. A hardcoded upstream bundle id
+# makes `defaults write` land in a domain no fork build reads, so the pairing
+# host stays off while this script reports it enabled.
+source "$(cd "$(dirname "$0")" && pwd)/fork-identity.env"
+BUNDLE_ID="${CMUX_FORK_BUNDLE_ID}.debug.${TAG_ID}"
 SOCKET_PATH="/tmp/cmux-debug-${TAG_SLUG}.sock"
 
 # --- enable the iOS pairing host (must precede the macOS launch) -------------

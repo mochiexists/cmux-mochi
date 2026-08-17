@@ -1,9 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-APP_NAME="cmux STAGING"
-BUNDLE_ID="com.cmuxterm.app.staging"
-BASE_APP_NAME="cmux"
+# Identity is configuration. With upstream's literals the staging build lands on
+# a bundle id and app name this fork never uses, so its socket, defaults domain
+# and DerivedData all belong to a build that is not the one running.
+source "$(cd "$(dirname "$0")" && pwd)/fork-identity.env"
+STAGING_BUNDLE_ID_BASE="${CMUX_FORK_BUNDLE_ID}.staging"
+APP_NAME="${CMUX_FORK_APP_NAME} STAGING"
+BUNDLE_ID="$STAGING_BUNDLE_ID_BASE"
+BASE_APP_NAME="$CMUX_FORK_APP_NAME"
 DERIVED_DATA=""
 NAME_SET=0
 BUNDLE_SET=0
@@ -36,8 +41,8 @@ write_last_socket_path() {
 staging_slug_from_bundle_id() {
   local bundle_id="$1"
   local suffix=""
-  if [[ "$bundle_id" == "com.cmuxterm.app.staging."* ]]; then
-    suffix="${bundle_id#com.cmuxterm.app.staging.}"
+  if [[ "$bundle_id" == "${STAGING_BUNDLE_ID_BASE}."* ]]; then
+    suffix="${bundle_id#"${STAGING_BUNDLE_ID_BASE}."}"
   fi
   sanitize_path "$suffix"
 }
@@ -133,10 +138,10 @@ if [[ -n "$TAG" ]]; then
     exit 1
   fi
   if [[ "$NAME_SET" -eq 0 ]]; then
-    APP_NAME="cmux STAGING ${TAG}"
+    APP_NAME="${CMUX_FORK_APP_NAME} STAGING ${TAG}"
   fi
   if [[ "$BUNDLE_SET" -eq 0 ]]; then
-    BUNDLE_ID="com.cmuxterm.app.staging.${TAG_ID}"
+    BUNDLE_ID="${STAGING_BUNDLE_ID_BASE}.${TAG_ID}"
   fi
   if [[ "$DERIVED_SET" -eq 0 ]]; then
     DERIVED_DATA="/tmp/cmux-staging-${TAG_SLUG}"

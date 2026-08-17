@@ -30,15 +30,20 @@ if [[ ! -f "$INFO_PLIST" ]]; then
   exit 1
 fi
 
+# Expectations come from this fork's identity. Hardcoding upstream's here makes
+# the verifier reject every fork build it is asked to check -- the opposite of a
+# release gate, since the only way past it would be to stop running it.
+source "$(cd "$(dirname "$0")" && pwd)/fork-identity.env"
+
 case "$CHANNEL" in
   stable)
-    EXPECTED_NAME="cmux"
-    EXPECTED_BUNDLE_ID="com.cmuxterm.app"
-    EXPECTED_ICON_NAME="AppIcon"
+    EXPECTED_NAME="$CMUX_FORK_APP_NAME"
+    EXPECTED_BUNDLE_ID="$CMUX_FORK_BUNDLE_ID"
+    EXPECTED_ICON_NAME="$CMUX_FORK_APP_ICON_NAME"
     ;;
   nightly)
-    EXPECTED_NAME="cmux NIGHTLY"
-    EXPECTED_BUNDLE_ID="com.cmuxterm.app.nightly"
+    EXPECTED_NAME="$CMUX_FORK_APP_NAME NIGHTLY"
+    EXPECTED_BUNDLE_ID="${CMUX_FORK_BUNDLE_ID}.nightly"
     EXPECTED_ICON_NAME="AppIcon-Nightly"
     ;;
   *)

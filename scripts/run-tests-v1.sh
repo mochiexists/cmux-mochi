@@ -11,8 +11,15 @@ fi
 
 cd "$(dirname "$0")/.."
 
+# Identity is configuration, not a literal: a hardcoded upstream app name makes
+# every pkill/pgrep below match nothing, and the `defaults write` land in a
+# domain no fork build reads -- so the socket mode it sets silently does not
+# apply and the run is not the deterministic one it claims to be.
+source "$(cd "$(dirname "$0")" && pwd)/fork-identity.env"
+DEV_APP_NAME="${CMUX_FORK_APP_NAME} DEV"
+
 DERIVED_DATA_PATH="$HOME/Library/Developer/Xcode/DerivedData/cmux-tests-v1"
-APP="$DERIVED_DATA_PATH/Build/Products/Debug/cmux DEV.app"
+APP="$DERIVED_DATA_PATH/Build/Products/Debug/${DEV_APP_NAME}.app"
 RUN_TAG="tests-v1"
 
 echo "== build =="
@@ -29,12 +36,12 @@ xcodebuild \
   build >/dev/null
 
 if [ ! -d "$APP" ]; then
-  echo "ERROR: cmux DEV.app not found at expected path: $APP" >&2
+  echo "ERROR: ${DEV_APP_NAME}.app not found at expected path: $APP" >&2
   exit 1
 fi
 
 cleanup() {
-  pkill -x "cmux DEV" || true
+  pkill -x "$DEV_APP_NAME" || true
   pkill -x "cmux" || true
   rm -f /tmp/cmux*.sock || true
 }
@@ -44,15 +51,15 @@ launch_and_wait() {
   # Wait briefly for the previous instance to fully terminate; LaunchServices can flake if we
   # relaunch too quickly.
   for _ in {1..50}; do
-    pgrep -x "cmux DEV" >/dev/null 2>&1 || break
+    pgrep -x "$DEV_APP_NAME" >/dev/null 2>&1 || break
     sleep 0.1
   done
 
   # Force socket mode for deterministic automation runs, independent of prior user settings.
-  defaults write com.cmuxterm.app.debug socketControlMode -string full >/dev/null 2>&1 || true
+  defaults write "${CMUX_FORK_BUNDLE_ID}.debug" socketControlMode -string full >/dev/null 2>&1 || true
 
   # Launch directly with UI test mode enabled so startup follows deterministic test codepaths.
-  CMUX_TAG="$RUN_TAG" CMUX_UI_TEST_MODE=1 "$APP/Contents/MacOS/cmux DEV" >/dev/null 2>&1 &
+  CMUX_TAG="$RUN_TAG" CMUX_UI_TEST_MODE=1 "$APP/Contents/MacOS/$DEV_APP_NAME" >/dev/null 2>&1 &
 
   SOCK=""
   for _ in {1..120}; do
