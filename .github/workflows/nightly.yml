@@ -1,13 +1,12 @@
 name: Nightly macOS build
 
 on:
-  # Publish every changed main revision, while keeping the scheduled cache warm.
-  push:
-    branches:
-      - main
-  schedule:
-    - cron: "17 */6 * * *"
-    - cron: "47 8 * * *"
+  # Fork (cmux Mochi): ad-hoc release model — nightly auto-build on push is
+  # disabled; run manually via workflow_dispatch when wanted. The schedules are
+  # off too: all three MACOS_RUNNER_26* vars resolve to the same M4 Pro box, so
+  # upstream's cache-warm cron would seize the signing runner four times a day.
+  # push:
+  #   branches: [main]
   workflow_dispatch:
     inputs:
       force:
@@ -18,8 +17,14 @@ on:
 
 concurrency:
   group: nightly-build-${{ github.ref_name }}
-  # Queue concurrent runs instead of canceling them so no build is lost.
-  cancel-in-progress: false
+  # Fork (cmux Mochi): supersede rather than queue.
+  #
+  # Upstream queues so no scheduled snapshot is lost. This fork cuts nightlies
+  # ad-hoc while iterating, where a newer commit on the same ref REPLACES the
+  # older one — queueing just spends ~20 minutes of the signing box building a
+  # commit nobody wants, and delays the build that matters (2026-07-26: a
+  # superseded run had to be cancelled by hand to free the runner).
+  cancel-in-progress: true
 
 permissions:
   contents: write
