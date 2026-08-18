@@ -1785,7 +1785,8 @@ struct ContentView: View {
                     let isRetiringWorkspace = retiringWorkspaceId == tab.id
                     let presentation = MountedWorkspacePresentation.resolve(
                         isSelectedWorkspace: isSelectedWorkspace,
-                        isRetiringWorkspace: isRetiringWorkspace
+                        isRetiringWorkspace: isRetiringWorkspace,
+                        isWorkspaceAreaVisible: sidebarSelectionState.selection == .tabs
                     )
                     // Keep the retiring workspace visible during handoff, but never input-active.
                     // Allowing both selected+retiring workspaces to be input-active lets the
