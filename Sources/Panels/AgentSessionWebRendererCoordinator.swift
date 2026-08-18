@@ -123,6 +123,31 @@ final class AgentSessionWebRendererCoordinator: NSObject, WKNavigationDelegate, 
         hasCompletedVisiblePaintFlush = false
     }
 
+    enum SnapshotCaptureError: Error {
+        case webViewUnavailable
+        case snapshotFailed
+    }
+
+    func captureVisibleSnapshot(completion: @escaping (Result<NSImage, Error>) -> Void) {
+        guard let webView else {
+            completion(.failure(SnapshotCaptureError.webViewUnavailable))
+            return
+        }
+        let configuration = WKSnapshotConfiguration()
+        configuration.afterScreenUpdates = true
+        webView.takeSnapshot(with: configuration) { image, error in
+            if let error {
+                completion(.failure(error))
+                return
+            }
+            guard let image else {
+                completion(.failure(SnapshotCaptureError.snapshotFailed))
+                return
+            }
+            completion(.success(image))
+        }
+    }
+
     func focus() {
         guard let webView else { return }
         _ = webView.window?.makeFirstResponder(webView)

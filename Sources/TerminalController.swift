@@ -1410,6 +1410,9 @@ class TerminalController {
             return v2Result(id: request.id, v2SystemMemory(params: request.params))
         case "surface.read_text":
             return v2Result(id: request.id, v2SurfaceReadText(params: request.params))
+        case "workspace.screenshot":
+            v2MainSync { self.v2RefreshKnownRefs() }
+            return v2Result(id: request.id, v2WorkspaceScreenshot(params: request.params))
         case "workspace.env":
             return v2Result(id: request.id, v2WorkspaceEnv(params: request.params))
         case "workspace.remote.pty_sessions":
@@ -3566,7 +3569,10 @@ class TerminalController {
     /// Interim `Any`-shaped twin of the package's `ControlCallResult`, kept
     /// while the command bodies still build Foundation payloads. Bodies
     /// migrate onto the typed DTO in the ControlCommandCoordinator stage.
-    enum V2CallResult {
+    /// Conforms to `Error` so `.err` cases can flow through `Result`'s failure
+    /// slot (e.g. `workspaceCaptureContext` returning
+    /// `Result<WorkspaceCaptureContext, V2CallResult>`).
+    enum V2CallResult: Error {
         case ok(Any)
         case err(code: String, message: String, data: Any?)
     }
@@ -6575,7 +6581,7 @@ class TerminalController {
         return rep.representation(using: .png, properties: [:])
     }
 
-    private nonisolated func bestEffortPruneTemporaryFiles(
+    nonisolated func bestEffortPruneTemporaryFiles(
         in directoryURL: URL,
         keepingMostRecent maxCount: Int = 50,
         maxAge: TimeInterval = 24 * 60 * 60

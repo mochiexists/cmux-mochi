@@ -2232,6 +2232,7 @@ C0DE71B10000000000000001 /* AppDelegate+AgentChatNotifications.swift in Sources 
 		C79470010000000000000003 /* TerminalController+SocketClientCapability.swift in Sources */ = {isa = PBXBuildFile; fileRef = C79470010000000000000004 /* TerminalController+SocketClientCapability.swift */; };
 		A79840030000000000000002 /* TerminalController+SocketConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = A79840030000000000000001 /* TerminalController+SocketConfiguration.swift */; };
 		C79470020000000000000001 /* TerminalController+SocketListenerRearm.swift in Sources */ = {isa = PBXBuildFile; fileRef = C79470020000000000000002 /* TerminalController+SocketListenerRearm.swift */; };
+		A7C0F0070000000000000002 /* TerminalController+SurfaceImageEncoding.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7C0F0070000000000000001 /* TerminalController+SurfaceImageEncoding.swift */; };
 		D6212D0C00000000000000D3 /* TerminalController+WindowDockBrowserRouting.swift in Sources */ = {isa = PBXBuildFile; fileRef = D6212D0C00000000000000D4 /* TerminalController+WindowDockBrowserRouting.swift */; };
 		C0DE00000000000000000C84 /* TerminalController+WorkspaceCreate.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE00000000000000000C83 /* TerminalController+WorkspaceCreate.swift */; };
 		D1A70000000000000000000C /* TerminalController+WorkspaceCreateExecutionPreparation.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1A70000000000000000000B /* TerminalController+WorkspaceCreateExecutionPreparation.swift */; };
@@ -2244,6 +2245,7 @@ C0DE71B10000000000000001 /* AppDelegate+AgentChatNotifications.swift in Sources 
 		C0DE00000000000000000E93 /* TerminalController+WorkspaceCreateWorkingDirectoryValidationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE00000000000000000E92 /* TerminalController+WorkspaceCreateWorkingDirectoryValidationService.swift */; };
 		C0DE00000000000000000C8B /* TerminalController+WorkspaceGroupAction.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE00000000000000000C8A /* TerminalController+WorkspaceGroupAction.swift */; };
 		C0DE00000000000000000C89 /* TerminalController+WorkspaceMove.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE00000000000000000C88 /* TerminalController+WorkspaceMove.swift */; };
+		A7C0F0060000000000000002 /* TerminalController+WorkspaceScreenshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7C0F0060000000000000001 /* TerminalController+WorkspaceScreenshot.swift */; };
 		A5001007 /* TerminalController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A5001019 /* TerminalController.swift */; };
 		C0DE00000000000000000C32 /* TerminalControllerControlCommandContext.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE00000000000000000C31 /* TerminalControllerControlCommandContext.swift */; };
 		C7A50A000000000000000002 /* TerminalControllerPaneResizeSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7A50A000000000000000001 /* TerminalControllerPaneResizeSupport.swift */; };
@@ -4828,6 +4830,7 @@ C0DE71B10000000000000002 /* AppDelegate+AgentChatNotifications.swift */ = {isa =
 		C79470010000000000000004 /* TerminalController+SocketClientCapability.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TerminalController+SocketClientCapability.swift"; sourceTree = "<group>"; };
 		A79840030000000000000001 /* TerminalController+SocketConfiguration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TerminalController+SocketConfiguration.swift"; sourceTree = "<group>"; };
 		C79470020000000000000002 /* TerminalController+SocketListenerRearm.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TerminalController+SocketListenerRearm.swift"; sourceTree = "<group>"; };
+		A7C0F0070000000000000001 /* TerminalController+SurfaceImageEncoding.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TerminalController+SurfaceImageEncoding.swift"; sourceTree = "<group>"; };
 		D6212D0C00000000000000D4 /* TerminalController+WindowDockBrowserRouting.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TerminalController+WindowDockBrowserRouting.swift"; sourceTree = "<group>"; };
 		C0DE00000000000000000C83 /* TerminalController+WorkspaceCreate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TerminalController+WorkspaceCreate.swift"; sourceTree = "<group>"; };
 		D1A70000000000000000000B /* TerminalController+WorkspaceCreateExecutionPreparation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TerminalController+WorkspaceCreateExecutionPreparation.swift"; sourceTree = "<group>"; };
@@ -4840,6 +4843,7 @@ C0DE71B10000000000000002 /* AppDelegate+AgentChatNotifications.swift */ = {isa =
 		C0DE00000000000000000E92 /* TerminalController+WorkspaceCreateWorkingDirectoryValidationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TerminalController+WorkspaceCreateWorkingDirectoryValidationService.swift"; sourceTree = "<group>"; };
 		C0DE00000000000000000C8A /* TerminalController+WorkspaceGroupAction.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TerminalController+WorkspaceGroupAction.swift"; sourceTree = "<group>"; };
 		C0DE00000000000000000C88 /* TerminalController+WorkspaceMove.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TerminalController+WorkspaceMove.swift"; sourceTree = "<group>"; };
+		A7C0F0060000000000000001 /* TerminalController+WorkspaceScreenshot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TerminalController+WorkspaceScreenshot.swift"; sourceTree = "<group>"; };
 		A5001019 /* TerminalController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalController.swift; sourceTree = "<group>"; };
 		C0DE00000000000000000C31 /* TerminalControllerControlCommandContext.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalControllerControlCommandContext.swift; sourceTree = "<group>"; };
 		C7A50A000000000000000001 /* TerminalControllerPaneResizeSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalControllerPaneResizeSupport.swift; sourceTree = "<group>"; };
@@ -6331,6 +6335,8 @@ C0DE71B10000000000000002 /* AppDelegate+AgentChatNotifications.swift */ = {isa =
 				A7C0F0020000000000000001 /* TerminalController+MobileAttachTicket.swift */,
 				A7C0F0040000000000000001 /* TerminalController+MobilePairingCode.swift */,
 				A7C0F0050000000000000001 /* TerminalController+DeviceLink.swift */,
+				A7C0F0060000000000000001 /* TerminalController+WorkspaceScreenshot.swift */,
+				A7C0F0070000000000000001 /* TerminalController+SurfaceImageEncoding.swift */,
 				F1100000000000000000000E /* TerminalController+MobileBrowser.swift */,
 				F1100000000000000000000F /* SyntheticKeyEventFactory.swift */,
 				ACA7C4A7000000000000000E /* TerminalController+MobileChat.swift */,
@@ -9836,6 +9842,7 @@ C0DE71B10000000000000002 /* AppDelegate+AgentChatNotifications.swift */ = {isa =
 				C79470010000000000000003 /* TerminalController+SocketClientCapability.swift in Sources */,
 				A79840030000000000000002 /* TerminalController+SocketConfiguration.swift in Sources */,
 				C79470020000000000000001 /* TerminalController+SocketListenerRearm.swift in Sources */,
+				A7C0F0070000000000000002 /* TerminalController+SurfaceImageEncoding.swift in Sources */,
 				D6212D0C00000000000000D3 /* TerminalController+WindowDockBrowserRouting.swift in Sources */,
 				C0DE00000000000000000C84 /* TerminalController+WorkspaceCreate.swift in Sources */,
 				D1A70000000000000000000C /* TerminalController+WorkspaceCreateExecutionPreparation.swift in Sources */,
@@ -9848,6 +9855,7 @@ C0DE71B10000000000000002 /* AppDelegate+AgentChatNotifications.swift */ = {isa =
 				C0DE00000000000000000E93 /* TerminalController+WorkspaceCreateWorkingDirectoryValidationService.swift in Sources */,
 				C0DE00000000000000000C8B /* TerminalController+WorkspaceGroupAction.swift in Sources */,
 				C0DE00000000000000000C89 /* TerminalController+WorkspaceMove.swift in Sources */,
+				A7C0F0060000000000000002 /* TerminalController+WorkspaceScreenshot.swift in Sources */,
 				A5001007 /* TerminalController.swift in Sources */,
 				C0DE00000000000000000C32 /* TerminalControllerControlCommandContext.swift in Sources */,
 				C7A50A000000000000000002 /* TerminalControllerPaneResizeSupport.swift in Sources */,
