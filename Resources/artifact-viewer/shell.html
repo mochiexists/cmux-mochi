@@ -1,0 +1,747 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+:root { color-scheme: light dark; }
+html, body, #surface {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  background: transparent;
+}
+body {
+  font: 13px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  color: CanvasText;
+}
+#surface { position: relative; }
+#artifact-frame {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  display: block;
+  background: transparent;
+}
+#status, #error {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  text-align: center;
+  background: Canvas;
+  color: CanvasText;
+}
+#status[hidden], #error[hidden] { display: none; }
+#error {
+  align-items: flex-start;
+  justify-content: flex-start;
+  text-align: left;
+  overflow: auto;
+}
+.error-card {
+  max-width: 980px;
+  margin: 16px;
+  padding: 14px 16px;
+  border: 1px solid color-mix(in srgb, CanvasText 18%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, Canvas 94%, CanvasText 6%);
+}
+.error-title {
+  font-weight: 650;
+  margin: 0 0 8px;
+}
+.error-detail {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font: 12px/1.5 ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+}
+</style>
+</head>
+<body>
+<div id="surface">
+  <iframe id="artifact-frame" title="Artifact preview" sandbox="allow-scripts allow-popups allow-modals"></iframe>
+  <div id="status"></div>
+  <div id="error" hidden>
+    <div class="error-card">
+      <p class="error-title" id="error-title"></p>
+      <pre class="error-detail" id="error-detail"></pre>
+    </div>
+  </div>
+</div>
+<script>
+const STRINGS = {{localizedStringsJSON}};
+const frame = document.getElementById("artifact-frame");
+const statusEl = document.getElementById("status");
+const errorEl = document.getElementById("error");
+const errorTitleEl = document.getElementById("error-title");
+const errorDetailEl = document.getElementById("error-detail");
+let latestRenderedText = "";
+
+function text(key) {
+  return STRINGS[key] || key;
+}
+
+function setStatus(message) {
+  statusEl.textContent = message;
+  statusEl.hidden = !message;
+}
+
+function showError(title, detail) {
+  errorTitleEl.textContent = title || text("renderFailed");
+  errorDetailEl.textContent = detail || "";
+  latestRenderedText = [errorTitleEl.textContent, errorDetailEl.textContent].filter(Boolean).join("\n\n");
+  errorEl.hidden = false;
+  setStatus("");
+}
+
+function clearError() {
+  errorEl.hidden = true;
+  errorTitleEl.textContent = "";
+  errorDetailEl.textContent = "";
+}
+
+window.__cmuxArtifactRenderedText = function() {
+  return latestRenderedText || "";
+};
+
+function jsonLiteral(value) {
+  return JSON.stringify(value).replace(/</g, "\\u003c");
+}
+
+function importMapJSON() {
+  return JSON.stringify({
+    imports: {
+      "react": "https://esm.sh/react@19.1.0",
+      "react/jsx-runtime": "https://esm.sh/react@19.1.0/jsx-runtime",
+      "react-dom": "https://esm.sh/react-dom@19.1.0?deps=react@19.1.0",
+      "react-dom/client": "https://esm.sh/react-dom@19.1.0/client?deps=react@19.1.0",
+      "lucide-react": "https://esm.sh/lucide-react@0.468.0?deps=react@19.1.0",
+      "recharts": "https://esm.sh/recharts@2.15.4?deps=react@19.1.0,react-dom@19.1.0",
+      "chart.js": "https://esm.sh/chart.js@4.4.7",
+      "plotly": "https://esm.sh/plotly.js-dist-min@2.35.2",
+      "plotly.js": "https://esm.sh/plotly.js-dist-min@2.35.2",
+      "plotly.js-dist-min": "https://esm.sh/plotly.js-dist-min@2.35.2",
+      "d3": "https://esm.sh/d3@7.9.0",
+      "three": "https://esm.sh/three@0.128.0",
+      "mathjs": "https://esm.sh/mathjs@13.2.0",
+      "lodash": "https://esm.sh/lodash@4.17.21",
+      "papaparse": "https://esm.sh/papaparse@5.4.1",
+      "xlsx": "https://esm.sh/xlsx@0.18.5",
+      "mammoth": "https://esm.sh/mammoth@1.8.0",
+      "tone": "https://esm.sh/tone@14.7.77",
+      "@tensorflow/tfjs": "https://esm.sh/@tensorflow/tfjs@4.22.0",
+      "mermaid": "https://esm.sh/mermaid@11.7.0",
+      "highlight.js/lib/common": "https://esm.sh/highlight.js@11.11.1/lib/common"
+    }
+  });
+}
+
+function storageBridgeScript() {
+  return `
+<script>
+(function() {
+  let nextStorageRequestId = 1;
+  const pendingStorageRequests = new Map();
+  function rejectStorageRequest(id, error) {
+    const pending = pendingStorageRequests.get(id);
+    if (!pending) { return; }
+    pendingStorageRequests.delete(id);
+    pending.reject(new Error(error || "storage request failed"));
+  }
+  function sendStorageRequest(op, payload) {
+    const requestId = String(nextStorageRequestId++);
+    return new Promise((resolve, reject) => {
+      pendingStorageRequests.set(requestId, { resolve, reject });
+      window.parent.postMessage({
+        source: "cmux-artifact-storage",
+        requestId,
+        op,
+        key: payload && payload.key,
+        value: payload && payload.value,
+        prefix: payload && payload.prefix,
+        shared: !!(payload && payload.shared)
+      }, "*");
+      setTimeout(() => rejectStorageRequest(requestId, "storage request timed out"), 10000);
+    });
+  }
+  window.addEventListener("message", (event) => {
+    const data = event.data || {};
+    if (data.source !== "cmux-artifact-storage-response") { return; }
+    const requestId = String(data.requestId || "");
+    const pending = pendingStorageRequests.get(requestId);
+    if (!pending) { return; }
+    pendingStorageRequests.delete(requestId);
+    if (data.ok) {
+      pending.resolve(data.value);
+    } else {
+      pending.reject(new Error(data.error || "storage request failed"));
+    }
+  });
+  function storageShared(options) {
+    if (typeof options === "boolean") { return options; }
+    return !!(options && options.shared);
+  }
+  window.storage = {
+    get: (key, options = {}) => sendStorageRequest("get", { key, shared: storageShared(options) }),
+    set: (key, value, options = {}) => sendStorageRequest("set", { key, value, shared: storageShared(options) }),
+    delete: (key, options = {}) => sendStorageRequest("delete", { key, shared: storageShared(options) }),
+    list: (prefixOrOptions = "", options = {}) => {
+      if (typeof prefixOrOptions === "string") {
+        return sendStorageRequest("list", { prefix: prefixOrOptions, shared: storageShared(options) });
+      }
+      return sendStorageRequest("list", {
+        prefix: (prefixOrOptions && prefixOrOptions.prefix) || "",
+        shared: storageShared(prefixOrOptions)
+      });
+    }
+  };
+})();
+<\/script>`;
+}
+
+function cmuxBridgeScript() {
+  return `
+<script>
+(function() {
+  let nextCmuxRequestId = 1;
+  const pendingCmuxRequests = new Map();
+  const cmuxEventHandlers = new Map();
+  function rejectCmuxRequest(id, error) {
+    const pending = pendingCmuxRequests.get(id);
+    if (!pending) { return; }
+    pendingCmuxRequests.delete(id);
+    pending.reject(new Error(error || "cmux request failed"));
+  }
+  function sendCmuxRequest(op, payload) {
+    const requestId = String(nextCmuxRequestId++);
+    return new Promise((resolve, reject) => {
+      pendingCmuxRequests.set(requestId, { resolve, reject });
+      window.parent.postMessage({
+        source: "cmux-artifact-cmux",
+        requestId,
+        op,
+        payload: payload || {}
+      }, "*");
+      setTimeout(() => rejectCmuxRequest(requestId, "cmux request timed out"), 15000);
+    });
+  }
+  window.addEventListener("message", (event) => {
+    const data = event.data || {};
+    if (data.source === "cmux-artifact-cmux-response") {
+      const requestId = String(data.requestId || "");
+      const pending = pendingCmuxRequests.get(requestId);
+      if (!pending) { return; }
+      pendingCmuxRequests.delete(requestId);
+      if (data.ok) {
+        pending.resolve(data.value);
+      } else {
+        pending.reject(new Error(data.error || "cmux request failed"));
+      }
+      return;
+    }
+    if (data.source === "cmux-artifact-cmux-event") {
+      const subscriptionId = String(data.subscriptionId || "");
+      const handler = cmuxEventHandlers.get(subscriptionId);
+      if (handler) {
+        handler(data.event);
+      }
+    }
+  });
+  window.cmux = {
+    call: (method, params = {}) => sendCmuxRequest("call", { method, params }),
+    getSnapshot: (options = {}) => sendCmuxRequest("call", { method: "system.snapshot", params: options }),
+    eventsSnapshot: (options = {}) => sendCmuxRequest("call", { method: "events.snapshot", params: options }),
+    readSurface: (options = {}) => sendCmuxRequest("call", { method: "surface.read", params: options }),
+    subscribe: async (options = {}, handler) => {
+      const response = await sendCmuxRequest("subscribe", { options });
+      const subscriptionId = String(response && response.subscription_id || "");
+      if (subscriptionId && typeof handler === "function") {
+        cmuxEventHandlers.set(subscriptionId, handler);
+      }
+      return {
+        ...response,
+        unsubscribe: async () => {
+          if (subscriptionId) {
+            cmuxEventHandlers.delete(subscriptionId);
+          }
+          return window.cmux.unsubscribe(subscriptionId);
+        }
+      };
+    },
+    unsubscribe: async (subscriptionId) => {
+      const id = String(subscriptionId || "");
+      if (id) {
+        cmuxEventHandlers.delete(id);
+      }
+      return sendCmuxRequest("unsubscribe", { subscriptionId: id });
+    }
+  };
+})();
+<\/script>`;
+}
+
+function artifactBridgeScripts() {
+  return `${storageBridgeScript()}${cmuxBridgeScript()}`;
+}
+
+function reactDocument(source) {
+  const sourceLiteral = jsonLiteral(source || "");
+  const stringsLiteral = jsonLiteral(STRINGS);
+  return `<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script type="importmap">${importMapJSON()}<\/script>
+<script src="https://cdn.tailwindcss.com"><\/script>
+<style>
+html, body, #root { min-height: 100%; margin: 0; background: transparent; }
+body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; }
+.cmux-artifact-error {
+  min-height: 100vh;
+  box-sizing: border-box;
+  padding: 18px;
+  color: CanvasText;
+  background: Canvas;
+  font: 13px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+}
+.cmux-artifact-error pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font: 12px/1.5 ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+}
+<\/style>
+</head>
+<body>
+<div id="root"></div>
+    ${artifactBridgeScripts()}
+<script type="module">
+const SOURCE = ${sourceLiteral};
+const STRINGS = ${stringsLiteral};
+function t(key) { return STRINGS[key] || key; }
+function post(type, payload) {
+  window.parent.postMessage({ source: "cmux-artifact", type, ...payload }, "*");
+}
+function renderedText() {
+  return String((document.body && (document.body.innerText || document.body.textContent)) || "");
+}
+function postRenderedText() {
+  post("rendered-text", { text: renderedText() });
+}
+function errorMessage(error) {
+  if (!error) { return ""; }
+  if (error.stack) { return String(error.stack); }
+  if (error.message) { return String(error.message); }
+  return String(error);
+}
+window.addEventListener("error", (event) => {
+  post("error", { title: t("renderFailed"), detail: errorMessage(event.error || event.message) });
+});
+window.addEventListener("unhandledrejection", (event) => {
+  post("error", { title: t("renderFailed"), detail: errorMessage(event.reason) });
+});
+try {
+  const React = await import("react");
+  const ReactDOM = await import("react-dom/client");
+  const esbuild = await import("https://unpkg.com/esbuild-wasm@0.25.5/esm/browser.min.js");
+  await esbuild.initialize({
+    wasmURL: "https://unpkg.com/esbuild-wasm@0.25.5/esbuild.wasm",
+    worker: true
+  });
+  class ErrorBoundary extends React.Component {
+    constructor(props) {
+      super(props);
+      this.state = { error: null };
+    }
+    static getDerivedStateFromError(error) {
+      return { error };
+    }
+    componentDidCatch(error) {
+      post("error", { title: t("renderFailed"), detail: errorMessage(error) });
+    }
+    render() {
+      if (this.state.error) {
+        return React.createElement(
+          "div",
+          { className: "cmux-artifact-error" },
+          React.createElement("strong", null, t("renderFailed")),
+          React.createElement("pre", null, errorMessage(this.state.error))
+        );
+      }
+      return this.props.children;
+    }
+  }
+  const result = await esbuild.transform(SOURCE, {
+    loader: "tsx",
+    format: "esm",
+    target: "es2020",
+    jsx: "automatic",
+    sourcemap: "inline"
+  });
+  const moduleURL = URL.createObjectURL(new Blob([result.code], { type: "text/javascript" }));
+  try {
+    const artifactModule = await import(moduleURL);
+    const Component = artifactModule.default;
+    if (!Component) {
+      throw new Error(t("missingDefaultExport"));
+    }
+    ReactDOM.createRoot(document.getElementById("root")).render(
+      React.createElement(ErrorBoundary, null, React.createElement(Component))
+    );
+    post("ready", {});
+    const root = document.getElementById("root");
+    const observer = new MutationObserver(() => postRenderedText());
+    observer.observe(root, { subtree: true, childList: true, characterData: true, attributes: false });
+    requestAnimationFrame(() => requestAnimationFrame(postRenderedText));
+  } finally {
+    URL.revokeObjectURL(moduleURL);
+  }
+} catch (error) {
+  const detail = errorMessage(error);
+  document.getElementById("root").innerHTML =
+    '<div class="cmux-artifact-error"><strong>' + t("renderFailed") + '<\/strong><pre><\/pre><\/div>';
+  document.querySelector("pre").textContent = detail;
+  post("error", { title: t("renderFailed"), detail });
+}
+<\/script>
+</body>
+</html>`;
+}
+
+function htmlDocument(source) {
+  const bridge = artifactBridgeScripts();
+  const html = source || "";
+  if (/<head\b[^>]*>/i.test(html)) {
+    return html.replace(/<head\b([^>]*)>/i, `<head$1>${bridge}`);
+  }
+  if (/<body\b[^>]*>/i.test(html)) {
+    return html.replace(/<body\b([^>]*)>/i, `<body$1>${bridge}`);
+  }
+  return `${bridge}${html}`;
+}
+
+function escapedHTML(value) {
+  return String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function svgDocument(source) {
+  return `<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+html, body { width: 100%; height: 100%; margin: 0; background: transparent; }
+body { display: grid; place-items: center; box-sizing: border-box; padding: 24px; }
+svg { max-width: 100%; max-height: 100%; }
+<\/style>
+</head>
+<body>${artifactBridgeScripts()}${source || ""}</body>
+</html>`;
+}
+
+function mermaidDocument(source) {
+  const sourceLiteral = jsonLiteral(source || "");
+  const stringsLiteral = jsonLiteral(STRINGS);
+  return `<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script type="importmap">${importMapJSON()}<\/script>
+<style>
+html, body, #root { min-height: 100%; margin: 0; background: transparent; }
+body {
+  display: grid;
+  place-items: start center;
+  box-sizing: border-box;
+  padding: 24px;
+  color: CanvasText;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+}
+#root { width: min(100%, 1200px); }
+#root svg { max-width: 100%; height: auto; }
+.cmux-artifact-error {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 18px;
+  color: CanvasText;
+  background: Canvas;
+  font: 13px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+}
+.cmux-artifact-error pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font: 12px/1.5 ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+}
+<\/style>
+</head>
+<body>
+<div id="root"></div>
+${artifactBridgeScripts()}
+<script type="module">
+const SOURCE = ${sourceLiteral};
+const STRINGS = ${stringsLiteral};
+function t(key) { return STRINGS[key] || key; }
+function post(type, payload) {
+  window.parent.postMessage({ source: "cmux-artifact", type, ...payload }, "*");
+}
+function errorMessage(error) {
+  if (!error) { return ""; }
+  if (error.stack) { return String(error.stack); }
+  if (error.message) { return String(error.message); }
+  return String(error);
+}
+try {
+  const mermaid = (await import("mermaid")).default;
+  mermaid.initialize({ startOnLoad: false, securityLevel: "strict", theme: "default" });
+  const result = await mermaid.render("cmux-mermaid-artifact", SOURCE);
+  document.getElementById("root").innerHTML = result.svg;
+  post("ready", {});
+  requestAnimationFrame(() => post("rendered-text", { text: document.body.innerText || SOURCE }));
+} catch (error) {
+  const detail = errorMessage(error);
+  document.getElementById("root").innerHTML =
+    '<div class="cmux-artifact-error"><strong>' + t("renderFailed") + '<\\/strong><pre><\\/pre><\\/div>';
+  document.querySelector("pre").textContent = detail;
+  post("error", { title: t("renderFailed"), detail });
+}
+<\/script>
+</body>
+</html>`;
+}
+
+function codeLanguage(filePath) {
+  const filename = String(filePath || "").split("/").filter(Boolean).pop() || "";
+  const ext = filename.includes(".") ? filename.split(".").pop().toLowerCase() : filename.toLowerCase();
+  const map = {
+    js: "javascript",
+    jsx: "javascript",
+    ts: "typescript",
+    tsx: "typescript",
+    json: "json",
+    jsonl: "json",
+    py: "python",
+    rb: "ruby",
+    go: "go",
+    rs: "rust",
+    swift: "swift",
+    kt: "kotlin",
+    java: "java",
+    c: "c",
+    h: "c",
+    cpp: "cpp",
+    cc: "cpp",
+    cxx: "cpp",
+    hpp: "cpp",
+    cs: "csharp",
+    php: "php",
+    sh: "bash",
+    bash: "bash",
+    zsh: "bash",
+    fish: "bash",
+    sql: "sql",
+    css: "css",
+    scss: "scss",
+    less: "less",
+    html: "xml",
+    htm: "xml",
+    xml: "xml",
+    yaml: "yaml",
+    yml: "yaml",
+    toml: "ini",
+    ini: "ini",
+    mdx: "markdown",
+    graphql: "graphql",
+    gql: "graphql",
+    dockerfile: "dockerfile",
+    makefile: "makefile"
+  };
+  return map[ext] || "";
+}
+
+function codeDocument(source, filePath) {
+  const filename = escapedHTML((filePath || "").split("/").filter(Boolean).pop() || "artifact");
+  const code = escapedHTML(source || "");
+  const language = codeLanguage(filePath);
+  const languageClass = language ? `language-${language}` : "";
+  return `<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script type="importmap">${importMapJSON()}<\/script>
+<link rel="stylesheet" media="(prefers-color-scheme: light)" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/styles/github.min.css">
+<link rel="stylesheet" media="(prefers-color-scheme: dark)" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/styles/github-dark.min.css">
+<style>
+:root { color-scheme: light dark; }
+html, body { min-height: 100%; margin: 0; background: Canvas; color: CanvasText; }
+body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; }
+header {
+  position: sticky;
+  top: 0;
+  box-sizing: border-box;
+  padding: 10px 14px;
+  border-bottom: 1px solid color-mix(in srgb, CanvasText 16%, transparent);
+  background: color-mix(in srgb, Canvas 94%, CanvasText 6%);
+  font: 12px/1.4 ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  color: color-mix(in srgb, CanvasText 72%, transparent);
+}
+pre {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 18px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font: 12px/1.55 ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+}
+<\/style>
+</head>
+<body>
+<header>${filename}</header>
+<pre><code class="${languageClass}">${code}</code></pre>
+<script type="module">
+try {
+  const hljs = (await import("highlight.js/lib/common")).default;
+  const code = document.querySelector("code");
+  if (code && code.className) {
+    hljs.highlightElement(code);
+  } else if (code) {
+    const result = hljs.highlightAuto(code.textContent || "");
+    code.innerHTML = result.value;
+  }
+} catch {
+  // Keep the plain monospace fallback if the highlighter cannot load.
+}
+<\/script>
+</body>
+</html>`;
+}
+
+window.addEventListener("message", (event) => {
+  const data = event.data || {};
+  if (data.source === "cmux-artifact") {
+    if (data.type === "ready") {
+      clearError();
+      setStatus("");
+    } else if (data.type === "error") {
+      showError(data.title, data.detail);
+    } else if (data.type === "rendered-text") {
+      latestRenderedText = String(data.text || "");
+    }
+    return;
+  }
+  if (data.source === "cmux-artifact-storage") {
+    if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.cmuxArtifactStorage) {
+      window.webkit.messageHandlers.cmuxArtifactStorage.postMessage(data);
+    } else {
+      storageResponse({
+        requestId: data.requestId,
+        ok: false,
+        error: "storage bridge unavailable"
+      });
+    }
+  }
+  if (data.source === "cmux-artifact-cmux") {
+    if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.cmuxArtifactCmux) {
+      window.webkit.messageHandlers.cmuxArtifactCmux.postMessage(data);
+    } else {
+      cmuxResponse({
+        requestId: data.requestId,
+        ok: false,
+        error: "cmux bridge unavailable"
+      });
+    }
+  }
+});
+
+function storageResponse(response) {
+  if (!frame.contentWindow) { return; }
+  frame.contentWindow.postMessage({
+    source: "cmux-artifact-storage-response",
+    requestId: response.requestId,
+    ok: !!response.ok,
+    value: response.value,
+    error: response.error
+  }, "*");
+}
+
+window.__cmuxArtifactStorageResolve = storageResponse;
+
+function cmuxResponse(response) {
+  if (!frame.contentWindow) { return; }
+  frame.contentWindow.postMessage({
+    source: "cmux-artifact-cmux-response",
+    requestId: response.requestId,
+    ok: !!response.ok,
+    value: response.value,
+    error: response.error
+  }, "*");
+}
+
+function cmuxDispatch(payload) {
+  if (!frame.contentWindow) { return; }
+  frame.contentWindow.postMessage({
+    source: "cmux-artifact-cmux-event",
+    subscriptionId: payload.subscriptionId,
+    event: payload.event
+  }, "*");
+}
+
+window.__cmuxArtifactCmuxResolve = cmuxResponse;
+window.__cmuxArtifactCmuxDispatch = cmuxDispatch;
+
+window.__cmuxRenderArtifact = function(payload) {
+  const kind = payload && payload.kind;
+  const source = payload && payload.source;
+  const filePath = payload && payload.filePath;
+  clearError();
+  latestRenderedText = "";
+  setStatus(text("loading"));
+  if (kind === "html") {
+    frame.onload = () => setStatus("");
+    frame.srcdoc = htmlDocument(source);
+    return;
+  }
+  if (kind === "react") {
+    frame.onload = null;
+    frame.srcdoc = reactDocument(source);
+    return;
+  }
+  if (kind === "svg") {
+    frame.onload = () => setStatus("");
+    frame.srcdoc = svgDocument(source);
+    latestRenderedText = source || "";
+    return;
+  }
+  if (kind === "mermaid") {
+    frame.onload = null;
+    frame.srcdoc = mermaidDocument(source);
+    return;
+  }
+  if (kind === "code") {
+    frame.onload = () => {
+      latestRenderedText = source || "";
+      setStatus("");
+    };
+    frame.srcdoc = codeDocument(source, filePath);
+    return;
+  }
+  frame.removeAttribute("srcdoc");
+  showError(text("unsupportedKind"), "");
+};
+
+setStatus(text("loading"));
+</script>
+</body>
+</html>

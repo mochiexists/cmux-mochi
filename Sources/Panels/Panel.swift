@@ -18,6 +18,7 @@ public enum PanelType: String, Codable, Sendable {
     case cloudVMLoading
     case mobilePairing
     case accountSignIn
+    case artifact
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()

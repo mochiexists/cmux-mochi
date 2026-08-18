@@ -211,6 +211,8 @@ extension Workspace {
             return "browser"
         case .markdown:
             return "markdown"
+        case .artifact:
+            return "artifact"
         case .filePreview:
             return "file_preview"
         case .rightSidebarTool:

@@ -30,6 +30,8 @@ extension ContentView {
             return String(localized: "command.mobileConnect.subtitle", defaultValue: "Mobile")
         case .accountSignIn:
             return String(localized: "settings.section.account", defaultValue: "Account")
+        case .artifact:
+            return String(localized: "artifact.title", defaultValue: "Artifact")
         }
     }
     func commandPaletteSurfaceKeywords(for panelType: PanelType) -> [String] {
@@ -61,6 +63,8 @@ extension ContentView {
             return ContentView.commandPaletteMobileConnectKeywords
         case .accountSignIn:
             return ["account", "auth", "profile", "sign in"]
+        case .artifact:
+            return ["artifact", "canvas", "preview", "render"]
         }
     }
 }

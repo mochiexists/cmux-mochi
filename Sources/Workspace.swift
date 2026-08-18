@@ -707,6 +707,9 @@ extension Workspace {
             return nil
         case .cloudVMLoading:
             return nil
+        case .artifact:
+            // TODO(artifacts): persist filePath + kind so artifact panes restore.
+            return nil
         case .mobilePairing:
             return nil
         case .accountSignIn:
@@ -1832,6 +1835,9 @@ extension Workspace {
         case .extensionBrowser:
             return nil
         case .cloudVMLoading:
+            return nil
+        case .artifact:
+            // TODO(artifacts): restore filePath + kind once artifacts persist.
             return nil
         case .mobilePairing:
             return nil

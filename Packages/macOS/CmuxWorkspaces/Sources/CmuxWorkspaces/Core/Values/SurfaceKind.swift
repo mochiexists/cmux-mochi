@@ -40,6 +40,9 @@ public struct SurfaceKind: RawRepresentable, Hashable, Sendable {
     /// A transient Cloud VM loading pane.
     public static let cloudVMLoading = SurfaceKind(rawValue: "cloudVMLoading")
     /// A transient iPhone pairing pane.
+    /// A live artifact (React/HTML) rendering pane.
+    public static let artifact = SurfaceKind(rawValue: "artifact")
+
     public static let mobilePairing = SurfaceKind(rawValue: "mobilePairing")
     /// A transient Stack account sign-in pane.
     public static let accountSignIn = SurfaceKind(rawValue: "accountSignIn")

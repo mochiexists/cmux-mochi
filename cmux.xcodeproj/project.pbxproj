@@ -245,6 +245,19 @@ C0DE71B10000000000000001 /* AppDelegate+AgentChatNotifications.swift in Sources 
 		A5001621 /* AppleScriptSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = A5001620 /* AppleScriptSupport.swift */; };
 		A5001A02A1B2C3D4E5F60718 /* AppWindowBackdropControllerDependencies.swift in Sources */ = {isa = PBXBuildFile; fileRef = A5001A03A1B2C3D4E5F60718 /* AppWindowBackdropControllerDependencies.swift */; };
 		A5001A00A1B2C3D4E5F60718 /* AppWindowChromeComposition.swift in Sources */ = {isa = PBXBuildFile; fileRef = A5001A01A1B2C3D4E5F60718 /* AppWindowChromeComposition.swift */; };
+		F0AD00000000000000000303 /* artifact-viewer in Resources */ = {isa = PBXBuildFile; fileRef = F0AD00000000000000000304 /* artifact-viewer */; };
+		A7C0F1000000000000000002 /* ArtifactExternalPreview.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7C0F1000000000000000001 /* ArtifactExternalPreview.swift */; };
+		A7C0F1010000000000000002 /* ArtifactPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7C0F1010000000000000001 /* ArtifactPanel.swift */; };
+		A7C0F1020000000000000002 /* ArtifactPanelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7C0F1020000000000000001 /* ArtifactPanelView.swift */; };
+		A7C0F1030000000000000002 /* ArtifactRendererSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7C0F1030000000000000001 /* ArtifactRendererSession.swift */; };
+		A7C0F1040000000000000002 /* ArtifactRuntimeCmuxBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7C0F1040000000000000001 /* ArtifactRuntimeCmuxBridge.swift */; };
+		A7C0F1050000000000000002 /* ArtifactSamples.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7C0F1050000000000000001 /* ArtifactSamples.swift */; };
+		A7C0F1060000000000000002 /* ArtifactScaffold.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7C0F1060000000000000001 /* ArtifactScaffold.swift */; };
+		A7C0F1070000000000000002 /* ArtifactStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7C0F1070000000000000001 /* ArtifactStore.swift */; };
+		A7C0F1080000000000000002 /* ArtifactViewerAssets.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7C0F1080000000000000001 /* ArtifactViewerAssets.swift */; };
+		A7C0F1090000000000000002 /* ArtifactWebRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7C0F1090000000000000001 /* ArtifactWebRenderer.swift */; };
+		A7C0F10A0000000000000002 /* ArtifactWebRendererCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7C0F10A0000000000000001 /* ArtifactWebRendererCoordinator.swift */; };
+		A7C0F10B0000000000000002 /* ArtifactWebView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7C0F10B0000000000000001 /* ArtifactWebView.swift */; };
 		A5001100 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A5001101 /* Assets.xcassets */; };
 		D9FEC58D5BACCF76459F1BBE /* AuthEnvironment.swift in Sources */ = {isa = PBXBuildFile; fileRef = 43430FA5929121E2EAAB3091 /* AuthEnvironment.swift */; };
 		A47E00010000000000000001 /* AuthEnvironmentTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A47E00010000000000000002 /* AuthEnvironmentTests.swift */; };
@@ -2169,6 +2182,7 @@ C0DE71B10000000000000001 /* AppDelegate+AgentChatNotifications.swift in Sources 
 		F87930000000000000000001 /* TerminalConfigurationReloadEnqueueResult.swift in Sources */ = {isa = PBXBuildFile; fileRef = F87930000000000000000002 /* TerminalConfigurationReloadEnqueueResult.swift */; };
 		F87920000000000000000005 /* TerminalConfigurationReloadPhase.swift in Sources */ = {isa = PBXBuildFile; fileRef = F87920000000000000000006 /* TerminalConfigurationReloadPhase.swift */; };
 		D35A00000000000000000014 /* TerminalController+AgentPromptDelivery.swift in Sources */ = {isa = PBXBuildFile; fileRef = D35B00000000000000000014 /* TerminalController+AgentPromptDelivery.swift */; };
+		A7C0F2000000000000000002 /* TerminalController+Artifacts.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7C0F2000000000000000001 /* TerminalController+Artifacts.swift */; };
 		8054A0030000000000000003 /* TerminalController+BrowserAutomationRecovery.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8054A0040000000000000004 /* TerminalController+BrowserAutomationRecovery.swift */; };
 		D35A00000000000000000011 /* TerminalController+BrowserDesignMode.swift in Sources */ = {isa = PBXBuildFile; fileRef = D35B00000000000000000011 /* TerminalController+BrowserDesignMode.swift */; };
 		805600000000000000000005 /* TerminalController+BrowserViewport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 805600000000000000000006 /* TerminalController+BrowserViewport.swift */; };
@@ -2457,6 +2471,7 @@ C0DE71B10000000000000001 /* AppDelegate+AgentChatNotifications.swift in Sources 
 		D7632B13A1B2C3D4E5F60718 /* WKWebView+CmuxPrintOperation.swift in Sources */ = {isa = PBXBuildFile; fileRef = D7632B14A1B2C3D4E5F60718 /* WKWebView+CmuxPrintOperation.swift */; };
 		C0DE43000000000000000007 /* Workspace+AgentChat.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE43000000000000000008 /* Workspace+AgentChat.swift */; };
 		A6AC73020000000000000001 /* Workspace+AgentLifecycle.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6AC73020000000000000002 /* Workspace+AgentLifecycle.swift */; };
+		A7C0F2010000000000000002 /* Workspace+Artifacts.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7C0F2010000000000000001 /* Workspace+Artifacts.swift */; };
 		8777E0018777E0018777E001 /* Workspace+AttentionFlashRouting.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8777E0028777E0028777E002 /* Workspace+AttentionFlashRouting.swift */; };
 		CA52B0150000000000000000 /* Workspace+CanvasLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA52C0150000000000000000 /* Workspace+CanvasLayout.swift */; };
 		C54860020000000000000001 /* Workspace+CmuxNavigationDescriptor.swift in Sources */ = {isa = PBXBuildFile; fileRef = C54860020000000000000002 /* Workspace+CmuxNavigationDescriptor.swift */; };
@@ -2940,6 +2955,19 @@ C0DE71B10000000000000002 /* AppDelegate+AgentChatNotifications.swift */ = {isa =
 		A5001620 /* AppleScriptSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleScriptSupport.swift; sourceTree = "<group>"; };
 		A5001A03A1B2C3D4E5F60718 /* AppWindowBackdropControllerDependencies.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Windowing/AppWindowBackdropControllerDependencies.swift; sourceTree = "<group>"; };
 		A5001A01A1B2C3D4E5F60718 /* AppWindowChromeComposition.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Windowing/AppWindowChromeComposition.swift; sourceTree = "<group>"; };
+		F0AD00000000000000000304 /* artifact-viewer */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = folder; path = "artifact-viewer"; sourceTree = "<group>"; };
+		A7C0F1000000000000000001 /* ArtifactExternalPreview.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Artifacts/ArtifactExternalPreview.swift"; sourceTree = "<group>"; };
+		A7C0F1010000000000000001 /* ArtifactPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Artifacts/ArtifactPanel.swift"; sourceTree = "<group>"; };
+		A7C0F1020000000000000001 /* ArtifactPanelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Artifacts/ArtifactPanelView.swift"; sourceTree = "<group>"; };
+		A7C0F1030000000000000001 /* ArtifactRendererSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Artifacts/ArtifactRendererSession.swift"; sourceTree = "<group>"; };
+		A7C0F1040000000000000001 /* ArtifactRuntimeCmuxBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Artifacts/ArtifactRuntimeCmuxBridge.swift"; sourceTree = "<group>"; };
+		A7C0F1050000000000000001 /* ArtifactSamples.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Artifacts/ArtifactSamples.swift"; sourceTree = "<group>"; };
+		A7C0F1060000000000000001 /* ArtifactScaffold.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Artifacts/ArtifactScaffold.swift"; sourceTree = "<group>"; };
+		A7C0F1070000000000000001 /* ArtifactStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Artifacts/ArtifactStore.swift"; sourceTree = "<group>"; };
+		A7C0F1080000000000000001 /* ArtifactViewerAssets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Artifacts/ArtifactViewerAssets.swift"; sourceTree = "<group>"; };
+		A7C0F1090000000000000001 /* ArtifactWebRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Artifacts/ArtifactWebRenderer.swift"; sourceTree = "<group>"; };
+		A7C0F10A0000000000000001 /* ArtifactWebRendererCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Artifacts/ArtifactWebRendererCoordinator.swift"; sourceTree = "<group>"; };
+		A7C0F10B0000000000000001 /* ArtifactWebView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Artifacts/ArtifactWebView.swift"; sourceTree = "<group>"; };
 		A5001101 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		43430FA5929121E2EAAB3091 /* AuthEnvironment.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AuthEnvironment.swift; sourceTree = "<group>"; };
 		A47E00010000000000000002 /* AuthEnvironmentTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthEnvironmentTests.swift; sourceTree = "<group>"; };
@@ -4771,6 +4799,7 @@ C0DE71B10000000000000002 /* AppDelegate+AgentChatNotifications.swift */ = {isa =
 		F87930000000000000000002 /* TerminalConfigurationReloadEnqueueResult.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalConfigurationReloadEnqueueResult.swift; sourceTree = "<group>"; };
 		F87920000000000000000006 /* TerminalConfigurationReloadPhase.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalConfigurationReloadPhase.swift; sourceTree = "<group>"; };
 		D35B00000000000000000014 /* TerminalController+AgentPromptDelivery.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TerminalController+AgentPromptDelivery.swift"; sourceTree = "<group>"; };
+		A7C0F2000000000000000001 /* TerminalController+Artifacts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TerminalController+Artifacts.swift"; sourceTree = "<group>"; };
 		8054A0040000000000000004 /* TerminalController+BrowserAutomationRecovery.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TerminalController+BrowserAutomationRecovery.swift"; sourceTree = "<group>"; };
 		D35B00000000000000000011 /* TerminalController+BrowserDesignMode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TerminalController+BrowserDesignMode.swift"; sourceTree = "<group>"; };
 		805600000000000000000006 /* TerminalController+BrowserViewport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TerminalController+BrowserViewport.swift"; sourceTree = "<group>"; };
@@ -5059,6 +5088,7 @@ C0DE71B10000000000000002 /* AppDelegate+AgentChatNotifications.swift */ = {isa =
 		D7632B14A1B2C3D4E5F60718 /* WKWebView+CmuxPrintOperation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Panels/WKWebView+CmuxPrintOperation.swift"; sourceTree = "<group>"; };
 		C0DE43000000000000000008 /* Workspace+AgentChat.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Workspace+AgentChat.swift"; sourceTree = "<group>"; };
 		A6AC73020000000000000002 /* Workspace+AgentLifecycle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Workspace+AgentLifecycle.swift"; sourceTree = "<group>"; };
+		A7C0F2010000000000000001 /* Workspace+Artifacts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Workspace+Artifacts.swift"; sourceTree = "<group>"; };
 		8777E0028777E0028777E002 /* Workspace+AttentionFlashRouting.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Workspace+AttentionFlashRouting.swift"; sourceTree = "<group>"; };
 		CA52C0150000000000000000 /* Workspace+CanvasLayout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Workspace+CanvasLayout.swift"; sourceTree = "<group>"; };
 		C54860020000000000000002 /* Workspace+CmuxNavigationDescriptor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Workspace+CmuxNavigationDescriptor.swift"; sourceTree = "<group>"; };
@@ -5376,6 +5406,7 @@ C0DE71B10000000000000002 /* AppDelegate+AgentChatNotifications.swift */ = {isa =
 				A9D9000000000000000F0016 /* markdown-viewer */,
 				A9E010000000000000000006 /* agent-session-react */,
 				F0AD00000000000000000105 /* skills */,
+				F0AD00000000000000000304 /* artifact-viewer */,
 				A9E010000000000000000007 /* agent-session-solid */,
 
 				A5001622 /* cmux.sdef */,
@@ -6347,8 +6378,22 @@ C0DE71B10000000000000002 /* AppDelegate+AgentChatNotifications.swift */ = {isa =
 				A7C0F0060000000000000001 /* TerminalController+WorkspaceScreenshot.swift */,
 				A7C0F0070000000000000001 /* TerminalController+SurfaceImageEncoding.swift */,
 				A7C0F0080000000000000001 /* TerminalController+SurfaceCapture.swift */,
+				A7C0F2000000000000000001 /* TerminalController+Artifacts.swift */,
+				A7C0F2010000000000000001 /* Workspace+Artifacts.swift */,
 				A7C0F0090000000000000001 /* Workspace+TabPathActions.swift */,
 				A7C0F00A0000000000000001 /* CmuxSkillsBundleInstaller.swift */,
+				A7C0F10B0000000000000001 /* ArtifactWebView.swift */,
+				A7C0F10A0000000000000001 /* ArtifactWebRendererCoordinator.swift */,
+				A7C0F1090000000000000001 /* ArtifactWebRenderer.swift */,
+				A7C0F1080000000000000001 /* ArtifactViewerAssets.swift */,
+				A7C0F1070000000000000001 /* ArtifactStore.swift */,
+				A7C0F1060000000000000001 /* ArtifactScaffold.swift */,
+				A7C0F1050000000000000001 /* ArtifactSamples.swift */,
+				A7C0F1040000000000000001 /* ArtifactRuntimeCmuxBridge.swift */,
+				A7C0F1030000000000000001 /* ArtifactRendererSession.swift */,
+				A7C0F1020000000000000001 /* ArtifactPanelView.swift */,
+				A7C0F1010000000000000001 /* ArtifactPanel.swift */,
+				A7C0F1000000000000000001 /* ArtifactExternalPreview.swift */,
 				F1100000000000000000000E /* TerminalController+MobileBrowser.swift */,
 				F1100000000000000000000F /* SyntheticKeyEventFactory.swift */,
 				ACA7C4A7000000000000000E /* TerminalController+MobileChat.swift */,
@@ -8296,6 +8341,7 @@ C0DE71B10000000000000002 /* AppDelegate+AgentChatNotifications.swift */ = {isa =
 			files = (
 				A9E020000000000000000006 /* agent-session-react in Resources */,
 				A9E020000000000000000007 /* agent-session-solid in Resources */,
+				F0AD00000000000000000303 /* artifact-viewer in Resources */,
 				A5001100 /* Assets.xcassets in Resources */,
 				A5001623 /* cmux.sdef in Resources */,
 				FEED0A00000000000000F007 /* feed-tui in Resources */,
@@ -8644,6 +8690,18 @@ C0DE71B10000000000000002 /* AppDelegate+AgentChatNotifications.swift */ = {isa =
 				A5001621 /* AppleScriptSupport.swift in Sources */,
 				A5001A02A1B2C3D4E5F60718 /* AppWindowBackdropControllerDependencies.swift in Sources */,
 				A5001A00A1B2C3D4E5F60718 /* AppWindowChromeComposition.swift in Sources */,
+				A7C0F1000000000000000002 /* ArtifactExternalPreview.swift in Sources */,
+				A7C0F1010000000000000002 /* ArtifactPanel.swift in Sources */,
+				A7C0F1020000000000000002 /* ArtifactPanelView.swift in Sources */,
+				A7C0F1030000000000000002 /* ArtifactRendererSession.swift in Sources */,
+				A7C0F1040000000000000002 /* ArtifactRuntimeCmuxBridge.swift in Sources */,
+				A7C0F1050000000000000002 /* ArtifactSamples.swift in Sources */,
+				A7C0F1060000000000000002 /* ArtifactScaffold.swift in Sources */,
+				A7C0F1070000000000000002 /* ArtifactStore.swift in Sources */,
+				A7C0F1080000000000000002 /* ArtifactViewerAssets.swift in Sources */,
+				A7C0F1090000000000000002 /* ArtifactWebRenderer.swift in Sources */,
+				A7C0F10A0000000000000002 /* ArtifactWebRendererCoordinator.swift in Sources */,
+				A7C0F10B0000000000000002 /* ArtifactWebView.swift in Sources */,
 					D9FEC58D5BACCF76459F1BBE /* AuthEnvironment.swift in Sources */,
 					C0DE35860000000000000001 /* BackgroundWorkspacePrimeCoordinator.swift in Sources */,
 					A50012F1 /* Backport.swift in Sources */,
@@ -9791,6 +9849,7 @@ C0DE71B10000000000000002 /* AppDelegate+AgentChatNotifications.swift */ = {isa =
 				F87930000000000000000001 /* TerminalConfigurationReloadEnqueueResult.swift in Sources */,
 				F87920000000000000000005 /* TerminalConfigurationReloadPhase.swift in Sources */,
 				D35A00000000000000000014 /* TerminalController+AgentPromptDelivery.swift in Sources */,
+				A7C0F2000000000000000002 /* TerminalController+Artifacts.swift in Sources */,
 				8054A0030000000000000003 /* TerminalController+BrowserAutomationRecovery.swift in Sources */,
 				D35A00000000000000000011 /* TerminalController+BrowserDesignMode.swift in Sources */,
 				805600000000000000000005 /* TerminalController+BrowserViewport.swift in Sources */,
@@ -10027,6 +10086,7 @@ C0DE71B10000000000000002 /* AppDelegate+AgentChatNotifications.swift */ = {isa =
 				D7632B13A1B2C3D4E5F60718 /* WKWebView+CmuxPrintOperation.swift in Sources */,
 				C0DE43000000000000000007 /* Workspace+AgentChat.swift in Sources */,
 				A6AC73020000000000000001 /* Workspace+AgentLifecycle.swift in Sources */,
+				A7C0F2010000000000000002 /* Workspace+Artifacts.swift in Sources */,
 				8777E0018777E0018777E001 /* Workspace+AttentionFlashRouting.swift in Sources */,
 				CA52B0150000000000000000 /* Workspace+CanvasLayout.swift in Sources */,
 				C54860020000000000000001 /* Workspace+CmuxNavigationDescriptor.swift in Sources */,

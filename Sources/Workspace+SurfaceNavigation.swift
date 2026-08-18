@@ -205,6 +205,8 @@ extension Workspace {
             return SurfaceKind.mobilePairing.rawValue
         case .accountSignIn:
             return SurfaceKind.accountSignIn.rawValue
+        case .artifact:
+            return SurfaceKind.artifact.rawValue
         }
     }
 

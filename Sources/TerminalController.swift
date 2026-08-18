@@ -1410,6 +1410,15 @@ class TerminalController {
             return v2Result(id: request.id, v2SystemMemory(params: request.params))
         case "surface.read_text":
             return v2Result(id: request.id, v2SurfaceReadText(params: request.params))
+        case "artifact.open":
+            return v2MainSync {
+                self.v2RefreshKnownRefs()
+                return self.v2Result(id: request.id, self.v2ArtifactOpen(params: request.params))
+            }
+        case "artifact.list":
+            return v2MainSync {
+                self.v2Result(id: request.id, self.v2ArtifactList(params: request.params))
+            }
         case "surface.screenshot", "surface.text", "surface.ingest":
             v2MainSync { self.v2RefreshKnownRefs() }
             return v2Result(

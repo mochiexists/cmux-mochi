@@ -108,6 +108,7 @@ struct WorkspaceCanvasHostView: View {
         case .workspaceTodo: return "checklist"
         case .cloudVMLoading: return "cloud.fill"
         case .mobilePairing: return "iphone"
+        case .artifact: return "sparkles.rectangle.stack"
         case .accountSignIn: return "person.crop.circle"
         }
     }
