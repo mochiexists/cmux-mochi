@@ -255,7 +255,11 @@ jobs:
     # Match the cache warmer and stable release app build exactly. Keeping the
     # runner and pinned Xcode identical makes their compilation caches reusable.
     runs-on: ${{ vars.MACOS_RUNNER_26_NIGHTLY_BUILD || 'blacksmith-12vcpu-macos-26' }}
-    timeout-minutes: 45
+    # 45 minutes was not enough on the self-hosted M4 Pro: a recursive submodule
+    # checkout plus the two cache restores can eat 45 minutes before the first
+    # source file compiles, and a cache miss then leaves a cold Release build to
+    # do. Run 32103186189 was cancelled at the limit having compiled nothing.
+    timeout-minutes: 120
     env:
       CMUX_CI_XCODE_APP: ${{ vars.CMUX_CI_XCODE_APP_MACOS_26 }}
       CMUX_CI_REQUIRED_MACOS_SDK_MAJOR: "26"
