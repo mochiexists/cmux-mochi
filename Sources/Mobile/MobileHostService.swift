@@ -987,6 +987,21 @@ final class MobileHostService {
     private func startListener(usePreferredPort: Bool) {
         let desiredPort = Self.configuredPort()
         appliedPreferredPort = desiredPort
+        // Fork (cmux Mochi): fail closed when there is no tailnet interface to
+        // pin to. Binding anyway would serve the pairing host on every
+        // interface, which is the exposure the pin exists to close.
+        // `handleNetworkPathChange` retries once Tailscale comes up, so this is
+        // a deferral rather than a dead end.
+        if Self.tailnetInterfaceUnavailableInRelease {
+            lastErrorDescription = "Tailscale is not running; the pairing host stays closed until it is."
+            mobileHostLog.info("mobile host listener deferred: no tailnet interface to bind to")
+            // The path monitor normally starts after a successful bind. Start it
+            // here too, or nothing would observe Tailscale coming up and the
+            // deferral would be permanent.
+            startNetworkPathMonitorIfNeeded()
+            drainReadinessWaiters()
+            return
+        }
         do {
             let tcpOptions = NWProtocolTCP.Options()
             tcpOptions.noDelay = true

@@ -220,7 +220,34 @@ extension MobileHostService {
         // answer "unknown device" from an empty in-memory table while the real
         // one sits on disk.
         let tlsOptions = try MobileHostDeviceLink.shared.listenerOptions()
-        return NWParameters(tls: tlsOptions, tcp: tcpOptions)
+        let parameters = NWParameters(tls: tlsOptions, tcp: tcpOptions)
+        // Fork (cmux Mochi): pin the listener to the tailnet interface. Pairing
+        // routes are tailnet-only, so binding every interface would expose the
+        // pairing host on whatever LAN or hotspot this Mac is attached to —
+        // reachable by anything that can open a TCP connection, with only the
+        // mutual-TLS handshake between it and the enrollment window.
+        //
+        // Debug builds skip the pin so a dev Mac can be reached over loopback
+        // from the simulator, which shares the host's network stack.
+        #if !DEBUG
+        parameters.requiredInterface = MobileHostTailnetInterface.shared.requiredInterface()
+        #endif
+        return parameters
+    }
+
+    /// Whether a release build must refuse to bind because Tailscale is not up.
+    ///
+    /// Fork (cmux Mochi): pairing routes are tailnet-only, so a listener that
+    /// cannot be pinned to the tailnet has nothing legitimate to serve — binding
+    /// it anyway would reopen the all-interfaces exposure the pin exists to
+    /// close. `handleNetworkPathChange` retries once Tailscale comes up, so this
+    /// defers the listener rather than ending it.
+    nonisolated static var tailnetInterfaceUnavailableInRelease: Bool {
+        #if DEBUG
+        return false
+        #else
+        return MobileHostTailnetInterface.shared.requiredInterface() == nil
+        #endif
     }
 
     /// Completes the DeviceLink handshake for an accepted connection and
