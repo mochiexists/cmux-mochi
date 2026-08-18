@@ -560,8 +560,8 @@ jobs:
             local feed_url="$3"
             local app_plist="$app_dir/cmux Mochi.app/Contents/Info.plist"
 
-            /usr/libexec/PlistBuddy -c "Set :CFBundleName cmux NIGHTLY" "$app_plist"
-            /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName cmux NIGHTLY" "$app_plist"
+            /usr/libexec/PlistBuddy -c "Set :CFBundleName cmux Mochi NIGHTLY" "$app_plist"
+            /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName cmux Mochi NIGHTLY" "$app_plist"
             /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier ${bundle_id}" "$app_plist"
             local url_type_name
             url_type_name="$(/usr/libexec/PlistBuddy -c "Print :CFBundleURLTypes:1:CFBundleURLName" "$app_plist")"
@@ -586,7 +586,7 @@ jobs:
             "com.cmux-mochi.nightly" \
             "https://github.com/mochiexists/cmux-mochi/releases/download/nightly/appcast.xml"
 
-          echo "Nightly app name: cmux NIGHTLY"
+          echo "Nightly app name: cmux Mochi NIGHTLY"
           echo "Nightly bundle ID: com.cmux-mochi.nightly"
           echo "Nightly marketing version: ${NIGHTLY_MARKETING_VERSION}"
           echo "Nightly build number: ${NIGHTLY_BUILD}"
