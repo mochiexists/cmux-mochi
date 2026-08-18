@@ -54,9 +54,9 @@ import CmuxSettings
     }
 
     @Test func taggedDevBuildDetection() {
-        #expect(SocketControlSettings.isTaggedDevBuild(bundleIdentifier: "com.cmuxterm.app.debug.my-tag"))
-        #expect(!SocketControlSettings.isTaggedDevBuild(bundleIdentifier: "com.cmuxterm.app.debug"))
-        #expect(!SocketControlSettings.isTaggedDevBuild(bundleIdentifier: "com.cmuxterm.app"))
+        #expect(SocketControlSettings.isTaggedDevBuild(bundleIdentifier: "com.cmux-mochi.debug.my-tag"))
+        #expect(!SocketControlSettings.isTaggedDevBuild(bundleIdentifier: "com.cmux-mochi.debug"))
+        #expect(!SocketControlSettings.isTaggedDevBuild(bundleIdentifier: "com.cmux-mochi"))
     }
 
     @Test func untaggedDebugLaunchIsBlockedOnlyForBareDebugBundle() {
@@ -64,7 +64,7 @@ import CmuxSettings
         #expect(
             SocketControlSettings.shouldBlockUntaggedDebugLaunch(
                 environment: [:],
-                bundleIdentifier: "com.cmuxterm.app.debug",
+                bundleIdentifier: "com.cmux-mochi.debug",
                 isDebugBuild: true
             )
         )
@@ -73,7 +73,7 @@ import CmuxSettings
         #expect(
             !SocketControlSettings.shouldBlockUntaggedDebugLaunch(
                 environment: ["CMUX_UI_TEST_RUN": "1"],
-                bundleIdentifier: "com.cmuxterm.app.debug",
+                bundleIdentifier: "com.cmux-mochi.debug",
                 isDebugBuild: true
             )
         )
@@ -81,7 +81,7 @@ import CmuxSettings
         #expect(
             !SocketControlSettings.shouldBlockUntaggedDebugLaunch(
                 environment: [:],
-                bundleIdentifier: "com.cmuxterm.app.debug.tag",
+                bundleIdentifier: "com.cmux-mochi.debug.tag",
                 isDebugBuild: true
             )
         )
@@ -89,7 +89,7 @@ import CmuxSettings
         #expect(
             !SocketControlSettings.shouldBlockUntaggedDebugLaunch(
                 environment: [:],
-                bundleIdentifier: "com.cmuxterm.app",
+                bundleIdentifier: "com.cmux-mochi",
                 isDebugBuild: false
             )
         )
@@ -101,7 +101,7 @@ import CmuxSettings
                 "CMUX_SOCKET_PATH": "/tmp/cmux-custom.sock",
                 "CMUX_ALLOW_SOCKET_OVERRIDE": "1",
             ],
-            bundleIdentifier: "com.cmuxterm.app.debug.tag",
+            bundleIdentifier: "com.cmux-mochi.debug.tag",
             isDebugBuild: true,
             currentUserID: 501,
             probeStableDefaultPathEntry: { _ in .missing }
@@ -115,13 +115,13 @@ import CmuxSettings
         ]
         let path = SocketControlSettings.socketPath(
             environment: environment,
-            bundleIdentifier: "com.cmuxterm.app.debug",
+            bundleIdentifier: "com.cmux-mochi.debug",
             isDebugBuild: true,
             currentUserID: 501,
             probeStableDefaultPathEntry: { _ in .missing }
         )
         let defaultPath = SocketControlSettings.defaultSocketPath(
-            bundleIdentifier: "com.cmuxterm.app.debug",
+            bundleIdentifier: "com.cmux-mochi.debug",
             environment: environment,
             isDebugBuild: true,
             currentUserID: 501,
@@ -139,7 +139,7 @@ import CmuxSettings
                 "CMUX_SOCKET_PATH": "/tmp/cmux-forced.sock",
                 "XCTestConfigurationFilePath": "/tmp/Test-cmux-unit-2026.06.17.xctestconfiguration",
             ],
-            bundleIdentifier: "com.cmuxterm.app.debug",
+            bundleIdentifier: "com.cmux-mochi.debug",
             isDebugBuild: true,
             currentUserID: 501,
             probeStableDefaultPathEntry: { _ in .missing }
@@ -152,7 +152,7 @@ import CmuxSettings
             environment: [
                 "DYLD_INSERT_LIBRARIES": "/Applications/Xcode.app/Contents/Developer/usr/lib/libXCTestSwiftSupport.dylib",
             ],
-            bundleIdentifier: "com.cmuxterm.app.debug",
+            bundleIdentifier: "com.cmux-mochi.debug",
             isDebugBuild: true,
             currentUserID: 501,
             probeStableDefaultPathEntry: { _ in .missing }
@@ -167,7 +167,7 @@ import CmuxSettings
             environment: [
                 "XCTestConfigurationFilePath": "/tmp/first/Test-cmux-unit.xctestconfiguration",
             ],
-            bundleIdentifier: "com.cmuxterm.app.debug",
+            bundleIdentifier: "com.cmux-mochi.debug",
             isDebugBuild: true,
             currentUserID: 501,
             probeStableDefaultPathEntry: { _ in .missing }
@@ -176,7 +176,7 @@ import CmuxSettings
             environment: [
                 "XCTestConfigurationFilePath": "/tmp/second/Test-cmux-unit.xctestconfiguration",
             ],
-            bundleIdentifier: "com.cmuxterm.app.debug",
+            bundleIdentifier: "com.cmux-mochi.debug",
             isDebugBuild: true,
             currentUserID: 501,
             probeStableDefaultPathEntry: { _ in .missing }
@@ -192,7 +192,7 @@ import CmuxSettings
                 "CMUX_TAG": "ci-split-theme",
                 "XCTestConfigurationFilePath": "/tmp/Test-cmux-unit-2026.06.17.xctestconfiguration",
             ],
-            bundleIdentifier: "com.cmuxterm.app.debug",
+            bundleIdentifier: "com.cmux-mochi.debug",
             isDebugBuild: true,
             currentUserID: 501,
             probeStableDefaultPathEntry: { _ in .missing }
@@ -207,7 +207,7 @@ import CmuxSettings
 /// fork build classify as stable, which hands tagged DEV builds the release
 /// socket path. These cases pin the structural parse instead.
 @Test func bundleClassificationIsVendorAgnostic() {
-    for vendor in ["com.cmuxterm.app", "com.cmux-mochi", "org.example.someFork"] {
+    for vendor in ["com.cmux-mochi", "com.cmux-mochi", "org.example.someFork"] {
         #expect(SocketControlSettings.isStableBundleIdentifier(vendor))
         #expect(!SocketControlSettings.isDebugLikeBundleIdentifier(vendor))
         #expect(!SocketControlSettings.isStagingBundleIdentifier(vendor))

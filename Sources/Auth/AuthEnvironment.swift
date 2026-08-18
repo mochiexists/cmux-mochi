@@ -47,7 +47,7 @@ enum AuthEnvironment {
             }
             return "cmux-dev"
         }
-        if bundleIdentifier == "com.cmuxterm.app.nightly" {
+        if bundleIdentifier == "com.cmux-mochi.nightly" {
             return "cmux-nightly"
         }
         return "cmux"

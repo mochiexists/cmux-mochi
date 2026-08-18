@@ -312,7 +312,7 @@ WORKSPACE="$IOS_DIR/cmux.xcworkspace"
 SCHEME="cmux-ios"
 TAG_SLUG="$(sanitize_tag "$TAG")"
 DISPLAY_NAME="cmux DEV $TAG"
-BUNDLE_ID="dev.cmux.ios.$TAG_SLUG"
+BUNDLE_ID="com.cmux-mochi.ios.$TAG_SLUG"
 DERIVED_DATA="$HOME/Library/Developer/Xcode/DerivedData/cmux-ios-$TAG_SLUG"
 QUEUE_SCRIPT="$IOS_DIR/../scripts/iphone-install-queue.sh"
 

@@ -8,7 +8,7 @@
 # The heavy GhosttyKit + Swift Release compile runs on a leased fleet Mac (the
 # same maclease pool/exclusions reload-cloud-ios uses, m1ultra excluded). The
 # fleet builds an UNSIGNED Release archive for the beta bundle id
-# (dev.cmux.app.beta): no signing material ever lands on the shared Macs (they
+# (com.cmux-mochi.ios): no signing material ever lands on the shared Macs (they
 # also run GitHub Actions, i.e. arbitrary PR code). The archive is downloaded
 # locally and handed to ios/scripts/upload-testflight.sh --archive-path, which
 # does the local export, re-sign with the Apple Distribution cert (re-adding
@@ -66,7 +66,7 @@ WAIT_SECONDS="${CLOUD_TESTFLIGHT_WAIT:-1200}"
 # Force a local Release archive on this Mac instead of the fleet (offline cloud,
 # or deliberate). Also the automatic fallback when no hq cloud script is found.
 FORCE_LOCAL="${CLOUD_TESTFLIGHT_FORCE_LOCAL:-0}"
-BETA_BUNDLE_ID="${IOS_BETA_BUNDLE_ID:-dev.cmux.app.beta}"
+BETA_BUNDLE_ID="${IOS_BETA_BUNDLE_ID:-com.cmux-mochi.ios}"
 
 err() { printf 'cloud-testflight: %s\n' "$*" >&2; }
 die() { err "$*"; exit 1; }
@@ -82,7 +82,7 @@ Build an UNSIGNED Release archive for cmux iOS on a leased fleet Mac, download
 it, then export/re-sign/verify/upload via upload-testflight.sh.
 
   --lane <beta|appstore>
-                     Distribution lane. beta (default) = dev.cmux.app.beta;
+                     Distribution lane. beta (default) = com.cmux-mochi.ios;
                      appstore = com.cmux.app (public App Store record). Both
                      archive an unsigned Release build with display name "cmux"
                      on the fleet; upload-testflight.sh picks the matching
@@ -141,7 +141,7 @@ done
 LANE_DISPLAY_NAME=""
 case "$LANE" in
   beta)
-    : "${BETA_BUNDLE_ID:=dev.cmux.app.beta}"
+    : "${BETA_BUNDLE_ID:=com.cmux-mochi.ios}"
     ;;
   appstore|prod)
     BETA_BUNDLE_ID="com.cmux.app"

@@ -34,7 +34,7 @@ struct MobilePairingView: View {
 
     private static let tailscaleDownloadURL = URL(string: "https://tailscale.com/download")!
     /// Where a Mac user goes to get cmux for iPhone while the beta is invite-only.
-    static let iphoneAppURL = URL(string: "https://github.com/manaflow-ai/cmux#founders-edition")!
+    static let iphoneAppURL = URL(string: "https://github.com/mochiexists/cmux-mochi#founders-edition")!
 
     init(onContentHeightChange: @escaping (CGFloat) -> Void = { _ in }) {
         self.onContentHeightChange = onContentHeightChange

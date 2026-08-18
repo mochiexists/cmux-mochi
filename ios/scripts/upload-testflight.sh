@@ -268,7 +268,7 @@ Archives cmux iOS, exports an App Store Connect IPA, and uploads it to
 App Store Connect. The default lane is beta and preserves the existing
 TestFlight behavior:
 
-  bundle id: dev.cmux.app.beta
+  bundle id: com.cmux-mochi.ios
   profile:   cmux Beta Distribution
 
 The production App Store lane uses:
@@ -532,7 +532,7 @@ done
 
 case "$LANE" in
   beta)
-    PRODUCT_BUNDLE_IDENTIFIER="${IOS_BETA_BUNDLE_ID:-dev.cmux.app.beta}"
+    PRODUCT_BUNDLE_IDENTIFIER="${IOS_BETA_BUNDLE_ID:-com.cmux-mochi.ios}"
     PROVISIONING_PROFILE_NAME="${IOS_BETA_PROVISIONING_PROFILE_NAME:-cmux Beta Distribution}"
     PRODUCT_DISPLAY_NAME="${IOS_BETA_DISPLAY_NAME:-cmux BETA}"
     CRASH_REPORTING_ENABLED="YES"
@@ -1044,7 +1044,7 @@ if [[ "$SIGNING" == "manual" ]]; then
   # CODE_SIGN_ENTITLEMENTS = Config/cmux-release.entitlements, so default to that
   # path rather than parsing xcodebuild -showBuildSettings (slower, more brittle).
   RELEASE_ENTITLEMENTS="${IOS_RELEASE_ENTITLEMENTS:-$IOS_DIR/Config/cmux-release.entitlements}"
-  RESIGN_IDENTITY="${IOS_DISTRIBUTION_IDENTITY:-Apple Distribution: Manaflow, Inc. (7WLXT3NR37)}"
+  RESIGN_IDENTITY="${IOS_DISTRIBUTION_IDENTITY:-Apple Distribution: Atlas Codes LTD (599WAZ6282)}"
 
   if [[ ! -f "$RELEASE_ENTITLEMENTS" ]]; then
     echo "error: re-sign needs the Release entitlements file but it is missing: $RELEASE_ENTITLEMENTS (set IOS_RELEASE_ENTITLEMENTS to override)" >&2
