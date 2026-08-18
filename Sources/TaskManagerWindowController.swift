@@ -55,6 +55,13 @@ struct TaskManagerPanelView: View {
     var body: some View {
         CmuxTaskManagerView(model: panel.model, minimumSize: nil)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            // Opened as a workspace surface this sits over a terminal, so it
+            // has to paint its own ground — without it the process table
+            // composites straight onto whatever the pane was showing and the
+            // two sets of text share the same pixels. `TaskManagerPage` (the
+            // sidebar-selected variant) already paints the same colour; the
+            // panel variant was the one missing it.
+            .background(Color(nsColor: .windowBackgroundColor))
             .contentShape(Rectangle())
             .onTapGesture {
                 onRequestPanelFocus()
