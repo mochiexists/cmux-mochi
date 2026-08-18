@@ -2487,6 +2487,7 @@ C0DE71B10000000000000001 /* AppDelegate+AgentChatNotifications.swift in Sources 
 		C51A740000000000000000C1 /* Workspace+SimulatorSessionPersistence.swift in Sources */ = {isa = PBXBuildFile; fileRef = C51A740000000000000000C2 /* Workspace+SimulatorSessionPersistence.swift */; };
 		8300A0040000000000000004 /* Workspace+SSHConnectionBroker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8300A0030000000000000003 /* Workspace+SSHConnectionBroker.swift */; };
 		CA52B0170000000000000000 /* Workspace+SurfaceNavigation.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA52C0170000000000000000 /* Workspace+SurfaceNavigation.swift */; };
+		A7C0F0090000000000000002 /* Workspace+TabPathActions.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7C0F0090000000000000001 /* Workspace+TabPathActions.swift */; };
 		85911000000000000000000B /* Workspace+TerminalLinkOpening.swift in Sources */ = {isa = PBXBuildFile; fileRef = 85911000000000000000000C /* Workspace+TerminalLinkOpening.swift */; };
 		822900000000000000000001 /* Workspace+TerminalResizeInteraction.swift in Sources */ = {isa = PBXBuildFile; fileRef = 822900000000000000000002 /* Workspace+TerminalResizeInteraction.swift */; };
 		4DF302A0C8164672B8547449 /* Workspace+TitleOwnership.swift in Sources */ = {isa = PBXBuildFile; fileRef = D21553D9A12B4EE4974E1943 /* Workspace+TitleOwnership.swift */; };
@@ -5086,6 +5087,7 @@ C0DE71B10000000000000002 /* AppDelegate+AgentChatNotifications.swift */ = {isa =
 		C51A740000000000000000C2 /* Workspace+SimulatorSessionPersistence.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Workspace+SimulatorSessionPersistence.swift"; sourceTree = "<group>"; };
 		8300A0030000000000000003 /* Workspace+SSHConnectionBroker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Workspace+SSHConnectionBroker.swift"; sourceTree = "<group>"; };
 		CA52C0170000000000000000 /* Workspace+SurfaceNavigation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Workspace+SurfaceNavigation.swift"; sourceTree = "<group>"; };
+		A7C0F0090000000000000001 /* Workspace+TabPathActions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Workspace+TabPathActions.swift"; sourceTree = "<group>"; };
 		85911000000000000000000C /* Workspace+TerminalLinkOpening.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Workspace+TerminalLinkOpening.swift"; sourceTree = "<group>"; };
 		822900000000000000000002 /* Workspace+TerminalResizeInteraction.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Workspace+TerminalResizeInteraction.swift"; sourceTree = "<group>"; };
 		D21553D9A12B4EE4974E1943 /* Workspace+TitleOwnership.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Workspace+TitleOwnership.swift"; sourceTree = "<group>"; };
@@ -6340,6 +6342,7 @@ C0DE71B10000000000000002 /* AppDelegate+AgentChatNotifications.swift */ = {isa =
 				A7C0F0060000000000000001 /* TerminalController+WorkspaceScreenshot.swift */,
 				A7C0F0070000000000000001 /* TerminalController+SurfaceImageEncoding.swift */,
 				A7C0F0080000000000000001 /* TerminalController+SurfaceCapture.swift */,
+				A7C0F0090000000000000001 /* Workspace+TabPathActions.swift */,
 				F1100000000000000000000E /* TerminalController+MobileBrowser.swift */,
 				F1100000000000000000000F /* SyntheticKeyEventFactory.swift */,
 				ACA7C4A7000000000000000E /* TerminalController+MobileChat.swift */,
@@ -10048,6 +10051,7 @@ C0DE71B10000000000000002 /* AppDelegate+AgentChatNotifications.swift */ = {isa =
 				C51A740000000000000000C1 /* Workspace+SimulatorSessionPersistence.swift in Sources */,
 				8300A0040000000000000004 /* Workspace+SSHConnectionBroker.swift in Sources */,
 				CA52B0170000000000000000 /* Workspace+SurfaceNavigation.swift in Sources */,
+				A7C0F0090000000000000002 /* Workspace+TabPathActions.swift in Sources */,
 				85911000000000000000000B /* Workspace+TerminalLinkOpening.swift in Sources */,
 				822900000000000000000001 /* Workspace+TerminalResizeInteraction.swift in Sources */,
 				4DF302A0C8164672B8547449 /* Workspace+TitleOwnership.swift in Sources */,

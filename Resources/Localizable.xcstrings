@@ -76290,6 +76290,23 @@
         }
       }
     },
+    "contextMenu.copyPath": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Copy Path"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "パスをコピー"
+          }
+        }
+      }
+    },
     "contextMenu.copySshError": {
       "extractionState": "manual",
       "localizations": {
@@ -78484,6 +78501,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "重新命名工作區..."
+          }
+        }
+      }
+    },
+    "contextMenu.revealInFinder": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reveal in Finder"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Finderで表示"
           }
         }
       }
@@ -114328,6 +114362,40 @@
           "stringUnit": {
             "state": "translated",
             "value": "タスク"
+          }
+        }
+      }
+    },
+    "file.contextMenu.copyFile": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Copy File"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ファイルをコピー"
+          }
+        }
+      }
+    },
+    "file.contextMenu.copyFileWithExtension": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Copy .%@ File"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": ".%@ファイルをコピー"
           }
         }
       }

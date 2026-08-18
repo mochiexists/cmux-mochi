@@ -3357,6 +3357,9 @@ final class Workspace: Identifiable, ObservableObject {
         bonsplitController.tabContextMoveDestinationsProvider = { [weak self] tabId, _ in
             self?.bonsplitTabMoveDestinations(for: tabId) ?? []
         }
+        bonsplitController.tabContextMenuItemsProvider = { [weak self] tabId, _ in
+            self?.tabPathContextMenuItems(for: tabId) ?? []
+        }
         configureForkAgentConversationContextMenuAvailability()
         bonsplitController.tabContextForkConversationDefaultActionProvider = { _, _ in
             AgentConversationForkDefaultSettings.current().tabContextAction
@@ -13267,6 +13270,15 @@ extension Workspace: BonsplitDelegate {
                 return
             }
         }
+    }
+
+    func splitTabBar(
+        _ controller: BonsplitController,
+        didRequestTabContextMenuItem identifier: String,
+        for tab: Bonsplit.Tab,
+        inPane pane: PaneID
+    ) {
+        performTabPathContextMenuItem(identifier, for: tab.id)
     }
 
     func splitTabBar(_ controller: BonsplitController, didRequestTabMoveToDestination destinationId: String, for tab: Bonsplit.Tab, inPane pane: PaneID) {
