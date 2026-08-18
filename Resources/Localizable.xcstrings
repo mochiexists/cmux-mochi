@@ -76836,6 +76836,23 @@
         }
       }
     },
+    "contextMenu.copyWorkspacePath": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Copy Workspace Path"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ワークスペースのパスをコピー"
+          }
+        }
+      }
+    },
     "contextMenu.disconnectWorkspace": {
       "extractionState": "manual",
       "localizations": {

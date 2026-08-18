@@ -277,6 +277,11 @@ extension TabItemView {
         .disabled(targetIds.isEmpty)
 
         if !isMulti {
+            Button(WorkspacePathClipboard.menuTitle) {
+                WorkspacePathClipboard.copy(workspaceSnapshot.finderDirectoryPath)
+            }
+            .disabled(workspaceSnapshot.finderDirectoryPath == nil)
+
             Button(String(localized: "contextMenu.showWorkspaceInFinder", defaultValue: "Show in Finder")) {
                 let url = workspaceSnapshot.finderDirectoryPath
                     .map { URL(fileURLWithPath: $0, isDirectory: true) }

@@ -802,6 +802,12 @@ struct SidebarWorkspaceRowMenuBuilder {
         if !isMulti {
             let finderPath = commands.snapshotProvider()?.finderDirectoryPath
             menu.addItem(item(
+                WorkspacePathClipboard.menuTitle,
+                enabled: finderPath != nil
+            ) {
+                WorkspacePathClipboard.copy(finderPath)
+            })
+            menu.addItem(item(
                 String(localized: "contextMenu.showWorkspaceInFinder", defaultValue: "Show in Finder"),
                 enabled: finderPath != nil
             ) {
