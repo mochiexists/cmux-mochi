@@ -346,17 +346,17 @@ jobs:
         run: |
           set -euo pipefail
           products="build-universal/Build/Products/Release"
-          ./scripts/strip-release-bundle.sh "$products/cmux.app"
+          ./scripts/strip-release-bundle.sh "$products/cmux Mochi.app"
 
       - name: Archive unsigned nightly app
         run: |
           set -euo pipefail
           products="build-universal/Build/Products/Release"
-          if [ ! -d "$products/cmux.app" ]; then
-            echo "Built app not found at $products/cmux.app" >&2
+          if [ ! -d "$products/cmux Mochi.app" ]; then
+            echo "Built app not found at $products/cmux Mochi.app" >&2
             exit 1
           fi
-          tar -C "$products" -czf "$RUNNER_TEMP/cmux-nightly-unsigned.tar.gz" cmux.app
+          tar -C "$products" -czf "$RUNNER_TEMP/cmux-nightly-unsigned.tar.gz" "cmux Mochi.app"
 
       - name: Upload unsigned nightly app
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -477,7 +477,7 @@ jobs:
       - name: Inject universal Ghostty CLI helper
         run: |
           set -euo pipefail
-          APP_DIR="build-universal/Build/Products/Release/cmux.app"
+          APP_DIR="build-universal/Build/Products/Release/cmux Mochi.app"
           if [ ! -d "$APP_DIR" ]; then
             echo "Built app not found at $APP_DIR" >&2
             exit 1
@@ -490,16 +490,16 @@ jobs:
       - name: Run bundled Ghostty theme picker helper regression
         run: |
           set -euo pipefail
-          CMUX_APP_PATH="build-universal/Build/Products/Release/cmux.app" \
+          CMUX_APP_PATH="build-universal/Build/Products/Release/cmux Mochi.app" \
             ./tests/test_bundled_ghostty_theme_picker_helper.sh
 
       - name: Verify nightly binary architectures
         run: |
           set -euo pipefail
-          APP_BINARY="build-universal/Build/Products/Release/cmux.app/Contents/MacOS/cmux"
-          CLI_BINARY="build-universal/Build/Products/Release/cmux.app/Contents/Resources/bin/cmux"
-          HELPER_BINARY="build-universal/Build/Products/Release/cmux.app/Contents/Resources/bin/ghostty"
-          DIFF_SIDECAR="build-universal/Build/Products/Release/cmux.app/Contents/Resources/bin/cmux-diff-sidecar"
+          APP_BINARY="build-universal/Build/Products/Release/cmux Mochi.app/Contents/MacOS/cmux Mochi"
+          CLI_BINARY="build-universal/Build/Products/Release/cmux Mochi.app/Contents/Resources/bin/cmux"
+          HELPER_BINARY="build-universal/Build/Products/Release/cmux Mochi.app/Contents/Resources/bin/ghostty"
+          DIFF_SIDECAR="build-universal/Build/Products/Release/cmux Mochi.app/Contents/Resources/bin/cmux-diff-sidecar"
           APP_ARCHS="$(lipo -archs "$APP_BINARY")"
           CLI_ARCHS="$(lipo -archs "$CLI_BINARY")"
           HELPER_ARCHS="$(lipo -archs "$HELPER_BINARY")"
@@ -514,7 +514,7 @@ jobs:
       - name: Run CLI version memory guard regression
         run: |
           set -euo pipefail
-          CLI_BINARY="build-universal/Build/Products/Release/cmux.app/Contents/Resources/bin/cmux"
+          CLI_BINARY="build-universal/Build/Products/Release/cmux Mochi.app/Contents/Resources/bin/cmux"
           [ -x "$CLI_BINARY" ] || { echo "cmux CLI binary not found at $CLI_BINARY" >&2; exit 1; }
           CMUX_CLI_BIN="$CLI_BINARY" python3 tests/test_cli_version_memory_guard.py
 
@@ -524,7 +524,7 @@ jobs:
           SHORT_SHA="${{ needs.decide.outputs.short_sha }}"
           APP_DIR="build-universal/Build/Products/Release"
 
-          BASE_MARKETING=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "${APP_DIR}/cmux.app/Contents/Info.plist")
+          BASE_MARKETING=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "${APP_DIR}/cmux Mochi.app/Contents/Info.plist")
           NIGHTLY_DATE=$(date -u +%Y%m%d)
 
           # Build number: unique/monotonic per workflow run attempt so same-day
@@ -549,7 +549,7 @@ jobs:
             local app_dir="$1"
             local bundle_id="$2"
             local feed_url="$3"
-            local app_plist="$app_dir/cmux.app/Contents/Info.plist"
+            local app_plist="$app_dir/cmux Mochi.app/Contents/Info.plist"
 
             /usr/libexec/PlistBuddy -c "Set :CFBundleName cmux NIGHTLY" "$app_plist"
             /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName cmux NIGHTLY" "$app_plist"
@@ -569,7 +569,7 @@ jobs:
             /usr/libexec/PlistBuddy -c "Set :CFBundleVersion ${NIGHTLY_BUILD}" "$app_plist"
             /usr/libexec/PlistBuddy -c "Delete :CMUXCommit" "$app_plist" >/dev/null 2>&1 || true
             /usr/libexec/PlistBuddy -c "Add :CMUXCommit string ${SHORT_SHA}" "$app_plist"
-            mv "$app_dir/cmux.app" "$app_dir/cmux NIGHTLY.app"
+            mv "$app_dir/cmux Mochi.app" "$app_dir/cmux Mochi NIGHTLY.app"
           }
 
           prepare_variant \
@@ -598,7 +598,7 @@ jobs:
             --output-dir "remote-daemon-assets" \
             --asset-suffix "$NIGHTLY_BUILD"
           MANIFEST_JSON="$(python3 -c 'import json,sys; print(json.dumps(json.load(open(sys.argv[1], encoding="utf-8")), separators=(",",":")))' "remote-daemon-assets/cmuxd-remote-manifest-${NIGHTLY_BUILD}.json")"
-          APP_PLIST="build-universal/Build/Products/Release/cmux NIGHTLY.app/Contents/Info.plist"
+          APP_PLIST="build-universal/Build/Products/Release/cmux Mochi NIGHTLY.app/Contents/Info.plist"
           if [ ! -f "$APP_PLIST" ]; then
             echo "Missing nightly app Info.plist at $APP_PLIST" >&2
             exit 1
@@ -663,7 +663,7 @@ jobs:
             exit 1
           fi
 
-          APP_PATH="build-universal/Build/Products/Release/cmux NIGHTLY.app"
+          APP_PATH="build-universal/Build/Products/Release/cmux Mochi NIGHTLY.app"
           PROFILE_PATH="$APP_PATH/Contents/embedded.provisionprofile"
           TMP_PROFILE="$(mktemp /tmp/cmux-nightly-profile.XXXXXX)"
           TMP_PLIST="$(mktemp /tmp/cmux-nightly-profile.XXXXXX.plist)"
@@ -701,7 +701,7 @@ jobs:
             exit 1
           fi
           for APP_PATH in \
-            "build-universal/Build/Products/Release/cmux NIGHTLY.app"
+            "build-universal/Build/Products/Release/cmux Mochi NIGHTLY.app"
           do
             ./scripts/sign-cmux-bundle.sh \
               "$APP_PATH" \
@@ -717,7 +717,7 @@ jobs:
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
         run: |
           ./scripts/ci/notarize-nightly-dmg.sh \
-            "build-universal/Build/Products/Release/cmux NIGHTLY.app" \
+            "build-universal/Build/Products/Release/cmux Mochi NIGHTLY.app" \
             "cmux-nightly-macos.dmg" \
             "$NIGHTLY_DMG_IMMUTABLE"
 
