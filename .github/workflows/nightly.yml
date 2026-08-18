@@ -370,7 +370,7 @@ jobs:
         env:
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
           SENTRY_ORG: manaflow
-          SENTRY_PROJECT: cmuxterm-macos
+          SENTRY_PROJECT: cmux-mochi
         run: |
           if [ -z "${SENTRY_AUTH_TOKEN:-}" ]; then
             echo "SENTRY_AUTH_TOKEN not set, skipping dSYM upload"
@@ -574,11 +574,11 @@ jobs:
 
           prepare_variant \
             "$APP_DIR" \
-            "com.cmuxterm.app.nightly" \
-            "https://files.cmux.com/nightly/appcast.xml"
+            "com.cmux-mochi.nightly" \
+            "https://github.com/mochiexists/cmux-mochi/releases/download/nightly/appcast.xml"
 
           echo "Nightly app name: cmux NIGHTLY"
-          echo "Nightly bundle ID: com.cmuxterm.app.nightly"
+          echo "Nightly bundle ID: com.cmux-mochi.nightly"
           echo "Nightly marketing version: ${NIGHTLY_MARKETING_VERSION}"
           echo "Nightly build number: ${NIGHTLY_BUILD}"
           echo "Nightly immutable DMG: ${NIGHTLY_DMG_IMMUTABLE}"
@@ -594,7 +594,7 @@ jobs:
           ./scripts/build_remote_daemon_release_assets.sh \
             --version "$NIGHTLY_REMOTE_DAEMON_VERSION" \
             --release-tag "nightly" \
-            --repo "manaflow-ai/cmux" \
+            --repo "mochiexists/cmux-mochi" \
             --output-dir "remote-daemon-assets" \
             --asset-suffix "$NIGHTLY_BUILD"
           MANIFEST_JSON="$(python3 -c 'import json,sys; print(json.dumps(json.load(open(sys.argv[1], encoding="utf-8")), separators=(",",":")))' "remote-daemon-assets/cmuxd-remote-manifest-${NIGHTLY_BUILD}.json")"
@@ -653,44 +653,6 @@ jobs:
           ./scripts/import-apple-developer-id-intermediates.sh build.keychain
           security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" build.keychain
           security list-keychains -d user -s build.keychain
-
-      - name: Embed nightly provisioning profile
-        env:
-          APPLE_NIGHTLY_PROVISIONING_PROFILE_BASE64: ${{ secrets.APPLE_NIGHTLY_PROVISIONING_PROFILE_BASE64 }}
-        run: |
-          if [ -z "$APPLE_NIGHTLY_PROVISIONING_PROFILE_BASE64" ]; then
-            echo "Missing APPLE_NIGHTLY_PROVISIONING_PROFILE_BASE64 secret" >&2
-            exit 1
-          fi
-
-          APP_PATH="build-universal/Build/Products/Release/cmux Mochi NIGHTLY.app"
-          PROFILE_PATH="$APP_PATH/Contents/embedded.provisionprofile"
-          TMP_PROFILE="$(mktemp /tmp/cmux-nightly-profile.XXXXXX)"
-          TMP_PLIST="$(mktemp /tmp/cmux-nightly-profile.XXXXXX.plist)"
-          trap 'rm -f "$TMP_PROFILE" "$TMP_PLIST"' EXIT
-
-          echo "$APPLE_NIGHTLY_PROVISIONING_PROFILE_BASE64" | base64 --decode > "$TMP_PROFILE"
-          security cms -D -i "$TMP_PROFILE" > "$TMP_PLIST"
-
-          APP_ID="$(/usr/libexec/PlistBuddy -c "Print :Entitlements:com.apple.application-identifier" "$TMP_PLIST")"
-          if [ "$APP_ID" != "7WLXT3NR37.com.cmuxterm.app.nightly" ]; then
-            echo "Nightly provisioning profile targets unexpected app ID: $APP_ID" >&2
-            exit 1
-          fi
-
-          WEBAUTHN_ENTITLEMENT="$(/usr/libexec/PlistBuddy -c "Print :Entitlements:com.apple.developer.web-browser.public-key-credential" "$TMP_PLIST")"
-          if [ "$WEBAUTHN_ENTITLEMENT" != "true" ]; then
-            echo "Nightly provisioning profile is missing WebAuthn browser entitlement" >&2
-            exit 1
-          fi
-
-          PROVISIONS_ALL_DEVICES="$(/usr/libexec/PlistBuddy -c "Print :ProvisionsAllDevices" "$TMP_PLIST")"
-          if [ "$PROVISIONS_ALL_DEVICES" != "true" ]; then
-            echo "Nightly provisioning profile is not a Developer ID all-devices profile" >&2
-            exit 1
-          fi
-
-          cp "$TMP_PROFILE" "$PROFILE_PATH"
 
       - name: Codesign apps
         env:
@@ -778,7 +740,7 @@ jobs:
         run: |
           set -euo pipefail
           python3 ./scripts/prune_nightly_release_assets.py \
-            --repo manaflow-ai/cmux \
+            --repo mochiexists/cmux-mochi \
             --release-tag nightly \
             --keep-builds 100 \
             --execute
@@ -794,12 +756,12 @@ jobs:
           body: |
             Automated nightly build for `${{ needs.decide.outputs.short_sha }}`.
 
-            **cmux NIGHTLY** is published as a universal app:
-            - bundle ID `com.cmuxterm.app.nightly`
+            **cmux Mochi NIGHTLY** is published as a universal app:
+            - bundle ID `com.cmux-mochi.nightly`
             - feed `appcast.xml`
             - compatibility feed `appcast-universal.xml` for older universal nightlies
 
-            [Download cmux-nightly-macos.dmg](https://github.com/manaflow-ai/cmux/releases/download/nightly/cmux-nightly-macos.dmg)
+            [Download cmux-nightly-macos.dmg](https://github.com/mochiexists/cmux-mochi/releases/download/nightly/cmux-nightly-macos.dmg)
           files: |
             cmux-nightly-macos-${{ github.run_id }}*.dmg
             cmux-nightly-macos.dmg
@@ -807,28 +769,6 @@ jobs:
             remote-daemon-assets/cmuxd-remote-*
             appcast-universal.xml
           overwrite_files: true
-
-      - name: Upload nightly appcast to R2
-        if: needs.decide.outputs.should_publish == 'true'
-        env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.CF_R2_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.CF_R2_SECRET_ACCESS_KEY }}
-          AWS_DEFAULT_REGION: auto
-          R2_ENDPOINT: "https://${{ secrets.CF_R2_ACCOUNT_ID }}.r2.cloudflarestorage.com"
-        run: |
-          set -euo pipefail
-
-          # Upload after GitHub Release publish so the appcast never references
-          # a DMG that doesn't exist yet. R2 PutObject is atomic, so the appcast
-          # is either the old version or the new one, never missing.
-          python3 scripts/ci/upload-r2-object.py \
-            --file appcast.xml \
-            --endpoint-url "$R2_ENDPOINT" \
-            --bucket cmux-binaries \
-            --key nightly/appcast.xml \
-            --cache-control "no-cache, no-store, must-revalidate"
-
-          echo "R2 appcast upload complete: https://files.cmux.com/nightly/appcast.xml"
 
       # The nightly tag is the completion marker used by the decide job. Move it
       # to the fixed candidate selected at dispatch only after every publication
