@@ -3,6 +3,13 @@ import CmuxMobileTransport
 import DeviceLinkKit
 import Foundation
 import Network
+import OSLog
+
+/// MobileHostService.swift declares its `mobileHostLog` file-private, so this
+/// file cannot see it. Same subsystem and category, so the release-only
+/// tailnet rejection below lands in the mobile-host log stream with everything
+/// else rather than in a category of its own.
+private let deviceLinkHostLog = Logger(subsystem: "dev.cmux", category: "mobile-host")
 
 extension MobileHostService {
     /// Reads the peer's certificate fingerprint from a connection whose TLS
@@ -269,7 +276,7 @@ extension MobileHostService {
         // a leaked bearer could drive terminal input from hotel wifi. DEBUG
         // keeps every interface so the Simulator and LAN dogfood still work.
         if !Self.isTailnetConnection(connection) {
-            mobileHostLog.error("mobile host rejected non-tailnet connection in release build")
+            deviceLinkHostLog.error("mobile host rejected non-tailnet connection in release build")
             connection.cancel()
             return nil
         }
