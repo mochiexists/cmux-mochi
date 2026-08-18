@@ -390,7 +390,11 @@ jobs:
     if: needs.decide.outputs.should_build == 'true' && (github.event_name != 'schedule' || github.event.schedule == '47 8 * * *')
     # Sign and notarize on the same macOS 26 lane proven by stable releases.
     runs-on: ${{ vars.MACOS_RUNNER_26 || 'blacksmith-6vcpu-macos-26' }}
-    timeout-minutes: 40
+    # 40 was upstream's budget for a fast hosted runner. On this self-hosted
+    # box the checkout step alone costs ~29 minutes, so signing and notarizing
+    # cannot fit; run 32136881584 notarized successfully and was still killed
+    # at the cap. Matches the 75 the fork already uses for release.yml signing.
+    timeout-minutes: 75
     env:
       CMUX_CI_XCODE_APP: ${{ vars.CMUX_CI_XCODE_APP_MACOS_26 }}
       CMUX_CI_REQUIRED_MACOS_SDK_MAJOR: "26"
@@ -682,6 +686,10 @@ jobs:
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          # The post-notarization launch smoke swallows the app's own output by
+          # default, which left run 32136881584 failing with no reason beyond
+          # "exited during 5s launch smoke". Print it.
+          CMUX_SMOKE_DEBUG_LOGS: "1"
         run: |
           ./scripts/ci/notarize-nightly-dmg.sh \
             "build-universal/Build/Products/Release/cmux Mochi NIGHTLY.app" \
