@@ -1340,12 +1340,14 @@ final class MobileHostService {
                     // report as a generic refusal, so record the outcome here.
                     // Logs the status only: the ticket is single-use and the
                     // request body carries it.
+                    #if DEBUG
                     switch enrollment {
                     case .ok:
                         cmuxDebugLog("devicelink.enroll.outcome ok")
                     case .failure(let error):
                         cmuxDebugLog("devicelink.enroll.outcome refused code=\(error.code)")
                     }
+                    #endif
                     return enrollment
                 }
                 let result = await TerminalController.shared.mobileHostHandleRPC(
@@ -2663,7 +2665,9 @@ actor MobileHostConnection {
             )
         }
         eventQueue.updateSubscribedTopics(currentSubscribedTopics())
+        #if DEBUG
         cmuxDebugLog("mobile.subscription.expired count=\(expired.count)")
+        #endif
         return expired.count
     }
 
