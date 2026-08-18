@@ -14357,10 +14357,20 @@ private struct SidebarResourceSummaryView: View {
             .fixedSize()
             .padding(.horizontal, 6)
             .frame(height: 22, alignment: .center)
-            .background(
+            // Always paint a surface, not just when selected. The sidebar list
+            // scrolls underneath this footer, so a clear fill let the last row's
+            // path render straight through the readout — two strings stacked in
+            // the same pixels. The material occludes whatever passes behind
+            // while still reading as part of a translucent sidebar; the accent
+            // tint layers on top so selection still looks the same.
+            .background {
                 RoundedRectangle(cornerRadius: 5, style: .continuous)
-                    .fill(isActive ? Color.accentColor.opacity(0.15) : Color.clear)
-            )
+                    .fill(.regularMaterial)
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 5, style: .continuous)
+                            .fill(isActive ? Color.accentColor.opacity(0.15) : Color.clear)
+                    }
+            }
         }
         .buttonStyle(SidebarFooterIconButtonStyle())
         .safeHelp(String(localized: "sidebar.taskManager.summary", defaultValue: "Open Task Manager"))
