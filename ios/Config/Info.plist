@@ -14,6 +14,8 @@
 	<string>6.0</string>
 	<key>CMUXAuthEnvironment</key>
 	<string>$(CMUX_IOS_AUTH_ENV)</string>
+	<key>CMUXBuildChannel</key>
+	<string>$(CMUX_IOS_BUILD_CHANNEL)</string>
 	<key>CMUXApiBaseURL</key>
 	<string>$(CMUX_API_BASE_URL)</string>
 	<key>CMUXIrohBrokerBaseURL</key>
@@ -38,7 +40,7 @@
 			<key>CFBundleTypeRole</key>
 			<string>Viewer</string>
 			<key>CFBundleURLName</key>
-			<string>dev.cmux.ios.attach</string>
+			<string>com.cmux-mochi.ios.attach</string>
 			<key>CFBundleURLSchemes</key>
 			<array>
 				<!-- Channel-specific pairing scheme (CMUX_IOS_URL_SCHEME in
@@ -53,7 +55,7 @@
 			<key>CFBundleTypeRole</key>
 			<string>Viewer</string>
 			<key>CFBundleURLName</key>
-			<string>dev.cmux.ios.stack-auth</string>
+			<string>com.cmux-mochi.ios.stack-auth</string>
 			<key>CFBundleURLSchemes</key>
 			<array>
 				<string>stack-auth-mobile-oauth-url</string>

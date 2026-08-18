@@ -135,11 +135,11 @@ jobs:
           security list-keychains -d user -s "$KEYCHAIN_NAME"
           IOS_DISTRIBUTION_IDENTITY="$(
             security find-identity -v -p codesigning "$KEYCHAIN_NAME" |
-              sed -n 's/.*"\(Apple Distribution: .* (7WLXT3NR37)\)".*/\1/p' |
+              sed -n 's/.*"\(Apple Distribution: .* (599WAZ6282)\)".*/\1/p' |
               head -n 1
           )"
           if [ -z "$IOS_DISTRIBUTION_IDENTITY" ]; then
-            echo "No Apple Distribution identity for team 7WLXT3NR37 was found in the imported certificate" >&2
+            echo "No Apple Distribution identity for team 599WAZ6282 was found in the imported certificate" >&2
             exit 1
           fi
           echo "IOS_DISTRIBUTION_IDENTITY=$IOS_DISTRIBUTION_IDENTITY" >> "$GITHUB_ENV"

@@ -9,8 +9,8 @@ import UIKit
 ///
 /// Lives in the app layer because it reads `Bundle.main`, `UIDevice`, and the
 /// hardware machine identifier, none of which belong in the platform-light shell
-/// package. The build type is derived from `#if DEBUG` plus the bundle id, the
-/// single place that derivation lives.
+/// package. The build type is derived from `#if DEBUG` plus the declared
+/// `CMUXBuildChannel` and the bundle id, the single place that derivation lives.
 extension MobileFeedbackStamp {
     /// Resolve the stamp for the running build.
     @MainActor
@@ -19,7 +19,8 @@ extension MobileFeedbackStamp {
         let bundleID = Bundle.main.bundleIdentifier ?? ""
         let buildType = MobileBuildType.resolve(
             isDebugBuild: isDebugBuild,
-            bundleIdentifier: bundleID
+            bundleIdentifier: bundleID,
+            buildChannel: info[Self.buildChannelInfoPlistKey] as? String
         )
         return MobileFeedbackStamp(
             buildType: buildType,
@@ -30,6 +31,10 @@ extension MobileFeedbackStamp {
             deviceModel: deviceModel
         )
     }
+
+    /// Info.plist key carrying the declared distribution channel. Baked from
+    /// `CMUX_IOS_BUILD_CHANNEL` in `ios/Config/*.xcconfig`; keep both in sync.
+    private static let buildChannelInfoPlistKey = "CMUXBuildChannel"
 
     private static var isDebugBuild: Bool {
         #if DEBUG
