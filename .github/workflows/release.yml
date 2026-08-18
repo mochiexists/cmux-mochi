@@ -434,8 +434,14 @@ jobs:
           xcrun stapler staple "$APP_PATH"
           xcrun stapler validate "$APP_PATH"
           spctl -a -vv --type execute "$APP_PATH"
-          CMUX_SMOKE_ALLOW_UNSUPPORTED_GUI=1 CMUX_SMOKE_DEBUG_LOGS=1 ./scripts/smoke-launch-macos-app.sh "$APP_PATH"
-          CMUX_SMOKE_DIRECT_EXEC=1 CMUX_SMOKE_DEBUG_LOGS=1 ./scripts/smoke-launch-macos-app.sh "$APP_PATH"
+          # CMUX_SMOKE_QUIT_CONFLICTING: the self-hosted signing runner doubles
+          # as a dogfood box, and an already-running same-bundle-id instance
+          # terminates the smoke app via the duplicate-launch observer. On a
+          # stable release cut this QUITS the runner's own running cmux Mochi
+          # for the duration of the smoke — deliberate: the alternative is the
+          # release failing its smoke every time the box is in use.
+          CMUX_SMOKE_QUIT_CONFLICTING=1 CMUX_SMOKE_ALLOW_UNSUPPORTED_GUI=1 CMUX_SMOKE_DEBUG_LOGS=1 ./scripts/smoke-launch-macos-app.sh "$APP_PATH"
+          CMUX_SMOKE_QUIT_CONFLICTING=1 CMUX_SMOKE_DIRECT_EXEC=1 CMUX_SMOKE_DEBUG_LOGS=1 ./scripts/smoke-launch-macos-app.sh "$APP_PATH"
           ./scripts/verify-app-bundle-channel-metadata.sh "$APP_PATH" stable
           ./scripts/verify-app-bundle-licenses.sh "$APP_PATH"
           rm -f "$ZIP_SUBMIT"

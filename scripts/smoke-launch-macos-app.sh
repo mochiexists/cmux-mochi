@@ -24,6 +24,7 @@ PREEXISTING_PIDS="$(pgrep -f "$EXECUTABLE_PATH" 2>/dev/null || true)"
 DEBUG_LOGS="${CMUX_SMOKE_DEBUG_LOGS:-0}"
 ALLOW_UNSUPPORTED_GUI="${CMUX_SMOKE_ALLOW_UNSUPPORTED_GUI:-0}"
 DIRECT_EXEC="${CMUX_SMOKE_DIRECT_EXEC:-0}"
+QUIT_CONFLICTING="${CMUX_SMOKE_QUIT_CONFLICTING:-0}"
 DISABLE_ICON_PERSISTENCE_KEY="cmuxDisableBundleIconPersistence"
 
 cleanup() {
@@ -71,6 +72,49 @@ open_log_indicates_unsupported_gui() {
   grep -Fq 'OSLaunchdErrorDomain Code=125' "$OPEN_LOG" \
     && grep -Fq 'Domain does not support specified action' "$OPEN_LOG"
 }
+
+# Any already-running instance of this bundle id kills the smoke: the app's
+# duplicate-launch observer terminates every same-bundle-id newcomer within
+# ~1s of it finishing launch (proven by the singleInstance.observe.
+# terminateDuplicate breadcrumbs from the stale NIGHTLY on the signing
+# runner, which failed the Aug 18 nightly smoke). Opt-in because it QUITS
+# those instances: CI signing runners double as dogfood machines, so this
+# must never fire on a developer's own launch.
+conflicting_pids() {
+  {
+    # Same bundle directory name anywhere on disk (TCC-free, catches the
+    # /Applications install even when LaunchServices data is stale).
+    pgrep -f "/$(basename "$APP_PATH")/Contents/MacOS/" 2>/dev/null || true
+    # Same bundle id under any bundle name, via LaunchServices.
+    for asn in $(/usr/bin/lsappinfo find "bundleid=$BUNDLE_ID" 2>/dev/null); do
+      /usr/bin/lsappinfo info -only pid "$asn" 2>/dev/null \
+        | sed -n 's/.*"pid"=\([0-9][0-9]*\).*/\1/p'
+    done
+  } | sort -un
+}
+
+if [[ "$QUIT_CONFLICTING" == "1" ]]; then
+  CONFLICTS="$(conflicting_pids)"
+  if [[ -n "$CONFLICTS" ]]; then
+    echo "==> quitting pre-existing $BUNDLE_ID instances before launch smoke:" $CONFLICTS
+    while IFS= read -r pid; do
+      [[ -n "$pid" ]] && kill -TERM "$pid" 2>/dev/null || true
+    done <<<"$CONFLICTS"
+    for _ in $(seq 1 10); do
+      sleep 1
+      [[ -z "$(conflicting_pids)" ]] && break
+    done
+    REMAINING="$(conflicting_pids)"
+    if [[ -n "$REMAINING" ]]; then
+      echo "warning: force-killing $BUNDLE_ID instances that ignored TERM:" $REMAINING >&2
+      while IFS= read -r pid; do
+        [[ -n "$pid" ]] && kill -KILL "$pid" 2>/dev/null || true
+      done <<<"$REMAINING"
+      sleep 1
+    fi
+    PREEXISTING_PIDS="$(pgrep -f "$EXECUTABLE_PATH" 2>/dev/null || true)"
+  fi
+fi
 
 echo "==> smoke launching $APP_PATH"
 # The Dock tile plugin can run in the Dock process, so seed the shared app

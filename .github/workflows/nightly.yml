@@ -690,6 +690,12 @@ jobs:
           # default, which left run 32136881584 failing with no reason beyond
           # "exited during 5s launch smoke". Print it.
           CMUX_SMOKE_DEBUG_LOGS: "1"
+          # The signing runner doubles as a dogfood box: a long-lived installed
+          # NIGHTLY instance terminates every same-bundle-id newcomer via the
+          # app's duplicate-launch observer, killing the smoke app within its
+          # 5s window (run 32163917424's breadcrumbs: singleInstance.observe.
+          # terminateDuplicate from the stale pid). Quit those instances first.
+          CMUX_SMOKE_QUIT_CONFLICTING: "1"
         run: |
           ./scripts/ci/notarize-nightly-dmg.sh \
             "build-universal/Build/Products/Release/cmux Mochi NIGHTLY.app" \
