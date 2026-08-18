@@ -242,16 +242,41 @@ checked captured *arguments*, so a session needing extra flags silently resumes
 without them — e.g. with the wrong permission mode. That is worse than not
 shipping the feature, so it stays unlanded.
 
-**The correct rule for the next attempt.** Use the alias only when it is
-*equivalent* to the captured command: take the captured resume argv, subtract
-the flags the alias itself encodes (`--dangerously-skip-permissions` for `ccy`,
-`--dangerously-bypass-approvals-and-sandbox` for `cxy`), and require the
-remainder to be exactly `[resumeToken, sessionId]`. Anything else — an observed
-`permissionMode`, a model, codex image flags — must take the wrapper form.
+**The correct rule, derived from all seven relevant cases.** Use the alias only
+when *all three* hold:
 
-That satisfies both test sets, which is the evidence it is the right rule: the
-alias tests build snapshots with no `permissionMode`, while the permission-mode
-tests set one explicitly.
+1. `permissionMode == nil` — no observed mode that must be replayed;
+2. `launchCommand?.environment` is empty — nothing like `CLAUDE_CONFIG_DIR` to
+   reproduce (an alias would resume against a different account);
+3. the captured resume argv, after removing the resume token, the session id,
+   and every **permission/sandbox-posture** flag, is empty.
+
+Point 3 is the subtle one. The aliases *encode posture* — `ccy` is
+`claude --dangerously-skip-permissions`, `cxy` is
+`codex --dangerously-bypass-approvals-and-sandbox` — so posture flags are
+subsumed by which alias gets chosen and may be dropped. Everything else
+(`--model`, `--image`, …) changes behaviour and must force the wrapper form.
+
+Posture flags to subtract: `--dangerously-skip-permissions`,
+`--permission-mode <value>` (claude); `--dangerously-bypass-approvals-and-sandbox`,
+`--yolo`, `(-s|--sandbox) danger-full-access`, `(-a|--ask-for-approval) never`
+(codex).
+
+Verified against every case:
+
+| case | expected | rule gives |
+|---|---|---|
+| claude, no launchCommand | `ccy '--resume' id` | alias (nothing to preserve) |
+| claude `--permission-mode auto` | `cc '--resume' id` | alias (posture-only) |
+| claude `--dangerously-skip-permissions` | `ccy '--resume' id` | alias (posture-only) |
+| codex `--sandbox danger-full-access --ask-for-approval never` | `cxy 'resume' id` | alias (posture-only) |
+| codex `--dangerously-bypass-approvals-and-sandbox` | `cxy 'resume' id` | alias (posture-only) |
+| codex `--yolo --image … --model gpt-5.4` | wrapper | wrapper (`--model`/`--image` survive) |
+| claude with `permissionMode: "acceptEdits"` | wrapper | wrapper (rule 1) |
+| claude with `CLAUDE_CONFIG_DIR` env | wrapper | wrapper (rule 2) |
+
+The gate I shipped and reverted checked only rule 2, which is why it passed the
+5 alias tests and broke the other 4.
 
 WIP parked as `stash@{0}` in `~/cmux-clean-trunk` on `m4-macbook-pro`.
 
