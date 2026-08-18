@@ -1410,6 +1410,12 @@ class TerminalController {
             return v2Result(id: request.id, v2SystemMemory(params: request.params))
         case "surface.read_text":
             return v2Result(id: request.id, v2SurfaceReadText(params: request.params))
+        case "surface.screenshot", "surface.text", "surface.ingest":
+            v2MainSync { self.v2RefreshKnownRefs() }
+            return v2Result(
+                id: request.id,
+                v2SurfaceCommandOnSocketWorker(method: request.method, params: request.params)
+            )
         case "workspace.screenshot":
             v2MainSync { self.v2RefreshKnownRefs() }
             return v2Result(id: request.id, v2WorkspaceScreenshot(params: request.params))
@@ -6083,7 +6089,7 @@ class TerminalController {
         return (workspace.focusedPanelId, nil)
     }
 
-    private nonisolated func v2JSONLiteral(_ value: Any) -> String {
+    nonisolated func v2JSONLiteral(_ value: Any) -> String {
         v2BrowserControl.jsonLiteral(value)
     }
 
@@ -6110,9 +6116,9 @@ class TerminalController {
     /// Sendable stand-in for `WKContentWorld` so nonisolated callers can pick a world without
     /// touching the main-actor-isolated `WKContentWorld.page`/`.defaultClient` statics. The real
     /// world is resolved on the main actor inside `v2RunJavaScript`.
-    private enum V2JSContentWorld: Sendable { case page, isolated }
+    enum V2JSContentWorld: Sendable { case page, isolated }
 
-    private nonisolated func v2RunJavaScript(
+    nonisolated func v2RunJavaScript(
         _ webView: WKWebView,
         script: String,
         timeout: TimeInterval = 5.0,
