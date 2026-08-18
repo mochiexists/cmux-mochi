@@ -11226,27 +11226,9 @@ final class GhosttySurfaceScrollView: NSView {
     }
 #endif
 
-#if DEBUG
-    struct DebugFrameSample {
-        let sampleCount: Int
-        let uniqueQuantized: Int
-        let lumaStdDev: Double
-        let modeFraction: Double
-        let fingerprint: UInt64
-        let iosurfaceWidthPx: Int
-        let iosurfaceHeightPx: Int
-        let expectedWidthPx: Int
-        let expectedHeightPx: Int
-        let layerClass: String
-        let layerContentsGravity: String
-        let layerContentsKey: String
-
-        var isProbablyBlank: Bool {
-            (lumaStdDev < 3.5 && modeFraction > 0.985) ||
-            (uniqueQuantized <= 6 && modeFraction > 0.95)
-        }
-    }
-
+    // Not #if DEBUG: workspace.screenshot / surface.screenshot are shipped
+    // socket commands, so the capture they rely on has to exist in Release.
+    // The `debug` prefix is historical -- it was a debug-test helper first.
     /// Create a CGImage from the terminal's IOSurface-backed layer contents.
     ///
     /// This avoids Screen Recording permissions (unlike CGWindowListCreateImage) and is therefore
@@ -11292,6 +11274,28 @@ final class GhosttySurfaceScrollView: NSView {
             intent: .defaultIntent
         )
     }
+
+#if DEBUG
+    struct DebugFrameSample {
+        let sampleCount: Int
+        let uniqueQuantized: Int
+        let lumaStdDev: Double
+        let modeFraction: Double
+        let fingerprint: UInt64
+        let iosurfaceWidthPx: Int
+        let iosurfaceHeightPx: Int
+        let expectedWidthPx: Int
+        let expectedHeightPx: Int
+        let layerClass: String
+        let layerContentsGravity: String
+        let layerContentsKey: String
+
+        var isProbablyBlank: Bool {
+            (lumaStdDev < 3.5 && modeFraction > 0.985) ||
+            (uniqueQuantized <= 6 && modeFraction > 0.95)
+        }
+    }
+
 
     /// Sample the IOSurface backing the terminal layer (if any) to detect a transient blank frame
     /// without using screenshots/screen recording permissions.
