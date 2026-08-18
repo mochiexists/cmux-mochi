@@ -369,7 +369,7 @@ jobs:
       - name: Upload dSYMs to Sentry
         env:
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
-          SENTRY_ORG: manaflow
+          SENTRY_ORG: codes-o3
           SENTRY_PROJECT: cmux-mochi
         run: |
           if [ -z "${SENTRY_AUTH_TOKEN:-}" ]; then
