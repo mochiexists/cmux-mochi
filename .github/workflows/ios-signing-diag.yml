@@ -24,6 +24,9 @@ jobs:
         env:
           IOS_DISTRIBUTION_CERTIFICATE_BASE64: ${{ secrets.IOS_DISTRIBUTION_CERTIFICATE_BASE64 }}
           IOS_DISTRIBUTION_CERTIFICATE_PASSWORD: ${{ secrets.IOS_DISTRIBUTION_CERTIFICATE_PASSWORD }}
+          ASC_API_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
+          ASC_API_ISSUER_ID: ${{ secrets.ASC_API_ISSUER_ID }}
+          ASC_API_KEY_P8_BASE64: ${{ secrets.ASC_API_KEY_P8_BASE64 }}
         run: |
           set -uo pipefail
           KEYCHAIN_PASSWORD="$(uuidgen)"
@@ -113,6 +116,32 @@ jobs:
             fi
           else
             echo "===== PROBE F: archive not found, skipped"
+          fi
+
+          # G: same export but WITH the ASC auth args the real script passes —
+          # the one variable probe F did not carry.
+          if [ -d "$ARCH_DIR/cmux.xcarchive" ] && [ -n "${ASC_API_KEY_ID:-}" ]; then
+            KEY_DIR="$HOME/.appstoreconnect/private_keys"
+            KEY_PATH="$KEY_DIR/AuthKey_${ASC_API_KEY_ID}.p8"
+            mkdir -p "$KEY_DIR"
+            printf '%s' "$ASC_API_KEY_P8_BASE64" | base64 --decode > "$KEY_PATH"
+            chmod 600 "$KEY_PATH"
+            echo "===== PROBE G: exportArchive replay WITH ASC auth args"
+            rm -rf "$RUNNER_TEMP/export-g"
+            if xcodebuild -exportArchive \
+                -archivePath "$ARCH_DIR/cmux.xcarchive" \
+                -exportPath "$RUNNER_TEMP/export-g" \
+                -exportOptionsPlist "$ARCH_DIR/ExportOptions.plist" \
+                -allowProvisioningUpdates \
+                -authenticationKeyPath "$KEY_PATH" \
+                -authenticationKeyID "$ASC_API_KEY_ID" \
+                -authenticationKeyIssuerID "$ASC_API_ISSUER_ID" 2>&1 | tail -25; then
+              echo "===== PROBE G: SUCCESS"
+            else
+              echo "===== PROBE G: FAILED (exit $?)"
+            fi
+          else
+            echo "===== PROBE G: skipped (no archive or no ASC key)"
           fi
 
           echo "== cleanup"
