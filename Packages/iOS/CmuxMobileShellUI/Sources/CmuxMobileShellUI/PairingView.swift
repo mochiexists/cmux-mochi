@@ -67,6 +67,40 @@ struct PairingView: View {
     var body: some View {
         NavigationStack {
             Form {
+                // Fork (cmux Mochi): the QR scan IS the pairing flow, so it leads
+                // the page under the fork's own mark. Upstream framed this page
+                // account-first with the scan as an afterthought; on this fork the
+                // Mac authorizes on the DeviceLink enrollment ticket in the QR, so
+                // accounts and manual entry are the footnotes, not the headline.
+                #if os(iOS)
+                Section {
+                    HStack(alignment: .top, spacing: 12) {
+                        Image("MochiLogo")
+                            .resizable()
+                            .aspectRatio(contentMode: .fit)
+                            .frame(width: 28, height: 28)
+                            .accessibilityHidden(true)
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(L10n.string("mobile.addDevice.fork.title", defaultValue: "cmux Mochi"))
+                                .font(.headline)
+                            Text(L10n.string(
+                                "mobile.addDevice.fork.subtitle",
+                                defaultValue: "No account needed. Scan the QR from your Mac's Pair iPhone window and you're in."
+                            ))
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                        }
+                    }
+                    Button {
+                        isShowingScanner = true
+                    } label: {
+                        Label(L10n.string("mobile.pairing.scan", defaultValue: "Scan QR Code"), systemImage: "qrcode.viewfinder")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .accessibilityIdentifier("MobileScanQRCodeButton")
+                }
+                #endif
+
                 Section {
                     TextField(
                         L10n.string("mobile.addDevice.namePlaceholder", defaultValue: "Work Mac"),
@@ -95,11 +129,11 @@ struct PairingView: View {
                     .addDeviceInputBehavior(.number)
                     .accessibilityIdentifier("MobileAddDevicePortField")
                 } header: {
-                    Text(L10n.string("mobile.addDevice.title", defaultValue: "Add Computer"))
+                    Text(L10n.string("mobile.addDevice.manualHeader", defaultValue: "Manual entry (development)"))
                 } footer: {
                     Text(L10n.string(
                         "mobile.addDevice.help",
-                        defaultValue: "Scan the code from your Mac (Settings \u{2192} Mobile \u{2192} Pair a Device). You can also paste that code's link into the host field."
+                        defaultValue: "You can paste a pairing link from the Mac into the host field. A bare host and port is for simulator development only."
                     ))
                 }
                 .overlay(alignment: .topLeading) {
@@ -116,13 +150,15 @@ struct PairingView: View {
 
                 Section {
                     HStack(alignment: .top, spacing: 12) {
-                        Image(systemName: authManager.isAuthenticated ? "person.crop.circle.badge.checkmark" : "person.crop.circle.badge.exclamationmark")
+                        // Fork (cmux Mochi): signed-out is the NORMAL state here, so
+                        // no alarm iconography — QR pairing never touches an account.
+                        Image(systemName: authManager.isAuthenticated ? "person.crop.circle.badge.checkmark" : "person.crop.circle")
                             .font(.title3)
-                            .foregroundStyle(authManager.isAuthenticated ? .green : .orange)
+                            .foregroundStyle(authManager.isAuthenticated ? .green : .secondary)
                             .frame(width: 28)
 
                         VStack(alignment: .leading, spacing: 4) {
-                            Text(L10n.string("mobile.addDevice.accountTitle", defaultValue: "This device"))
+                            Text(L10n.string("mobile.addDevice.accountTitle", defaultValue: "Account (optional)"))
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
 
@@ -132,25 +168,13 @@ struct PairingView: View {
                                 .textSelection(.enabled)
                                 .accessibilityIdentifier("MobileAddDeviceSignedInAccount")
 
-                            Text(L10n.string("mobile.addDevice.accountHelp", defaultValue: "Pasting a pairing link from the Mac works without an account. A bare host and port does not \u{2014} that path still needs one."))
+                            Text(L10n.string("mobile.addDevice.accountHelp", defaultValue: "QR pairing never needs an account. Sign in only for push notifications and cross-device sync \u{2014} or if you use manual host/port entry, which still requires one."))
                                 .font(.footnote)
                                 .foregroundStyle(.secondary)
                         }
                     }
                     .accessibilityElement(children: .contain)
                 }
-
-                #if os(iOS)
-                Section {
-                    Button {
-                        isShowingScanner = true
-                    } label: {
-                        Label(L10n.string("mobile.pairing.scan", defaultValue: "Scan QR Code"), systemImage: "qrcode.viewfinder")
-                            .frame(maxWidth: .infinity)
-                    }
-                    .accessibilityIdentifier("MobileScanQRCodeButton")
-                }
-                #endif
 
                 if let manualRouteWarningText {
                     Section {

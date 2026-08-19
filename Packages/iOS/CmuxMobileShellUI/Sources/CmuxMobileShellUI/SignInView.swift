@@ -13,6 +13,12 @@ import AppKit
 
 struct SignInView: View {
     private let usesStandaloneChrome: Bool
+    /// Fork (cmux Mochi): invoked by "Continue without an account", which drops
+    /// straight to pairing. This fork's Mac host authorizes on the DeviceLink
+    /// enrollment ticket in the QR alone, so the account is a convenience, not
+    /// the security boundary. `nil` restores upstream behavior (no skip
+    /// affordance).
+    private let onSkipSignIn: (() -> Void)?
     @Environment(AuthCoordinator.self) private var authManager
     @Environment(\.analytics) private var analytics
     @State private var email = ""
@@ -26,8 +32,9 @@ struct SignInView: View {
     @FocusState private var isEmailFocused: Bool
     @FocusState private var isCodeFocused: Bool
 
-    init(usesStandaloneChrome: Bool = true) {
+    init(usesStandaloneChrome: Bool = true, onSkipSignIn: (() -> Void)? = nil) {
         self.usesStandaloneChrome = usesStandaloneChrome
+        self.onSkipSignIn = onSkipSignIn
     }
 
     @ViewBuilder
@@ -95,6 +102,14 @@ struct SignInView: View {
             VStack(spacing: 20) {
                 brandHeader
                 SignInAuthRestoreStatusView()
+
+                // Fork (cmux Mochi): pairing without an account is a first-class
+                // choice here, not a footnote — this fork's Mac host authorizes on
+                // the DeviceLink enrollment ticket alone, so an account buys extras
+                // (push forwarding, cross-device sync) rather than access. It sits
+                // ABOVE the providers, in Mochi purple, because it is the path we
+                // expect most operators to take.
+                skipSignInButton
 
                 VStack(spacing: 12) {
                     ForEach(OAuthSignInProvider.allCases, id: \.self) { provider in
@@ -241,6 +256,61 @@ struct SignInView: View {
     private var isAuthInProgress: Bool {
         isInteractiveAuthInProgress || authManager.isRestoringSession
     }
+
+    /// Fork (cmux Mochi): the no-account path, presented as a peer of the sign-in
+    /// providers rather than as small print beneath them.
+    ///
+    /// Mochi purple rather than the system accent: it marks this as the fork's own
+    /// affordance, and gives it visual weight against the glass provider buttons
+    /// without stealing the "primary action" styling from `Email me a code`.
+    @ViewBuilder
+    private var skipSignInButton: some View {
+        if let onSkipSignIn {
+            Button {
+                onSkipSignIn()
+            } label: {
+                HStack(spacing: 6) {
+                    // Mochi herself, in the slot where the providers put their marks.
+                    // Original rendering intent (not template) so the cat keeps her
+                    // purple and blue instead of being flattened to the tint.
+                    // 22pt rather than the 18pt the flat provider glyphs use: Mochi
+                    // carries an outline, collar, bell and eye highlights, and that
+                    // detail turns to mush at 18. The row has the height for it.
+                    Image("MochiLogo")
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .frame(width: 22, height: 22)
+                        .accessibilityHidden(true)
+                    Text(L10n.string(
+                        "mobile.signIn.skip",
+                        defaultValue: "Continue without an account"
+                    ))
+                    .fontWeight(.semibold)
+                    .foregroundStyle(Self.mochiPurple)
+                }
+                .frame(maxWidth: .infinity)
+                .contentShape(.capsule)
+            }
+            .disabled(isAuthInProgress)
+            .mobileGlassButton()
+            .accessibilityIdentifier("signin.skip")
+        }
+    }
+
+    /// Mochi's brand purple, adapted per appearance so it stays legible on both
+    /// the light and the dark glass card.
+    ///
+    /// The dark-mode value is the brand purple as-is; on a WHITE card it only
+    /// reaches ~4.25:1, under the 4.5:1 WCAG AA floor for normal-size text
+    /// (Codex review), so light mode uses a darkened variant that clears it while
+    /// still reading as the same colour.
+    private static let mochiPurple = Color(
+        UIColor { traits in
+            traits.userInterfaceStyle == .dark
+                ? UIColor(red: 0.541, green: 0.361, blue: 0.965, alpha: 1)
+                : UIColor(red: 0.404, green: 0.216, blue: 0.816, alpha: 1)
+        }
+    )
 
     private func oauthButton(for provider: OAuthSignInProvider) -> some View {
         Button {

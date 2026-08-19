@@ -35,6 +35,12 @@ struct CMUXMobileRootView: View {
     #endif
     @State private var pendingAttachURL: String?
     @State private var didAuthenticateWithAttachTicket = false
+    /// Fork (cmux Mochi): the operator chose "continue without an account" on the
+    /// sign-in screen. This fork's Mac host authorizes on the DeviceLink
+    /// enrollment ticket alone, so an account is a convenience — not a security
+    /// boundary. Persisted so the choice survives relaunch: a skipped user lands
+    /// on pairing, never back at the wall.
+    @AppStorage("mochi.mobile.skippedSignIn") private var didSkipSignIn = false
     /// Whether this device holds a DeviceLink key and pin for some Mac.
     @State private var hasPairedDeviceIdentity = false
     @State private var didExceedStartupRestoringGate = false
@@ -332,8 +338,8 @@ struct CMUXMobileRootView: View {
             onboardingPreview
         } else if shouldShowOnboarding {
             onboardingFlow
-        } else if !isAuthenticated {
-            SignInView()
+        } else if !isAuthenticated, !didSkipSignIn {
+            SignInView(onSkipSignIn: { didSkipSignIn = true })
         } else {
             switch MobileRootAuthGate.shellSurface(
                 connectionState: store.connectionState,

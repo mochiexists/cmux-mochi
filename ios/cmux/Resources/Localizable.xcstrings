@@ -364,13 +364,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Manual pairing uses this account. If it does not match the Mac, scan a QR/link from the Mac."
+            "value": "QR pairing never needs an account. Sign in only for push notifications and cross-device sync — or for manual host/port entry, which still requires one."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "手動ペアリングではこのアカウントを使用します。Mac と一致しない場合は、Mac から QR/リンクをスキャンしてください。"
+            "value": "QR ペアリングにアカウントは不要です。プッシュ通知やデバイス間同期、またはホスト/ポートの手入力を使う場合のみサインインしてください。"
           }
         }
       }
@@ -381,13 +381,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "This device"
+            "value": "Account (optional)"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "このデバイス"
+            "value": "アカウント（任意）"
           }
         }
       }
@@ -405,6 +405,40 @@
           "stringUnit": {
             "state": "translated",
             "value": "別のコンピュータを追加"
+          }
+        }
+      }
+    },
+    "mobile.addDevice.fork.subtitle": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No account needed. Scan the QR from your Mac's Pair iPhone window and you're in."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "アカウント不要。Mac の「iPhone をペアリング」ウィンドウの QR をスキャンするだけです。"
+          }
+        }
+      }
+    },
+    "mobile.addDevice.fork.title": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "cmux Mochi"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "cmux Mochi"
           }
         }
       }
@@ -432,13 +466,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Scan the Mac's Iroh QR. Manual host and port is only for loopback development in the simulator."
+            "value": "You can paste a pairing link from the Mac into the host field. A bare host and port is for simulator development only."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "MacのIroh QRをスキャンしてください。ホストとポートの手入力は、シミュレータのループバック開発専用です。"
+            "value": "Mac のペアリングリンクをホスト欄に貼り付けることもできます。ホストとポートの手入力はシミュレータ開発専用です。"
           }
         }
       }
@@ -524,6 +558,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "ホストとポートの手入力はIrohを経由しません。アカウント認証情報はシミュレータのループバックでのみ送信できます。実機ではMacのIroh QRを使用してください。"
+          }
+        }
+      }
+    },
+    "mobile.addDevice.manualHeader": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Manual entry (development)"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "手動入力（開発用）"
           }
         }
       }
@@ -8378,6 +8429,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "%@ にコードを送信しました"
+          }
+        }
+      }
+    },
+    "mobile.signIn.skip": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Continue without an account"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "アカウントなしで続ける"
           }
         }
       }
