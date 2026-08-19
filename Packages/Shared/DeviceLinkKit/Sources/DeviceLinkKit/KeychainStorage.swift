@@ -105,6 +105,16 @@ struct KeychainItem {
             return result as? Data
         case errSecItemNotFound:
             return nil
+        case errSecDuplicateItem:
+            // A read that reports "duplicate" means the query matched item
+            // shards ambiguously across the file and data-protection keychains
+            // (stale residue from an earlier build; see the eviction note in
+            // `write`). Such an item cannot be read back, so it protects
+            // nothing — evict both stores and report absent so the caller
+            // recreates it cleanly.
+            SecItemDelete(baseQuery(dataProtection: true) as CFDictionary)
+            SecItemDelete(baseQuery(dataProtection: false) as CFDictionary)
+            return nil
         case errSecInteractionNotAllowed:
             throw KeychainStorageError.locked
         default:
@@ -132,7 +142,11 @@ struct KeychainItem {
         switch updateStatus {
         case errSecSuccess:
             return
-        case errSecItemNotFound:
+        case errSecItemNotFound, errSecDuplicateItem:
+            // errSecDuplicateItem from UPDATE is the same cross-store shadowing
+            // as the add-path collision below (the M4 hit it from update, not
+            // add): fall through to the add, whose duplicate handler evicts the
+            // stale shards from both stores and re-adds.
             var insert = query
             insert[kSecValueData] = data
             insert[kSecAttrAccessible] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
