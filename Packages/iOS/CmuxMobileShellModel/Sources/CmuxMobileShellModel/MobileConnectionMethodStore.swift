@@ -41,11 +41,19 @@ public final class MobileConnectionMethodStore {
     /// Create a store backed by the given defaults.
     public init(defaults: UserDefaults) {
         self.defaults = defaults
+        // Fork (cmux Mochi): the automatic transport dials upstream's
+        // account-backed managed relays, which this fork does not run — for us
+        // it can only search and fail ("Couldn't connect to your Mac yet").
+        // Tailscale/QR is this fork's real pairing path, so it is the default,
+        // and a stored `automatic` (upstream's default, possibly persisted by
+        // an older build) is coerced rather than honored so existing installs
+        // stop preferring a dead transport.
         if let rawValue = defaults.string(forKey: Self.methodKey),
-           let method = MobileConnectionMethod(rawValue: rawValue) {
+           let method = MobileConnectionMethod(rawValue: rawValue),
+           method != .automatic {
             self.method = method
         } else {
-            self.method = .automatic
+            self.method = .tailscale
         }
     }
 }
