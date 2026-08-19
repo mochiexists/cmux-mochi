@@ -95,6 +95,26 @@ jobs:
             echo "===== PROBE E: leftover framework not found, skipped"
           fi
 
+          # F: exact xcodebuild -exportArchive replay against run 3's surviving
+          # archive, same ExportOptions, isolating the xcodebuild-child context
+          # that bare codesign probes cannot reproduce.
+          ARCH_DIR=/tmp/cmux-ios-beta-20260819013744
+          if [ -d "$ARCH_DIR/cmux.xcarchive" ]; then
+            echo "===== PROBE F: xcodebuild -exportArchive replay"
+            rm -rf "$RUNNER_TEMP/export-f"
+            if xcodebuild -exportArchive \
+                -archivePath "$ARCH_DIR/cmux.xcarchive" \
+                -exportPath "$RUNNER_TEMP/export-f" \
+                -exportOptionsPlist "$ARCH_DIR/ExportOptions.plist" \
+                -allowProvisioningUpdates 2>&1 | tail -25; then
+              echo "===== PROBE F: SUCCESS"
+            else
+              echo "===== PROBE F: FAILED (exit $?)"
+            fi
+          else
+            echo "===== PROBE F: archive not found, skipped"
+          fi
+
           echo "== cleanup"
           security delete-keychain "$KEYCHAIN_NAME" || true
           security list-keychains -d user -s "$HOME/Library/Keychains/login.keychain-db"
