@@ -573,7 +573,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 IOS_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 WORKSPACE="$IOS_DIR/cmux.xcworkspace"
 SCHEME="cmux-ios"
-DEVELOPMENT_TEAM="${IOS_DEVELOPMENT_TEAM:-7WLXT3NR37}"
+DEVELOPMENT_TEAM="${IOS_DEVELOPMENT_TEAM:-599WAZ6282}"
 SHARED_XCCONFIG="$IOS_DIR/Config/Shared.xcconfig"
 CHECKED_IN_BETA_MARKETING_VERSION="$(read_xcconfig_setting CMUX_IOS_BETA_MARKETING_VERSION "$SHARED_XCCONFIG")"
 CHECKED_IN_APPSTORE_MARKETING_VERSION="$(read_xcconfig_setting CMUX_IOS_APPSTORE_MARKETING_VERSION "$SHARED_XCCONFIG")"
@@ -1032,8 +1032,8 @@ fi
 # ID's current capabilities, not editing this script or the Release file.
 #
 # This runs on the MANUAL signing path only: it re-signs with the named
-# distribution cert from the local keychain ("Apple Distribution: Manaflow,
-# Inc."), which is present for local/fleet-archive beta cuts. The cmux iOS app is
+# distribution cert from the local keychain ("Apple Distribution: Atlas Codes
+# LTD"), which is present for local/fleet-archive beta cuts. The cmux iOS app is
 # a single self-contained bundle (no Frameworks/, no PlugIns/, GhosttyKit is
 # static), so only the top-level .app is signed; there is no nested code to
 # re-sign. Two alternatives were ruled out: an ad-hoc archive (CODE_SIGN_IDENTITY
