@@ -12001,6 +12001,24 @@ public final class MobileShellComposite: MobileTerminalOutputSinking {
         guard Self.shouldDisconnectForAuthorizationFailure(error) else {
             return false
         }
+        // Fork (cmux Mochi): on a ticket-authorized connection, a Stack-auth failure
+        // is NOT evidence that this connection is unauthorized — it only means the
+        // request needed an account the operator deliberately does not have.
+        //
+        // Without this, a background notification reconcile (which always needs
+        // Stack auth) threw `.authorizationFailed`, which this method treated as a
+        // fatal account problem: it tore down a healthy session and told the
+        // operator "This computer is signed in to a different cmux account. Sign
+        // out and sign back in" — advice that is both wrong and impossible to
+        // follow when there is no account by design.
+        //
+        // Ticket expiry stays fatal, because that genuinely does end the session's
+        // authorization.
+        if Self.isTicketAuthorizedConnection(activeTicket),
+           !Self.isTicketExpiryFailure(error) {
+            mobileShellLog.info("ignoring Stack-auth failure on a ticket-authorized connection")
+            return false
+        }
         let category = MobilePairingFailureCategory.classify(error: error, route: activeRoute)
         // Not `applyPairingFailure`: this path also sets `connectionRequiresReauth`,
         // uses fallback-if-empty, and gates analytics on `pairingAttemptMethod` so
@@ -12019,6 +12037,20 @@ public final class MobileShellComposite: MobileTerminalOutputSinking {
         // also route through here never emit `ios_pairing_failed`.
         recordPairingFailed(reason: category.analyticsReason, phase: "auth")
         return true
+    }
+
+    /// Whether this connection is authorized by an attach ticket rather than by a
+    /// Stack account, in which case Stack-auth failures are per-feature, not fatal.
+    nonisolated static func isTicketAuthorizedConnection(_ ticket: CmxAttachTicket?) -> Bool {
+        ticket?.authToken?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+    }
+
+    /// Whether the failure is the ticket itself expiring — the one authorization
+    /// failure that genuinely does end a ticket-authorized session.
+    nonisolated static func isTicketExpiryFailure(_ error: any Error) -> Bool {
+        guard let connectionError = error as? MobileShellConnectionError else { return false }
+        if case .attachTicketExpired = connectionError { return true }
+        return false
     }
 
     private static func shouldDisconnectForAuthorizationFailure(_ error: any Error) -> Bool {
