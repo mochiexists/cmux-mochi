@@ -133,10 +133,19 @@ struct KeychainItem {
 
     private func write(_ data: Data, dataProtection: Bool) throws {
         let query = baseQuery(dataProtection: dataProtection)
-        let attributes: [CFString: Any] = [
-            kSecValueData: data,
-            kSecAttrAccessible: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly,
+        // `kSecAttrAccessible` ONLY when actually writing to the data-protection
+        // keychain (iOS). On macOS the attribute silently shadow-routes the item
+        // INTO the data-protection keychain despite
+        // `kSecUseDataProtectionKeychain: false` — where an app without a
+        // keychain entitlement can add it but never find, update, or delete it,
+        // while SecItemAdd's uniqueness check still collides with it. That trap
+        // is what wedged the pairing listener with errSecDuplicateItem.
+        var attributes: [CFString: Any] = [
+            kSecValueData: data
         ]
+        if dataProtection {
+            attributes[kSecAttrAccessible] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+        }
 
         let updateStatus = SecItemUpdate(query as CFDictionary, attributes as CFDictionary)
         switch updateStatus {
@@ -144,12 +153,13 @@ struct KeychainItem {
             return
         case errSecItemNotFound, errSecDuplicateItem:
             // errSecDuplicateItem from UPDATE is the same cross-store shadowing
-            // as the add-path collision below (the M4 hit it from update, not
-            // add): fall through to the add, whose duplicate handler evicts the
-            // stale shards from both stores and re-adds.
+            // as the add-path collision below: fall through to the add, whose
+            // duplicate handler evicts what it can and re-adds.
             var insert = query
             insert[kSecValueData] = data
-            insert[kSecAttrAccessible] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+            if dataProtection {
+                insert[kSecAttrAccessible] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+            }
             var addStatus = SecItemAdd(insert as CFDictionary, nil)
             if addStatus == errSecDuplicateItem {
                 // The update above said "not found", yet the add collides: an

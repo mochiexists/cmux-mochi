@@ -202,6 +202,17 @@ final class MobileHostDeviceLink {
         return didRevoke
     }
 
+    /// Fallback identity slot for Macs whose primary slot is poisoned by an
+    /// unreachable keychain relic. An earlier build's `kSecAttrAccessible`
+    /// write shadow-routed the item into the data-protection keychain, where
+    /// this (unentitled) app can neither read, update, nor delete it — yet
+    /// `SecItemAdd`'s uniqueness check still collides with it, so the primary
+    /// slot wedges with errSecDuplicateItem forever. The relic is dead weight;
+    /// the identity simply lives under a different account on such Macs.
+    /// Healthy Macs never touch this slot, so their identities (and their
+    /// phones' pinned fingerprints) are unaffected.
+    private static let hostIdentityFallbackSlot = "host.v2"
+
     /// Loads or creates this Mac's TLS identity.
     private func hostIdentity() throws -> (material: DeviceIdentityMaterial, secIdentity: SecIdentity) {
         if let cachedIdentity { return cachedIdentity }
@@ -209,12 +220,20 @@ final class MobileHostDeviceLink {
         let material: DeviceIdentityMaterial
         if let existing = try identityStore.identity(forPairingID: Self.hostIdentitySlot) {
             material = existing
+        } else if let fallback = try identityStore.identity(forPairingID: Self.hostIdentityFallbackSlot) {
+            material = fallback
         } else {
             // A locked keychain throws above rather than returning nil, so
-            // reaching here means the slot is genuinely empty — never "we could
-            // not look", which would orphan every existing pairing.
+            // reaching here means the slots are genuinely empty — never "we
+            // could not look", which would orphan every existing pairing.
             material = try DeviceIdentityMaterial.generate(commonName: "cmux-mac")
-            try identityStore.save(material, forPairingID: Self.hostIdentitySlot)
+            do {
+                try identityStore.save(material, forPairingID: Self.hostIdentitySlot)
+            } catch KeychainStorageError.unexpectedStatus(errSecDuplicateItem) {
+                // Primary slot poisoned (see hostIdentityFallbackSlot doc).
+                try identityStore.save(material, forPairingID: Self.hostIdentityFallbackSlot)
+                deviceLinkLog.warning("devicelink: primary identity slot poisoned by an unreachable keychain relic; using the fallback slot")
+            }
             deviceLinkLog.info("devicelink: generated host identity \(material.fingerprint.shortForm, privacy: .public)")
         }
 
