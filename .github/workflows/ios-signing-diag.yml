@@ -71,6 +71,29 @@ jobs:
           # D: login keychain restored into the search list alongside the temp one
           security list-keychains -d user -s "$KEYCHAIN_NAME" "$HOME/Library/Keychains/login.keychain-db"
           probe D
+          security list-keychains -d user -s "$KEYCHAIN_NAME"
+
+          # E: byte-exact replay of the failing dist-pipeline codesign against a
+          # copy of the leftover framework from failed run 32205456298.
+          LEFT=/var/folders/dk/b7d61l0n4cd_dlc3y_lfpm4h0000gp/T/XcodeDistPipeline.~~~mqdF0R
+          if [ -d "$LEFT/Root/Payload/cmux.app/Frameworks/Iroh.framework" ]; then
+            rm -rf "$RUNNER_TEMP/Iroh.framework"
+            cp -R "$LEFT/Root/Payload/cmux.app/Frameworks/Iroh.framework" "$RUNNER_TEMP/Iroh.framework"
+            cp "$LEFT"/entitlements~~~* "$RUNNER_TEMP/ent.plist"
+            echo "===== PROBE E: exact dist-pipeline command on real Iroh.framework"
+            if /usr/bin/codesign -f -s "$SHA" \
+                --entitlements "$RUNNER_TEMP/ent.plist" \
+                --preserve-metadata=identifier,flags,runtime,launch-constraints,library-constraints \
+                --generate-entitlement-der \
+                --strip-disallowed-xattrs \
+                -vvv "$RUNNER_TEMP/Iroh.framework" 2>&1; then
+              echo "===== PROBE E: SUCCESS"
+            else
+              echo "===== PROBE E: FAILED (exit $?)"
+            fi
+          else
+            echo "===== PROBE E: leftover framework not found, skipped"
+          fi
 
           echo "== cleanup"
           security delete-keychain "$KEYCHAIN_NAME" || true
