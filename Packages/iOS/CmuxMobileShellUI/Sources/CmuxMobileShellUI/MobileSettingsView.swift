@@ -158,6 +158,7 @@ struct MobileSettingsView: View {
                 if let connectionMethodStore {
                     MobileConnectionMethodSection(
                         store: connectionMethodStore,
+                        showsAutomaticMethod: store?.isSignedIn == true,
                         startPairingScanner: startPairingScanner
                     )
                 }

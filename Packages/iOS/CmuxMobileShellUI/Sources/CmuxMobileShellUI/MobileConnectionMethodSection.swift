@@ -9,6 +9,11 @@ import SwiftUI
 /// each Mac's Tailscale destination.
 struct MobileConnectionMethodSection: View {
     @Bindable var store: MobileConnectionMethodStore
+    /// Fork (cmux Mochi): the automatic method dials upstream's account-backed
+    /// relays, so it is only offered to a signed-in session; account-free
+    /// installs get the pairing path that actually works here, with nothing to
+    /// mis-select. Defaults to offering it so previews keep the upstream shape.
+    var showsAutomaticMethod: Bool = true
     let startPairingScanner: (() -> Void)?
 
     var body: some View {
@@ -20,11 +25,13 @@ struct MobileConnectionMethodSection: View {
                 ),
                 selection: $store.method
             ) {
-                Text(L10n.string(
-                    "mobile.settings.connectionMethod.automatic",
-                    defaultValue: "Auto-Connect"
-                ))
-                .tag(MobileConnectionMethod.automatic)
+                if showsAutomaticMethod {
+                    Text(L10n.string(
+                        "mobile.settings.connectionMethod.automatic",
+                        defaultValue: "Auto-Connect"
+                    ))
+                    .tag(MobileConnectionMethod.automatic)
+                }
                 Text(L10n.string(
                     "mobile.settings.connectionMethod.tailscale",
                     defaultValue: "Tailscale"

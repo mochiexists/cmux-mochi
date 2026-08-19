@@ -101,6 +101,7 @@ struct OnboardingFlowView: View {
             OnboardingConnectionView(
                 phase: connectionPhase,
                 connectionMethod: connectionMethod,
+                showsAutomaticMethod: isAuthenticated,
                 onSelectConnectionMethod: selectConnectionMethod
             )
         }

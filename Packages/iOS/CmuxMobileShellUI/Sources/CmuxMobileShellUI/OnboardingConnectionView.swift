@@ -6,6 +6,12 @@ import SwiftUI
 struct OnboardingConnectionView: View {
     let phase: OnboardingConnectionPhase
     let connectionMethod: MobileConnectionMethod
+    /// Fork (cmux Mochi): the automatic method dials upstream's account-backed
+    /// relays, so it is only offered to a signed-in session. Account-free
+    /// onboarding goes straight to the QR/Tailscale pairing this fork runs on —
+    /// showing a dead "Recommended" option was the footgun that funneled new
+    /// installs into "Couldn't connect to your Mac yet".
+    let showsAutomaticMethod: Bool
     let onSelectConnectionMethod: (MobileConnectionMethod) -> Void
 
     var body: some View {
@@ -25,14 +31,18 @@ struct OnboardingConnectionView: View {
     }
 
     /// The method choice stays visible while there is still a decision to act
-    /// on; once connected it disappears (Settings keeps the control).
+    /// on; once connected it disappears (Settings keeps the control). With the
+    /// automatic method unavailable there is no decision, so no picker.
     private var showsMethodPicker: Bool {
-        phase == .idle || phase == .fallback
+        (phase == .idle || phase == .fallback) && showsAutomaticMethod
     }
 
     private var visual: some View {
         VStack(spacing: 14) {
-            OnboardingConnectionPreview(phase: phase)
+            OnboardingConnectionPreview(
+                phase: phase,
+                usesAccountLink: connectionMethod == .automatic
+            )
             if showsMethodPicker {
                 OnboardingConnectionMethodPicker(
                     method: connectionMethod,
