@@ -1,0 +1,78 @@
+# Temporary diagnostic for the TestFlight export codesign failure
+# ("unable to build chain to self-signed root" + errSecInternalComponent on the
+# mac-mini runner, first seen 2026-08-19). Rebuilds the exact keychain state the
+# ios-testflight upload job uses, then probes codesign variants on a scratch
+# binary to isolate identity resolution, chain assembly, and key access.
+# Dispatch-only; delete once the export failure is fixed.
+name: iOS signing diagnostic
+
+on:
+  workflow_dispatch:
+
+jobs:
+  diag:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ${{ vars.MACOS_RUNNER_IOS || 'blacksmith-6vcpu-macos-26' }}
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: false
+
+      - name: Keychain setup identical to ios-testflight, then codesign probes
+        env:
+          IOS_DISTRIBUTION_CERTIFICATE_BASE64: ${{ secrets.IOS_DISTRIBUTION_CERTIFICATE_BASE64 }}
+          IOS_DISTRIBUTION_CERTIFICATE_PASSWORD: ${{ secrets.IOS_DISTRIBUTION_CERTIFICATE_PASSWORD }}
+        run: |
+          set -uo pipefail
+          KEYCHAIN_PASSWORD="$(uuidgen)"
+          KEYCHAIN_NAME="ios-signing-diag.keychain"
+          CERT_PATH="$RUNNER_TEMP/ios-distribution.p12"
+          printf '%s' "$IOS_DISTRIBUTION_CERTIFICATE_BASE64" | base64 --decode > "$CERT_PATH"
+          security delete-keychain "$KEYCHAIN_NAME" >/dev/null 2>&1 || true
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_NAME"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_NAME"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_NAME"
+          security import "$CERT_PATH" -k "$KEYCHAIN_NAME" -P "$IOS_DISTRIBUTION_CERTIFICATE_PASSWORD" -T /usr/bin/codesign -T /usr/bin/security
+          ./scripts/import-apple-wwdr-intermediate.sh "$KEYCHAIN_NAME"
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_NAME" >/dev/null
+          security list-keychains -d user -s "$KEYCHAIN_NAME"
+
+          echo "== effective user search list:"
+          security list-keychains -d user
+          echo "== identities:"
+          security find-identity -v -p codesigning "$KEYCHAIN_NAME"
+          SHA="$(security find-identity -v -p codesigning "$KEYCHAIN_NAME" | sed -n 's/.*1) \([0-9A-F]*\).*/\1/p' | head -1)"
+          echo "identity sha: $SHA"
+
+          echo 'int main(void){return 0;}' > "$RUNNER_TEMP/t.c"
+          xcrun clang "$RUNNER_TEMP/t.c" -o "$RUNNER_TEMP/t"
+
+          probe() {
+            local name="$1"; shift
+            cp "$RUNNER_TEMP/t" "$RUNNER_TEMP/t-$name"
+            echo "===== PROBE $name: codesign $*"
+            if /usr/bin/codesign -f -s "$SHA" "$@" -vvv "$RUNNER_TEMP/t-$name" 2>&1; then
+              echo "===== PROBE $name: SUCCESS"
+            else
+              echo "===== PROBE $name: FAILED (exit $?)"
+            fi
+          }
+
+          # A: exactly what the export dist pipeline does
+          probe A
+          # B: explicit keychain
+          probe B --keychain "$KEYCHAIN_NAME"
+          # C: after importing the Apple root into the temp keychain
+          curl -fsSL https://www.apple.com/appleca/AppleIncRootCertificate.cer -o "$RUNNER_TEMP/root.cer" \
+            && security add-certificates -k "$KEYCHAIN_NAME" "$RUNNER_TEMP/root.cer" \
+            && probe C
+          # D: login keychain restored into the search list alongside the temp one
+          security list-keychains -d user -s "$KEYCHAIN_NAME" "$HOME/Library/Keychains/login.keychain-db"
+          probe D
+
+          echo "== cleanup"
+          security delete-keychain "$KEYCHAIN_NAME" || true
+          security list-keychains -d user -s "$HOME/Library/Keychains/login.keychain-db"
+          exit 0
