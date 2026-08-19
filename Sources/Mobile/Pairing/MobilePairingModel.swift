@@ -152,12 +152,19 @@ final class MobilePairingModel {
         }
         await coordinator.awaitBootstrapped()
         guard generation == refreshGeneration else { return }
-        guard coordinator.isAuthenticated else {
-            signedInEmail = nil
-            state = .signedOut
-            return
-        }
-        signedInEmail = coordinator.currentUser?.primaryEmail
+        // Fork (cmux Mochi): NO ACCOUNT REQUIRED to pair.
+        //
+        // Upstream stops here when signed out, because its host demands a Stack
+        // access token bound to the signed-in user on every mobile request. This
+        // fork's host authorizes on the DeviceLink enrollment ticket alone —
+        // minted locally by whoever controls this Mac, single-use, and only
+        // redeemable over the mutual-TLS listener pinned to the tailnet. So the
+        // rest of this flow (enable host, await listener, mint pairing code,
+        // render QR) works signed out, and the sign-in gate was the ONLY thing
+        // standing between a signed-out operator and a working QR code.
+        //
+        // Signing in remains supported and unchanged — it just is not required.
+        signedInEmail = coordinator.isAuthenticated ? coordinator.currentUser?.primaryEmail : nil
         state = .preparing
         enablePairingHost()
         let status = await host.ensureListeningAndReady()
@@ -178,22 +185,15 @@ final class MobilePairingModel {
             return
         }
         do {
-            let payload = try await host.createAttachTicket(
-                workspaceID: "",
-                terminalID: nil,
-                ttl: ticketTTL,
-                routeDisclosureMode: routePlan.primaryDisclosureMode
-            )
+            // Fork (cmux Mochi): the primary QR is a v3 DeviceLink pairing code
+            // (Mac TLS fingerprint + single-use enrollment ticket), not a legacy
+            // bearer attach URL. The fork's listener is mutual-TLS only, so an
+            // un-enrolled phone scanning an attach URL dials the routes and then
+            // stalls in the handshake — the pairing code is the only payload a
+            // first-time phone can actually redeem.
+            let pairingURL = try await MobileHostDeviceLink.shared.makePairingURL(lifetime: ticketTTL)
             guard generation == refreshGeneration else { return }
-            guard let attachURL = payload["attach_url"] as? String, !attachURL.isEmpty else {
-                state = .failed(
-                    String(
-                        localized: "mobile.pairing.error.noTicket",
-                        defaultValue: "Could not generate a pairing code. Try again."
-                    )
-                )
-                return
-            }
+            let attachURL = pairingURL.absoluteString
             let legacyAttachURL: String?
             if routePlan.offersLegacyCode,
                let legacyPayload = try? await host.createAttachTicket(
@@ -219,7 +219,8 @@ final class MobilePairingModel {
             observeConnections()
         } catch MobileAttachTicketStoreError.noRoutes,
                 MobileAttachTicketStoreError.routeUnavailable,
-                MobileAttachTicketStoreError.invalidAttachURL {
+                MobileAttachTicketStoreError.invalidAttachURL,
+                MobileHostDeviceLinkPairingError.noRoutes {
             state = .needsReachableTransport
             observeRouteAvailability()
         } catch {

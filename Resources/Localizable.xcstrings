@@ -135165,6 +135165,40 @@
         }
       }
     },
+    "mobile.pairing.req.account.optional.subtitle": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This code authorizes your iPhone directly. Sign in only if you want push notifications and cross-device sync."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "このコードで iPhone を直接認証します。プッシュ通知やデバイス間同期が必要な場合のみサインインしてください。"
+          }
+        }
+      }
+    },
+    "mobile.pairing.req.account.optional.title": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No account needed"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "アカウント不要"
+          }
+        }
+      }
+    },
     "mobile.pairing.req.signIn.subtitle": {
       "extractionState": "manual",
       "localizations": {
