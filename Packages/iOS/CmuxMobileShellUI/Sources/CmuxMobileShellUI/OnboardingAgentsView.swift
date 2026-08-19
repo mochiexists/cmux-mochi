@@ -20,7 +20,10 @@ struct OnboardingAgentsView: View {
                 visual: OnboardingScreenshot(
                     content: .workspaces,
                     accessibilityLabel: title
-                )
+                ),
+                // Fork (cmux Mochi): the fork's mark leads onboarding from the
+                // very first screen.
+                showsBrandMark: true
             )
         }
     }

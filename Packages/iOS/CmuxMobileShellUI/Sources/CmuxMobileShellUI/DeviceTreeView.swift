@@ -57,9 +57,12 @@ struct DeviceTreeView: View {
                             addComputerRow
                         }
                     } footer: {
+                        // Fork (cmux Mochi): pairing, not an account, is what
+                        // puts a Mac in this list — QR-paired Macs have no
+                        // account at all.
                         Text(L10n.string(
-                            "mobile.computers.footer",
-                            defaultValue: "The computers signed in to your account. Use the workspace title picker to focus one computer or show All Computers."
+                            "mobile.computers.fork.footer",
+                            defaultValue: "The computers paired with this iPhone. Use the workspace title picker to focus one computer or show All Computers."
                         ))
                     }
                 }

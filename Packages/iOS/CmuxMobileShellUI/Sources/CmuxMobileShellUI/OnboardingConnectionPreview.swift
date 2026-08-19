@@ -4,6 +4,13 @@ import SwiftUI
 
 struct OnboardingConnectionPreview: View {
     let phase: OnboardingConnectionPhase
+    /// Fork (cmux Mochi): the Mac↔phone link is drawn as a shared account only
+    /// when an account actually authorizes it. QR/Tailscale pairings are
+    /// authorized by the device's own key, and labeling them "Same account"
+    /// told account-free operators they were on a path they deliberately
+    /// avoided. Defaults to the account rendering so upstream call sites keep
+    /// their look.
+    var usesAccountLink: Bool = true
 
     var body: some View {
         VStack(spacing: 20) {
@@ -56,22 +63,44 @@ struct OnboardingConnectionPreview: View {
                     .fill(.thinMaterial)
                     .frame(width: 52, height: 52)
 
-                Image(systemName: phase == .ready
-                    ? "person.crop.circle.badge.checkmark"
-                    : "person.crop.circle")
+                Image(systemName: linkSystemImage)
                     .font(.title2.weight(.semibold))
                     .foregroundStyle(phase == .ready ? Color.green : Color.accentColor)
             }
 
-            Text(L10n.string(
-                "mobile.onboarding.connect.sameAccount",
-                defaultValue: "Same account"
-            ))
-            .font(.caption2.weight(.semibold))
-            .foregroundStyle(.secondary)
-            .multilineTextAlignment(.center)
+            Text(linkLabel)
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
         }
         .accessibilityHidden(true)
+    }
+
+    private var linkSystemImage: String {
+        if usesAccountLink {
+            return phase == .ready
+                ? "person.crop.circle.badge.checkmark"
+                : "person.crop.circle"
+        }
+        return phase == .ready ? "checkmark.seal.fill" : "qrcode"
+    }
+
+    private var linkLabel: String {
+        if usesAccountLink {
+            return L10n.string(
+                "mobile.onboarding.connect.sameAccount",
+                defaultValue: "Same account"
+            )
+        }
+        return phase == .ready
+            ? L10n.string(
+                "mobile.onboarding.connect.pairedLink",
+                defaultValue: "Paired"
+            )
+            : L10n.string(
+                "mobile.onboarding.connect.scanToPair",
+                defaultValue: "Scan to pair"
+            )
     }
 
     @ViewBuilder

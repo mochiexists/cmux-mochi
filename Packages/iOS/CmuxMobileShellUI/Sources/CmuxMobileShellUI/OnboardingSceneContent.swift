@@ -5,6 +5,8 @@ struct OnboardingSceneContent<Visual: View>: View {
     let title: String
     let message: String
     let visual: Visual
+    /// Fork (cmux Mochi): see ``OnboardingSceneCopy/showsBrandMark``.
+    var showsBrandMark: Bool = false
 
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
@@ -14,7 +16,7 @@ struct OnboardingSceneContent<Visual: View>: View {
             Group {
                 if usesWideLayout {
                     HStack(alignment: .center, spacing: 48) {
-                        OnboardingSceneCopy(title: title, message: message, alignment: .leading)
+                        OnboardingSceneCopy(title: title, message: message, alignment: .leading, showsBrandMark: showsBrandMark)
                             .frame(maxWidth: 390)
                         visual
                             .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
@@ -23,7 +25,7 @@ struct OnboardingSceneContent<Visual: View>: View {
                     .frame(maxWidth: 980)
                 } else {
                     VStack(spacing: 30) {
-                        OnboardingSceneCopy(title: title, message: message, alignment: .center)
+                        OnboardingSceneCopy(title: title, message: message, alignment: .center, showsBrandMark: showsBrandMark)
                             .frame(maxWidth: 560)
                         visual
                             .dynamicTypeSize(...DynamicTypeSize.xxxLarge)

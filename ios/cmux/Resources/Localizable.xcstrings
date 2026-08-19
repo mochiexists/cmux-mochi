@@ -1973,6 +1973,23 @@
         }
       }
     },
+    "mobile.computers.fork.footer": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The computers paired with this iPhone. Use the workspace title picker to focus one computer or show All Computers."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "この iPhone とペアリングされているコンピュータ。ワークスペースのタイトルピッカーで 1 台のコンピュータに絞り込むか、すべてのコンピュータを表示できます。"
+          }
+        }
+      }
+    },
     "mobile.computers.noRoute": {
       "extractionState": "manual",
       "localizations": {
@@ -4523,6 +4540,23 @@
         }
       }
     },
+    "mobile.onboarding.brand": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "cmux Mochi"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "cmux Mochi"
+          }
+        }
+      }
+    },
     "mobile.onboarding.connect.method.automatic": {
       "extractionState": "manual",
       "localizations": {
@@ -4591,6 +4625,23 @@
         }
       }
     },
+    "mobile.onboarding.connect.pairedLink": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Paired"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ペアリング済み"
+          }
+        }
+      }
+    },
     "mobile.onboarding.connect.scanTailscaleCode": {
       "extractionState": "manual",
       "localizations": {
@@ -4604,6 +4655,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "ペアリングコードをスキャン"
+          }
+        }
+      }
+    },
+    "mobile.onboarding.connect.scanToPair": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Scan to pair"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "スキャンしてペアリング"
           }
         }
       }
