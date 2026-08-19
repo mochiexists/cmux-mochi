@@ -136,7 +136,24 @@ struct KeychainItem {
             var insert = query
             insert[kSecValueData] = data
             insert[kSecAttrAccessible] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
-            let addStatus = SecItemAdd(insert as CFDictionary, nil)
+            var addStatus = SecItemAdd(insert as CFDictionary, nil)
+            if addStatus == errSecDuplicateItem {
+                // The update above said "not found", yet the add collides: an
+                // item written by an earlier build exists under the same
+                // service/account but in a store this query cannot match — on
+                // macOS, `kSecAttrAccessible` routes generic passwords into the
+                // data-protection keychain even with
+                // `kSecUseDataProtectionKeychain: false`, so an item from a
+                // build that resolved the store differently is invisible to
+                // update yet still collides on add. Left alone this wedges the
+                // DeviceLink identity forever (the pairing listener dies with
+                // errSecDuplicateItem on every start). The stale item predates
+                // this identity and secures nothing current, so evict it from
+                // both stores and re-add once.
+                SecItemDelete(baseQuery(dataProtection: true) as CFDictionary)
+                SecItemDelete(baseQuery(dataProtection: false) as CFDictionary)
+                addStatus = SecItemAdd(insert as CFDictionary, nil)
+            }
             guard addStatus == errSecSuccess else {
                 throw KeychainStorageError.unexpectedStatus(addStatus)
             }
