@@ -984,13 +984,50 @@ else
   "$PLISTBUDDY" -c "Add :provisioningProfiles:$PRODUCT_BUNDLE_IDENTIFIER string $PROVISIONING_PROFILE_NAME" "$EXPORT_OPTIONS"
 fi
 
+# TEMP DIAG for the mini export codesign failure (errSecInternalComponent):
+# snapshot keychain state and prove/disprove scratch signing immediately before
+# and, on failure, immediately after the export. Remove once understood.
+export_keychain_diag() {
+  local label="$1"
+  echo "== export diag ($label): user keychain search list:"
+  security list-keychains -d user || true
+  echo "== export diag ($label): identities:"
+  security find-identity -v -p codesigning || true
+  local sha
+  sha="$(security find-identity -v -p codesigning 2>/dev/null | sed -n 's/.*[0-9]) \([0-9A-F]*\) "Apple Distribution.*/\1/p' | head -1)"
+  if [[ -n "$sha" ]]; then
+    echo 'int main(void){return 0;}' > "$OUT_DIR/diag.c"
+    xcrun clang "$OUT_DIR/diag.c" -o "$OUT_DIR/diag-bin-$label" 2>/dev/null || true
+    if /usr/bin/codesign -f -s "$sha" "$OUT_DIR/diag-bin-$label" 2>&1; then
+      echo "== export diag ($label): scratch codesign OK"
+    else
+      echo "== export diag ($label): scratch codesign FAILED"
+    fi
+  else
+    echo "== export diag ($label): no Apple Distribution identity visible"
+  fi
+}
+
+export_keychain_diag pre-export
+
+EXPORT_STATUS=0
 xcodebuild -exportArchive \
   -archivePath "$ARCHIVE_PATH" \
   -exportPath "$EXPORT_PATH" \
   -exportOptionsPlist "$EXPORT_OPTIONS" \
   -allowProvisioningUpdates \
   "${XCODE_AUTH_ARGS[@]}" \
-  | tee "$OUT_DIR/export.log"
+  | tee "$OUT_DIR/export.log" || EXPORT_STATUS=$?
+
+if [[ "$EXPORT_STATUS" -ne 0 ]]; then
+  export_keychain_diag post-failure
+  DIST_LOGS="$(ls -dt "${TMPDIR:-/tmp}"/cmux-ios_*.xcdistributionlogs 2>/dev/null | head -1)"
+  if [[ -n "$DIST_LOGS" ]]; then
+    echo "== export diag: newest xcdistributionlogs: $DIST_LOGS"
+    tail -40 "$DIST_LOGS/IDEDistributionPipeline.log" 2>/dev/null || true
+  fi
+  exit "$EXPORT_STATUS"
+fi
 
 IPA_PATH="$EXPORT_PATH/cmux.ipa"
 if [[ ! -f "$IPA_PATH" ]]; then
