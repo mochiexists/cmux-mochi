@@ -5,7 +5,10 @@ results from another worktree, branch, app bundle, or embedded CLI. Every test
 run must record a positive executed count; a successful invocation with zero
 tests is a failure.
 
-Candidate commit: `ca011e3c5b`
+Candidate commit: `e8484ef256`
+
+The later evidence-only record update does not change executable or test
+behavior.
 
 <!-- parity-features:start -->
 | Feature | Automated command or selector | Executed result | Tagged candidate journey | Result |
@@ -14,7 +17,7 @@ Candidate commit: `ca011e3c5b`
 | Adaptive right-side placement | `WorkspaceRightSidePlacementPlannerTests`; exact Markdown and file-preview route selectors | 7 planner, 1 control-Markdown, and 2 click-route tests passed. | Open Browser, Markdown, Artifact, file preview, and custom sidebar beside a full-width source, then repeat each open. | Tagged Browser, Markdown, Artifact, and temporary validated custom-sidebar opens reused pane 6; exact app-host file-preview/Markdown routes passed. |
 | Pane zoom persistence | `PaneZoomSessionPersistenceTests` | 3 app-host tests passed. | Maximize a non-leading pane, quit the tagged app, relaunch, and compare pane identity/topology. | Tagged command-palette maximize persisted and restored stable panel `78299116-4114-42B4-A870-3F78D5E347E5` with the same focused panel and split topology. |
 | Opaque update popover | `UpdatePillPopoverResizeTests` | 2 updater UI tests passed. | Inspect the AppKit popover host's resolved dynamic background and tagged update-pill path. | Host is layer-backed and opaque with dynamic `windowBackgroundColor` for light/dark resolution; tagged Debug menu exposes the live pill journey. |
-| Atomic submit and wait | `CMUXCLISendSubmitWaitTests` | Suite passed in the 135-test app-host aggregate. | Use the tagged embedded CLI against its explicit socket; send a literal separator fixture, submit once, verify target acknowledgement, then wait for settle. | Tagged literal submit passed; `--wait` observed `CMUX_WAIT_ACK_CONFIRMED` on the targeted agent and returned at Ready. |
+| Atomic submit and wait | `CMUXCLISendSubmitWaitTests` | Suite passed in the 135-test app-host aggregate after five consecutive isolated 6-test passes. The process-timeout harness now observes `Process.terminationHandler` directly instead of a schedulable global waiter. | Use the tagged embedded CLI against its explicit socket; send a literal separator fixture, submit once, verify target acknowledgement, then wait for settle. | Tagged literal submit passed; `--wait` observed `CMUX_WAIT_ACK_CONFIRMED` on the targeted agent and returned at Ready. |
 | Sentry startup policy | `MacSentryStartupPolicyTests`; `CMUXCLISentryTelemetryRegressionTests` | Both app-host suites passed, including the three-case CI matrix. | Verify built Debug, tagged Debug, Nightly, and Release policy inputs; launch tagged candidate with diagnostic logging. | Fork DSN/bundle policy checked; tagged Debug launched under the intended no-emission Debug policy. |
 | Privacy Frost | Focused privacy selectors listed by `scripts/test-fork-parity.sh` | 5 app-host behavior tests passed. | Toggle workspace and inherited group privacy, inspect complete-row redaction, capture, quit, and relaunch. | Non-sensitive app-host journey proved persistence/inheritance, complete-row frost with no text leak, live menu action, observation refresh, and private-route rejection. |
 | Welcome catalogue | `CMUXCLIWelcomeRegressionTests` | Suite passed in the 135-test app-host aggregate. | Run `CMUX_TAG=<tag> scripts/cmux-debug-cli.sh welcome` and compare every claim to this ledger. | Tagged bundled CLI output was captured and audited; it lists only present Mochi behaviors and the no-Pro policy. |
@@ -32,7 +35,7 @@ Candidate commit: `ca011e3c5b`
 | Unit target compiles | `xcodebuild -project cmux.xcodeproj -scheme cmux-unit -configuration Debug -destination 'platform=macOS' -derivedDataPath /tmp/cmux-parity-unit build` | Passed: `** BUILD SUCCEEDED **`. |
 | Tagged Debug app | `CMUX_SKIP_ZIG_BUILD=1 ./scripts/reload.sh --tag parity-recovery` | Built and launched; initial socket wait was blocked by a visible Keychain approval dialog, then the tagged socket returned `PONG`. |
 | Fork overlay | `scripts/fork-overlay-audit.sh` | Passed, including fork identity determinism, 658-file test wiring, and the terminal 12-row ledger. |
-| Release pre-tag | `scripts/release-pretag-guard.sh` | Passed at candidate build 122 after the full focused parity rerun; build 122 exceeds upstream 102 and Mochi 121. |
+| Release pre-tag | `scripts/release-pretag-guard.sh` | Passed from `e8484ef256` at candidate build 122 after the full focused parity rerun; build 122 exceeds upstream 102 and Mochi 121. |
 | Source hygiene | `git diff --check` | Passed. |
 <!-- parity-gates:end -->
 
