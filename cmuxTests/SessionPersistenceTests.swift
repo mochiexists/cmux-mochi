@@ -1121,7 +1121,7 @@ final class SessionPersistenceTests: XCTestCase {
         XCTAssertNotEqual(firstFingerprint, secondFingerprint)
     }
 
-    func testRestorableAgentIndexSkipsHookRecordWithDeadRecordedPID() throws {
+    func testRestorableAgentIndexRetainsHookRecordWithDeadRecordedPIDAsExited() throws {
         let workspaceId = UUID()
         let panelId = UUID()
         let index = try makeRestorableAgentIndex(
@@ -1136,7 +1136,13 @@ final class SessionPersistenceTests: XCTestCase {
             pid: Int(Int32.max)
         )
 
-        XCTAssertNil(index.snapshot(workspaceId: workspaceId, panelId: panelId))
+        let entry = try XCTUnwrap(index.entry(workspaceId: workspaceId, panelId: panelId))
+        XCTAssertEqual(entry.processLiveness, .exited)
+        XCTAssertTrue(entry.processIDs.isEmpty)
+        XCTAssertEqual(
+            index.snapshot(workspaceId: workspaceId, panelId: panelId)?.sessionId,
+            "codex-dead-pid-session"
+        )
     }
 
     func testResolvedWindowFramePrefersSavedDisplayIdentity() {
@@ -1571,7 +1577,7 @@ final class SessionPersistenceTests: XCTestCase {
     }
 
     @MainActor
-    func testRestoredAgentWithoutResumeCommandInvalidatesOnFirstCommand() throws {
+    func testAgentWithoutResumeCommandRetiresAfterRestoreReturnsToPrompt() throws {
         let source = Workspace()
         let sourcePanelId = try XCTUnwrap(source.focusedPanelId)
         let sourceIndex = try makeRestorableAgentIndex(
@@ -1595,8 +1601,11 @@ final class SessionPersistenceTests: XCTestCase {
         XCTAssertNil(restored.sessionSnapshot(includeScrollback: false).panels.first?.terminal?.agent?.resumeCommand)
 
         restored.updatePanelShellActivityState(panelId: restoredPanelId, state: .commandRunning)
-        let userCommandSnapshot = restored.sessionSnapshot(includeScrollback: false)
-        XCTAssertNil(userCommandSnapshot.panels.first?.terminal?.agent)
+        XCTAssertNotNil(restored.sessionSnapshot(includeScrollback: false).panels.first?.terminal?.agent)
+
+        restored.updatePanelShellActivityState(panelId: restoredPanelId, state: .promptIdle)
+        let failedRestoreSnapshot = restored.sessionSnapshot(includeScrollback: false)
+        XCTAssertNil(failedRestoreSnapshot.panels.first?.terminal?.agent)
     }
 
     @MainActor
@@ -6411,7 +6420,7 @@ extension SessionPersistenceTests {
         ))
         XCTAssertEqual(try Data(contentsOf: settingsURL), invalidSettingsData)
 
-        XCTAssertNotNil(SurfaceResumeApprovalStore.approve(
+        XCTAssertNil(SurfaceResumeApprovalStore.approve(
             binding: binding,
             policy: .auto,
             commandPrefix: ["tmux", "attach"],
@@ -6558,14 +6567,21 @@ extension SessionPersistenceTests {
             autoResumeAgentSessions: true,
             promptForApproval: false
         ))
+        let command = try XCTUnwrap(
+            TerminalStartupWorkingDirectoryPrefix.shellWordRanges(input).last?.value
+        )
 
-        XCTAssertTrue(input.contains("config set model.provider"))
-        XCTAssertTrue(input.contains("config set model.base_url"))
-        XCTAssertTrue(input.contains("config set model.api_mode"))
-        XCTAssertTrue(input.contains("codex_responses"))
-        XCTAssertTrue(input.contains("gpt-5.5"))
-        XCTAssertTrue(input.contains("'--provider' '\\''custom'\\'''") || input.contains("'--provider' 'custom'"))
-        XCTAssertFalse(input.contains("openai-codex"))
+        XCTAssertEqual(
+            HermesAgentCodexEnvironment.defaultCodexModel(environment: binding.environment ?? [:]),
+            "gpt-5.5"
+        )
+        XCTAssertTrue(command.contains("config set model.provider"))
+        XCTAssertTrue(command.contains("config set model.base_url"))
+        XCTAssertTrue(command.contains("config set model.api_mode"))
+        XCTAssertTrue(command.contains("config set model.default 'gpt-5.5'"))
+        XCTAssertTrue(command.contains("codex_responses"))
+        XCTAssertTrue(command.contains("'--provider' 'custom'"))
+        XCTAssertFalse(command.contains("openai-codex"))
     }
 
     func testRemoteHermesAgentHookSurfaceResumeBootstrapUsesCapturedExecutable() throws {
@@ -6586,9 +6602,12 @@ extension SessionPersistenceTests {
             autoResumeAgentSessions: true,
             promptForApproval: false
         ))
+        let command = try XCTUnwrap(
+            TerminalStartupWorkingDirectoryPrefix.shellWordRanges(input).last?.value
+        )
 
-        XCTAssertTrue(input.contains("'/opt/homebrew/bin/hermes' config set model.provider"))
-        XCTAssertTrue(input.contains("'/opt/homebrew/bin/hermes' config set model.base_url"))
+        XCTAssertTrue(command.contains("'/opt/homebrew/bin/hermes' config set model.provider"))
+        XCTAssertTrue(command.contains("'/opt/homebrew/bin/hermes' config set model.base_url"))
     }
 
     func testRemoteHermesAgentHookSurfaceResumeBootstrapStaysInsideCwdGuard() throws {
@@ -6609,12 +6628,15 @@ extension SessionPersistenceTests {
             autoResumeAgentSessions: true,
             promptForApproval: false
         ))
+        let command = try XCTUnwrap(
+            TerminalStartupWorkingDirectoryPrefix.shellWordRanges(input).last?.value
+        )
 
-        let cdRange = try XCTUnwrap(input.range(of: "cd --"))
-        let bootstrapRange = try XCTUnwrap(input.range(of: "config set model.provider"))
+        let cdRange = try XCTUnwrap(command.range(of: "cd --"))
+        let bootstrapRange = try XCTUnwrap(command.range(of: "config set model.provider"))
         XCTAssertLessThan(cdRange.lowerBound, bootstrapRange.lowerBound)
-        XCTAssertTrue(input.contains("'./hermes' config set model.provider"))
-        XCTAssertTrue(input.contains("'./hermes' '--provider' 'custom' '--resume'"))
+        XCTAssertTrue(command.contains("'./hermes' config set model.provider"))
+        XCTAssertTrue(command.contains("'./hermes' '--provider' 'custom' '--resume'"))
     }
 
     func testRemoteHermesAgentHookSurfaceResumeReplacesExistingBootstrap() throws {
@@ -6681,9 +6703,12 @@ extension SessionPersistenceTests {
             autoResumeAgentSessions: true,
             promptForApproval: false
         ))
+        let command = try XCTUnwrap(
+            TerminalStartupWorkingDirectoryPrefix.shellWordRanges(input).last?.value
+        )
 
-        XCTAssertFalse(input.contains("config set model.provider"))
-        XCTAssertTrue(input.contains("'--provider' '\\''anthropic'\\'''") || input.contains("'--provider' 'anthropic'"))
+        XCTAssertFalse(command.contains("config set model.provider"))
+        XCTAssertTrue(command.contains("'--provider' 'anthropic'"))
     }
 
     private func makeSurfaceResumeApprovalStoreURL() throws -> URL {
@@ -6762,6 +6787,7 @@ extension SessionPersistenceTests {
         try withAutoResumeAgentSessionsEnabled {
             let source = Workspace()
             let sourcePanelId = try XCTUnwrap(source.focusedPanelId)
+            source.updatePanelShellActivityState(panelId: sourcePanelId, state: .commandRunning)
             let missingCwd = FileManager.default.temporaryDirectory
                 .appendingPathComponent("cmux-deleted-agent-hook-cwd-\(UUID().uuidString)", isDirectory: true)
                 .appendingPathComponent("repo", isDirectory: true)
@@ -6780,8 +6806,19 @@ extension SessionPersistenceTests {
                     updatedAt: 10
                 ),
             ])
+            let agentIndex = try makeRestorableAgentIndex(
+                workspaceId: source.id,
+                panelId: sourcePanelId,
+                sessionId: "session-duplicate-turn",
+                arguments: [
+                    "/usr/local/bin/codex",
+                    "resume",
+                    "session-duplicate-turn",
+                ]
+            )
             let snapshot = source.sessionSnapshot(
                 includeScrollback: false,
+                restorableAgentIndex: agentIndex,
                 surfaceResumeBindingIndex: bindingIndex
             )
 
@@ -6810,7 +6847,17 @@ extension SessionPersistenceTests {
                 volumeName: volumeName
             )
             let snapshotData = try JSONEncoder().encode(manager.sessionSnapshot(includeScrollback: false))
-            let decodedSnapshot = try JSONDecoder().decode(SessionTabManagerSnapshot.self, from: snapshotData)
+            var decodedSnapshot = try JSONDecoder().decode(SessionTabManagerSnapshot.self, from: snapshotData)
+            for workspaceIndex in decodedSnapshot.workspaces.indices {
+                let panels = decodedSnapshot.workspaces[workspaceIndex].panels
+                for panelIndex in panels.indices
+                where panels[panelIndex].terminal?.resumeBinding?.isAgentHookBinding == true {
+                    decodedSnapshot.workspaces[workspaceIndex]
+                        .panels[panelIndex]
+                        .terminal?
+                        .wasAgentRunning = true
+                }
+            }
             let restored = TabManager(autoWelcomeIfNeeded: false)
 
             restored.restoreSessionSnapshot(decodedSnapshot)
