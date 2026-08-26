@@ -214,6 +214,15 @@ enum TerminalManagedGhosttySettings {
     }
 }
 
+enum TerminalScrollbackAutosaveSettings {
+    static let enabledKey = "terminal.autosaveScrollback"
+    static let defaultEnabled = true
+
+    static func isEnabled(defaults: UserDefaults = .standard) -> Bool {
+        defaults.object(forKey: enabledKey) as? Bool ?? defaultEnabled
+    }
+}
+
 enum AgentSessionAutoResumeSettings {
     static let autoResumeAgentSessionsKey = "terminal.autoResumeAgentSessions"
     static let defaultAutoResumeAgentSessions = true

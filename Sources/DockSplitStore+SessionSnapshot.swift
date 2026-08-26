@@ -160,23 +160,9 @@ extension DockSplitStore {
             let tmuxStartCommand = restorableAgent == nil
                 ? policy.restorableTmuxStartCommand(terminal.surface.debugTmuxStartCommand())
                 : nil
-            let resumeStartupInput = policy.surfaceResumeStartupInput(
-                resumeBinding,
-                autoResumeAgentSessions: AgentSessionAutoResumeSettings.isEnabled(
-                    defaults: agentSessionAutoResumeDefaults
-                ) && (agentWasRunning ?? true),
-                promptForApproval: false,
-                approvalStoreURL: SurfaceResumeApprovalStore.defaultURL()
-            )
-            let shouldPersistScrollback = policy.shouldPersistSessionScrollback(
-                closeConfirmationRequired: Workspace.resolveCloseConfirmation(
-                    shellActivityState: terminal.shellActivity.state,
-                    fallbackNeedsConfirmClose: terminal.needsConfirmClose()
-                )
-            ) && policy.shouldReplaySessionScrollback(
-                hasRestorableAgent: restorableAgent != nil,
-                tmuxStartCommand: tmuxStartCommand,
-                hasResumeStartupWork: resumeStartupInput != nil
+            let shouldPersistScrollback = Workspace.shouldPersistSessionScrollbackForRestore(
+                restorableAgent: restorableAgent,
+                tmuxStartCommand: tmuxStartCommand
             )
             let capturedScrollback = includeScrollback && shouldPersistScrollback && hibernation == nil
                 ? TerminalController.shared.readTerminalTextForSnapshot(
@@ -185,10 +171,11 @@ extension DockSplitStore {
                     lineLimit: SessionPersistencePolicy.maxScrollbackLinesPerTerminal
                 )
                 : nil
+            let hasRestoredScrollbackFallback = restoredTerminalScrollbackByPanelId[panelId] != nil
             let scrollback = policy.resolvedSnapshotTerminalScrollback(
                 capturedScrollback: capturedScrollback,
                 fallbackScrollback: restoredTerminalScrollbackByPanelId[panelId],
-                allowFallbackScrollback: shouldPersistScrollback
+                allowFallbackScrollback: shouldPersistScrollback || hasRestoredScrollbackFallback
             )
             if let scrollback {
                 restoredTerminalScrollbackByPanelId[panelId] = scrollback

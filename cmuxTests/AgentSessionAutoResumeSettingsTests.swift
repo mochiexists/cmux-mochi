@@ -9,6 +9,18 @@ import XCTest
 #endif
 
 final class AgentSessionAutoResumeSettingsTests: XCTestCase {
+    func testScrollbackAutosaveDefaultAndStoredValue() throws {
+        let suiteName = "cmux-scrollback-autosave-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        XCTAssertEqual(TerminalScrollbackAutosaveSettings.enabledKey, "terminal.autosaveScrollback")
+        XCTAssertTrue(TerminalScrollbackAutosaveSettings.isEnabled(defaults: defaults))
+
+        defaults.set(false, forKey: TerminalScrollbackAutosaveSettings.enabledKey)
+        XCTAssertFalse(TerminalScrollbackAutosaveSettings.isEnabled(defaults: defaults))
+    }
+
     func testDefaultsKeyAndNotificationOnFlip() throws {
         let suiteName = "cmux-agent-session-auto-resume-\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))

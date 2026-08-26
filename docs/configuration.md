@@ -143,6 +143,18 @@ Shows a loading spinner on sidebar workspace rows that currently have running co
 
 The spinner is compositor-driven (a Core Animation transform run by the render server), so it costs no per-frame CPU and pauses automatically while the window is occluded or Reduce Motion is on. Toggle it manually per workspace with `cmux workspace loading <on|off> [--id <name>]`; each `--id` is a separate loader and the command prints the workspace state as `before=ON;after=OFF`.
 
+## `terminal.autosaveScrollback`
+
+`terminal.autosaveScrollback` periodically saves terminal history so it can be restored after an unexpected quit or process kill. It defaults to `true`. Set it to `false` only if you do not want terminal contents included in periodic recovery snapshots.
+
+```json
+{
+  "terminal": {
+    "autosaveScrollback": true
+  }
+}
+```
+
 ## `terminal.showTextBoxOnNewTerminals` and `terminal.focusTextBoxOnNewTerminals`
 
 `terminal.showTextBoxOnNewTerminals` opens the TextBox on newly-created terminal sessions without moving keyboard focus into it.

@@ -533,22 +533,13 @@ extension Workspace {
                         processPresence: agentProcessPresence
                     )
             }()
-            let resumeStartupInput = sessionRestorePolicy.surfaceResumeStartupInput(
-                resumeBinding,
-                autoResumeAgentSessions: AgentSessionAutoResumeSettings.isEnabled(defaults: agentSessionAutoResumeDefaults) && (agentWasRunning ?? true),
-                promptForApproval: false,
-                approvalStoreURL: SurfaceResumeApprovalStore.defaultURL()
-            )
-            let closeConfirmationRequired = Self.resolveCloseConfirmation(
-                shellActivityState: panelShellActivityStates[panelId],
-                fallbackNeedsConfirmClose: terminalPanel.needsConfirmClose()
-            )
-            let shouldPersistScrollback = sessionRestorePolicy.shouldPersistSessionScrollback(
-                closeConfirmationRequired: closeConfirmationRequired
-            ) && sessionRestorePolicy.shouldReplaySessionScrollback(
-                hasRestorableAgent: effectiveRestorableAgent != nil,
-                tmuxStartCommand: restorableTmuxStartCommand,
-                hasResumeStartupWork: resumeStartupInput != nil
+            // Scrollback autosave exists primarily to preserve live TUIs. Whether
+            // capture runs is decided by includeScrollback; do not re-gate it on
+            // command-running or agent-resume state here, because that drops the
+            // exact terminal content needed after an uncatchable process kill.
+            let shouldPersistScrollback = Self.shouldPersistSessionScrollbackForRestore(
+                restorableAgent: effectiveRestorableAgent,
+                tmuxStartCommand: restorableTmuxStartCommand
             )
 #if DEBUG
             let allowDebugFallbackScrollback = debugSessionSnapshotScrollbackFallbackPanelIds.contains(panelId)
@@ -946,6 +937,16 @@ extension Workspace {
         )
     }
 
+    /// Capture is intentionally more permissive than replay. The one suppression
+    /// is an OMX-HUD tmux restart without a restorable agent, where replayed
+    /// terminal contents would conflict with the restart command.
+    nonisolated static func shouldPersistSessionScrollbackForRestore(
+        restorableAgent: SessionRestorableAgentSnapshot?,
+        tmuxStartCommand: String? = nil
+    ) -> Bool {
+        restorableTmuxStartCommand(tmuxStartCommand) == nil || restorableAgent != nil
+    }
+
     nonisolated static func shouldAutoConnectRestoredRemote(
         foregroundAuthToken: String?,
         snapshot: SessionWorkspaceSnapshot,
@@ -1088,7 +1089,9 @@ extension Workspace {
         includeScrollback: Bool,
         allowFallbackScrollback: Bool = true
     ) -> String? {
-        guard includeScrollback else { return nil }
+        if !includeScrollback {
+            return allowFallbackScrollback ? restoredTerminalScrollbackByPanelId[panelId] : nil
+        }
 #if DEBUG
         let debugFallback = debugSessionSnapshotScrollbackFallbackPanelIds.contains(panelId)
             ? debugSessionSnapshotSyntheticScrollbackByPanelId[panelId]
@@ -1709,7 +1712,12 @@ extension Workspace {
             } else {
                 restoredGuardedWorkingDirectoriesByPanelId.removeValue(forKey: terminalPanel.id)
             }
-            let fallbackScrollback = SessionPersistencePolicy.truncatedScrollback(restoredScrollback)
+            // Keep the durable snapshot as the metadata-save fallback even when
+            // replay is intentionally suppressed by agent/tmux startup work.
+            // Otherwise a save before the next full capture erases the only copy.
+            let fallbackScrollback = SessionPersistencePolicy.truncatedScrollback(
+                snapshot.terminal?.scrollback
+            )
             if let fallbackScrollback {
                 restoredTerminalScrollbackByPanelId[terminalPanel.id] = fallbackScrollback
             } else {
@@ -13248,6 +13256,8 @@ extension Workspace: BonsplitDelegate {
         case .toggleFullWidthTab:
             guard let panelId = panelIdFromSurfaceId(tab.id) else { return }
             toggleFullWidthTabMode(panelId: panelId)
+        case .disconnectRemote:
+            disconnectRemoteConnection(clearConfiguration: false)
         case .forkConversation,
              .forkConversationRight,
              .forkConversationLeft,

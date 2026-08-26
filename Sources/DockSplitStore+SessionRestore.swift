@@ -282,8 +282,10 @@ extension DockSplitStore {
         if let managedResumeBinding {
             managedAgentResumeBindingsByPanelId[terminal.id] = managedResumeBinding
         }
-        if let restoredScrollback {
-            restoredTerminalScrollbackByPanelId[terminal.id] = restoredScrollback
+        if let fallbackScrollback = SessionPersistencePolicy.truncatedScrollback(terminalSnapshot.scrollback) {
+            restoredTerminalScrollbackByPanelId[terminal.id] = fallbackScrollback
+        } else {
+            restoredTerminalScrollbackByPanelId.removeValue(forKey: terminal.id)
         }
         let willRunAgentCommand = false
         let willRunAgentInput =

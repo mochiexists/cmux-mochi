@@ -675,6 +675,41 @@ final class SessionPersistenceTests: XCTestCase {
         )
     }
 
+    func testSessionScrollbackPersistenceKeepsLiveTUIs() {
+        XCTAssertTrue(
+            Workspace.shouldPersistSessionScrollbackForRestore(
+                restorableAgent: nil,
+                tmuxStartCommand: nil
+            ),
+            "Scrollback must persist for a live TUI even when it was not recognized as a restorable agent"
+        )
+    }
+
+    func testSessionScrollbackPersistenceAllowsActiveRestorableAgent() {
+        let agent = SessionRestorableAgentSnapshot(
+            kind: .codex,
+            sessionId: "codex-session-active-tui",
+            workingDirectory: "/tmp/repo",
+            launchCommand: nil
+        )
+
+        XCTAssertTrue(
+            Workspace.shouldPersistSessionScrollbackForRestore(
+                restorableAgent: agent,
+                tmuxStartCommand: nil
+            )
+        )
+    }
+
+    func testSessionScrollbackPersistenceSuppressedForOMXHudRestart() {
+        XCTAssertFalse(
+            Workspace.shouldPersistSessionScrollbackForRestore(
+                restorableAgent: nil,
+                tmuxStartCommand: "omx hud --foo"
+            )
+        )
+    }
+
     func testTruncatedScrollbackAvoidsLeadingPartialANSICSISequence() {
         let maxChars = SessionPersistencePolicy.maxScrollbackCharactersPerTerminal
         let source = "\u{001B}[31m"
@@ -935,6 +970,7 @@ final class SessionPersistenceTests: XCTestCase {
             AppDelegate.shouldSkipSessionAutosaveForUnchangedFingerprint(
                 isTerminatingApp: false,
                 includeScrollback: false,
+                scrollbackDirty: false,
                 previousFingerprint: 1234,
                 currentFingerprint: 1234,
                 lastPersistedAt: now.addingTimeInterval(-5),
@@ -950,6 +986,7 @@ final class SessionPersistenceTests: XCTestCase {
             AppDelegate.shouldSkipSessionAutosaveForUnchangedFingerprint(
                 isTerminatingApp: false,
                 includeScrollback: false,
+                scrollbackDirty: false,
                 previousFingerprint: 1234,
                 currentFingerprint: 1234,
                 lastPersistedAt: now.addingTimeInterval(-120),
@@ -965,6 +1002,7 @@ final class SessionPersistenceTests: XCTestCase {
             AppDelegate.shouldSkipSessionAutosaveForUnchangedFingerprint(
                 isTerminatingApp: true,
                 includeScrollback: false,
+                scrollbackDirty: false,
                 previousFingerprint: 1234,
                 currentFingerprint: 1234,
                 lastPersistedAt: now.addingTimeInterval(-1),
@@ -975,10 +1013,69 @@ final class SessionPersistenceTests: XCTestCase {
             AppDelegate.shouldSkipSessionAutosaveForUnchangedFingerprint(
                 isTerminatingApp: false,
                 includeScrollback: true,
+                scrollbackDirty: true,
                 previousFingerprint: 1234,
                 currentFingerprint: 1234,
                 lastPersistedAt: now.addingTimeInterval(-1),
                 now: now
+            )
+        )
+    }
+
+    func testCleanScrollbackAutosaveSkipsUnchangedFingerprint() {
+        let now = Date()
+        XCTAssertTrue(
+            AppDelegate.shouldSkipSessionAutosaveForUnchangedFingerprint(
+                isTerminatingApp: false,
+                includeScrollback: true,
+                scrollbackDirty: false,
+                previousFingerprint: 1234,
+                currentFingerprint: 1234,
+                lastPersistedAt: now.addingTimeInterval(-120),
+                now: now
+            )
+        )
+        XCTAssertFalse(
+            AppDelegate.shouldSkipSessionAutosaveForUnchangedFingerprint(
+                isTerminatingApp: false,
+                includeScrollback: true,
+                scrollbackDirty: false,
+                previousFingerprint: 1234,
+                currentFingerprint: 5678,
+                lastPersistedAt: now.addingTimeInterval(-120),
+                now: now
+            )
+        )
+    }
+
+    func testSessionAutosaveScrollbackSettingControlsAutosaveSnapshotMode() throws {
+        let suiteName = "cmux-session-autosave-scrollback-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        XCTAssertTrue(AppDelegate.shouldIncludeScrollbackInSessionAutosave(defaults: defaults))
+
+        defaults.set(false, forKey: TerminalScrollbackAutosaveSettings.enabledKey)
+        XCTAssertFalse(AppDelegate.shouldIncludeScrollbackInSessionAutosave(defaults: defaults))
+    }
+
+    func testTerminalRenderDirtySignalIsThrottledButCoversLaterFrames() {
+        XCTAssertTrue(
+            GhosttyNSView.shouldSignalScrollbackAutosaveDirty(
+                lastSignalUptime: 0,
+                nowUptime: 100
+            )
+        )
+        XCTAssertFalse(
+            GhosttyNSView.shouldSignalScrollbackAutosaveDirty(
+                lastSignalUptime: 100,
+                nowUptime: 100.49
+            )
+        )
+        XCTAssertTrue(
+            GhosttyNSView.shouldSignalScrollbackAutosaveDirty(
+                lastSignalUptime: 100,
+                nowUptime: 100.5
             )
         )
     }
@@ -1366,6 +1463,39 @@ final class SessionPersistenceTests: XCTestCase {
 
         XCTAssertTrue(Workspace.shouldReplaySessionScrollback(restorableAgent: agent))
         XCTAssertTrue(Workspace.shouldReplaySessionScrollback(restorableAgent: nil))
+    }
+
+    @MainActor
+    func testReplaySuppressedAgentRestoreKeepsScrollbackForImmediateForceQuit() throws {
+        let source = Workspace()
+        let sourcePanelId = try XCTUnwrap(source.focusedPanelId)
+        let seeded = source.debugSeedSessionSnapshotScrollback(charactersPerTerminal: 8_192)
+        XCTAssertEqual(seeded.terminals, 1)
+        let sourceIndex = try makeRestorableAgentIndex(
+            workspaceId: source.id,
+            panelId: sourcePanelId,
+            sessionId: "codex-replay-suppressed-session",
+            arguments: [
+                "/usr/local/bin/codex",
+                "resume",
+                "codex-replay-suppressed-session",
+            ]
+        )
+        let captured = source.sessionSnapshot(
+            includeScrollback: true,
+            restorableAgentIndex: sourceIndex
+        )
+        let capturedScrollback = try XCTUnwrap(captured.panels.first?.terminal?.scrollback)
+
+        let restored = Workspace()
+        restored.restoreSessionSnapshot(captured)
+
+        let immediateMetadataSave = restored.sessionSnapshot(includeScrollback: false)
+        XCTAssertEqual(
+            immediateMetadataSave.panels.first?.terminal?.scrollback,
+            capturedScrollback,
+            "Agent resume startup may suppress replay, but must retain the durable fallback until the next full capture"
+        )
     }
 
     @MainActor

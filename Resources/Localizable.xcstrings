@@ -197213,6 +197213,23 @@
         }
       }
     },
+    "settings.terminal.autosaveScrollback": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Autosave Terminal Scrollback"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ターミナルのスクロールバックを自動保存"
+          }
+        }
+      }
+    },
     "settings.terminal.copyOnSelect": {
       "extractionState": "manual",
       "localizations": {

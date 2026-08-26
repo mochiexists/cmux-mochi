@@ -3263,6 +3263,7 @@ class GhosttyApp {
                 return tabManager.toggleSplitZoom(tabId: tabId, surfaceId: surfaceId)
             }
         case GHOSTTY_ACTION_RENDER:
+            surfaceView.enqueueScrollbackAutosaveDirtySignal()
             return false
         case GHOSTTY_ACTION_MOUSE_SHAPE:
             let shape = action.action.mouse_shape
@@ -3675,7 +3676,17 @@ class GhosttyNSView: NSView, NSUserInterfaceValidations {
     /// fires on Ghostty's I/O thread while the flush runs on main.
     private var _pendingScrollbar: GhosttyScrollbar?
     private var _scrollbarFlushScheduled = false
+    private var _lastScrollbackAutosaveDirtySignalUptime: TimeInterval = 0
     private let _scrollbarLock = NSLock()
+    nonisolated static let scrollbackAutosaveDirtySignalMinimumInterval: TimeInterval = 0.5
+
+    nonisolated static func shouldSignalScrollbackAutosaveDirty(
+        lastSignalUptime: TimeInterval,
+        nowUptime: TimeInterval,
+        minimumInterval: TimeInterval = scrollbackAutosaveDirtySignalMinimumInterval
+    ) -> Bool {
+        lastSignalUptime <= 0 || nowUptime - lastSignalUptime >= minimumInterval
+    }
     private var _renderedFrameFlushScheduled = false
     private var _pendingRenderedFrameDeliveryReasons:
         TerminalRenderedFrameDeliveryReasons = []
@@ -3757,6 +3768,28 @@ class GhosttyNSView: NSView, NSUserInterfaceValidations {
         }
     }
 
+    /// Render actions cover alternate-screen and in-place TUI updates that do
+    /// not move Ghostty's scrollbar. Throttle the main-queue signal so a busy
+    /// renderer cannot enqueue one block per frame.
+    fileprivate func enqueueScrollbackAutosaveDirtySignal(
+        nowUptime: TimeInterval = ProcessInfo.processInfo.systemUptime
+    ) {
+        _scrollbarLock.lock()
+        let shouldSignal = Self.shouldSignalScrollbackAutosaveDirty(
+            lastSignalUptime: _lastScrollbackAutosaveDirtySignalUptime,
+            nowUptime: nowUptime
+        )
+        if shouldSignal {
+            _lastScrollbackAutosaveDirtySignalUptime = nowUptime
+        }
+        _scrollbarLock.unlock()
+
+        guard shouldSignal else { return }
+        DispatchQueue.main.async {
+            AppDelegate.shared?.markTerminalScrollbackAutosaveDirty()
+        }
+    }
+
     private func flushPendingScrollbar() {
         _scrollbarLock.lock()
         _scrollbarFlushScheduled = false
@@ -3769,6 +3802,7 @@ class GhosttyNSView: NSView, NSUserInterfaceValidations {
         if keyboardCopyModeActive, let surface {
             reconcileKeyboardCopyModeViewport(surface: surface)
         }
+        AppDelegate.shared?.markTerminalScrollbackAutosaveDirty()
         NotificationCenter.default.post(
             name: .ghosttyDidUpdateScrollbar,
             object: self,
