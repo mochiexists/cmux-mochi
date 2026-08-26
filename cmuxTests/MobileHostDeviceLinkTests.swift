@@ -115,6 +115,26 @@ struct MobileHostDeviceLinkTests {
         #expect(!MobileHostService.isDeviceLinkEnrollmentMethod(""))
     }
 
+    @Test func testEnrollmentResponseCarriesMacIdentityWithoutSecondCandidateRPC() throws {
+        let source = try deviceLinkHostSource()
+        guard let methodStart = source.range(of: "deviceLinkEnrollmentResult("),
+              let nextExtension = source.range(
+                  of: "extension MobileHostService {",
+                  range: methodStart.upperBound ..< source.endIndex
+              )
+        else {
+            throw DispatchGuardError.enrollmentHandlerNotFound
+        }
+        let handler = source[methodStart.lowerBound ..< nextExtension.lowerBound]
+
+        for key in ["mac_device_id", "mac_instance_tag", "mac_display_name"] {
+            #expect(
+                handler.contains("\"\(key)\""),
+                "enrollment must return \(key); the candidate connection cannot make a second status RPC"
+            )
+        }
+    }
+
     // MARK: - helpers
 
     private func makeRequest(
@@ -139,9 +159,22 @@ struct MobileHostDeviceLinkTests {
         return String(source[range.lowerBound...])
     }
 
+    private func deviceLinkHostSource() throws -> String {
+        let thisFile = URL(fileURLWithPath: #filePath)
+        let repositoryRoot = thisFile.deletingLastPathComponent().deletingLastPathComponent()
+        return try String(
+            contentsOf: repositoryRoot
+                .appendingPathComponent("Sources")
+                .appendingPathComponent("Mobile")
+                .appendingPathComponent("MobileHostService+DeviceLink.swift"),
+            encoding: .utf8
+        )
+    }
+
     /// Raised when the dispatch this guard inspects has been renamed. Failing
     /// loudly beats a guard that silently stops guarding.
     private enum DispatchGuardError: Error {
         case dispatchNotFound
+        case enrollmentHandlerNotFound
     }
 }
