@@ -35,13 +35,26 @@ if [[ "$MISMATCHED" != "1" ]]; then
   exit 1
 fi
 
-PUBLISHED_BUILD=$(curl -fsSL --max-time 15 \
+UPSTREAM_BUILD=$(curl -fsSL --max-time 15 \
   https://github.com/manaflow-ai/cmux/releases/latest/download/appcast.xml 2>/dev/null \
   | sed -n 's#.*<sparkle:version>\([0-9][0-9]*\)</sparkle:version>.*#\1#p' \
   | head -n1 || true)
+FORK_BUILD=$(curl -fsSL --max-time 15 \
+  https://github.com/mochiexists/cmux-mochi/releases/latest/download/appcast.xml 2>/dev/null \
+  | sed -n 's#.*<sparkle:version>\([0-9][0-9]*\)</sparkle:version>.*#\1#p' \
+  | head -n1 || true)
+
+PUBLISHED_BUILD=""
+for candidate in "$UPSTREAM_BUILD" "$FORK_BUILD"; do
+  if [[ "$candidate" =~ ^[0-9]+$ ]] && {
+    [[ -z "$PUBLISHED_BUILD" ]] || (( candidate > PUBLISHED_BUILD ))
+  }; then
+    PUBLISHED_BUILD="$candidate"
+  fi
+done
 
 if ! [[ "$PUBLISHED_BUILD" =~ ^[0-9]+$ ]]; then
-  echo "WARN: could not fetch latest published Sparkle build; skipping monotonic check"
+  echo "WARN: could not fetch upstream or Mochi Sparkle builds; skipping monotonic check"
   echo "PASS (soft): local CURRENT_PROJECT_VERSION=$LOCAL_BUILD"
   exit 0
 fi
@@ -61,4 +74,5 @@ EOF
   exit 1
 fi
 
-echo "PASS: local CURRENT_PROJECT_VERSION=$LOCAL_BUILD > published Sparkle build=$PUBLISHED_BUILD"
+echo "PASS: local CURRENT_PROJECT_VERSION=$LOCAL_BUILD > max published Sparkle build=$PUBLISHED_BUILD"
+echo "      upstream=${UPSTREAM_BUILD:-unavailable}, mochi=${FORK_BUILD:-unavailable}"

@@ -32,7 +32,7 @@ Candidate commit: `ca011e3c5b`
 | Unit target compiles | `xcodebuild -project cmux.xcodeproj -scheme cmux-unit -configuration Debug -destination 'platform=macOS' -derivedDataPath /tmp/cmux-parity-unit build` | Passed: `** BUILD SUCCEEDED **`. |
 | Tagged Debug app | `CMUX_SKIP_ZIG_BUILD=1 ./scripts/reload.sh --tag parity-recovery` | Built and launched; initial socket wait was blocked by a visible Keychain approval dialog, then the tagged socket returned `PONG`. |
 | Fork overlay | `scripts/fork-overlay-audit.sh` | Passed, including fork identity determinism, 658-file test wiring, and the terminal 12-row ledger. |
-| Release pre-tag | `scripts/release-pretag-guard.sh` | Passed at candidate build 122 after the full focused parity rerun and Sparkle monotonic-build check. |
+| Release pre-tag | `scripts/release-pretag-guard.sh` | Passed at candidate build 122 after the full focused parity rerun; build 122 exceeds upstream 102 and Mochi 121. |
 | Source hygiene | `git diff --check` | Passed. |
 <!-- parity-gates:end -->
 
