@@ -1314,6 +1314,48 @@ final class SessionPersistenceTests: XCTestCase {
         XCTAssertNil(resolved)
     }
 
+    @MainActor
+    func testMetadataAutosavePreservesCapturedScrollbackForForceQuitRecovery() throws {
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("cmux-force-quit-session-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let source = Workspace()
+        let seeded = source.debugSeedSessionSnapshotScrollback(charactersPerTerminal: 8_192)
+        XCTAssertEqual(seeded.terminals, 1)
+
+        let capturedWorkspace = source.sessionSnapshot(includeScrollback: true)
+        let capturedScrollback = try XCTUnwrap(capturedWorkspace.panels.first?.terminal?.scrollback)
+
+        // Model the next launch: the captured scrollback is replayed and retained as
+        // the terminal's crash-recovery fallback.
+        let relaunched = Workspace()
+        relaunched.restoreSessionSnapshot(capturedWorkspace)
+
+        var capturedApp = makeSnapshot(version: SessionSnapshotSchema.currentVersion)
+        capturedApp.windows[0].tabManager.workspaces = [capturedWorkspace]
+        let store = sessionStore(
+            bundleIdentifier: "com.cmuxterm.tests.force-quit",
+            appSupportDirectory: tempDir
+        )
+        XCTAssertTrue(store.save(capturedApp))
+
+        // Model a metadata autosave followed by SIGKILL. There is deliberately no
+        // graceful-termination save after this write.
+        let metadataWorkspace = relaunched.sessionSnapshot(includeScrollback: false)
+        var metadataApp = makeSnapshot(version: SessionSnapshotSchema.currentVersion)
+        metadataApp.windows[0].tabManager.workspaces = [metadataWorkspace]
+        XCTAssertTrue(store.save(metadataApp))
+
+        let afterForceQuit = try XCTUnwrap(store.load())
+        XCTAssertEqual(
+            afterForceQuit.windows.first?.tabManager.workspaces.first?.panels.first?.terminal?.scrollback,
+            capturedScrollback,
+            "A cheap autosave must not erase the last durable scrollback before an uncatchable process kill"
+        )
+    }
+
     func testRestorableAgentWithoutResumeWorkReplaysSavedScrollback() {
         let agent = SessionRestorableAgentSnapshot(
             kind: .claude,
