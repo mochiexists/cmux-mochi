@@ -337,12 +337,16 @@ struct WorkspaceSessionRestorePolicyServiceTests {
         ) == nil)
     }
 
-    @Test("scrollback replay skips restorable agents, OMX HUD, and resume startup work")
+    @Test("scrollback replay preserves a restorable agent when no resume will run")
     func scrollbackReplayPolicy() {
         let service = makeService()
 
         #expect(service.shouldReplaySessionScrollback(hasRestorableAgent: false))
-        #expect(!service.shouldReplaySessionScrollback(hasRestorableAgent: true))
+        #expect(service.shouldReplaySessionScrollback(hasRestorableAgent: true))
+        #expect(!service.shouldReplaySessionScrollback(
+            hasRestorableAgent: true,
+            hasResumeStartupWork: true
+        ))
         #expect(!service.shouldReplaySessionScrollback(
             hasRestorableAgent: false,
             tmuxStartCommand: "oh-my-codex hud"
