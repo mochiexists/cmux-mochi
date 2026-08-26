@@ -65,6 +65,7 @@ class ForkParityValidationTests(unittest.TestCase):
         result = self.run_checker(matrix())
 
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("1 mobile journeys", result.stdout)
 
     def test_rejects_pending_candidate_commit(self) -> None:
         result = self.run_checker(matrix(candidate="pending"))

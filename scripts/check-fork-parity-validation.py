@@ -27,7 +27,9 @@ def table_rows(table: str, expected_cells: int) -> list[list[str]]:
         cells = [cell.strip() for cell in line.split("|")[1:-1]]
         if len(cells) != expected_cells:
             continue
-        if cells[0] in {"Feature", "Gate"} or all(set(cell) <= {"-", ":"} for cell in cells):
+        if cells[0] in {"Feature", "Gate", "Mobile journey"} or all(
+            set(cell) <= {"-", ":"} for cell in cells
+        ):
             continue
         rows.append(cells)
     if not rows:
