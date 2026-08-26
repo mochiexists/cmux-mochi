@@ -57,4 +57,24 @@ struct MobileDeviceLinkEnrollmentTests {
             _ = try await enroller.enroll(payload: payload)
         }
     }
+
+    @Test("enrollment response carries the Mac identity used for reconnect")
+    func enrollmentIdentityParsing() throws {
+        let identity = try MobileDeviceLinkEnroller.enrollmentIdentity(from: [
+            "mac_device_id": "mac-123",
+            "mac_instance_tag": "forcequit-scrollback",
+            "mac_display_name": "Tim's Mac"
+        ])
+
+        #expect(identity.deviceID == "mac-123")
+        #expect(identity.instanceTag == "forcequit-scrollback")
+        #expect(identity.displayName == "Tim's Mac")
+    }
+
+    @Test("enrollment response without a Mac identity is rejected")
+    func enrollmentIdentityRequired() {
+        #expect(throws: MobileDeviceLinkEnrollmentError.malformedResponse) {
+            _ = try MobileDeviceLinkEnroller.enrollmentIdentity(from: [:])
+        }
+    }
 }

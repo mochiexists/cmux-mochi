@@ -213,27 +213,15 @@ public struct MobileDeviceLinkEnroller: Sendable {
         }
         let wasAlreadyEnrolled = result["already_enrolled"] as? Bool ?? false
 
-        // Ask who we just paired with. The channel is admitted at this point,
-        // so the Mac discloses its identity, and storing that identity is what
-        // lets the ordinary reconnect path recognise this Mac later.
-        let identity = try await requestMacIdentity(over: transport)
+        // The connection keeps its enrollment-candidate authorization context
+        // until it closes. Identity therefore travels in the successful
+        // enrollment response rather than through a second, forbidden status
+        // request. Persisting it is what lets reconnect recognise this Mac.
+        let identity = try Self.enrollmentIdentity(from: result)
         return RouteOutcome(wasAlreadyEnrolled: wasAlreadyEnrolled, identity: identity)
     }
 
-    /// Reads the Mac's identity over an already-authenticated channel.
-    private func requestMacIdentity(over transport: CmxNetworkByteTransport) async throws -> MacIdentity {
-        let request: [String: Any] = [
-            "id": UUID().uuidString,
-            "method": "mobile.host.status",
-            "params": [:],
-        ]
-        try await transport.send(Self.frame(try JSONSerialization.data(withJSONObject: request)))
-        let data = try await Self.readFrame(from: transport)
-        guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let result = object["result"] as? [String: Any]
-        else {
-            throw MobileDeviceLinkEnrollmentError.malformedResponse
-        }
+    static func enrollmentIdentity(from result: [String: Any]) throws -> MacIdentity {
         guard let deviceID = result["mac_device_id"] as? String,
               !deviceID.isEmpty
         else {

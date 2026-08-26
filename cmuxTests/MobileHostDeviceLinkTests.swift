@@ -45,7 +45,7 @@ struct MobileHostDeviceLinkTests {
         }
     }
 
-    @Test func testPairedDeviceMayWorkButNotEnroll() async {
+    @Test func testPairedDeviceMayWorkAndRetryItsOwnEnrollment() async {
         let authorization = MobileHostConnectionAuthorizationContext
             .pairedDevice(fingerprint: String(repeating: "b", count: 64), label: "iPhone 16")
 
@@ -61,10 +61,10 @@ struct MobileHostDeviceLinkTests {
             authorization: authorization,
             stackAuthorization: { _ in nil }
         )
-        guard case .failure = enroll else {
-            Issue.record("a paired device must not be able to mint further pairings")
-            return
-        }
+        #expect(
+            enroll == nil,
+            "a paired device may retry enrollment after a lost response; TLS fixes the request to its own key"
+        )
     }
 
     @Test func testStackBearerCannotReachEnrollment() async {

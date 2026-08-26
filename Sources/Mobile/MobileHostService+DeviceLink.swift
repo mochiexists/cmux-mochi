@@ -80,12 +80,21 @@ extension MobileHostService {
                 fingerprint: fingerprint,
                 label: label
             )
-            return .ok([
+            var response: [String: Any] = [
                 "enrolled": true,
                 "already_enrolled": outcome.wasAlreadyEnrolled,
                 "device_label": outcome.device.label,
                 "fingerprint": outcome.device.fingerprint.hex,
-            ])
+                // Return identity with enrollment because this connection's
+                // authorization context remains an enrollment candidate until
+                // it closes. A second status RPC would correctly be rejected.
+                "mac_device_id": MobileHostIdentity.deviceID(),
+                "mac_instance_tag": MobileHostIdentity.instanceTag()
+            ]
+            if let displayName = MobileHostIdentity.instanceDisplayName() {
+                response["mac_display_name"] = displayName
+            }
+            return .ok(response)
         } catch EnrollmentError.ticketUnusable {
             // One error for absent, spent, and expired: a caller probing for
             // ticket existence learns nothing it did not already know.
@@ -310,4 +319,3 @@ extension MobileHostService {
         return (transport, authorization)
     }
 }
-
