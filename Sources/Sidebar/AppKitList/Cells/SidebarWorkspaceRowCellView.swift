@@ -19,6 +19,7 @@ final class SidebarWorkspaceRowTableCellView: NSTableCellView {
     private let topDropIndicator = NSView()
     private let bottomDropIndicator = NSView()
     private let hintPill = SidebarShortcutHintPillView()
+    private let privacyFrostView = SidebarPrivacyFrostedEffectView()
     /// Hosts every content subview so the Done-status dim composites like the
     /// legacy row's `.opacity(0.6)` on the content VStack — the selection
     /// background, rail, drop indicators, and hint pill stay full-strength.
@@ -114,7 +115,7 @@ final class SidebarWorkspaceRowTableCellView: NSTableCellView {
     /// swap. The stored model stays authoritative; the next configure()
     /// reconciles (or reverts if the selection did not land).
     func showOptimisticSelectionHighlight() {
-        guard let model, !model.isActive else { return }
+        guard let model, !model.isActive, !model.isPrivacyBlurred else { return }
         var optimistic = model
         optimistic.isActive = true
         optimistic.isMultiSelected = false
@@ -127,7 +128,7 @@ final class SidebarWorkspaceRowTableCellView: NSTableCellView {
     /// together while the authoritative render sits behind the terminal-view
     /// swap. configure() reconciles right after.
     func showOptimisticDeselection() {
-        guard let model, model.isActive || model.isMultiSelected else { return }
+        guard let model, !model.isPrivacyBlurred, model.isActive || model.isMultiSelected else { return }
         var optimistic = model
         optimistic.isActive = false
         optimistic.isMultiSelected = false
@@ -140,7 +141,7 @@ final class SidebarWorkspaceRowTableCellView: NSTableCellView {
     /// treatment made every cmd-click flash bright blue and then settle
     /// dim once the authoritative state landed.
     func showOptimisticMultiSelection() {
-        guard let model, !model.isActive, !model.isMultiSelected else { return }
+        guard let model, !model.isPrivacyBlurred, !model.isActive, !model.isMultiSelected else { return }
         var optimistic = model
         optimistic.isMultiSelected = true
         applyModel(optimistic)
@@ -161,6 +162,7 @@ final class SidebarWorkspaceRowTableCellView: NSTableCellView {
     /// status menu, and checklist controls act without activating the row,
     /// exactly like their legacy SwiftUI Buttons).
     func selectionPreviewShouldIgnore(_ hitView: NSView) -> Bool {
+        guard model?.isPrivacyBlurred != true else { return true }
         for control in [closeButton, statusGlyphButton, compactStatusLine, checklistSection] {
             if hitView === control || hitView.isDescendant(of: control) {
                 return true
@@ -235,6 +237,7 @@ final class SidebarWorkspaceRowTableCellView: NSTableCellView {
         addSubview(topDropIndicator)
         addSubview(bottomDropIndicator)
         addSubview(hintPill)
+        addSubview(privacyFrostView)
 
     }
 
@@ -433,7 +436,10 @@ final class SidebarWorkspaceRowTableCellView: NSTableCellView {
         let titleLineLimit = settings.wrapsWorkspaceTitles ? 8 : 1
         titleView.maximumNumberOfLines = titleLineLimit
         titleView.lineBreakMode = titleLineLimit == 1 ? .byTruncatingTail : .byWordWrapping
-        let boundedTitle = snapshot.title.sidebarBoundedDisplayString(
+        let displayedTitle = model.isPrivacyBlurred
+            ? String(localized: "sidebar.workspace.privacyBlurred", defaultValue: "Private Workspace")
+            : snapshot.title
+        let boundedTitle = displayedTitle.sidebarBoundedDisplayString(
             maxDisplayedLines: titleLineLimit,
             maxDisplayedCharacters: 2048
         )
@@ -551,11 +557,13 @@ final class SidebarWorkspaceRowTableCellView: NSTableCellView {
 
         // Hint pill + indicators + dim/drag
         hintPill.configure(
-            text: model.shortcutHintText,
+            text: model.isPrivacyBlurred ? nil : model.shortcutHintText,
             fontSize: model.scaled(9),
             emphasis: model.isActive ? 1.0 : 0.9,
             representedIdentity: model.workspaceId
         )
+        applyPrivacyRedaction(model.isPrivacyBlurred)
+        privacyFrostView.isHidden = !model.isPrivacyBlurred
         topDropIndicator.layer?.backgroundColor = cmuxAccentNSColor().cgColor
         bottomDropIndicator.layer?.backgroundColor = cmuxAccentNSColor().cgColor
         topDropIndicator.isHidden = !model.topDropIndicatorVisible
@@ -568,9 +576,79 @@ final class SidebarWorkspaceRowTableCellView: NSTableCellView {
         setAccessibilityIdentifier("sidebarWorkspace.\(model.workspaceId.uuidString)")
         setAccessibilityLabel(String(
             localized: "accessibility.workspacePosition",
-            defaultValue: "\(snapshot.title), workspace \(model.index + 1) of \(model.accessibilityWorkspaceCount)"
+            defaultValue: "\(displayedTitle), workspace \(model.index + 1) of \(model.accessibilityWorkspaceCount)"
         ))
+        setAccessibilityHelp(
+            model.isPrivacyBlurred
+                ? String(
+                    localized: "sidebar.workspace.privacyBlurred.accessibilityHint",
+                    defaultValue: "Right-click for workspace actions."
+                )
+                : nil
+        )
     }
+
+    /// The frost is translucent, so privacy cannot depend on it obscuring
+    /// rendered content. Only the generic title remains in the hierarchy.
+    private func applyPrivacyRedaction(_ isBlurred: Bool) {
+        if isBlurred, isEditing {
+            endInlineRename(commit: false)
+        }
+        if !isEditing {
+            titleView.isHidden = false
+        }
+        guard isBlurred else { return }
+
+        var sensitiveViews: [NSView] = [
+            pinImageView,
+            mediaAudioView,
+            mediaMicView,
+            mediaCameraView,
+            statusGlyphButton,
+            leadingBadge,
+            trailingBadge,
+            renameField,
+            descriptionView,
+            subtitleView,
+            compactStatusLine,
+            remoteTargetView,
+            remoteStatusView,
+            remoteReconnectButton,
+            metadataToggleButton,
+            markdownToggleButton,
+            logLine,
+            progressView,
+            branchIconView,
+            checklistSection,
+        ]
+        if let leadingSpinner { sensitiveViews.append(leadingSpinner) }
+        if let trailingSpinner { sensitiveViews.append(trailingSpinner) }
+        sensitiveViews.append(contentsOf: metadataRows)
+        sensitiveViews.append(contentsOf: markdownBlocks)
+        sensitiveViews.append(contentsOf: branchLines)
+        sensitiveViews.append(contentsOf: pullRequestRows)
+        sensitiveViews.append(contentsOf: portButtons)
+        for view in sensitiveViews {
+            view.isHidden = true
+        }
+    }
+
+#if DEBUG
+    struct PrivacyRedactionProbe: Equatable {
+        let isFrostVisible: Bool
+        let frostCoversRow: Bool
+        let displayedTitle: String
+    }
+
+    var privacyRedactionProbe: PrivacyRedactionProbe {
+        PrivacyRedactionProbe(
+            isFrostVisible: !privacyFrostView.isHidden,
+            frostCoversRow: privacyFrostView.frame.height >= bounds.height
+                && privacyFrostView.frame.width >= backgroundView.frame.width,
+            displayedTitle: titleView.stringValue
+        )
+    }
+#endif
 
     /// Live drop-line painting during native reorder drags. The controller
     /// owns the indicator for the drag's lifetime (the model's flags stay
@@ -672,6 +750,7 @@ final class SidebarWorkspaceRowTableCellView: NSTableCellView {
         guard let model else { return false }
         return isPointerHovering
             && !contextMenuVisible
+            && !model.isPrivacyBlurred
             && model.canCloseWorkspace
             && !(model.showsShortcutHints || model.settings.alwaysShowShortcutHints)
     }
@@ -990,7 +1069,7 @@ final class SidebarWorkspaceRowTableCellView: NSTableCellView {
     }
 
     func beginInlineRename() {
-        guard let model else { return }
+        guard let model, !model.isPrivacyBlurred else { return }
         isEditing = true
         renameField.stringValue = model.snapshot.title
         renameField.font = .systemFont(ofSize: model.scaled(12.5), weight: .semibold)
@@ -1319,6 +1398,12 @@ final class SidebarWorkspaceRowTableCellView: NSTableCellView {
             // nesting ("can't tell when a workspace is in a group").
             let bgX = outerPad + (model.isGrouped ? SidebarWorkspaceGroupingMetrics.memberIndent : 0)
             backgroundView.frame = NSRect(x: bgX, y: 0, width: max(0, width - outerPad - bgX), height: y)
+            privacyFrostView.frame = NSRect(
+                x: bgX,
+                y: 0,
+                width: max(0, width - outerPad - bgX),
+                height: max(y, bounds.height)
+            )
             railView.frame = NSRect(x: bgX + 4 - 1, y: 5, width: 3, height: max(0, y - 10))
             railView.layer?.cornerRadius = 1.5
             let indicatorLeading: CGFloat = 8 + (model.isGrouped ? 0 : 0)

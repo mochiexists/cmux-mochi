@@ -3447,12 +3447,12 @@ struct CMUXCLI {
             return
         }
 
-        // Check for --help/-h on subcommands before resolving sockets,
+        // Check for help/--help/-h on subcommands before resolving sockets,
         // so help text is available even when cmux is not running.
         let preSeparatorArgs = commandArgs.firstIndex(of: "--").map { commandArgs[..<$0] } ?? commandArgs[...]
         if command != "__tmux-compat",
            shouldDispatchCmuxSubcommandHelp(command: command, commandArgs: commandArgs),
-           preSeparatorArgs.contains(where: { $0 == "--help" || $0 == "-h" }) {
+           Self.requestsSubcommandHelp(preSeparatorArgs) {
             if dispatchSubcommandHelp(command: command, commandArgs: commandArgs) {
                 return
             }
@@ -5230,7 +5230,37 @@ struct CMUXCLI {
         case "send":
             let (wsArg, rem0) = parseOption(commandArgs, name: "--workspace")
             let (sfArg, rem1) = parseOption(rem0, name: "--surface")
-            let (windowOpt, rem2) = parseOption(rem1, name: "--window")
+            let (windowOpt, rem2a) = parseOption(rem1, name: "--window")
+            let (timeoutArg, rem2b) = parseOption(rem2a, name: "--wait-timeout")
+            let (settleArg, rem2c) = parseOption(rem2b, name: "--wait-settle")
+            let (pollArg, rem2d) = parseOption(rem2c, name: "--wait-poll")
+            // Flags after `--` are message text. `--wait` implies submission:
+            // waiting on text that was only typed into a composer is a footgun.
+            let (forceSend, rem2e) = extractBoolFlag(rem2d, names: ["--force"])
+            let (waitForReply, rem2f) = extractBoolFlag(rem2e, names: ["--wait"])
+            let (explicitSubmit, rem2) = extractSendSubmitFlag(rem2f)
+            let submitAfterSend = explicitSubmit || waitForReply
+            let waitOptions: (timeout: Double, settle: Double, pollSeconds: Double)?
+            if waitForReply {
+                let timeout = try positiveSendWaitOption(
+                    timeoutArg,
+                    name: "--wait-timeout",
+                    defaultValue: 120
+                )
+                let settle = try nonnegativeSendWaitOption(
+                    settleArg,
+                    name: "--wait-settle",
+                    defaultValue: 2
+                )
+                let pollMilliseconds = try positiveSendWaitOption(
+                    pollArg,
+                    name: "--wait-poll",
+                    defaultValue: 400
+                )
+                waitOptions = (timeout, settle, pollMilliseconds / 1_000)
+            } else {
+                waitOptions = nil
+            }
             let windowRaw = windowOpt ?? windowId
             let workspaceArg = wsArg ?? Self.callerWorkspaceForSurfaceHandle(sfArg, windowRaw: windowRaw)
             let surfaceArg = sfArg ?? (wsArg == nil && windowRaw == nil ? ProcessInfo.processInfo.environment["CMUX_SURFACE_ID"] : nil)
@@ -5238,14 +5268,113 @@ struct CMUXCLI {
             guard !rawText.isEmpty else { throw CLIError(message: "send requires text") }
             let text = unescapeSendText(rawText)
             var params: [String: Any] = ["text": text]
+            if forceSend { params["force"] = true }
             let winId = try normalizeWindowHandle(windowRaw, client: client)
             if let winId { params["window_id"] = winId }
             let wsId = try normalizeWorkspaceHandle(workspaceArg, client: client, windowHandle: winId)
             if let wsId { params["workspace_id"] = wsId }
             let sfId = try normalizeSurfaceHandle(surfaceArg, client: client, workspaceHandle: wsId, windowHandle: winId)
             if let sfId { params["surface_id"] = sfId }
+
+            // Keep every follow-up RPC on the surface that accepted the text,
+            // even if the user's focus changes while this process is running.
+            var resolvedTarget: [String: Any] = [:]
+            if let winId { resolvedTarget["window_id"] = winId }
+            if let wsId { resolvedTarget["workspace_id"] = wsId }
+            if let sfId { resolvedTarget["surface_id"] = sfId }
+
+            let preSubmitScreen: (surfaceID: String?, text: String)?
+            if waitForReply {
+                let readPayload = try client.sendV2(
+                    method: "surface.read_text",
+                    params: resolvedTarget
+                )
+                preSubmitScreen = (
+                    readPayload["surface_id"] as? String,
+                    (readPayload["text"] as? String) ?? ""
+                )
+            } else {
+                preSubmitScreen = nil
+            }
             let payload = try client.sendV2(method: "surface.send_text", params: params)
-            printV2Payload(payload, jsonOutput: jsonOutput, idFormat: idFormat, fallbackText: v2OKSummary(payload, idFormat: idFormat))
+            if let resolvedSurface = payload["surface_id"] as? String {
+                resolvedTarget = ["surface_id": resolvedSurface]
+            }
+
+            var typedScreen: String?
+            if submitAfterSend {
+                if let preSubmitScreen {
+                    let resolvedSurfaceID = payload["surface_id"] as? String
+                    let baseline = if preSubmitScreen.surfaceID == nil
+                        || preSubmitScreen.surfaceID == resolvedSurfaceID {
+                        preSubmitScreen.text
+                    } else {
+                        ""
+                    }
+                    typedScreen = try awaitSurfaceChange(
+                        from: baseline,
+                        read: {
+                            let readPayload = try client.sendV2(
+                                method: "surface.read_text",
+                                params: resolvedTarget
+                            )
+                            return (readPayload["text"] as? String) ?? ""
+                        },
+                        timeout: min(1, waitOptions?.timeout ?? 1),
+                        pollSeconds: min(0.05, waitOptions?.pollSeconds ?? 0.05)
+                    ).text
+                } else {
+                    // Terminal input is delivered synchronously to Ghostty, but
+                    // full-screen TUIs consume a text burst on their next event
+                    // turn. A separate Enter in that same burst is treated as a
+                    // pasted newline by Codex and similar composers.
+                    Thread.sleep(forTimeInterval: 0.2)
+                }
+                var keyParams = resolvedTarget
+                keyParams["key"] = "enter"
+                _ = try client.sendV2(method: "surface.send_key", params: keyParams)
+            }
+
+            if let waitOptions {
+                let result = try awaitSurfaceSettled(
+                    read: {
+                        let readPayload = try client.sendV2(
+                            method: "surface.read_text",
+                            params: resolvedTarget
+                        )
+                        return (readPayload["text"] as? String) ?? ""
+                    },
+                    settle: waitOptions.settle,
+                    timeout: waitOptions.timeout,
+                    pollSeconds: waitOptions.pollSeconds,
+                    initialText: typedScreen
+                )
+                guard result.settled else {
+                    let reason = result.observedChange
+                        ? "screen did not settle"
+                        : "no post-submit screen change was observed"
+                    throw CLIError(
+                        message: "cmux send --wait timed out after \(Int(result.waited))s: \(reason)"
+                    )
+                }
+                if jsonOutput {
+                    print(jsonString([
+                        "ok": true,
+                        "settled": true,
+                        "waited_seconds": result.waited,
+                        "text": result.text,
+                    ]))
+                } else {
+                    print(result.text)
+                }
+            } else {
+                printV2Payload(
+                    payload,
+                    jsonOutput: jsonOutput,
+                    idFormat: idFormat,
+                    fallbackText: v2OKSummary(payload, idFormat: idFormat)
+                )
+            }
 
         case "send-key":
             let (wsArg, rem0) = parseOption(commandArgs, name: "--workspace")
@@ -17062,16 +17191,26 @@ struct CMUXCLI {
             return """
             Usage: cmux send [flags] [--] <text>
 
-            Send text to a terminal surface. Escape sequences: \\n and \\r send Enter, \\t sends Tab.
+            Send text to a terminal surface. `send` only TYPES the text; use --enter
+            to submit (or a separate `cmux send-key … enter`). Do not rely on a
+            trailing \\n to submit — it is unreliable across shells and agents.
 
             Flags:
               --workspace <id|ref|index>   Target workspace (default: $CMUX_WORKSPACE_ID)
               --surface <id|ref|index>     Target surface (default: $CMUX_SURFACE_ID)
               --window <id|ref|index>      Window context for workspace/surface refs and indexes
+              --enter, --submit            Press Enter after typing, pinned to the resolved surface
+              --wait                       Submit, then wait for the target screen to settle
+                                           and print the resulting screen (implies --enter)
+              --wait-timeout <seconds>     Maximum wait duration (default: 120)
+              --wait-settle <seconds>      Required unchanged duration (default: 2)
+              --wait-poll <milliseconds>   Screen poll interval (default: 400)
+              --force                      Send even when the pane has a live foreground job
 
             Example:
               cmux send "echo hello"
-              cmux send --surface surface:2 "ls -la\\n"
+              cmux send --surface surface:2 --enter "ls -la"
+              cmux send --surface surface:2 --wait "summarize this file"
             """
         case "send-key":
             return """
@@ -17531,7 +17670,8 @@ struct CMUXCLI {
 
     /// Dispatch help for a subcommand. Returns true if help was printed.
     private func dispatchSubcommandHelp(command: String, commandArgs: [String]) -> Bool {
-        guard commandArgs.contains("--help") || commandArgs.contains("-h") else { return false }
+        let preSeparatorArgs = commandArgs.firstIndex(of: "--").map { commandArgs[..<$0] } ?? commandArgs[...]
+        guard Self.requestsSubcommandHelp(preSeparatorArgs) else { return false }
         guard let text = subcommandUsage(command) else { return false }
         print("cmux \(command)")
         print("")
@@ -17677,6 +17817,115 @@ struct CMUXCLI {
             .replacingOccurrences(of: "\\n", with: "\r")
             .replacingOccurrences(of: "\\r", with: "\r")
             .replacingOccurrences(of: "\\t", with: "\t")
+    }
+
+    /// Remove boolean flags before the literal `--` separator. Matches after
+    /// the separator are message text and remain untouched.
+    func extractBoolFlag(
+        _ args: [String],
+        names: Set<String>
+    ) -> (present: Bool, remaining: [String]) {
+        let separatorIndex = args.firstIndex(of: "--")
+        let flagRange = separatorIndex.map { 0..<$0 } ?? 0..<args.count
+        let present = args[flagRange].contains(where: names.contains)
+        guard present else { return (false, args) }
+
+        var remaining = Array(args[flagRange]).filter { !names.contains($0) }
+        if let separatorIndex {
+            remaining.append(contentsOf: args[separatorIndex...])
+        }
+        return (true, remaining)
+    }
+
+    func extractSendSubmitFlag(_ args: [String]) -> (submit: Bool, remaining: [String]) {
+        let result = extractBoolFlag(args, names: ["--enter", "--submit"])
+        return (result.present, result.remaining)
+    }
+
+    private func positiveSendWaitOption(
+        _ rawValue: String?,
+        name: String,
+        defaultValue: Double
+    ) throws -> Double {
+        guard let rawValue else { return defaultValue }
+        guard let value = Double(rawValue), value.isFinite, value > 0 else {
+            throw CLIError(message: "\(name) must be a positive number")
+        }
+        return value
+    }
+
+    private func nonnegativeSendWaitOption(
+        _ rawValue: String?,
+        name: String,
+        defaultValue: Double
+    ) throws -> Double {
+        guard let rawValue else { return defaultValue }
+        guard let value = Double(rawValue), value.isFinite, value >= 0 else {
+            throw CLIError(message: "\(name) must be a nonnegative number")
+        }
+        return value
+    }
+
+    /// Wait until the text write is visible before sending Enter. This keeps
+    /// the submit key out of a TUI's paste burst and also absorbs a queued
+    /// terminal write without using an arbitrary long delay.
+    func awaitSurfaceChange(
+        from baseline: String,
+        read: () throws -> String,
+        timeout: Double,
+        pollSeconds: Double,
+        now: () -> Date = { Date() },
+        sleep: (Double) -> Void = { Thread.sleep(forTimeInterval: $0) }
+    ) rethrows -> (text: String, changed: Bool) {
+        let pollSeconds = max(0.05, pollSeconds)
+        let timeout = max(timeout, pollSeconds)
+        let start = now()
+        var latest = baseline
+
+        while now().timeIntervalSince(start) < timeout {
+            sleep(pollSeconds)
+            latest = try read()
+            if latest != baseline {
+                return (latest, true)
+            }
+        }
+
+        return (latest, false)
+    }
+
+    /// Poll a surface until its visible text remains unchanged for `settle`
+    /// seconds or `timeout` elapses. Injectable time and sleep functions keep
+    /// the state machine deterministic in unit tests.
+    func awaitSurfaceSettled(
+        read: () throws -> String,
+        settle: Double,
+        timeout: Double,
+        pollSeconds: Double,
+        initialText: String? = nil,
+        now: () -> Date = { Date() },
+        sleep: (Double) -> Void = { Thread.sleep(forTimeInterval: $0) }
+    ) rethrows -> (text: String, settled: Bool, observedChange: Bool, waited: Double) {
+        let pollSeconds = max(0.05, pollSeconds)
+        let timeout = max(timeout, pollSeconds)
+        let settle = max(0, settle)
+        let start = now()
+        var lastText = initialText
+        var lastChange = start
+        var observedChange = false
+
+        while now().timeIntervalSince(start) < timeout {
+            sleep(pollSeconds)
+            let screen = try read()
+            if screen != lastText {
+                lastText = screen
+                lastChange = now()
+                observedChange = true
+            } else if observedChange, now().timeIntervalSince(lastChange) >= settle {
+                return (screen, true, true, now().timeIntervalSince(start))
+            }
+        }
+
+        return (lastText ?? "", false, observedChange, now().timeIntervalSince(start))
     }
 
     private func workspaceFromArgsOrEnv(_ args: [String], windowOverride: String? = nil) -> String? {
@@ -35575,6 +35824,7 @@ export default CMUXSessionRestore;
     private func printWelcome() {
         let reset = "\u{001B}[0m"
         let bold = "\u{001B}[1m"
+        let italic = "\u{001B}[3m"
         func trueColor(_ red: Int, _ green: Int, _ blue: Int) -> String {
             "\u{001B}[38;2;\(red);\(green);\(blue)m"
         }
@@ -35615,6 +35865,7 @@ export default CMUXSessionRestore;
 
           \(bold)\u{2318}N\(reset)\(subdued)                  New workspace\(reset)
           \(bold)\u{2318}T\(reset)\(subdued)                  New tab\(reset)
+          \(bold)\u{2318}\u{21E7}T\(reset)\(subdued)                 Reopen last closed tab/workspace\(reset)
           \(bold)\u{2318}P\(reset)\(subdued)                  Go to workspace\(reset)
           \(bold)\u{2318}B\(reset)\(subdued)                  Toggle Left Sidebar\(reset)
           \(bold)\u{2318}\u{2325}B\(reset)\(subdued)                 Toggle Right Sidebar\(reset)
@@ -35637,6 +35888,34 @@ export default CMUXSessionRestore;
         print("  \(bold)GitHub\(reset)\(subdued)              https://github.com/manaflow-ai/cmux (please leave a star ⭐)\(reset)")
         print("  \(bold)Email\(reset)\(subdued)               founders@manaflow.com\(reset)")
         print()
+
+        let mochi = trueColor(124, 111, 156)
+        print("  \(subdued)\(String(repeating: "\u{2500}", count: 58))\(reset)")
+        print()
+        print("  \(mochi) /\\_/\\\(reset)     \(bold)This is the Mochi fork of cmux\(reset)")
+        print("  \(mochi)( ^.^ )\(reset)    \(subdued)https://github.com/mochiexists/cmux-mochi\(reset)")
+        print("  \(mochi) > ^ <\(reset)     \(tagline)practical upgrades for agent-driven workflows\(reset)")
+        print()
+        print("  \(tagline)Spawn agents fast — yolo aliases, baked into every cmux shell\(reset)")
+        print("  \(bold)cxy\(reset)\(subdued)                 codex  --yolo\(reset)")
+        print("  \(bold)ccy\(reset)\(subdued)                 claude --yolo\(reset)")
+        print("  \(bold)Also see\(reset)\(subdued)            ovm · https://github.com/mochiexists/ovm\(reset)")
+        print()
+        print("  \(tagline)Added in this fork\(reset)")
+        print("  \(mochi)•\(reset) Session continuity — restored scrollback, agent resume prompts, and pane maximization survive quit and relaunch")
+        print("  \(mochi)•\(reset) Account-free iPhone access — pair by QR over Tailscale; no cmux account or login required")
+        print("  \(mochi)•\(reset) Resource Monitor — an always-visible CPU/memory footer opens the full-area Task Manager")
+        print("  \(mochi)•\(reset) Conductor — drive visible Codex and Claude worker panes with workspace capture and guarded, surface-pinned send/submit/wait")
+        print("  \(mochi)•\(reset) Artifact panes — create React, HTML, SVG, Mermaid, code, and file artifacts")
+        print("  \(mochi)•\(reset) File-backed tabs — Reveal in Finder, Copy File, and Copy Path across previews and artifacts")
+        print("  \(mochi)•\(reset) Navigation polish — adaptive right-side pane placement, closed-tab restore, and sidebar spring-load switching")
+        print("  \(mochi)•\(reset) Privacy Frost — blur sensitive workspaces or groups and redact their sidebar content")
+        print("  \(mochi)•\(reset) Sidebar stability — render-storm and lazy-layout fixes keep busy agent workspaces responsive")
+        print()
+        print("  \(italic)\(subdued)This personal fork has no Pro plan or upgrade prompts. Support cmux upstream instead.\(reset)")
+        print("  \(subdued)\(String(repeating: "\u{2500}", count: 58))\(reset)")
+        print()
+
         print("  \(subdued)Run \(reset)\(bold)cmux --help\(reset)\(subdued) for all commands.\(reset)")
         print("  \(subdued)Run \(reset)\(bold)cmux shortcuts\(reset)\(subdued) to edit shortcuts.\(reset)")
         print("  \(subdued)Run \(reset)\(bold)cmux feedback\(reset)\(subdued) to report a bug.\(reset)")
@@ -36024,7 +36303,7 @@ export default CMUXSessionRestore;
           rename-window [--workspace <id|ref|index>] [--window <id|ref|index>] <title>
           current-workspace [--window <id|ref|index>]
           read-screen [--workspace <id|ref|index>] [--surface <id|ref|index>] [--window <id|ref|index>] [--scrollback] [--lines <n>]
-          send [--workspace <id|ref|index>] [--surface <id|ref|index>] [--window <id|ref|index>] <text>
+          send [--enter|--submit] [--wait] [--force] [--workspace <id|ref|index>] [--surface <id|ref|index>] [--window <id|ref|index>] <text>
           send-key [--workspace <id|ref|index>] [--surface <id|ref|index>] [--window <id|ref|index>] <key>
           send-panel --panel <id|ref|index> [--workspace <id|ref|index>] [--window <id|ref|index>] <text>
           send-key-panel --panel <id|ref|index> [--workspace <id|ref|index>] [--window <id|ref|index>] <key>

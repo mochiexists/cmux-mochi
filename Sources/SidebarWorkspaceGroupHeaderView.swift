@@ -18,6 +18,7 @@ struct SidebarWorkspaceGroupHeaderView: View, Equatable {
             lhs.tintHex == rhs.tintHex &&
             lhs.isCollapsed == rhs.isCollapsed &&
             lhs.isPinned == rhs.isPinned &&
+            lhs.isPrivacyBlurred == rhs.isPrivacyBlurred &&
             lhs.isAnchorActive == rhs.isAnchorActive &&
             lhs.isMultiSelected == rhs.isMultiSelected &&
             lhs.multiSelectionBackgroundStyle == rhs.multiSelectionBackgroundStyle &&
@@ -51,6 +52,7 @@ struct SidebarWorkspaceGroupHeaderView: View, Equatable {
     let tintHex: String?
     let isCollapsed: Bool
     let isPinned: Bool
+    let isPrivacyBlurred: Bool
     let isAnchorActive: Bool
     let isMultiSelected: Bool
     let multiSelectionBackgroundStyle: SidebarWorkspaceRowBackgroundStyle
@@ -82,6 +84,7 @@ struct SidebarWorkspaceGroupHeaderView: View, Equatable {
     let onRunResolvedItem: (CmuxResolvedConfigMenuAction) -> Void
     let onRename: () -> Void
     let onTogglePinned: () -> Void
+    let onTogglePrivacyBlurred: () -> Void
     let onMarkRead: () -> Void
     let onMarkUnread: () -> Void
     let onClearLatestNotifications: () -> Void
@@ -126,6 +129,10 @@ struct SidebarWorkspaceGroupHeaderView: View, Equatable {
 
     private var pinnedGroupTooltip: String {
         String(localized: "workspaceGroup.pinned.tooltip", defaultValue: "Pinned group")
+    }
+
+    private var privacyBlurredTitle: String {
+        String(localized: "workspaceGroup.privacyBlurred", defaultValue: "Private Group")
     }
 
     private var multiSelectionBackgroundColor: Color {
@@ -180,7 +187,7 @@ struct SidebarWorkspaceGroupHeaderView: View, Equatable {
                     .foregroundStyle(iconColor)
                     .frame(width: metrics.iconFrame, height: metrics.iconFrame)
                     .accessibilityHidden(true)
-                Text(name)
+                Text(isPrivacyBlurred ? privacyBlurredTitle : name)
                     .cmuxFont(size: metrics.nameFontSize, weight: .semibold)
                     .foregroundStyle(isAnchorActive ? Color.primary : Color.primary.opacity(0.9))
                     .lineLimit(1)
@@ -201,16 +208,17 @@ struct SidebarWorkspaceGroupHeaderView: View, Equatable {
             .frame(maxWidth: .infinity, alignment: .leading)
             .contentShape(Rectangle())
             .onTapGesture {
+                guard !isPrivacyBlurred else { return }
                 onFocusAnchor(NSApp.currentEvent?.modifierFlags ?? [])
             }
             .accessibilityAddTraits(.isButton)
-            .accessibilityLabel(Text(name))
+            .accessibilityLabel(Text(isPrivacyBlurred ? privacyBlurredTitle : name))
             .accessibilityHint(Text(String(
                 localized: "workspaceGroup.focusAnchor.a11y",
                 defaultValue: "Focus the group's anchor workspace"
             )))
 
-            let plusVisible = isPointerHovering && !contextMenuVisible && !showsShortcutHint
+            let plusVisible = isPointerHovering && !contextMenuVisible && !showsShortcutHint && !isPrivacyBlurred
             Button(action: onTapPlus) {
                 CmuxSystemSymbolImage(
                     systemName: "plus",
@@ -292,14 +300,25 @@ struct SidebarWorkspaceGroupHeaderView: View, Equatable {
             style: .continuous
         ))
         .sidebarShortcutHintOverlay(
-            text: shortcutHintPillText,
+            text: isPrivacyBlurred ? nil : shortcutHintPillText,
             emphasis: isAnchorActive ? 1.0 : 0.9,
             offsetX: shortcutHintXOffset,
             offsetY: shortcutHintYOffset
         )
         .padding(.horizontal, SidebarWorkspaceListMetrics.rowOuterHorizontalPadding)
+        .overlay {
+            if isPrivacyBlurred {
+                SidebarPrivacyFrostedSurface(
+                    cornerRadius: 4,
+                    tint: Color.secondary.opacity(0.12),
+                    stroke: Color.secondary.opacity(0.24)
+                )
+                .allowsHitTesting(false)
+            }
+        }
         .shortcutHintVisibilityAnimation(value: showsShortcutHint)
         .opacity(isBeingDragged ? 0.6 : 1)
+        .safeHelp(isPrivacyBlurred ? privacyBlurredTitle : name)
         .overlay(alignment: .top) {
             SidebarWorkspaceTopDropIndicator(
                 isVisible: topDropIndicatorVisible,
@@ -353,6 +372,12 @@ struct SidebarWorkspaceGroupHeaderView: View, Equatable {
                         defaultValue: "Pin Group"
                     ),
                 action: onTogglePinned
+            )
+            Button(
+                isPrivacyBlurred
+                    ? String(localized: "workspaceGroup.contextMenu.unblur", defaultValue: "Unblur Group")
+                    : String(localized: "workspaceGroup.contextMenu.blur", defaultValue: "Blur Group"),
+                action: onTogglePrivacyBlurred
             )
             Divider()
             Button(
@@ -431,5 +456,32 @@ struct SidebarWorkspaceGroupHeaderView: View, Equatable {
                 )
             }
         }
+    }
+}
+
+struct SidebarPrivacyFrostedSurface: View {
+    let cornerRadius: CGFloat
+    let tint: Color
+    let stroke: Color
+
+    var body: some View {
+        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+            .fill(.ultraThickMaterial)
+            .overlay {
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .fill(tint)
+            }
+            .overlay(alignment: .topLeading) {
+                LinearGradient(
+                    colors: [Color.white.opacity(0.34), Color.white.opacity(0.12), Color.clear],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+                .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+            }
+            .overlay {
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .strokeBorder(stroke, lineWidth: 1)
+            }
     }
 }

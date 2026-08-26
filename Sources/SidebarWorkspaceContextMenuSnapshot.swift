@@ -11,6 +11,7 @@ struct SidebarWorkspaceContextMenuSnapshot: Equatable {
     let remoteTargetWorkspaceIds: [UUID]
     let allRemoteTargetsConnecting: Bool
     let allRemoteTargetsDisconnected: Bool
+    let shouldPrivacyBlur: Bool
     let pinState: WorkspaceActionDispatcher.PinState?
     let groupMenuSnapshot: WorkspaceGroupMenuSnapshot
     let canCreateEmptyGroup: Bool

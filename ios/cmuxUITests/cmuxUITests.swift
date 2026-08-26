@@ -205,6 +205,28 @@ final class cmuxUITests: XCTestCase {
     }
 
     @MainActor
+    func testSetupHelpUsesTailscaleQRAndNoAccountJourney() throws {
+        let app = launchApp(mockData: false, environment: [
+            "CMUX_UITEST_SETUP_HELP_PREVIEW": "1",
+        ])
+        defer { app.terminate() }
+
+        let setupHelp = app.descendants(matching: .any)["MobileSetupHelpView"]
+        XCTAssertTrue(setupHelp.waitForExistence(timeout: 8))
+        func text(_ label: String) -> XCUIElement {
+            app.staticTexts.matching(NSPredicate(format: "label == %@", label)).firstMatch
+        }
+        XCTAssertTrue(text("cmux Mochi connects without an account. Keep cmux and Tailscale running, then scan the Pair iPhone QR code shown on your computer. Your current step is marked below.").exists)
+        XCTAssertTrue(app.staticTexts["Get Tailscale for iPhone"].exists)
+        XCTAssertTrue(app.staticTexts["Get Tailscale for Mac"].exists)
+        setupHelp.swipeUp()
+        setupHelp.swipeUp()
+        XCTAssertTrue(text("No cmux account or sign-in is required. The pairing QR and Tailscale connection are the trust boundary.").waitForExistence(timeout: 3))
+        XCTAssertFalse(app.staticTexts.matching(NSPredicate(format: "label CONTAINS[c] %@", "same account")).firstMatch.exists)
+        XCTAssertFalse(app.buttons["signin.apple"].exists)
+    }
+
+    @MainActor
     func testAddDeviceManualHostValidationUsesStableIdentifiers() throws {
         let invalidHostApp = launchAddDeviceApp(environment: [
             "CMUX_UITEST_ADD_DEVICE_HOST": "dev/path.local"

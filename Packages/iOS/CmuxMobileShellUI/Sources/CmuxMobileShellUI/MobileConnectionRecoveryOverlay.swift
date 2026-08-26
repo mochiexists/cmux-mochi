@@ -3,19 +3,16 @@ import SwiftUI
 
 private struct MobileConnectionRecoveryOverlay: ViewModifier {
     @Bindable var store: CMUXMobileShellStore
-    var signOut: (@MainActor @Sendable () -> Void)?
 
     func body(content: Content) -> some View {
         // Reauth is a blocking condition, not a status: the Mac rejected the
-        // connection, so a durable banner with Sign Out is the only honest
+        // connection, so a durable banner explaining fresh QR pairing is the
         // surface. Transient reconnects and failed attempts keep the terminal
         // visible and ride the status pill / picker status line instead.
         content.overlay(alignment: .top) {
             if store.connectionRequiresReauth {
                 MobileConnectionRecoveryBanner(
-                    connectionRequiresReauth: store.connectionRequiresReauth,
-                    connectionError: store.connectionError,
-                    signOut: signOut
+                    connectionRequiresReauth: store.connectionRequiresReauth
                 )
             }
         }
@@ -24,9 +21,8 @@ private struct MobileConnectionRecoveryOverlay: ViewModifier {
 
 extension View {
     func mobileConnectionRecoveryOverlay(
-        store: CMUXMobileShellStore,
-        signOut: (@MainActor @Sendable () -> Void)?
+        store: CMUXMobileShellStore
     ) -> some View {
-        modifier(MobileConnectionRecoveryOverlay(store: store, signOut: signOut))
+        modifier(MobileConnectionRecoveryOverlay(store: store))
     }
 }

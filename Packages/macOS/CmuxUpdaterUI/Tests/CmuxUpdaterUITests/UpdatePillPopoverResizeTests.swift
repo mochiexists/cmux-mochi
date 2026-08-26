@@ -6,6 +6,24 @@ import Testing
 @MainActor
 @Suite("Update pill popover resize", .serialized)
 struct UpdatePillPopoverResizeTests {
+    @Test("Popover hosting view has an opaque window background")
+    func popoverHostingViewHasOpaqueWindowBackground() {
+        var isPresented = false
+        let coordinator = UpdatePillPopoverAnchor.Coordinator(
+            isPresented: Binding(
+                get: { isPresented },
+                set: { isPresented = $0 }
+            )
+        )
+
+        let hostingView = coordinator.hostingView
+        #expect(hostingView.wantsLayer)
+        let actual = hostingView.layer?.backgroundColor.flatMap(NSColor.init(cgColor:))?
+            .usingColorSpace(.deviceRGB)
+        let expected = NSColor.windowBackgroundColor.usingColorSpace(.deviceRGB)
+        #expect(actual == expected)
+    }
+
     @Test("Visible content refresh does not resize the popover synchronously")
     func visibleContentRefreshDoesNotResizeSynchronously() async {
         var isPresented = true

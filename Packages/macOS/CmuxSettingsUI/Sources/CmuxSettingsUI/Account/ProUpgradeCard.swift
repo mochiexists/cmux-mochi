@@ -1,6 +1,28 @@
 import CmuxFoundation
 import SwiftUI
 
+enum ProUpgradePresentationPolicy {
+    static func isMochiFork(bundleIdentifier: String?) -> Bool {
+        bundleIdentifier?.hasPrefix("com.cmux-mochi") == true
+    }
+
+    static func showsAccountCard(
+        bundleIdentifier: String?,
+        upstreamUpgradeAvailable: Bool
+    ) -> Bool {
+        isMochiFork(bundleIdentifier: bundleIdentifier) || upstreamUpgradeAvailable
+    }
+
+    static func showsUpgradeAction(
+        bundleIdentifier: String?,
+        isProActive: Bool,
+        canManageBilling: Bool
+    ) -> Bool {
+        guard !isMochiFork(bundleIdentifier: bundleIdentifier) else { return false }
+        return !isProActive || canManageBilling
+    }
+}
+
 /// Upgrade row rendered below the identity card in the Account section.
 ///
 /// Shows the cmux Pro pitch (one title line + one price/value subtitle)
@@ -10,6 +32,12 @@ import SwiftUI
 @MainActor
 struct ProUpgradeCard: View {
     let flow: AccountFlow?
+
+    static var isMochiFork: Bool {
+        ProUpgradePresentationPolicy.isMochiFork(
+            bundleIdentifier: Bundle.main.bundleIdentifier
+        )
+    }
 
     init(flow: AccountFlow?) {
         self.flow = flow
@@ -46,16 +74,23 @@ struct ProUpgradeCard: View {
             // so clicking "Upgrade…" opens an already-loaded page. Managed
             // subscribers get the Stripe portal instead, which the host does
             // not prewarm.
-            if hovering, flow?.canManageBilling != true {
+            if hovering, !Self.isMochiFork, flow?.canManageBilling != true {
                 flow?.prefetchProUpgrade()
             }
         }
         .task(id: flow?.currentIdentity?.id ?? "") {
+            guard !Self.isMochiFork else { return }
             await flow?.refreshBillingPlan()
         }
     }
 
     private var subtitleText: String {
+        if Self.isMochiFork {
+            return String(
+                localized: "settings.account.pro.mochiFork",
+                defaultValue: "This is cmux Mochi, a personal fork for account-free iPhone access. There is no Pro plan here — support cmux upstream instead."
+            )
+        }
         if flow?.isProActive == true {
             if flow?.canManageBilling == true {
                 return String(
@@ -82,6 +117,10 @@ struct ProUpgradeCard: View {
     }
 
     private var shouldShowAction: Bool {
-        flow?.isProActive != true || flow?.canManageBilling == true
+        ProUpgradePresentationPolicy.showsUpgradeAction(
+            bundleIdentifier: Bundle.main.bundleIdentifier,
+            isProActive: flow?.isProActive == true,
+            canManageBilling: flow?.canManageBilling == true
+        )
     }
 }

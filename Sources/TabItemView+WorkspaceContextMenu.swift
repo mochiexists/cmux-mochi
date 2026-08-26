@@ -56,6 +56,15 @@ extension TabItemView {
             multi: String(localized: "contextMenu.markWorkspacesUnread", defaultValue: "Mark Workspaces as Unread"),
             single: String(localized: "contextMenu.markWorkspaceUnread", defaultValue: "Mark Workspace as Unread"),
             isMulti: isMulti)
+        let privacyBlurLabel = context.shouldPrivacyBlur
+            ? contextMenuLabel(
+                multi: String(localized: "contextMenu.blurWorkspaces", defaultValue: "Blur Workspaces"),
+                single: String(localized: "contextMenu.blurWorkspace", defaultValue: "Blur Workspace"),
+                isMulti: isMulti)
+            : contextMenuLabel(
+                multi: String(localized: "contextMenu.unblurWorkspaces", defaultValue: "Unblur Workspaces"),
+                single: String(localized: "contextMenu.unblurWorkspace", defaultValue: "Unblur Workspace"),
+                isMulti: isMulti)
         let clearLatestNotificationLabel = contextMenuLabel(
             multi: String(localized: "contextMenu.clearLatestNotifications", defaultValue: "Clear Latest Notifications"),
             single: String(localized: "contextMenu.clearLatestNotification", defaultValue: "Clear Latest Notification"),
@@ -82,6 +91,11 @@ extension TabItemView {
         .disabled(context.pinState == nil)
 
         workspaceGroupContextMenuSection(targetIds: targetIds, isMulti: isMulti)
+
+        Button(privacyBlurLabel) {
+            actions.setPrivacyBlurred(targetIds, context.shouldPrivacyBlur)
+        }
+        .disabled(targetIds.isEmpty)
 
         Divider()
 

@@ -235,6 +235,8 @@ extension Workspace {
             return "mobile_pairing"
         case .accountSignIn:
             return "account_sign_in"
+        case .taskManager:
+            return "task_manager"
         }
     }
 }

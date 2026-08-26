@@ -135,9 +135,11 @@ final class AppCompositionRoot {
         #else
         let onboardingPreviewEnabled = false
         #endif
-        let bypassOnboarding = (UITestConfig.mockDataEnabled && !onboardingPreviewEnabled)
-            || UITestConfig.dogfoodAttachURL != nil
-            || UITestConfig.attachURL != nil
+        // Mock fixtures are synthetic and must never mutate the install's
+        // durable onboarding progress. Injected pairing URLs are different:
+        // they temporarily bypass the tour in CMUXMobileRootView, then persist
+        // completion only after the real DeviceLink connection succeeds.
+        let bypassOnboarding = UITestConfig.mockDataEnabled && !onboardingPreviewEnabled
         self.onboardingStore = MobileOnboardingStore(
             defaults: .standard,
             forceComplete: bypassOnboarding

@@ -14,14 +14,14 @@ if [[ -z "$test_filter" ]]; then
 fi
 
 if [[ ! -f "$log_path" ]]; then
-  echo "selected iOS test execution log is unavailable" >&2
+  echo "selected test execution log is unavailable" >&2
   exit 2
 fi
 
 summary_kind="$(
   awk '
-    /Executed [0-9]+ tests?,/ || /Test run with [0-9]+ tests? (passed|failed)/ {
-      if ($0 ~ /Executed 0 tests?,/ || $0 ~ /Test run with 0 tests? (passed|failed)/) {
+    /Executed [0-9]+ tests?,/ || /Test run with [0-9]+ tests? (in [0-9]+ suites? )?(passed|failed)/ {
+      if ($0 ~ /Executed 0 tests?,/ || $0 ~ /Test run with 0 tests? (in [0-9]+ suites? )?(passed|failed)/) {
         zero = 1
       } else {
         positive = 1
@@ -40,11 +40,11 @@ case "$summary_kind" in
     exit 0
     ;;
   zero)
-    echo "selected iOS test filter matched zero tests; use target/class or target/class/method syntax" >&2
+    echo "selected test filter matched zero tests; use target/class or target/class/method syntax" >&2
     exit 1
     ;;
   *)
-    echo "selected iOS test execution summary was not found; verify the test log format" >&2
+    echo "selected test execution summary was not found; verify the test log format" >&2
     exit 1
     ;;
 esac

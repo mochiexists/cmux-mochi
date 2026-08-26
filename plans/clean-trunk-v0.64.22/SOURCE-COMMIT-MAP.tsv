@@ -1,0 +1,30 @@
+feature_id	commit	role	note
+session.force-quit-continuity	852f71b11e	test-support	Reproduce metadata-autosave scrollback loss before SIGKILL
+session.force-quit-continuity	9fcf3fba5e	behavior	Retain durable restored scrollback during metadata-only autosaves
+placement.adaptive-right	062e27b120	behavior	Adaptive right-side planner, adapter, and focused tests
+pane.zoom-persistence	8293d1d059	behavior	Persist zoomed bonsplit pane through stable panel identity
+updater.opaque-popover	bd4dcac9bf	behavior	Opaque AppKit hosting and SwiftUI popover backgrounds
+conductor.atomic-submit	49f5d90983	behavior	Atomic literal text plus Enter CLI behavior and tests
+conductor.agent-settle-wait	815f3b5ab3	behavior	Bounded agent settle wait and tests
+sentry.startup-policy	3909e8ccd6	behavior	Fork startup policy and behavior tests
+privacy.frost	04bf56f8e5	behavior	Workspace and group frost model, persistence, UI, control paths, and tests
+privacy.frost	f99cf9836e	behavior	Shipped teardown semantics correction
+privacy.frost	26a2172ae8	behavior	Full sidebar row frost and redaction
+privacy.frost	0ee5371c3b	test-support	Full-row redaction regression coverage
+privacy.frost	ac68c02ec9	test-support	Missing privacy menu regression reproduction
+privacy.frost	c7a1d8d5ef	behavior	Restore workspace privacy menu
+privacy.frost	55572f4c89	test-support	Privacy text-leak regression coverage
+welcome.catalog	1c23ce721b	behavior	Audited Mochi feature catalogue and regression suite
+task.resource-monitor	fa93267f31	behavior	Always-visible sidebar CPU and memory footer
+task.resource-monitor	6cf67ada07	behavior	Reusable Task Manager tab surface
+task.resource-monitor	5776fed431	behavior	Full-area special workspace presentation and persistence exclusions
+task.resource-monitor	3f64f17a05	behavior	Dedicated footer surface
+task.resource-monitor	1b5b758b2b52dfa9a18f971f31cd7d2e17cd218b	behavior	Overlay update pill without squeezing the resource summary
+task.resource-monitor	b267867d02	behavior	Task Manager panel background repair
+task.resource-monitor	cce0487495	test-support	Terminal portal visibility regression coverage
+task.resource-monitor	2ce5838b3b	behavior	Hide terminal portal outside workspace presentation
+fork.no-pro-upsell	09599eebd8	behavior	Disable fork Pro upsell and explain fork account policy
+fork.no-pro-upsell	4bff2cbc38	behavior	Keep explanatory account row visible
+vscode.inline-workbench	b3daecde46	retired	Explicitly outside current parity target
+vscode.inline-workbench	7b6a2e9be4	retired	Explicitly outside current parity target
+vscode.inline-workbench	ae0e854ebe	retired	Explicitly outside current parity target

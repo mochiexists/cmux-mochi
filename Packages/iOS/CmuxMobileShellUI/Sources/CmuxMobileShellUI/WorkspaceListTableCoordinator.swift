@@ -939,8 +939,6 @@ final class WorkspaceListTableCoordinator: NSObject, UITableViewDelegate,
             return AnyView(
                 MobileConnectionRecoveryBanner(
                     connectionRequiresReauth: configuration.connectionRequiresReauth,
-                    connectionError: configuration.connectionError,
-                    signOut: configuration.signOut,
                     rendersInline: true
                 )
             )

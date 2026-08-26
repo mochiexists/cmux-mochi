@@ -79,6 +79,7 @@ enum SidebarFooterControl: CaseIterable, Equatable {
     case upgrade
     case extensions
     case update
+    case resourceSummary
 }
 
 enum SidebarFooterPresentationPolicy {
@@ -86,7 +87,7 @@ enum SidebarFooterPresentationPolicy {
         _ control: SidebarFooterControl,
         presentationMode: WorkspacePresentationModeSettings.Mode
     ) -> Bool {
-        presentationMode != .minimal || control == .upgrade
+        presentationMode != .minimal || control == .upgrade || control == .resourceSummary
     }
 }
 

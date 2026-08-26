@@ -2931,13 +2931,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Sign in to cmux on your computer with this account and it appears here automatically."
+            "value": "Open Pair iPhone in cmux on your computer, then scan its QR code. No account is required."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "コンピュータの cmux にこのアカウントでサインインすると、ここに自動的に表示されます。"
+            "value": "コンピュータのcmuxで「iPhoneをペアリング」を開き、QRコードをスキャンしてください。アカウントは不要です。"
           }
         }
       }
@@ -3373,13 +3373,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "No computers yet. Sign in to cmux on your computer with this account and it appears here automatically. If it does not, tap Pair Another Computer and scan its QR code."
+            "value": "No computers yet. Tap Pair Another Computer and scan the QR code shown by cmux on your Mac. No account is required."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "コンピュータはまだありません。コンピュータのcmuxにこのアカウントでサインインすると、ここに自動的に表示されます。表示されない場合は、「別のコンピュータをペアリング」からQRコードをスキャンしてください。"
+            "value": "コンピュータはまだありません。「別のコンピュータをペアリング」をタップし、Macのcmuxに表示されたQRコードをスキャンしてください。アカウントは不要です。"
           }
         }
       }
@@ -6484,13 +6484,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "This computer is signed in to a different cmux account. Sign out and sign back in with that account."
+            "value": "This computer rejected the saved pairing. Open Pair iPhone on the computer and scan a fresh QR code."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "このコンピュータは別の cmux アカウントでサインインしています。そのアカウントでサインアウトしてからサインインし直してください。"
+            "value": "このコンピュータは保存済みのペアリングを拒否しました。コンピュータで「iPhoneをペアリング」を開き、新しいQRコードをスキャンしてください。"
           }
         }
       }
@@ -6542,23 +6542,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "再接続中…"
-          }
-        }
-      }
-    },
-    "mobile.recovery.switchAccount": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Sign Out & Switch Account"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "サインアウトしてアカウントを切り替える"
           }
         }
       }
@@ -7793,13 +7776,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "To see your computer's terminals here, sign in to the same cmux account on both devices and keep cmux running on the computer. The step you are on is marked below."
+            "value": "cmux Mochi connects without an account. Keep cmux and Tailscale running, then scan the Pair iPhone QR code shown on your computer. Your current step is marked below."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "ここでコンピュータのターミナルを表示するには、両方の端末で同じcmuxアカウントにサインインし、コンピュータでcmuxを起動したままにします。今いるステップは下に印が付いています。"
+            "value": "cmux Mochiはアカウントなしで接続できます。両方の端末でcmuxとTailscaleを起動し、コンピュータに表示された「iPhoneをペアリング」のQRコードをスキャンしてください。現在の手順は下に表示されます。"
           }
         }
       }
@@ -7810,13 +7793,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "To see your computer's terminals here, sign in to the same cmux account on both devices and keep cmux running on the computer. Connection is automatic after that."
+            "value": "To see your computer's terminals here, keep cmux and Tailscale running, then scan the Pair iPhone QR code shown on your computer."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "ここでコンピュータのターミナルを表示するには、両方の端末で同じcmuxアカウントにサインインし、コンピュータでcmuxを起動したままにします。あとは自動的に接続されます。"
+            "value": "ここでコンピュータのターミナルを表示するには、両方の端末でcmuxとTailscaleを起動し、コンピュータに表示された「iPhoneをペアリング」のQRコードをスキャンしてください。"
           }
         }
       }
@@ -7827,13 +7810,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "If both devices are on Tailscale, another VPN, or the same network, cmux can use it as a faster direct path. The connection stays encrypted and verified either way."
+            "value": "Both devices must be connected to the same tailnet. If either device leaves Tailscale, reconnect it and cmux will resume automatically."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "両方の端末がTailscale、別のVPN、または同じネットワーク上にある場合、cmuxはそれをより高速な直接経路として使うことがあります。どの経路でも接続の暗号化と検証は保たれます。"
+            "value": "両方の端末を同じtailnetに接続してください。どちらかがTailscaleから切断された場合は再接続すると、cmuxも自動的に再開します。"
           }
         }
       }
@@ -7844,13 +7827,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Install cmux on your computer, sign in to the same account, and leave it running. The computer then appears on this phone automatically. If it does not, open Pair iPhone in cmux on the computer and scan its QR code."
+            "value": "Keep cmux and Tailscale running on both devices. Open Pair iPhone in cmux on the computer, then scan its QR code here."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "コンピュータにcmuxをインストールし、同じアカウントでサインインしたまま起動しておきます。コンピュータは自動的にこの端末に表示されます。表示されない場合は、コンピュータのcmuxで「iPhone をペアリング」を開き、QRコードをスキャンしてください。"
+            "value": "両方の端末でcmuxとTailscaleを起動してください。コンピュータのcmuxで「iPhoneをペアリング」を開き、QRコードをスキャンします。"
           }
         }
       }
@@ -7895,13 +7878,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "The computer rejected this phone's sign-in, so the two are on different cmux accounts or this phone's session is stale. Sign either one out and back in so both use the same account, then try again."
+            "value": "The computer rejected this phone's saved pairing. Open Pair iPhone on the computer and scan a fresh QR code."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "コンピュータがこの端末のサインインを拒否しました。両者が別々のcmuxアカウントになっているか、この端末のセッションが古くなっています。どちらかでいったんサインアウトし、両方が同じアカウントになるようにサインインし直してから、もう一度お試しください。"
+            "value": "コンピュータがこの端末の保存済みペアリングを拒否しました。コンピュータで「iPhoneをペアリング」を開き、新しいQRコードをスキャンしてください。"
           }
         }
       }
@@ -7912,13 +7895,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Match the account"
+            "value": "Pair again"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "アカウントを合わせる"
+            "value": "もう一度ペアリング"
           }
         }
       }
@@ -7929,13 +7912,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "cmux connects through Iroh, which links this phone to your computer directly when possible and through an encrypted cmux relay when not. Both devices verify your account, and the relay cannot read your terminals. No network setup is required."
+            "value": "cmux Mochi connects directly over your Tailscale network. The QR code enrolls this iPhone and pins the computer's identity; no cmux account is required."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "cmuxはIrohで接続します。可能な場合はこの端末とコンピュータを直接つなぎ、できない場合は暗号化されたcmuxリレーを経由します。両方の端末でアカウントを検証するため、リレーがターミナルの内容を読むことはできません。ネットワークの設定は不要です。"
+            "value": "cmux MochiはTailscaleネットワーク経由で直接接続します。QRコードでこのiPhoneを登録し、コンピュータの識別情報を固定します。cmuxアカウントは不要です。"
           }
         }
       }
@@ -7963,13 +7946,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Both devices must be signed in to the same cmux account. A private network never replaces that check."
+            "value": "No cmux account or sign-in is required. The pairing QR and Tailscale connection are the trust boundary."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "両方の端末は同じcmuxアカウントでサインインする必要があります。プライベートネットワークがこの確認を置き換えることはありません。"
+            "value": "cmuxアカウントやサインインは不要です。ペアリングQRとTailscale接続が信頼境界になります。"
           }
         }
       }
@@ -7980,13 +7963,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Sign in to cmux on this phone with the same account your computer uses. Once you sign in, your computer is found automatically."
+            "value": "Open Pair iPhone in cmux on your computer and scan its QR code. Pairing works without a cmux account."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "この端末で、コンピュータと同じアカウントを使ってcmuxにサインインします。サインインすると、コンピュータは自動的に見つかります。"
+            "value": "コンピュータのcmuxで「iPhoneをペアリング」を開き、QRコードをスキャンしてください。cmuxアカウントなしでペアリングできます。"
           }
         }
       }
@@ -7997,13 +7980,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Sign in"
+            "value": "Scan the pairing code"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "サインイン"
+            "value": "ペアリングコードをスキャン"
           }
         }
       }
@@ -8014,13 +7997,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Optional: Tailscale for iPhone"
+            "value": "Get Tailscale for iPhone"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "任意：iPhone版Tailscale"
+            "value": "iPhone版Tailscaleを入手"
           }
         }
       }
@@ -8031,13 +8014,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Optional: Tailscale for the computer"
+            "value": "Get Tailscale for Mac"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "任意：コンピュータ版Tailscale"
+            "value": "Mac版Tailscaleを入手"
           }
         }
       }
@@ -8065,13 +8048,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "You paired this computer before, but it is not reachable now. Wake it and make sure cmux is running; this phone reconnects on its own."
+            "value": "You paired this computer before, but it is not reachable now. Wake it and make sure cmux and Tailscale are running; this phone reconnects on its own."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "このコンピュータは以前ペアリング済みですが、今は到達できません。コンピュータを起こしてcmuxが実行中か確認してください。この端末は自動的に再接続します。"
+            "value": "このコンピュータは以前ペアリング済みですが、今は到達できません。コンピュータを起こし、cmuxとTailscaleが実行中か確認してください。この端末は自動的に再接続します。"
           }
         }
       }

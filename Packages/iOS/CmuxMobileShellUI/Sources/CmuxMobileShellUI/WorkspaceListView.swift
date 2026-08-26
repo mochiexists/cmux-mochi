@@ -284,8 +284,6 @@ struct WorkspaceListView: View {
                     Section {
                         MobileConnectionRecoveryBanner(
                             connectionRequiresReauth: store.connectionRequiresReauth,
-                            connectionError: store.connectionError,
-                            signOut: signOut,
                             rendersInline: true
                         )
                         .listRowInsets(EdgeInsets(top: 8, leading: 12, bottom: 8, trailing: 12))

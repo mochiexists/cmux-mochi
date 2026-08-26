@@ -3,6 +3,57 @@ import Darwin
 import Observation
 import SwiftUI
 
+/// Runtime backing for a Task Manager surface hosted as a reusable tab.
+///
+/// Each surface owns its own sampling model. Task Manager surfaces are
+/// ephemeral and are deliberately excluded from session snapshots.
+@MainActor
+final class TaskManagerPanel: NSObject, Panel, ObservableObject {
+    let id = UUID()
+    let stableSurfaceIdentity = PanelStableSurfaceIdentity()
+    let panelType: PanelType = .taskManager
+    let model: CmuxTaskManagerModel
+
+    var displayTitle: String {
+        String(localized: "taskManager.title", defaultValue: "Task Manager")
+    }
+
+    var displayIcon: String? { "gauge.with.dots.needle.33percent" }
+
+    override init() {
+        let model = CmuxTaskManagerModel()
+        model.includesProcesses = true
+        self.model = model
+        super.init()
+    }
+
+    func close() {
+        model.stop()
+    }
+
+    func focus() {}
+    func unfocus() {}
+
+    func triggerFlash(reason: WorkspaceAttentionFlashReason) {
+        _ = reason
+    }
+}
+
+struct TaskManagerPanelView: View {
+    @ObservedObject var panel: TaskManagerPanel
+    let onRequestPanelFocus: () -> Void
+
+    var body: some View {
+        CmuxTaskManagerView(model: panel.model, minimumSize: nil)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            // A Task Manager tab sits over a terminal portal, so it must paint
+            // an opaque ground rather than compositing both sets of text.
+            .background(Color(nsColor: .windowBackgroundColor))
+            .contentShape(Rectangle())
+            .onTapGesture(perform: onRequestPanelFocus)
+    }
+}
+
 @MainActor
 final class TaskManagerWindowController: ReleasingWindowController {
     static let shared = TaskManagerWindowController()

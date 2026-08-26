@@ -153,6 +153,12 @@ extension Workspace {
             (notificationStore?.hasUnreadNotification(forTabId: id, surfaceId: nil) ?? false) ||
             (notificationStore?.hasRestoredUnreadIndicator(forTabId: id) ?? false)
         let workspaceNotificationSnapshots = notificationSnapshots(surfaceId: nil)
+        let zoomedPanelId = bonsplitController.zoomedPaneId.flatMap { zoomedPaneId in
+            bonsplitController.tabs(inPane: zoomedPaneId)
+                .lazy
+                .compactMap { self.surfaceIdToPanelId[$0.id] }
+                .first
+        }
         var snapshot = SessionWorkspaceSnapshot(
             workspaceId: id,
             stableId: stableId,
@@ -163,12 +169,14 @@ extension Workspace {
             customDescription: customDescription,
             customColor: customColor,
             isPinned: isPinned,
+            isPrivacyBlurred: isPrivacyBlurred,
             groupId: groupId,
             isManuallyUnread: isWorkspaceManuallyUnread,
             hasUnreadIndicator: hasWorkspaceUnreadIndicator,
             notifications: workspaceNotificationSnapshots.isEmpty ? nil : workspaceNotificationSnapshots,
             currentDirectory: currentDirectory,
             focusedPanelId: focusedPanelId,
+            zoomedPanelId: zoomedPanelId,
             layout: layout,
             layoutMode: layoutMode.rawValue,
             canvasPanes: canvasSessionPaneSnapshots(),
@@ -275,6 +283,7 @@ extension Workspace {
         setCustomDescription(snapshot.customDescription)
         setCustomColor(snapshot.customColor)
         isPinned = snapshot.isPinned
+        isPrivacyBlurred = snapshot.isPrivacyBlurred ?? false
         groupId = snapshot.groupId
         restoreTodoState(from: snapshot)
 
@@ -311,6 +320,12 @@ extension Workspace {
             focusPanel(fallbackFocusedPanelId)
         } else {
             scheduleFocusReconcile()
+        }
+        if let zoomedOldPanelId = snapshot.zoomedPanelId,
+           let zoomedNewPanelId = oldToNewPanelIds[zoomedOldPanelId],
+           panels[zoomedNewPanelId] != nil,
+           let zoomedPaneId = paneId(forPanelId: zoomedNewPanelId) {
+            _ = bonsplitController.togglePaneZoom(inPane: zoomedPaneId)
         }
         if !normalizedCurrentDirectory.isEmpty {
             currentDirectory = normalizedCurrentDirectory
@@ -704,6 +719,8 @@ extension Workspace {
         case .mobilePairing:
             return nil
         case .accountSignIn:
+            return nil
+        case .taskManager:
             return nil
         }
         return SessionPanelSnapshot(
@@ -1851,6 +1868,8 @@ extension Workspace {
             return nil
         case .accountSignIn:
             return nil
+        case .taskManager:
+            return nil
         }
     }
 
@@ -2153,6 +2172,9 @@ final class Workspace: Identifiable, ObservableObject {
     }
 
     @Published var isPinned: Bool = false
+    // Presentation-only privacy mode. This redacts the sidebar and prevents
+    // selection; it is intentionally not an authentication boundary.
+    @Published var isPrivacyBlurred: Bool = false
     /// Identifier of the WorkspaceGroup this workspace belongs to, or nil if ungrouped.
     /// The group entity itself lives in `TabManager.workspaceGroups`.
     @Published var groupId: UUID?
@@ -8799,13 +8821,18 @@ final class Workspace: Identifiable, ObservableObject {
         inPane paneId: PaneID,
         filePath: String,
         focus: Bool? = nil,
-        targetIndex: Int? = nil
+        targetIndex: Int? = nil,
+        fontSize: Double? = nil
     ) -> MarkdownPanel? {
         let shouldFocusNewTab = focus ?? (bonsplitController.focusedPaneId == paneId)
         let previousFocusedPanelId = focusedPanelId
         let previousHostedView = focusedTerminalInputTarget()?.panel.hostedView
 
-        let markdownPanel = MarkdownPanel(workspaceId: id, filePath: filePath)
+        let markdownPanel = MarkdownPanel(
+            workspaceId: id,
+            filePath: filePath,
+            fontSize: fontSize
+        )
         panels[markdownPanel.id] = markdownPanel
         panelTitles[markdownPanel.id] = markdownPanel.displayTitle
 
@@ -8894,6 +8921,76 @@ final class Workspace: Identifiable, ObservableObject {
 
         projectPanel.reload()
         return projectPanel
+    }
+
+    /// Create an ephemeral Task Manager surface in the requested pane.
+    @discardableResult
+    func newTaskManagerSurface(
+        inPane paneId: PaneID,
+        focus: Bool? = nil,
+        targetIndex: Int? = nil
+    ) -> TaskManagerPanel? {
+        let shouldFocusNewTab = focus ?? (bonsplitController.focusedPaneId == paneId)
+        let previousFocusedPanelId = focusedPanelId
+        let previousHostedView = focusedTerminalInputTarget()?.panel.hostedView
+
+        let taskManagerPanel = TaskManagerPanel()
+        panels[taskManagerPanel.id] = taskManagerPanel
+        panelTitles[taskManagerPanel.id] = taskManagerPanel.displayTitle
+
+        guard let newTabID = bonsplitController.createTab(
+            title: taskManagerPanel.displayTitle,
+            icon: taskManagerPanel.displayIcon,
+            kind: SurfaceKind.taskManager.rawValue,
+            isDirty: false,
+            isLoading: false,
+            isPinned: false,
+            inPane: paneId
+        ) else {
+            panels.removeValue(forKey: taskManagerPanel.id)
+            panelTitles.removeValue(forKey: taskManagerPanel.id)
+            return nil
+        }
+
+        bindSurface(newTabID, toPanelId: taskManagerPanel.id)
+        if let targetIndex {
+            _ = bonsplitController.reorderTab(newTabID, toIndex: targetIndex)
+        }
+        publishCmuxSurfaceCreated(
+            taskManagerPanel.id,
+            paneId: paneId,
+            kind: SurfaceKind.taskManager.rawValue,
+            origin: "task_manager_tab",
+            focused: shouldFocusNewTab
+        )
+        if shouldFocusNewTab {
+            bonsplitController.focusPane(paneId)
+            bonsplitController.selectTab(newTabID)
+            applyTabSelection(tabId: newTabID, inPane: paneId)
+        } else {
+            preserveFocusAfterNonFocusSplit(
+                preferredPanelId: previousFocusedPanelId,
+                splitPanelId: taskManagerPanel.id,
+                previousHostedView: previousHostedView
+            )
+        }
+        return taskManagerPanel
+    }
+
+    /// Focus the existing Task Manager surface, or create one when absent.
+    @discardableResult
+    func openOrFocusTaskManagerSurface(
+        inPane paneId: PaneID,
+        focus: Bool = true
+    ) -> TaskManagerPanel? {
+        for (panelID, panel) in panels {
+            guard let taskManagerPanel = panel as? TaskManagerPanel else { continue }
+            if focus {
+                focusPanel(panelID)
+            }
+            return taskManagerPanel
+        }
+        return newTaskManagerSurface(inPane: paneId, focus: focus)
     }
 
     @discardableResult
@@ -9329,10 +9426,11 @@ final class Workspace: Identifiable, ObservableObject {
     /// use the closest horizontal ancestor where the source is in the first (left) branch.
     func preferredRightSideTargetPane(fromPanelId panelId: UUID) -> PaneID? {
         guard let sourcePane = paneId(forPanelId: panelId) else { return nil }
-        return BrowserRightSidePaneResolver().preferredPane(
-            from: sourcePane,
-            in: bonsplitController
-        )
+        guard case .tab(let targetPaneID, _) = WorkspaceRightSidePlacementPlanner().plan(
+            tree: bonsplitController.treeSnapshot(),
+            sourcePaneID: sourcePane.id
+        ) else { return nil }
+        return bonsplitController.allPaneIds.first { $0.id == targetPaneID }
     }
 
     /// Returns the top-right pane in the current split tree.

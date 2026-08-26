@@ -434,7 +434,7 @@ final class WorkspaceContentViewVisibilityTests {
     }
 
     @Test
-    func minimalModeSidebarFooterKeepsOnlyUpgradeControl() {
+    func minimalModeSidebarFooterKeepsPersistentControls() {
         let minimalControls = SidebarFooterControl.allCases.filter {
             SidebarFooterPresentationPolicy.isVisible($0, presentationMode: .minimal)
         }
@@ -442,7 +442,7 @@ final class WorkspaceContentViewVisibilityTests {
             SidebarFooterPresentationPolicy.isVisible($0, presentationMode: .standard)
         }
 
-        #expect(minimalControls == [.upgrade])
+        #expect(minimalControls == [.upgrade, .resourceSummary])
         #expect(standardControls == SidebarFooterControl.allCases)
     }
 

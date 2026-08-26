@@ -59,4 +59,40 @@ import Testing
 
         #expect(defaults.string(forKey: MobileOnboardingStore.progressKey) == nil)
     }
+
+    @Test func injectedPairingBypassesOnlyTheCurrentLaunch() {
+        #expect(
+            !MobileOnboardingPresentationPolicy.shouldShow(
+                progress: .welcome,
+                hasInjectedAttachLaunchRoute: true
+            )
+        )
+        #expect(
+            MobileOnboardingPresentationPolicy.shouldShow(
+                progress: .welcome,
+                hasInjectedAttachLaunchRoute: false
+            )
+        )
+    }
+
+    @Test func successfulConnectionCompletesAnUnfinishedOnboarding() {
+        #expect(
+            MobileOnboardingPresentationPolicy.shouldMarkComplete(
+                progress: .welcome,
+                isConnected: true
+            )
+        )
+        #expect(
+            !MobileOnboardingPresentationPolicy.shouldMarkComplete(
+                progress: .welcome,
+                isConnected: false
+            )
+        )
+        #expect(
+            !MobileOnboardingPresentationPolicy.shouldMarkComplete(
+                progress: .complete,
+                isConnected: true
+            )
+        )
+    }
 }

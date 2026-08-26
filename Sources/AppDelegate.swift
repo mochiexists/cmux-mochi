@@ -4128,6 +4128,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
                 hasher.combine(0)
             case .notifications:
                 hasher.combine(1)
+            case .taskManager:
+                // Task Manager persists as tabs, so hash both ephemeral states
+                // identically and avoid needless autosaves while it is shown.
+                hasher.combine(0)
             }
 
             if let window = context.window ?? windowForMainWindowId(context.windowId) {
@@ -9603,6 +9607,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         TaskManagerWindowController.shared.show()
     }
 
+    /// Open or focus the reusable Task Manager tab in the active workspace.
+    /// Falls back to the floating window when there is no pane to host it.
+    @discardableResult
+    func openTaskManagerTab() -> Bool {
+        guard let workspace = activeTabManagerForCommands()?.selectedWorkspace,
+              let paneID = workspace.bonsplitController.focusedPaneId
+                ?? workspace.bonsplitController.allPaneIds.first else {
+            openTaskManagerWindow()
+            return false
+        }
+        workspace.openOrFocusTaskManagerSurface(inPane: paneID)
+        return true
+    }
+
     func captureMainWindowVisibilityRestoreTargetsForApplicationHide() {
         mainWindowVisibilityController.captureHiddenWindowRestoreTargets(windows: mainWindowsForVisibilityController())
     }
@@ -12763,6 +12781,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
             switch sidebarSelection {
             case .tabs: return "tabs"
             case .notifications: return "notifications"
+            case .taskManager: return "taskManager"
             }
         }()
         writeMultiWindowNotificationTestData([

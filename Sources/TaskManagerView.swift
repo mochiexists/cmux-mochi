@@ -5,6 +5,9 @@ import SwiftUI
 
 struct CmuxTaskManagerView: View {
     @Bindable var model: CmuxTaskManagerModel
+    /// Minimum size enforced by the floating window. Embedded Task Manager
+    /// surfaces pass `nil` so they adapt to the available content area.
+    var minimumSize: CGSize? = CGSize(width: 820, height: 480)
 
     var body: some View {
         // Outer view observes the model so the toolbar/summary/sort
@@ -31,7 +34,7 @@ struct CmuxTaskManagerView: View {
                 actions: CmuxTaskManagerRowActions.bound(to: model)
             )
         }
-        .frame(minWidth: 820, minHeight: 480)
+        .frame(minWidth: minimumSize?.width, minHeight: minimumSize?.height)
         .onAppear {
             model.start()
         }

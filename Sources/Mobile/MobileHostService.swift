@@ -927,14 +927,13 @@ final class MobileHostService {
         // one answers under `xcodebuild test`, and the host wedges before XCTest
         // can connect ("The test runner hung before establishing connection").
         //
-        // `canPublishRoutesWithoutListenerForXCTest` was written for exactly
-        // this, but it lived only in the `else` branch below and so was
-        // unreachable: the DEBUG default for `mobile.iOSPairingHost.enabled` is
-        // ON, which is precisely the case it needed to cover. Feed it into the
-        // plan instead, so the guard it guards can actually be taken.
+        // Suppression must depend only on the test-process marker. Using the
+        // absence of a stored pairing preference made app-host tests inherit
+        // the developer's real setting and hang before XCTest connected.
         #if DEBUG
-        let suppressLegacyListenerForXCTest =
-            Self.canPublishRoutesWithoutListenerForXCTest(defaults: .standard)
+        let suppressLegacyListenerForXCTest = Self.shouldSuppressLegacyListenerForXCTest(
+            environment: ProcessInfo.processInfo.environment
+        )
         #else
         let suppressLegacyListenerForXCTest = false
         #endif
@@ -965,6 +964,12 @@ final class MobileHostService {
     }
 
     #if DEBUG
+    nonisolated static func shouldSuppressLegacyListenerForXCTest(
+        environment: [String: String]
+    ) -> Bool {
+        MacSentryStartupPolicy.isRunningUnderXCTest(environment: environment)
+    }
+
     nonisolated private static func canPublishRoutesWithoutListenerForXCTest(defaults: UserDefaults) -> Bool {
         guard isRunningUnderXCTest else { return false }
         return defaults.object(forKey: listeningEnabledDefaultsKey) == nil
@@ -1027,13 +1032,10 @@ final class MobileHostService {
             nextListener.start(queue: callbackQueue)
             startNetworkPathMonitorIfNeeded()
         } catch {
-            if usePreferredPort {
-                mobileHostLog.info("mobile host preferred port unavailable before listener start, falling back to an ephemeral port")
-                startListener(usePreferredPort: false)
-                return
-            }
-            lastErrorDescription = String(describing: error)
-            mobileHostLog.error("mobile host listener failed to start: \(String(describing: error), privacy: .public)")
+            lastErrorDescription = "Mobile pairing could not bind port \(desiredPort): \(error)."
+            mobileHostLog.error(
+                "mobile host listener failed to bind fixed port \(desiredPort, privacy: .public): \(String(describing: error), privacy: .public)"
+            )
             // No listener was registered, so no state callback will fire to drain
             // readiness waiters; resolve them now instead of waiting for the deadline.
             drainReadinessWaiters()
@@ -1817,13 +1819,16 @@ final class MobileHostService {
         }
     }
 
-    /// Tears down a listener that could not bind its preferred port and, unless
-    /// it was already on the ephemeral fallback, retries on an OS-assigned port.
+    /// Tears down a listener that could not bind its fixed pairing port.
     /// Shared by the `.failed` and `.waiting(addressUnavailable)` paths.
+    ///
+    /// Fork (cmux Mochi): fail closed instead of moving to an OS-assigned port.
+    /// A paired phone stores the advertised `host:port`, so an ephemeral retry
+    /// would report the host as running at an address that phone has never seen.
     private func handleListenerBindFailure(error: NWError, context: String) {
-        lastErrorDescription = String(describing: error)
+        let port = appliedPreferredPort ?? Self.configuredPort()
+        lastErrorDescription = Self.bindFailureDescription(port: port, error: error)
         MobileHostPublicStatusCache.update(routes: [])
-        let shouldRetryWithEphemeralPort = !listenerUsesEphemeralFallback
         listener?.stateUpdateHandler = nil
         listener?.newConnectionHandler = nil
         listener?.cancel()
@@ -1831,15 +1836,10 @@ final class MobileHostService {
         listener = nil
         listenerUsesEphemeralFallback = false
         listenerPort = nil
-        if shouldRetryWithEphemeralPort {
-            mobileHostLog.info("mobile host preferred port \(context, privacy: .public), falling back to an ephemeral port")
-            startListener(usePreferredPort: false)
-        } else {
-            mobileHostLog.error("mobile host listener bind failed on ephemeral port: \(String(describing: error), privacy: .public)")
-            // No retry left: unblock any readiness waiters (the retry path drains
-            // them when the ephemeral listener reaches `.ready`).
-            drainReadinessWaiters()
-        }
+        mobileHostLog.error(
+            "mobile host fixed port \(port, privacy: .public) \(context, privacy: .public): \(String(describing: error), privacy: .public)"
+        )
+        drainReadinessWaiters()
     }
 
     private func updatePublicStatusRoutes(

@@ -45,6 +45,10 @@ extension ClosedItemHistoryStore {
             return String(localized: "account.signIn.workspace.title", defaultValue: "Sign In")
         case .artifact:
             return String(localized: "artifact.title", defaultValue: "Artifact")
+        case .taskManager:
+            // Task Manager surfaces are ephemeral and never enter closed
+            // history, but the fallback remains exhaustive.
+            return String(localized: "taskManager.title", defaultValue: "Task Manager")
         }
     }
 }

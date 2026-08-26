@@ -76,8 +76,10 @@ private final class CMUXCLISentryTelemetryBundleToken {}
         let socketPath = "127.0.0.1:\(try unusedRelayPort())"
         let captureProbePath = root.appendingPathComponent("sentry-capture-probe.txt", isDirectory: false).path
         let storeProbePath = root.appendingPathComponent("sentry-store-probe.txt", isDirectory: false).path
+        let destinationProbePath = root.appendingPathComponent("sentry-destination-probe.txt", isDirectory: false).path
         var environment = sentryProbeEnvironment(socketPath: socketPath, probePath: captureProbePath)
         environment["CMUX_CLI_SENTRY_STORE_PROBE_PATH"] = storeProbePath
+        environment["CMUX_CLI_SENTRY_DSN_PROBE_PATH"] = destinationProbePath
 
         let result = runProcess(
             executablePath: cliPath,
@@ -97,6 +99,11 @@ private final class CMUXCLISentryTelemetryBundleToken {}
             FileManager.default.fileExists(atPath: storeProbePath),
             Comment(rawValue: "Unexpected relay auth failures should be stored durably without synchronously flushing Sentry. Output: \(result.stdout)")
         )
+        let configuredDSN = try String(contentsOfFile: destinationProbePath, encoding: .utf8)
+        #expect(
+            configuredDSN == "https://f1724042a52588425266851138bb2ee8@o4510776019910656.ingest.de.sentry.io/4511385382486096"
+        )
+        #expect(!configuredDSN.contains("ingest.us.sentry.io"))
     }
 
     private func bundledCLIPath() throws -> String {

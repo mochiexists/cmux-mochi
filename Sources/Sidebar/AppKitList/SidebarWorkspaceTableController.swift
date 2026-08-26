@@ -631,7 +631,8 @@ final class SidebarWorkspaceTableController: NSObject, NSTableViewDataSource, NS
         cmuxDebugLog("sidebar.table.doubleClick row=\(row) rows=\(rows.count)")
 #endif
         guard rows.indices.contains(row),
-              rows[row].appKitWorkspaceRowModel != nil,
+              let rowModel = rows[row].appKitWorkspaceRowModel,
+              !rowModel.isPrivacyBlurred,
               let cell = table.view(atColumn: 0, row: row, makeIfNecessary: false)
                 as? SidebarWorkspaceRowTableCellView else { return }
         // The single-click action fires for both clicks of a double-click, so
@@ -711,7 +712,10 @@ final class SidebarWorkspaceTableController: NSObject, NSTableViewDataSource, NS
     func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> (any NSPasteboardWriting)? {
         // Group headers intentionally mint their anchor payload: anchor drags
         // route to top-level whole-group plans and are rejected cross-window.
-        guard rows.indices.contains(row), let actions else { return nil }
+        guard rows.indices.contains(row),
+              rows[row].appKitWorkspaceRowModel?.isPrivacyBlurred != true,
+              rows[row].appKitGroupHeaderModel?.isPrivacyBlurred != true,
+              let actions else { return nil }
         let workspaceId = rows[row].workspaceId
         actions.beginWorkspaceDrag(workspaceId)
         workspaceDragSessionDidBegin()
@@ -1062,6 +1066,10 @@ final class SidebarWorkspaceTableController: NSObject, NSTableViewDataSource, NS
     func previewSelection(row: Int, modifiers: NSEvent.ModifierFlags, hitView: NSView?) {
         guard rows.indices.contains(row),
               let table = containerView?.tableView else { return }
+        if rows[row].appKitWorkspaceRowModel?.isPrivacyBlurred == true
+            || rows[row].appKitGroupHeaderModel?.isPrivacyBlurred == true {
+            return
+        }
         let workspaceCell = table.view(atColumn: 0, row: row, makeIfNecessary: false)
             as? SidebarWorkspaceRowTableCellView
         let headerCell = table.view(atColumn: 0, row: row, makeIfNecessary: false)

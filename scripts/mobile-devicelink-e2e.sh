@@ -207,10 +207,46 @@ else
     --destination "$ARTIFACT_DIR/reconnect.png" >/dev/null 2>&1 || true
 fi
 
+# The transport markers above are necessary but not sufficient: a reconnect can
+# succeed underneath the first-run tour. On Simulator, also inspect the app's
+# durable onboarding state so a log-only pass cannot hide the wrong UI again.
+ONBOARDING_COMPLETE="not_machine_readable"
+if [[ "$TARGET" == "simulator" ]]; then
+  onboarding_container="$(xcrun simctl get_app_container "$TARGET_ID" "$BUNDLE_ID" data)"
+  onboarding_preferences="$onboarding_container/Library/Preferences/$BUNDLE_ID.plist"
+  onboarding_started="$(date +%s)"
+  while (( $(date +%s) - onboarding_started < 15 )); do
+    if ONBOARDING_PREFERENCES="$onboarding_preferences" /usr/bin/python3 - <<'PY'
+import os
+import plistlib
+from pathlib import Path
+
+path = Path(os.environ["ONBOARDING_PREFERENCES"])
+if not path.is_file():
+    raise SystemExit(1)
+with path.open("rb") as stream:
+    preferences = plistlib.load(stream)
+raise SystemExit(
+    preferences.get("dev.cmux.mobile.onboarding.redesign.progress.v1") != "complete"
+)
+PY
+    then
+      ONBOARDING_COMPLETE="true"
+      break
+    fi
+    sleep 1
+  done
+  if [[ "$ONBOARDING_COMPLETE" != "true" ]]; then
+    echo "error: DeviceLink reconnected, but durable onboarding is not complete" >&2
+    exit 1
+  fi
+fi
+
 GIT_SHA="$(git -C "$REPO_ROOT" rev-parse HEAD 2>/dev/null || true)"
 REPORT_PATH="$ARTIFACT_DIR/report.json"
 TARGET="$TARGET" TARGET_ID="$TARGET_ID" TAG="$TAG" BUNDLE_ID="$BUNDLE_ID" \
 GIT_SHA="$GIT_SHA" REUSE_INSTALL="$REUSE_INSTALL" REPORT_PATH="$REPORT_PATH" \
+ONBOARDING_COMPLETE="$ONBOARDING_COMPLETE" \
 /usr/bin/python3 - <<'PY'
 import json
 import os
@@ -239,6 +275,9 @@ report = {
         "paired_identity_adopted": True,
         "reconnected": True,
         "workspace_sync": True,
+        "onboarding_complete": (
+            True if os.environ["ONBOARDING_COMPLETE"] == "true" else None
+        ),
     },
     "artifacts": {
         "pairing_log": "pairing.cmux-debug.log",

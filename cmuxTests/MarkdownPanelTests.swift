@@ -1,5 +1,6 @@
 import AppKit
 import Combine
+import CmuxControlSocket
 import WebKit
 import XCTest
 
@@ -11,6 +12,52 @@ import XCTest
 
 @MainActor
 final class MarkdownPanelTests: XCTestCase {
+    func testControlMarkdownOpenReusesExistingRightSidePane() throws {
+        let manager = TabManager()
+        let workspace = try XCTUnwrap(manager.tabs.first)
+        let sourceSurfaceID = try XCTUnwrap(workspace.focusedPanelId)
+        let firstRightPanel = try XCTUnwrap(workspace.newMarkdownSplit(
+            from: sourceSurfaceID,
+            orientation: .horizontal,
+            filePath: "/tmp/first-right.md",
+            focus: false
+        ))
+        let rightPaneID = try XCTUnwrap(workspace.paneId(forPanelId: firstRightPanel.id))
+        let originalPaneCount = workspace.bonsplitController.allPaneIds.count
+        TerminalController.shared.setActiveTabManager(manager)
+        defer {
+            workspace.teardownAllPanels()
+            TerminalController.shared.setActiveTabManager(nil)
+        }
+
+        let routing = ControlRoutingSelectors(
+            hasWindowIDParam: false,
+            windowID: nil,
+            groupID: nil,
+            workspaceID: workspace.id,
+            surfaceID: nil,
+            paneID: nil
+        )
+        let result = TerminalController.shared.controlMarkdownOpen(
+            routing: routing,
+            surfaceID: sourceSurfaceID,
+            filePath: "/tmp/second-right.md",
+            directionRaw: "right",
+            fontSize: 21,
+            fontSizeInvalid: false,
+            requestedFocus: false
+        )
+
+        guard case let .opened(created) = result else {
+            XCTFail("Expected markdown.open to succeed, got \(result)")
+            return
+        }
+        let createdPanel = try XCTUnwrap(workspace.panels[created.surfaceID] as? MarkdownPanel)
+        XCTAssertEqual(workspace.bonsplitController.allPaneIds.count, originalPaneCount)
+        XCTAssertEqual(created.targetPaneID, rightPaneID.id)
+        XCTAssertEqual(createdPanel.fontSize, 21)
+    }
+
     func testMarkdownThemeUsesTransparentPageAndOverlayTintsForTranslucentBackgrounds() throws {
         let theme = MarkdownWebTheme.resolve(
             backgroundColor: NSColor(

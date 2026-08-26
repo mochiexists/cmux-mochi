@@ -54,7 +54,10 @@ final class CLISocketSentryTelemetry {
 #if canImport(Sentry)
     private static let startupLock = NSLock()
     private static var started = false
-    private static let dsn = "https://ecba1ec90ecaee02a102fba931b6d2b3@o4507547940749312.ingest.us.sentry.io/4510796264636416"
+    // Keep CLI socket failures in the same fork-owned project and EU ingest
+    // region as the macOS and iOS apps. This CLI can outlive either app process,
+    // so it cannot borrow their initialized SDK configuration.
+    private static let dsn = "https://f1724042a52588425266851138bb2ee8@o4510776019910656.ingest.de.sentry.io/4511385382486096"
 
     private static func currentSentryReleaseName() -> String? {
         guard let bundleIdentifier = currentSentryBundleIdentifier(),
@@ -393,6 +396,9 @@ final class CLISocketSentryTelemetry {
         guard !started else { return }
         SentrySDK.start { options in
             options.dsn = dsn
+#if DEBUG
+            recordDestinationProbe(dsn: dsn)
+#endif
             options.releaseName = currentSentryReleaseName()
 #if DEBUG
             options.environment = "development-cli"
@@ -423,5 +429,22 @@ final class CLISocketSentryTelemetry {
         }
         started = true
     }
+
+#if DEBUG
+    /// Spawned-process tests use this probe to verify the destination supplied
+    /// to the SDK at runtime. It is intentionally unavailable in release builds.
+    private static func recordDestinationProbe(dsn: String) {
+        guard let path = ProcessInfo.processInfo.environment["CMUX_CLI_SENTRY_DSN_PROBE_PATH"]?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+            !path.isEmpty else {
+            return
+        }
+        try? dsn.write(
+            toFile: NSString(string: path).expandingTildeInPath,
+            atomically: true,
+            encoding: .utf8
+        )
+    }
+#endif
 #endif
 }

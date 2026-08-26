@@ -226,6 +226,29 @@ struct NotificationsPage: View {
     }
 }
 
+/// Full-area Task Manager that behaves like an ephemeral special workspace.
+///
+/// The expensive process sampler exists only while this page is selected.
+struct TaskManagerPage: View {
+    @Binding var selection: SidebarSelection
+    @State private var model = CmuxTaskManagerModel()
+
+    var body: some View {
+        Group {
+            if selection == .taskManager {
+                CmuxTaskManagerView(model: model, minimumSize: nil)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color(nsColor: .windowBackgroundColor))
+        .onChange(of: selection, initial: true) { _, selection in
+            if selection == .taskManager {
+                model.includesProcesses = true
+            }
+        }
+    }
+}
+
 struct ShortcutAnnotation: View {
     let text: String
     var accessibilityIdentifier: String? = nil

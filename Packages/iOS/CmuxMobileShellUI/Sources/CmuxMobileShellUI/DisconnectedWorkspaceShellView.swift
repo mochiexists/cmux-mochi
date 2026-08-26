@@ -66,8 +66,8 @@ struct DisconnectedWorkspaceShellView: View {
                 .task {
                     // Load (and, via the backup decorator, restore) saved Macs so a
                     // known/restored Mac shows up here for one-tap reconnect.
-                    // Same-account discovery is the primary path; manual pairing
-                    // remains available from the explicit Add Computer controls.
+                    // DeviceLink QR pairing is the production path; refresh the
+                    // locally saved computers before rendering reconnect options.
                     await store?.loadPairedMacs()
                     #if os(iOS)
                     // Registry + presence enrich the rows (online dots, build
@@ -100,7 +100,8 @@ struct DisconnectedWorkspaceShellView: View {
             // Settings button so the no-devices screen's chrome matches. There is no
             // connected computer to forget here, but the store is forwarded so
             // a user whose active Mac went offline can still switch to another
-            // paired Mac; the sheet also surfaces the account + Sign Out.
+            // paired Mac. Production Settings exposes QR pairing and computer
+            // selection; optional account controls remain DEBUG-only.
             MobileSettingsView(
                 connectedHostName: "",
                 startPairingScanner: {
@@ -207,7 +208,7 @@ struct DisconnectedWorkspaceShellView: View {
         } description: {
             Text(L10n.string(
                 "mobile.devices.emptyDescription",
-                defaultValue: "Sign in to cmux on your computer with this account and it appears here automatically."
+                defaultValue: "Open Pair iPhone in cmux on your computer, then scan its QR code. No account is required."
             ))
         } actions: {
             Button(action: showAddDevice) {
@@ -300,7 +301,7 @@ struct DisconnectedWorkspaceShellView: View {
                 savedMacs.isEmpty
                     ? L10n.string(
                         "mobile.devices.emptyDescription",
-                        defaultValue: "Sign in to cmux on your computer with this account and it appears here automatically."
+                        defaultValue: "Open Pair iPhone in cmux on your computer, then scan its QR code. No account is required."
                     )
                     : L10n.string("mobile.devices.savedDescription", defaultValue: "Tap a saved computer to reconnect, or add another.")
             )

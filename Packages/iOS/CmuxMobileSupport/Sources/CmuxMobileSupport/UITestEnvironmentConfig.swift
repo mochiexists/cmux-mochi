@@ -36,6 +36,15 @@ public struct UITestEnvironmentConfig: Equatable, Sendable {
         #endif
     }
 
+    /// Whether the account-free setup-help reference screen is shown directly.
+    public var setupHelpPreviewEnabled: Bool {
+        #if DEBUG
+        return environment["CMUX_UITEST_SETUP_HELP_PREVIEW"] == "1"
+        #else
+        return false
+        #endif
+    }
+
     /// Whether the onboarding preview should show connection fallback.
     public var onboardingConnectionFallbackEnabled: Bool {
         #if DEBUG

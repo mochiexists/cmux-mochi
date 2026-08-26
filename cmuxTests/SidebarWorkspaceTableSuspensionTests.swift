@@ -520,7 +520,8 @@ struct SidebarWorkspaceTableSuspensionTests {
     private func makeGroupHeaderModel() -> SidebarGroupHeaderRowModel {
         SidebarGroupHeaderRowModel(
             groupId: UUID(), anchorWorkspaceId: UUID(), name: "Group", iconSymbol: "folder",
-            tintHex: nil, isCollapsed: false, isPinned: false, isAnchorActive: false,
+            tintHex: nil, isCollapsed: false, isPinned: false, isPrivacyBlurred: false,
+            isAnchorActive: false,
             isMultiSelected: false,
             multiSelectionBackgroundStyle: .clear,
             memberCount: 1, anchorUnreadCount: 0, canMarkRead: false, canMarkUnread: true,
@@ -537,7 +538,8 @@ struct SidebarWorkspaceTableSuspensionTests {
     ) -> SidebarGroupHeaderRowActions {
         SidebarGroupHeaderRowActions(
             onToggleCollapsed: onToggleCollapsed, onFocusAnchor: { _ in }, onTapPlus: {},
-            onRunResolvedItem: { _ in }, onRename: {}, onTogglePinned: {}, onMarkRead: {},
+            onRunResolvedItem: { _ in }, onRename: {}, onTogglePinned: {},
+            onTogglePrivacyBlurred: {}, onMarkRead: {},
             onMarkUnread: {}, onClearLatestNotifications: {}, onMarkAllRead: {},
             onMarkAllUnread: {}, onUngroup: {}, onDelete: {}, onEditConfig: {}, onOpenDocs: {}
         )

@@ -212,22 +212,33 @@ extension TerminalController: ControlProjectContext {
         guard let direction = parseSplitDirection(directionRaw) else {
             return .invalidDirection
         }
-        let orientation: SplitOrientation = direction.isHorizontal ? .horizontal : .vertical
-        let insertFirst = (direction == .left || direction == .up)
-
         if fontSizeInvalid {
             return .invalidFontSize
         }
         let clampedFontSize = fontSize.map { MarkdownFontSizeSettings.clamp($0) }
+        let focus = v2FocusAllowed(requested: requestedFocus)
 
-        let createdPanel = ws.newMarkdownSplit(
-            from: sourceSurfaceId,
-            orientation: orientation,
-            insertFirst: insertFirst,
-            filePath: filePath,
-            focus: v2FocusAllowed(requested: requestedFocus),
-            fontSize: clampedFontSize
-        )
+        let createdPanel: MarkdownPanel?
+        if direction == .right,
+           let targetPane = ws.preferredRightSideTargetPane(fromPanelId: sourceSurfaceId) {
+            createdPanel = ws.newMarkdownSurface(
+                inPane: targetPane,
+                filePath: filePath,
+                focus: focus,
+                fontSize: clampedFontSize
+            )
+        } else {
+            let orientation: SplitOrientation = direction.isHorizontal ? .horizontal : .vertical
+            let insertFirst = (direction == .left || direction == .up)
+            createdPanel = ws.newMarkdownSplit(
+                from: sourceSurfaceId,
+                orientation: orientation,
+                insertFirst: insertFirst,
+                filePath: filePath,
+                focus: focus,
+                fontSize: clampedFontSize
+            )
+        }
 
         guard let markdownPanelId = createdPanel?.id else {
             return .createFailed

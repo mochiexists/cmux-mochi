@@ -165,6 +165,7 @@ private struct SidebarImmediateObservationState: Equatable {
     let customDescription: String?
     let isPinned: Bool
     let customColor: String?
+    let isPrivacyBlurred: Bool
     let latestConversationMessage: String?
     let latestSubmittedMessage: String?
     let latestSubmittedAt: Date?
@@ -213,6 +214,7 @@ extension Workspace {
             $isPinned,
             $customColor
         )
+        .combineLatest($isPrivacyBlurred)
         let conversationFields = Publishers.CombineLatest3(
             $latestConversationMessage,
             $latestSubmittedMessage,
@@ -230,11 +232,13 @@ extension Workspace {
         let immediateFields = workspaceFields
             .combineLatest(conversationFields, todoFields)
             .map { workspaceFields, conversationFields, todoFields in
-                SidebarImmediateObservationState(
-                    customTitle: workspaceFields.0,
-                    customDescription: workspaceFields.1,
-                    isPinned: workspaceFields.2,
-                    customColor: workspaceFields.3,
+                let workspaceValues = workspaceFields.0
+                return SidebarImmediateObservationState(
+                    customTitle: workspaceValues.0,
+                    customDescription: workspaceValues.1,
+                    isPinned: workspaceValues.2,
+                    customColor: workspaceValues.3,
+                    isPrivacyBlurred: workspaceFields.1,
                     latestConversationMessage: conversationFields.0,
                     latestSubmittedMessage: conversationFields.1,
                     latestSubmittedAt: conversationFields.2,

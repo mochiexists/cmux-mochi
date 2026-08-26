@@ -42,6 +42,8 @@ public struct SurfaceKind: RawRepresentable, Hashable, Sendable {
     /// A transient iPhone pairing pane.
     /// A live artifact (React/HTML) rendering pane.
     public static let artifact = SurfaceKind(rawValue: "artifact")
+    /// An ephemeral Task Manager pane.
+    public static let taskManager = SurfaceKind(rawValue: "taskManager")
 
     public static let mobilePairing = SurfaceKind(rawValue: "mobilePairing")
     /// A transient Stack account sign-in pane.

@@ -53,6 +53,19 @@ struct MobileHostAuthorizationTests {
         )
     }
 
+    @Test func testAppHostMarkerSuppressesLegacyListenerBeforeXCTestConnects() {
+        #expect(
+            MobileHostService.shouldSuppressLegacyListenerForXCTest(
+                environment: ["CMUX_TEST_PROCESS": "1"]
+            )
+        )
+        #expect(
+            !MobileHostService.shouldSuppressLegacyListenerForXCTest(
+                environment: [:]
+            )
+        )
+    }
+
 
     /// Fork (cmux Mochi): the pairing port must never silently move. A paired
     /// phone stores the `host:port` it was told; rebinding on an OS-assigned
@@ -201,8 +214,16 @@ struct MobileHostAuthorizationTests {
     @Test func testLiveAuthorizationRejectsWorkspaceScopedAttachTokenForMacScopedMutations() async throws {
         let service = MobileHostService.shared
         service.debugConfigureAcceptedStackAuthTokenForTesting("cmux-dev-token")
-        service.debugSetListenerStateForTesting(generation: UUID(), usesEphemeralFallback: false, port: 61234)
-        defer { service.debugConfigureAcceptedStackAuthTokenForTesting(nil); service.debugSetListenerStateForTesting(generation: UUID(), usesEphemeralFallback: false, port: nil) }
+        let route = try CmxAttachRoute(
+            id: "debug",
+            kind: .debugLoopback,
+            endpoint: .hostPort(host: "127.0.0.1", port: 61234)
+        )
+        MobileHostPublicStatusCache.update(routes: [route])
+        defer {
+            service.debugConfigureAcceptedStackAuthTokenForTesting(nil)
+            MobileHostPublicStatusCache.removeAll()
+        }
         let payload = try await service.createAttachTicket(workspaceID: "workspace-main", terminalID: nil, ttl: 3600)
         let ticketPayload = try #require(payload["ticket"] as? [String: Any])
         let attachToken = try #require(ticketPayload["auth_token"] as? String)
@@ -289,7 +310,7 @@ struct MobileHostAuthorizationTests {
         }
         #expect(request.auth == nil)
     }
-    @Test func testMobileRouteResolverPublishesOnlyNumericTailscaleAddresses() throws {
+    @Test func testMobileRouteResolverPrioritizesNumericTailscaleAddressesBeforeMagicDNS() throws {
         let resolver = MobileRouteResolver()
         let snapshot = resolver.routes(
             port: 61234,
@@ -301,20 +322,27 @@ struct MobileHostAuthorizationTests {
             ]
         )
         let tailscaleRoutes = snapshot.routes.filter { $0.kind == .tailscale }
-        #expect(tailscaleRoutes.count == 2)
+        #expect(tailscaleRoutes.count == 3)
         #expect(tailscaleRoutes.first?.priority == 10)
-        #expect(tailscaleRoutes.last?.priority == 20)
+        #expect(tailscaleRoutes[1].priority == 20)
+        #expect(tailscaleRoutes.last?.priority == 100)
         if case let .hostPort(host, port) = tailscaleRoutes.first?.endpoint {
             #expect(host == "100.71.210.41")
             #expect(port == 61234)
         } else {
             #expect(Bool(false), "Expected first numeric Tailscale route")
         }
-        if case let .hostPort(host, port) = tailscaleRoutes.last?.endpoint {
+        if case let .hostPort(host, port) = tailscaleRoutes[1].endpoint {
             #expect(host == "fd7a:115c:a1e0::1234")
             #expect(port == 61234)
         } else {
             #expect(Bool(false), "Expected IPv6 Tailscale route")
+        }
+        if case let .hostPort(host, port) = tailscaleRoutes.last?.endpoint {
+            #expect(host == "work-mac.tailnet.ts.net")
+            #expect(port == 61234)
+        } else {
+            #expect(Bool(false), "Expected MagicDNS Tailscale route")
         }
     }
     @Test func testMobileRouteResolverImmediateSnapshotUsesNumericTailscaleFallbackWithoutDNS() throws {
@@ -347,12 +375,18 @@ struct MobileHostAuthorizationTests {
             }
         )
         let tailscaleRoutes = snapshot.routes.filter { $0.kind == .tailscale }
-        #expect(tailscaleRoutes.count == 1)
+        #expect(tailscaleRoutes.count == 2)
         if case let .hostPort(host, port) = tailscaleRoutes.first?.endpoint {
             #expect(host == "100.71.210.41")
             #expect(port == 61234)
         } else {
             #expect(Bool(false), "Expected public status to publish the numeric Tailscale route")
+        }
+        if case let .hostPort(host, port) = tailscaleRoutes.last?.endpoint {
+            #expect(host == "work-mac.tailnet.ts.net")
+            #expect(port == 61234)
+        } else {
+            #expect(Bool(false), "Expected public status to retain the MagicDNS route")
         }
     }
     @Test func testMobileRouteResolverRefreshesStalePublicStatusRoutes() async throws {

@@ -20,6 +20,7 @@ struct SidebarWorkspaceRowSuspensionTests {
             title: "Workspace",
             customDescription: nil,
             isPinned: false,
+            isPrivacyBlurred: false,
             customColorHex: nil,
             remoteWorkspaceSidebarText: nil,
             remoteConnectionStatusText: "",
@@ -82,6 +83,7 @@ struct SidebarWorkspaceRowSuspensionTests {
                 checklistItems: checklistItems
             ),
             settings: settings,
+            isPrivacyBlurred: false,
             isActive: false,
             isMultiSelected: false,
             canCloseWorkspace: true,

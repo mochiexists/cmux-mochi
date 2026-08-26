@@ -110,6 +110,7 @@ struct WorkspaceCanvasHostView: View {
         case .mobilePairing: return "iphone"
         case .artifact: return "sparkles.rectangle.stack"
         case .accountSignIn: return "person.crop.circle"
+        case .taskManager: return "gauge.with.dots.needle.33percent"
         }
     }
 

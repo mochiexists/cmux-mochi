@@ -32,6 +32,8 @@ extension ContentView {
             return String(localized: "settings.section.account", defaultValue: "Account")
         case .artifact:
             return String(localized: "artifact.title", defaultValue: "Artifact")
+        case .taskManager:
+            return String(localized: "taskManager.title", defaultValue: "Task Manager")
         }
     }
     func commandPaletteSurfaceKeywords(for panelType: PanelType) -> [String] {
@@ -65,6 +67,8 @@ extension ContentView {
             return ["account", "auth", "profile", "sign in"]
         case .artifact:
             return ["artifact", "canvas", "preview", "render"]
+        case .taskManager:
+            return ["task", "manager", "activity", "cpu", "memory", "processes"]
         }
     }
 }

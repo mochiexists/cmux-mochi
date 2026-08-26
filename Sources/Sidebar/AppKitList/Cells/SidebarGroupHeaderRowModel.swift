@@ -15,6 +15,7 @@ struct SidebarGroupHeaderRowModel: Equatable, Hashable {
     let tintHex: String?
     let isCollapsed: Bool
     let isPinned: Bool
+    let isPrivacyBlurred: Bool
     let isAnchorActive: Bool
     let isMultiSelected: Bool
     let multiSelectionBackgroundStyle: SidebarWorkspaceRowBackgroundStyle
@@ -49,6 +50,7 @@ struct SidebarGroupHeaderRowActions {
     let onRunResolvedItem: (CmuxResolvedConfigMenuAction) -> Void
     let onRename: () -> Void
     let onTogglePinned: () -> Void
+    let onTogglePrivacyBlurred: () -> Void
     let onMarkRead: () -> Void
     let onMarkUnread: () -> Void
     let onClearLatestNotifications: () -> Void

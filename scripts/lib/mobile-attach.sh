@@ -160,13 +160,33 @@ cmux_attach_mac_app_path() {
     "$HOME" "$slug" "$CMUX_FORK_APP_NAME" "$slug"
 }
 
+# Choose a stable, tag-specific TCP port for isolated dev builds. Production and
+# nightly bundles keep their configured/default port; tagged bundles otherwise
+# all collide on the catalog default when they run alongside the installed app.
+# Persisting the derived port means a phone paired to the same tag reconnects to
+# the same endpoint after relaunch.
+cmux_attach_tagged_pairing_port() {
+  local slug checksum
+  slug="$(cmux_attach__slug "$1")"
+  checksum="$(printf '%s' "$slug" | cksum | awk '{print $1}')"
+  printf '%s' "$((40000 + (checksum % 18000)))"
+}
+
 # Enable the opt-in iOS pairing host on the tagged Mac bundle. Must be written
 # BEFORE the Mac app launches (read in applicationDidFinishLaunching). The first
 # bind per bundle id triggers a one-time macOS "Local Network" prompt.
+# Preserve an explicitly configured port; otherwise isolate this tag from the
+# installed stable/nightly app before the listener starts.
 cmux_attach_enable_pairing_host() {
-  local tag="$1" bundle_id
+  local tag="$1" bundle_id pairing_port_key existing_port
   bundle_id="$(cmux_attach_mac_bundle_id "$tag")"
+  pairing_port_key="mobile.iOSPairingHost.port"
   defaults write "$bundle_id" mobile.iOSPairingHost.enabled -bool true
+  existing_port="$(defaults read "$bundle_id" "$pairing_port_key" 2>/dev/null || true)"
+  if [[ ! "$existing_port" =~ ^[0-9]+$ ]] || (( existing_port < 1 || existing_port > 65535 )); then
+    defaults write "$bundle_id" "$pairing_port_key" -int \
+      "$(cmux_attach_tagged_pairing_port "$tag")"
+  fi
 }
 
 # True if the tagged Mac app's debug socket is bound (app running + listening).

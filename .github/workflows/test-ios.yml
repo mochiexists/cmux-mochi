@@ -434,7 +434,7 @@ jobs:
             exit "$status"
           done
 
-      - name: Run no-account QR onboarding journey
+      - name: Run no-account QR journeys
         if: ${{ matrix.family == 'iphone' && !inputs.test_filter && !(github.event_name == 'workflow_dispatch' && inputs.device_family != 'both' && inputs.device_family != matrix.family) }}
         run: |
           set -euo pipefail
@@ -449,6 +449,18 @@ jobs:
           ./scripts/ci/require_selected_test_execution.sh \
             "$LOG_PATH" \
             "cmuxUITests/cmuxUITests/testSignedOutOnboardingOpensQRScannerWithoutSignIn"
+
+          SETUP_HELP_LOG_PATH="$IOS_DERIVED_DATA/logs/no-auth-qr-setup-help.log"
+          xcodebuild \
+            -workspace ios/cmux.xcworkspace \
+            -scheme cmux-ios \
+            -destination "platform=iOS Simulator,id=$SIMULATOR_ID" \
+            -derivedDataPath "$IOS_DERIVED_DATA" \
+            -only-testing:cmuxUITests/cmuxUITests/testSetupHelpUsesTailscaleQRAndNoAccountJourney \
+            test 2>&1 | tee "$SETUP_HELP_LOG_PATH"
+          ./scripts/ci/require_selected_test_execution.sh \
+            "$SETUP_HELP_LOG_PATH" \
+            "cmuxUITests/cmuxUITests/testSetupHelpUsesTailscaleQRAndNoAccountJourney"
 
   ios-tests:
     name: ios-tests

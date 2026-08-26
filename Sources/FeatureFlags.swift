@@ -36,11 +36,9 @@ struct CmuxFeatureFlagDefinition: Identifiable, Equatable, Sendable {
 final class CmuxFeatureFlags {
     static let shared = CmuxFeatureFlags(publishesOffMainSnapshot: true)
 
-    #if DEBUG
-    private static let proUpgradeUIDefault = true
-    #else
+    // The Mochi fork has no commercial plan or billing flow. This stays off in
+    // every configuration; Settings independently keeps one explanatory card.
     private static let proUpgradeUIDefault = false
-    #endif
 
     private static let mobileConnectButtonDefault = false
     private static let sidebarAccountButtonDefault = true
@@ -116,9 +114,9 @@ final class CmuxFeatureFlags {
         [
             // FLAG(key: pro-upgrade-ui-enabled-release, owner: lawrencecchen,
             //      reviewBy: 2026-10-01, defaultWhenUnavailable: false)
-            // Shows the Pro upgrade entrypoints (sidebar badge, Settings Account
-            // card, palette command, Help menu item). Release builds hide them until
-            // the PostHog flag is enabled; DEBUG keeps them visible for dogfood.
+            // Retained for control-plane schema compatibility with upstream.
+            // The Mochi accessor below is intentionally always false because this
+            // fork has no commercial plan or billing flow.
             CmuxFeatureFlagDefinition(
                 key: "pro-upgrade-ui-enabled-release",
                 title: String(localized: "featureFlags.proUpgrade.title", defaultValue: "Pro upgrade UI"),
@@ -250,7 +248,7 @@ final class CmuxFeatureFlags {
     }()
 
     var isProUpgradeUIEnabled: Bool {
-        effectiveValue(for: Self.allFlags[0])
+        false
     }
 
     var isMobileConnectButtonEnabled: Bool {

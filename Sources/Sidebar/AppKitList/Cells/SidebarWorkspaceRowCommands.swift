@@ -40,7 +40,10 @@ struct SidebarWorkspaceRowCommands {
 #if DEBUG
         cmuxDebugLog("sidebar.select.enter workspace=\(tab.id.uuidString.prefix(5)) hasTabManager=\(tabManager != nil)")
 #endif
-        guard let tabManager else { return }
+        guard let tabManager,
+              !tabManager.isWorkspaceEffectivelyPrivacyBlurred(tab) else {
+            return
+        }
         let isCommand = modifiers.contains(.command)
         let isShift = modifiers.contains(.shift)
         let wasSelected = tabManager.selectedTabId == tab.id
@@ -75,6 +78,7 @@ struct SidebarWorkspaceRowCommands {
                 uniqueKeysWithValues: tabManager.workspaceGroups.map { ($0.id, $0.anchorWorkspaceId) }
             )
             let visibleRangeIds = tabManager.tabs[lower...upper].compactMap { tab -> UUID? in
+                guard !tabManager.isWorkspaceEffectivelyPrivacyBlurred(tab) else { return nil }
                 if let gid = tab.groupId,
                    collapsedGroupIds.contains(gid),
                    anchorIdsByGroup[gid] != tab.id {
@@ -307,6 +311,7 @@ struct SidebarWorkspaceRowMenuBuilder {
 
         addPinItem(to: menu, tabManager: tabManager)
         addGroupSection(to: menu, tabManager: tabManager)
+        addPrivacyBlurItem(to: menu, tabManager: tabManager)
         menu.addItem(.separator())
         // Legacy parity: the todo section renders only while the feature is
         // enabled (SwiftUI merges the surrounding dividers when it is not).
@@ -439,6 +444,27 @@ struct SidebarWorkspaceRowMenuBuilder {
                 }
             })
         }
+    }
+
+    private func addPrivacyBlurItem(to menu: NSMenu, tabManager: TabManager) {
+        let targetWorkspaces = targetIds.compactMap { id in
+            tabManager.tabs.first(where: { $0.id == id })
+        }
+        let shouldBlur = targetWorkspaces.contains {
+            !tabManager.isWorkspaceEffectivelyPrivacyBlurred($0)
+        }
+        let title = shouldBlur
+            ? label(
+                multi: String(localized: "contextMenu.blurWorkspaces", defaultValue: "Blur Workspaces"),
+                single: String(localized: "contextMenu.blurWorkspace", defaultValue: "Blur Workspace")
+            )
+            : label(
+                multi: String(localized: "contextMenu.unblurWorkspaces", defaultValue: "Unblur Workspaces"),
+                single: String(localized: "contextMenu.unblurWorkspace", defaultValue: "Unblur Workspace")
+            )
+        menu.addItem(item(title, enabled: !targetWorkspaces.isEmpty) { [weak tabManager] in
+            tabManager?.setWorkspacePrivacyBlurred(targetIds, isBlurred: shouldBlur)
+        })
     }
 
     private func todoTargetWorkspaces(_ tabManager: TabManager) -> [Workspace] {

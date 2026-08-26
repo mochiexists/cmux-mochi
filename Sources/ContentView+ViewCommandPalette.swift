@@ -76,7 +76,7 @@ extension ContentView {
             tabManager.triggerFocusFlash()
         }
         registry.register(commandId: "palette.openTaskManager") {
-            TaskManagerWindowController.shared.show()
+            AppDelegate.shared?.openTaskManagerTab()
         }
         registry.register(commandId: "palette.sleepyMode") {
             SleepyModeController.shared.activate()

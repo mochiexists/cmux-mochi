@@ -242,6 +242,18 @@ import Testing
         ).onboardingPreviewEnabled == false)
     }
 
+    @Test func setupHelpPreviewFlagRequiresOne() {
+        #if DEBUG
+        #expect(UITestEnvironmentConfig(
+            environment: ["CMUX_UITEST_SETUP_HELP_PREVIEW": "1"]
+        ).setupHelpPreviewEnabled)
+        #endif
+        #expect(!UITestEnvironmentConfig(environment: [:]).setupHelpPreviewEnabled)
+        #expect(!UITestEnvironmentConfig(
+            environment: ["CMUX_UITEST_SETUP_HELP_PREVIEW": "0"]
+        ).setupHelpPreviewEnabled)
+    }
+
     @Test func onboardingConnectionFallbackFlagCanBeEnabled() {
         let env = ["CMUX_UITEST_ONBOARDING_CONNECTION_FALLBACK": "1"]
         #expect(UITestEnvironmentConfig(environment: env).onboardingConnectionFallbackEnabled == true)

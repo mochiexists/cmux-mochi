@@ -19,7 +19,7 @@ extension PaneDropTargetView {
             return .editor
         case .browser, .markdown, .rightSidebarTool, .customSidebar, .simulator,
              .agentSession, .project, .extensionBrowser, .workspaceTodo, .cloudVMLoading,
-             .mobilePairing, .accountSignIn, .artifact:
+             .mobilePairing, .accountSignIn, .artifact, .taskManager:
             return nil
         }
     }

@@ -19,11 +19,11 @@ struct SetupHelpGateContent {
         switch gate {
         case .notSignedIn:
             return SetupHelpGateContent(
-                systemImage: "person.crop.circle",
-                title: L10n.string("mobile.setupHelp.signInTitle", defaultValue: "Sign in"),
+                systemImage: "qrcode.viewfinder",
+                title: L10n.string("mobile.setupHelp.signInTitle", defaultValue: "Scan the pairing code"),
                 body: L10n.string(
                     "mobile.setupHelp.signInBody",
-                    defaultValue: "Sign in to cmux on this phone with the same account your computer uses. Once you sign in, your computer is found automatically."
+                    defaultValue: "Open Pair iPhone in cmux on your computer and scan its QR code. Pairing works without a cmux account."
                 ),
                 link: nil,
                 identifierSuffix: "notSignedIn",
@@ -35,7 +35,7 @@ struct SetupHelpGateContent {
                 title: L10n.string("mobile.setupHelp.macAppTitle", defaultValue: "Run cmux on your computer"),
                 body: L10n.string(
                     "mobile.setupHelp.macAppBody",
-                    defaultValue: "Install cmux on your computer, sign in to the same account, and leave it running. The computer then appears on this phone automatically. If it does not, open Pair iPhone in cmux on the computer and scan its QR code."
+                    defaultValue: "Keep cmux and Tailscale running on both devices. Open Pair iPhone in cmux on the computer, then scan its QR code here."
                 ),
                 link: nil,
                 identifierSuffix: "signedInNeverPaired",
@@ -47,7 +47,7 @@ struct SetupHelpGateContent {
                 title: L10n.string("mobile.setupHelp.unreachableTitle", defaultValue: "Wake the computer"),
                 body: L10n.string(
                     "mobile.setupHelp.unreachableBody",
-                    defaultValue: "You paired this computer before, but it is not reachable now. Wake it and make sure cmux is running; this phone reconnects on its own."
+                    defaultValue: "You paired this computer before, but it is not reachable now. Wake it and make sure cmux and Tailscale are running; this phone reconnects on its own."
                 ),
                 link: nil,
                 identifierSuffix: "macUnreachable",
@@ -55,11 +55,11 @@ struct SetupHelpGateContent {
             )
         case .accountMismatch:
             return SetupHelpGateContent(
-                systemImage: "person.crop.circle.badge.exclamationmark",
-                title: L10n.string("mobile.setupHelp.mismatchTitle", defaultValue: "Match the account"),
+                systemImage: "qrcode.viewfinder",
+                title: L10n.string("mobile.setupHelp.mismatchTitle", defaultValue: "Pair again"),
                 body: L10n.string(
                     "mobile.setupHelp.mismatchBody",
-                    defaultValue: "The computer rejected this phone's sign-in, so the two are on different cmux accounts or this phone's session is stale. Sign either one out and back in so both use the same account, then try again."
+                    defaultValue: "The computer rejected this phone's saved pairing. Open Pair iPhone on the computer and scan a fresh QR code."
                 ),
                 link: nil,
                 identifierSuffix: "accountMismatch",

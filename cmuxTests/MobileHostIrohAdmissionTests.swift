@@ -83,7 +83,7 @@ extension MobileHostAuthorizationTests {
         #expect(decoded.routes.first?.endpoint == .hostPort(host: "100.64.0.7", port: 58465))
     }
 
-    @Test func testLegacyPairingPayloadDropsIrohFromMixedHostRoutes() throws {
+    @Test func testLegacyPairingPayloadDropsIrohAndCarriesDeviceLinkCredential() throws {
         let store = MobileAttachTicketStore()
         let iroh = try CmxAttachRoute(
             id: "iroh",
@@ -118,10 +118,11 @@ extension MobileHostAuthorizationTests {
 
         #expect(!CmxPairingQRCode().isPairingCodeURLString(attachURL))
         #expect(decoded.routes == [tailscale])
-        #expect(decoded.authToken == nil)
+        #expect(decoded.authToken == ticket.authToken)
         let sourceExpiry = try #require(ticket.expiresAt)
         let legacyExpiry = try #require(decoded.expiresAt)
-        #expect(legacyExpiry > sourceExpiry.addingTimeInterval(365 * 24 * 60 * 60))
+        // The full-key compatibility payload uses ISO 8601 second precision.
+        #expect(abs(legacyExpiry.timeIntervalSince(sourceExpiry)) < 1)
         #expect(!attachURL.contains(String(repeating: "a", count: 64)))
 
         let components = try #require(URLComponents(string: attachURL))
@@ -134,7 +135,7 @@ extension MobileHostAuthorizationTests {
         )
         #expect(legacyObject["version"] as? Int == CmxAttachTicket.currentVersion)
         #expect(legacyObject["expiresAt"] != nil)
-        #expect(legacyObject["auth_token"] == nil)
+        #expect(legacyObject["auth_token"] as? String == ticket.authToken)
         #expect(legacyObject["macUserEmail"] == nil)
         #expect(legacyObject["macUserID"] as? String == "opaque-user-id")
         #expect((legacyObject["routes"] as? [[String: Any]])?.count == 1)

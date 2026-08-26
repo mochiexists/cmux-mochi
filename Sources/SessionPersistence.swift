@@ -210,6 +210,10 @@ enum SessionSidebarSelection: String, Codable, Sendable, Equatable {
             self = .tabs
         case .notifications:
             self = .notifications
+        case .taskManager:
+            // The full-area Task Manager is ephemeral. Relaunch into the
+            // normal workspace instead of restoring a sampling page.
+            self = .tabs
         }
     }
 
@@ -1801,6 +1805,9 @@ struct SessionWorkspaceSnapshot: Codable, Sendable {
     var customizationDirectory: String? = nil
     var usesWorkspaceDirectoryCustomization: Bool? = nil // `nil` infers a legacy local root.
     var isPinned: Bool
+    /// Temporary visual privacy mode for redacting a workspace row and blocking selection.
+    /// Optional so older session manifests decode unchanged.
+    var isPrivacyBlurred: Bool? = nil
     var groupId: UUID? = nil
     var isManuallyUnread: Bool? = nil
     var hasUnreadIndicator: Bool? = nil
@@ -1808,6 +1815,9 @@ struct SessionWorkspaceSnapshot: Codable, Sendable {
     var terminalScrollBarHidden: Bool?
     var currentDirectory: String
     var focusedPanelId: UUID?
+    /// Stable panel identity for a pane that was zoom-maximized. Bonsplit pane
+    /// identities are regenerated during restore, so they cannot be persisted.
+    var zoomedPanelId: UUID? = nil
     var layout: SessionWorkspaceLayoutSnapshot
     /// `WorkspaceLayoutMode` raw value; absent in pre-canvas snapshots (treated as splits).
     var layoutMode: String? = nil
@@ -1847,6 +1857,9 @@ struct SessionWorkspaceGroupSnapshot: Codable, Sendable, Equatable {
     /// that omit this field fall back to "first member by tab order".
     var anchorMemberIndex: Int? = nil
     var isPinned: Bool? = nil
+    /// Temporary visual privacy mode for redacting the group and blocking selection.
+    /// Optional so older session manifests decode unchanged.
+    var isPrivacyBlurred: Bool? = nil
     var customColor: String? = nil
     var iconSymbol: String? = nil
 }

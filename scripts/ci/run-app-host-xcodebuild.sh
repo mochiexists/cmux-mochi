@@ -42,13 +42,14 @@ for arg in "$@"; do
 done
 ci_app_host_root="${RUNNER_TEMP:-${derived_data_path}}"
 kill_stale_app_host() {
-  # Kill app-host executables (matched by their .../Build/Products/.../cmux DEV
-  # path) under the CI work root only. This catches a stale host orphaned by a
+  # Kill upstream and fork app-host executables (matched by their
+  # .../Build/Products/.../cmux DEV or cmux Mochi DEV path) under the CI work
+  # root only. This catches a stale host orphaned by a
   # previous run under a different DerivedData path, without touching an
   # unrelated dev build outside the runner work area. If we cannot identify the
   # root, do nothing rather than risk an unrelated process.
   [ -n "$ci_app_host_root" ] && \
-    pkill -f "${ci_app_host_root%/}/.*Build/Products/.*cmux DEV" 2>/dev/null || true
+    pkill -f "${ci_app_host_root%/}/.*Build/Products/.*cmux( Mochi)? DEV" 2>/dev/null || true
 }
 
 attempt=1

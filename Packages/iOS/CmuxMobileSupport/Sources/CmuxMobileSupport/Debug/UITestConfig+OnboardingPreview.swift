@@ -9,6 +9,12 @@ public extension UITestConfig {
             .onboardingPreviewEnabled
     }
 
+    /// Whether the deterministic account-free setup-help screen is enabled.
+    static var setupHelpPreviewEnabled: Bool {
+        UITestEnvironmentConfig(environment: ProcessInfo.processInfo.environment)
+            .setupHelpPreviewEnabled
+    }
+
     /// Whether the onboarding preview should render its fallback connection state.
     static var onboardingConnectionFallbackEnabled: Bool {
         UITestEnvironmentConfig(environment: ProcessInfo.processInfo.environment)

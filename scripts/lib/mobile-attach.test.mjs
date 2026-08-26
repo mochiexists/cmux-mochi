@@ -41,6 +41,16 @@ function resolveDevAPIBaseURL(fallback, override = "") {
   ]);
 }
 
+function taggedPairingPort(tag) {
+  return run("bash", [
+    "-c",
+    'source "$1"; cmux_attach_tagged_pairing_port "$2"',
+    "mobile-attach-test",
+    validator,
+    tag,
+  ]);
+}
+
 function removeStaleSocket(socketPath) {
   return run(
     "bash",
@@ -362,6 +372,19 @@ test("shared dev API origin accepts an explicit trusted backend", () => {
   );
   assert.equal(result.status, 0, result.stderr);
   assert.equal(result.stdout, "https://cmux-staging.vercel.app");
+});
+
+test("tagged pairing ports are stable and avoid the installed-app default", () => {
+  const first = taggedPairingPort("parity-recovery");
+  const repeated = taggedPairingPort("parity-recovery");
+  const other = taggedPairingPort("another-lane");
+
+  assert.equal(first.status, 0, first.stderr);
+  assert.equal(repeated.stdout, first.stdout);
+  assert.notEqual(other.stdout, first.stdout);
+  const port = Number.parseInt(first.stdout, 10);
+  assert.ok(port >= 40000 && port < 58000);
+  assert.notEqual(port, 58465);
 });
 
 test("tagged stale-socket cleanup removes only the exact Unix socket", async () => {

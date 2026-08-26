@@ -32,7 +32,10 @@ public struct AccountSection: View {
                 AccountIdentityCard(flow: accountFlow)
             }
             .settingsSearchAnchors(["setting:account:account"])
-            if accountFlow?.isProUpgradeAvailable ?? false {
+            if ProUpgradePresentationPolicy.showsAccountCard(
+                bundleIdentifier: Bundle.main.bundleIdentifier,
+                upstreamUpgradeAvailable: accountFlow?.isProUpgradeAvailable ?? false
+            ) {
                 SettingsCard {
                     ProUpgradeCard(flow: accountFlow)
                 }

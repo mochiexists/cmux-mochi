@@ -15,7 +15,7 @@ import SwiftUI
 /// The view is pairing-ignorant: it never starts a connect attempt and never
 /// inspects an in-flight pairing. It only reads durable signals (signed in,
 /// known paired Mac) to pick which gate to highlight, and renders static
-/// guidance for each of the four setup gates classified by
+/// guidance for the QR pairing and reconnect gates classified by
 /// ``MobileSetupGuidancePolicy``. The network section explains Iroh's default
 /// direct-or-relay path and keeps Tailscale and other private networks as
 /// optional fallbacks.
@@ -62,10 +62,11 @@ struct SetupHelpView: View {
     /// path; with no blocker the natural setup order is kept.
     private var orderedGates: [MobileSetupGuidanceState] {
         let order: [MobileSetupGuidanceState] = [
-            .notSignedIn, .signedInNeverPaired, .macUnreachable, .accountMismatch,
+            .signedInNeverPaired, .macUnreachable, .accountMismatch,
         ]
-        guard let highlight else { return order }
-        return [highlight] + order.filter { $0 != highlight }
+        let visibleHighlight = highlight == .notSignedIn ? .signedInNeverPaired : highlight
+        guard let visibleHighlight else { return order }
+        return [visibleHighlight] + order.filter { $0 != visibleHighlight }
     }
 
     private var introSection: some View {
@@ -73,11 +74,11 @@ struct SetupHelpView: View {
             Text(highlight == nil
                 ? L10n.string(
                     "mobile.setupHelp.introReference",
-                    defaultValue: "To see your computer's terminals here, sign in to the same cmux account on both devices and keep cmux running on the computer. Connection is automatic after that."
+                    defaultValue: "To see your computer's terminals here, keep cmux and Tailscale running, then scan the Pair iPhone QR code shown on your computer."
                 )
                 : L10n.string(
                     "mobile.setupHelp.intro",
-                    defaultValue: "To see your computer's terminals here, sign in to the same cmux account on both devices and keep cmux running on the computer. The step you are on is marked below."
+                    defaultValue: "cmux Mochi connects without an account. Keep cmux and Tailscale running, then scan the Pair iPhone QR code shown on your computer. Your current step is marked below."
                 ))
             .font(.subheadline)
             .foregroundStyle(.secondary)
@@ -107,7 +108,7 @@ struct SetupHelpView: View {
                 Image(systemName: content.systemImage)
                     .foregroundStyle(.tint)
                 Text(content.title)
-                if gate == highlight {
+                if gate == (highlight == .notSignedIn ? .signedInNeverPaired : highlight) {
                     Spacer(minLength: 8)
                     Text(L10n.string("mobile.setupHelp.youAreHere", defaultValue: "You are here"))
                         .font(.caption2.weight(.semibold))
@@ -124,7 +125,7 @@ struct SetupHelpView: View {
             VStack(alignment: .leading, spacing: 8) {
                 Text(L10n.string(
                     "mobile.setupHelp.networkBody",
-                    defaultValue: "cmux connects through Iroh, which links this phone to your computer directly when possible and through an encrypted cmux relay when not. Both devices verify your account, and the relay cannot read your terminals. No network setup is required."
+                    defaultValue: "cmux Mochi connects directly over your Tailscale network. The QR code enrolls this iPhone and pins the computer's identity; no cmux account is required."
                 ))
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
@@ -132,7 +133,7 @@ struct SetupHelpView: View {
 
                 Link(destination: Self.tailscaleAppStoreURL) {
                     Label(
-                        L10n.string("mobile.setupHelp.tailscaleAppStore", defaultValue: "Optional: Tailscale for iPhone"),
+                        L10n.string("mobile.setupHelp.tailscaleAppStore", defaultValue: "Get Tailscale for iPhone"),
                         systemImage: "arrow.up.right.square"
                     )
                     .font(.callout.weight(.medium))
@@ -141,7 +142,7 @@ struct SetupHelpView: View {
 
                 Link(destination: Self.tailscaleURL) {
                     Label(
-                        L10n.string("mobile.setupHelp.tailscaleMac", defaultValue: "Optional: Tailscale for the computer"),
+                        L10n.string("mobile.setupHelp.tailscaleMac", defaultValue: "Get Tailscale for Mac"),
                         systemImage: "arrow.up.right.square"
                     )
                     .font(.callout.weight(.medium))
@@ -150,7 +151,7 @@ struct SetupHelpView: View {
 
                 Text(L10n.string(
                     "mobile.setupHelp.lanBody",
-                    defaultValue: "If both devices are on Tailscale, another VPN, or the same network, cmux can use it as a faster direct path. The connection stays encrypted and verified either way."
+                    defaultValue: "Both devices must be connected to the same tailnet. If either device leaves Tailscale, reconnect it and cmux will resume automatically."
                 ))
                 .font(.footnote)
                 .foregroundStyle(.secondary)
@@ -167,7 +168,7 @@ struct SetupHelpView: View {
         } footer: {
             Text(L10n.string(
                 "mobile.setupHelp.sameAccountFooter",
-                defaultValue: "Both devices must be signed in to the same cmux account. A private network never replaces that check."
+                defaultValue: "No cmux account or sign-in is required. The pairing QR and Tailscale connection are the trust boundary."
             ))
         }
         .accessibilityIdentifier("MobileSetupHelpNetworkSection")

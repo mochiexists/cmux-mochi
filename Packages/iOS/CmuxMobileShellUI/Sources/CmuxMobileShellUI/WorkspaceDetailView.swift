@@ -172,14 +172,14 @@ struct WorkspaceDetailView: View {
                         ?? .failure()
                 }
             }
-            .mobileConnectionRecoveryOverlay(store: store, signOut: signOut)
+            .mobileConnectionRecoveryOverlay(store: store)
         #else
         content
             .closeWorkspaceConfirmation(
                 isPresented: $isConfirmingClose,
                 confirm: confirmCloseWorkspaceFromMenu
             )
-            .mobileConnectionRecoveryOverlay(store: store, signOut: signOut)
+            .mobileConnectionRecoveryOverlay(store: store)
         #endif
     }
 

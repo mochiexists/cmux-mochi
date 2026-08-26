@@ -123,6 +123,14 @@ struct CMUXMobileRootView: View {
         #endif
     }
 
+    private var shouldShowSetupHelpPreview: Bool {
+        #if os(iOS) && DEBUG
+        return UITestConfig.setupHelpPreviewEnabled
+        #else
+        return false
+        #endif
+    }
+
     #if os(iOS)
     /// A configured launch attach route (dev/UITest auto-pair) owns startup
     /// connections outright; background onboarding discovery must not race it.
@@ -170,6 +178,16 @@ struct CMUXMobileRootView: View {
     @ViewBuilder private var hiddenComputersPreview: some View {
         #if os(iOS) && DEBUG
         HiddenComputersPreviewView()
+        #else
+        EmptyView()
+        #endif
+    }
+
+    @ViewBuilder private var setupHelpPreview: some View {
+        #if os(iOS) && DEBUG
+        NavigationStack {
+            SetupHelpView(highlight: .signedInNeverPaired) {}
+        }
         #else
         EmptyView()
         #endif
@@ -285,6 +303,12 @@ struct CMUXMobileRootView: View {
         .onChange(of: store.connectionState) { _, connectionState in
             if connectionState == .connected {
                 isShowingAddDeviceSheet = false
+                if MobileOnboardingPresentationPolicy.shouldMarkComplete(
+                    progress: onboardingStore.progress,
+                    isConnected: true
+                ) {
+                    onboardingStore.markComplete()
+                }
             } else {
                 clearAttachTicketAuthenticationIfNeeded()
             }
@@ -333,6 +357,8 @@ struct CMUXMobileRootView: View {
             streamingChatPreview
         } else if shouldShowOnboardingPreview {
             onboardingPreview
+        } else if shouldShowSetupHelpPreview {
+            setupHelpPreview
         } else if shouldShowOnboarding {
             onboardingFlow
         } else {
@@ -439,7 +465,10 @@ struct CMUXMobileRootView: View {
     /// Whether first-run onboarding has an unfinished durable milestone.
     private var shouldShowOnboarding: Bool {
         #if os(iOS)
-        return onboardingStore.progress.shouldShowOnboarding
+        return MobileOnboardingPresentationPolicy.shouldShow(
+            progress: onboardingStore.progress,
+            hasInjectedAttachLaunchRoute: hasInjectedAttachLaunchRoute
+        )
         #else
         return false
         #endif

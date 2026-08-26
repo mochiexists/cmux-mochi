@@ -207,6 +207,8 @@ extension Workspace {
             return SurfaceKind.accountSignIn.rawValue
         case .artifact:
             return SurfaceKind.artifact.rawValue
+        case .taskManager:
+            return SurfaceKind.taskManager.rawValue
         }
     }
 
