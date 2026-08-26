@@ -1078,6 +1078,9 @@ C0DE71B10000000000000001 /* AppDelegate+AgentChatNotifications.swift in Sources 
 		C0DE8652000000000000000B /* FilePreviewLatestLoadCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE8652000000000000000C /* FilePreviewLatestLoadCoordinator.swift */; };
 		C0DE8652000000000000000D /* FilePreviewLatestRequestState.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE8652000000000000000E /* FilePreviewLatestRequestState.swift */; };
 		A5001447A5001447A5001447 /* FilePreviewMagnifyingPDFView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A5001446A5001446A5001446 /* FilePreviewMagnifyingPDFView.swift */; };
+		B8B0FA000000000000000017 /* FilePreviewMediaPlayability.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8B0FA000000000000000018 /* FilePreviewMediaPlayability.swift */; };
+		B8B0FA000000000000000019 /* FilePreviewMediaPlayabilityProbe.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8B0FA00000000000000001A /* FilePreviewMediaPlayabilityProbe.swift */; };
+		B8B0FA00000000000000001B /* FilePreviewMediaPlayabilityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8B0FA00000000000000001C /* FilePreviewMediaPlayabilityTests.swift */; };
 		287C15EFC945CE9D560600E3 /* FilePreviewMediaSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 64D7B3C5A409C0B3EDD002CE /* FilePreviewMediaSession.swift */; };
 		C0DE86520000000000000103 /* FilePreviewMediaView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE86520000000000000104 /* FilePreviewMediaView.swift */; };
 		A5001443A5001443A5001443 /* FilePreviewModeSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = A5001442A5001442A5001442 /* FilePreviewModeSupport.swift */; };
@@ -3713,6 +3716,9 @@ C0DE71B10000000000000002 /* AppDelegate+AgentChatNotifications.swift */ = {isa =
 		C0DE8652000000000000000C /* FilePreviewLatestLoadCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Panels/FilePreviewLatestLoadCoordinator.swift; sourceTree = "<group>"; };
 		C0DE8652000000000000000E /* FilePreviewLatestRequestState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Panels/FilePreviewLatestRequestState.swift; sourceTree = "<group>"; };
 		A5001446A5001446A5001446 /* FilePreviewMagnifyingPDFView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Panels/FilePreviewMagnifyingPDFView.swift; sourceTree = "<group>"; };
+		B8B0FA000000000000000018 /* FilePreviewMediaPlayability.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = Panels/FilePreviewMediaPlayability.swift; sourceTree = "<group>"; };
+		B8B0FA00000000000000001A /* FilePreviewMediaPlayabilityProbe.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = Panels/FilePreviewMediaPlayabilityProbe.swift; sourceTree = "<group>"; };
+		B8B0FA00000000000000001C /* FilePreviewMediaPlayabilityTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = FilePreviewMediaPlayabilityTests.swift; sourceTree = "<group>"; };
 		64D7B3C5A409C0B3EDD002CE /* FilePreviewMediaSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Panels/FilePreviewMediaSession.swift; sourceTree = "<group>"; };
 		C0DE86520000000000000104 /* FilePreviewMediaView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Panels/FilePreviewMediaView.swift; sourceTree = "<group>"; };
 		A5001442A5001442A5001442 /* FilePreviewModeSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Panels/FilePreviewModeSupport.swift; sourceTree = "<group>"; };
@@ -6879,6 +6885,8 @@ C0DE71B10000000000000002 /* AppDelegate+AgentChatNotifications.swift */ = {isa =
 				D5D8322021F224A1538F8988 /* FilePreviewPDFSession.swift */,
 				7D1450569A797AA7937677D9 /* FilePreviewImageSession.swift */,
 				64D7B3C5A409C0B3EDD002CE /* FilePreviewMediaSession.swift */,
+				B8B0FA00000000000000001A /* FilePreviewMediaPlayabilityProbe.swift */,
+				B8B0FA000000000000000018 /* FilePreviewMediaPlayability.swift */,
 				C0DE64020000000000001001 /* FilePreviewQuickLookContainerView.swift */,
 				0A02623202562490B3E88372 /* FilePreviewQuickLookSession.swift */,
 				D0B10017A1B2C3D4E5F60001 /* FilePreviewTextEditor.swift */,
@@ -7735,6 +7743,7 @@ C0DE71B10000000000000002 /* AppDelegate+AgentChatNotifications.swift */ = {isa =
 				E50320010000000000000002 /* ExtensionWorktreeSpawnArgsTests.swift */,
 				C0DE49950000000000000002 /* FilePreviewKindResolverTests.swift */,
 				C0DE86520000000000000118 /* FilePreviewNativeRefreshStateTests.swift */,
+				B8B0FA00000000000000001C /* FilePreviewMediaPlayabilityTests.swift */,
 				C0DE86520000000000000011 /* FilePreviewReloadCompletionTests.swift */,
 				C0DE86520000000000000002 /* FilePreviewReloadTests.swift */,
 				120A1EF846214C938416846E /* FileExplorerRootSyncPolicyTests.swift */,
@@ -9122,6 +9131,8 @@ C0DE71B10000000000000002 /* AppDelegate+AgentChatNotifications.swift */ = {isa =
 				C0DE8652000000000000000B /* FilePreviewLatestLoadCoordinator.swift in Sources */,
 				C0DE8652000000000000000D /* FilePreviewLatestRequestState.swift in Sources */,
 				A5001447A5001447A5001447 /* FilePreviewMagnifyingPDFView.swift in Sources */,
+				B8B0FA000000000000000017 /* FilePreviewMediaPlayability.swift in Sources */,
+				B8B0FA000000000000000019 /* FilePreviewMediaPlayabilityProbe.swift in Sources */,
 				287C15EFC945CE9D560600E3 /* FilePreviewMediaSession.swift in Sources */,
 				C0DE86520000000000000103 /* FilePreviewMediaView.swift in Sources */,
 				A5001443A5001443A5001443 /* FilePreviewModeSupport.swift in Sources */,
@@ -10686,6 +10697,7 @@ C0DE71B10000000000000002 /* AppDelegate+AgentChatNotifications.swift */ = {isa =
 				FE002102 /* FileExplorerStoreTests.swift in Sources */,
 				828800010000000000000002 /* FileExplorerStyleContrastTests.swift in Sources */,
 				C0DE49950000000000000001 /* FilePreviewKindResolverTests.swift in Sources */,
+				B8B0FA00000000000000001B /* FilePreviewMediaPlayabilityTests.swift in Sources */,
 				C0DE86520000000000000117 /* FilePreviewNativeRefreshStateTests.swift in Sources */,
 				A5001436A5001436A5001436 /* FilePreviewPDFThumbnailSidebarTests.swift in Sources */,
 				C0DE86520000000000000012 /* FilePreviewReloadCompletionTests.swift in Sources */,

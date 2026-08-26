@@ -1023,6 +1023,8 @@ final class FilePreviewPanel: Panel, ObservableObject, FilePreviewTextEditingPan
     @Published private(set) var isSaving = false
     @Published private(set) var focusFlashToken = 0
     @Published private(set) var previewMode: FilePreviewMode
+    /// `nil` until the first probe answers; media is only rendered once it reads `.playable`.
+    @Published private(set) var mediaPlayability: FilePreviewMediaPlayability?
     let previewRevisionState = FilePreviewRevision()
 
     let nativeViewSessions = FilePreviewNativeViewSessions()
@@ -1041,8 +1043,10 @@ final class FilePreviewPanel: Panel, ObservableObject, FilePreviewTextEditingPan
     private let textLoader: @Sendable (URL) async -> FilePreviewTextLoader.Result
     private let textSaver: @Sendable (String, URL, String.Encoding) async -> FilePreviewTextSaver.Result
     private let modeResolver: @Sendable (URL) async -> FilePreviewMode
+    private let mediaPlayabilityResolver: @Sendable (URL) async -> FilePreviewMediaPlayability
     private let textLoadCoordinator = FilePreviewLatestLoadCoordinator<FilePreviewTextLoader.Result>()
     private let modeLoadCoordinator = FilePreviewLatestLoadCoordinator<FilePreviewMode>()
+    private let mediaPlayabilityCoordinator = FilePreviewLatestLoadCoordinator<FilePreviewMediaPlayability>()
 
     var fileURL: URL {
         URL(fileURLWithPath: filePath)
@@ -1065,6 +1069,9 @@ final class FilePreviewPanel: Panel, ObservableObject, FilePreviewTextEditingPan
         },
         modeResolver: @escaping @Sendable (URL) async -> FilePreviewMode = { url in
             await FilePreviewKindResolver.resolveMode(url: url)
+        },
+        mediaPlayabilityResolver: @escaping @Sendable (URL) async -> FilePreviewMediaPlayability = { url in
+            await FilePreviewMediaPlayabilityProbe().playability(of: url)
         }
     ) {
         self.id = UUID()
@@ -1074,6 +1081,7 @@ final class FilePreviewPanel: Panel, ObservableObject, FilePreviewTextEditingPan
         self.textLoader = textLoader
         self.textSaver = textSaver
         self.modeResolver = modeResolver
+        self.mediaPlayabilityResolver = mediaPlayabilityResolver
         let fileURL = URL(fileURLWithPath: filePath)
         let initialPreviewMode = FilePreviewKindResolver.initialMode(for: fileURL)
         self.previewMode = initialPreviewMode
@@ -1103,6 +1111,7 @@ final class FilePreviewPanel: Panel, ObservableObject, FilePreviewTextEditingPan
         stopWatchingForFileChanges()
         textLoadCoordinator.cancel()
         modeLoadCoordinator.cancel()
+        mediaPlayabilityCoordinator.cancel()
         nativeViewSessions.closeAll()
         textView = nil
         focusCoordinator.unregisterAll()
@@ -1233,8 +1242,13 @@ final class FilePreviewPanel: Panel, ObservableObject, FilePreviewTextEditingPan
                 self.isFileUnavailable = !FileManager.default.fileExists(atPath: self.filePath)
                 if self.isFileUnavailable {
                     if self.previewMode == .media {
+                        self.clearMediaPlayability()
                         self.nativeViewSessions.media.close()
                     }
+                } else if self.previewMode == .media {
+                    // The revision bump is what hands the rewritten file to the player,
+                    // so it waits until the probe confirms the file is still decodable.
+                    await self.refreshMediaPlayability(incrementingRevision: true).value
                 } else {
                     self.previewRevisionState.increment()
                 }
@@ -1244,12 +1258,47 @@ final class FilePreviewPanel: Panel, ObservableObject, FilePreviewTextEditingPan
 
     @discardableResult
     private func prepareContentForPreviewMode() -> Task<Void, Never>? {
+        if previewMode != .media {
+            clearMediaPlayability()
+        }
         if previewMode == .text {
             return loadTextContent(replacingDirtyContent: false)
-        } else {
-            isFileUnavailable = !FileManager.default.fileExists(atPath: filePath)
-            return nil
         }
+        isFileUnavailable = !FileManager.default.fileExists(atPath: filePath)
+        guard previewMode == .media, !isFileUnavailable else { return nil }
+        return refreshMediaPlayability(incrementingRevision: false)
+    }
+
+    /// Resolves whether the current file can be played before an `AVPlayerView` ever sees it.
+    ///
+    /// AVKit aborts the process when a player item fails — its unsupported-content
+    /// placeholder raises an `NSLayoutConstraint` assertion on macOS 26 — and the throw
+    /// happens inside AVKit, where no Swift handler can catch it. See
+    /// ``FilePreviewMediaPlayabilityProbe``.
+    @discardableResult
+    private func refreshMediaPlayability(incrementingRevision: Bool) -> Task<Void, Never> {
+        let fileURL = fileURL
+        let mediaPlayabilityResolver = mediaPlayabilityResolver
+
+        return mediaPlayabilityCoordinator.submit(load: {
+            await mediaPlayabilityResolver(fileURL)
+        }) { [weak self] playability in
+            guard let self, !self.isClosed, self.previewMode == .media else { return }
+            self.mediaPlayability = playability
+            switch playability {
+            case .playable:
+                if incrementingRevision {
+                    self.previewRevisionState.increment()
+                }
+            case .unsupported:
+                self.nativeViewSessions.media.close()
+            }
+        }
+    }
+
+    private func clearMediaPlayability() {
+        mediaPlayabilityCoordinator.cancel()
+        mediaPlayability = nil
     }
 
     private func resolvePreviewModeIfNeeded(for fileURL: URL) {
@@ -1490,13 +1539,7 @@ struct FilePreviewPanelView: View {
                     drawsBackground: appearance.drawsContentBackground
                 )
             case .media:
-                FilePreviewMediaView(
-                    panel: panel,
-                    revision: previewRevision,
-                    isVisibleInUI: isVisibleInUI,
-                    backgroundColor: contentBackgroundColor,
-                    drawsBackground: appearance.drawsContentBackground
-                )
+                mediaContent(previewRevision: previewRevision)
             case .quickLook:
                 QuickLookPreviewView(
                     panel: panel,
@@ -1507,6 +1550,53 @@ struct FilePreviewPanelView: View {
                 )
             }
         }
+    }
+
+    /// Media only reaches `AVPlayerView` once the panel has confirmed the file is decodable;
+    /// handing AVKit a failing item aborts the process on macOS 26.
+    @ViewBuilder
+    private func mediaContent(previewRevision: Int) -> some View {
+        switch panel.mediaPlayability {
+        case .playable:
+            FilePreviewMediaView(
+                panel: panel,
+                revision: previewRevision,
+                isVisibleInUI: isVisibleInUI,
+                backgroundColor: contentBackgroundColor,
+                drawsBackground: appearance.drawsContentBackground
+            )
+        case .unsupported:
+            mediaUnsupportedView
+        case nil:
+            Color.clear
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+    }
+
+    private var mediaUnsupportedView: some View {
+        VStack(spacing: 12) {
+            Image(systemName: "play.slash")
+                .cmuxFont(size: 40)
+                .foregroundStyle(.secondary)
+            Text(String(localized: "filePreview.mediaUnsupported.title", defaultValue: "Can’t play this file"))
+                .cmuxFont(.headline)
+            Text(panel.filePath)
+                .cmuxFont(size: 12, design: .monospaced)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .textSelection(.enabled)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.horizontal, 24)
+            Text(
+                String(
+                    localized: "filePreview.mediaUnsupported.message",
+                    defaultValue: "This Mac can’t decode this media. Open it with another app to play it."
+                )
+            )
+            .cmuxFont(.caption)
+            .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private var fileUnavailableView: some View {
