@@ -310,6 +310,194 @@ enum TerminalStartupWorkingDirectoryPrefix {
 }
 
 enum AgentResumeCommandBuilder {
+    /// Flags the shell-integration aliases already encode, so dropping them
+    /// changes nothing about how the session resumes.
+    ///
+    /// `ccy` *is* `claude --dangerously-skip-permissions` and `cxy` *is*
+    /// `codex --dangerously-bypass-approvals-and-sandbox`, so which alias gets
+    /// chosen carries the permission posture. Anything outside this set
+    /// (`--model`, `--image`, config overrides) changes behaviour and must keep
+    /// the captured-launch form instead.
+    ///
+    /// - Returns: the arguments left over once posture flags are removed, or
+    ///   `nil` if a flag expecting a value is malformed.
+    private static func argumentsDroppingEncodedPosture(
+        _ arguments: [String],
+        kind: RestorableAgentKind
+    ) -> [String]? {
+        // Value-taking posture flags, and the single value each may carry. A
+        // different value means a different posture, which no alias encodes.
+        let valuedPosture: [String: Set<String>] = switch kind {
+        case .claude: ["--permission-mode": []]
+        case .codex: [
+            "--sandbox": ["danger-full-access"],
+            "-s": ["danger-full-access"],
+            "--ask-for-approval": ["never"],
+            "-a": ["never"],
+        ]
+        default: [:]
+        }
+        let barePosture: Set<String> = switch kind {
+        case .claude: ["--dangerously-skip-permissions"]
+        case .codex: ["--dangerously-bypass-approvals-and-sandbox", "--yolo"]
+        default: []
+        }
+
+        var remainder: [String] = []
+        var index = arguments.startIndex
+        while index < arguments.endIndex {
+            let argument = arguments[index]
+            if barePosture.contains(argument) {
+                index += 1
+                continue
+            }
+            if let allowedValues = valuedPosture[argument] {
+                let valueIndex = index + 1
+                guard valueIndex < arguments.endIndex else { return nil }
+                let value = arguments[valueIndex]
+                // An empty allow-set means any value is posture (claude's
+                // permission mode); otherwise only the yolo-equivalent value is.
+                if allowedValues.isEmpty || allowedValues.contains(value) {
+                    index = valueIndex + 1
+                    continue
+                }
+            }
+            remainder.append(argument)
+            index += 1
+        }
+        return remainder
+    }
+
+    /// Drops bookkeeping that cmux itself adds while constructing a resume
+    /// command, but only when it was not captured from the user's launch.
+    ///
+    /// Codex resume generation inserts `check_for_update_on_startup=false` so
+    /// an auto-restored pane cannot be intercepted by the update picker. That
+    /// generated pair is not part of the captured launch behaviour that this
+    /// alias-equivalence gate is deciding whether to preserve. An explicit
+    /// captured setting remains meaningful and must keep the full command.
+    private static func argumentsDroppingGeneratedResumeBookkeeping(
+        _ arguments: [String],
+        kind: RestorableAgentKind,
+        launchCommand: AgentLaunchCommandSnapshot?
+    ) -> [String] {
+        guard kind == .codex,
+              !AgentResumeArgv().hasExplicitCheckForUpdateOnStartupOverride(
+                  in: launchCommand?.arguments ?? []
+              ),
+              arguments.starts(with: AgentResumeArgv.codexUpdateCheckSuppressionOverride)
+        else { return arguments }
+
+        return Array(arguments.dropFirst(AgentResumeArgv.codexUpdateCheckSuppressionOverride.count))
+    }
+
+    /// The alias form, but only when it resumes the session identically.
+    ///
+    /// Substitution, never approximation. The alias drops whatever the captured
+    /// command carried, so it may only be used when nothing meaningful would be
+    /// lost: no observed permission mode to replay, no captured environment to
+    /// reproduce (auth/config selection would silently resume against a
+    /// different account), and no surviving arguments once the posture flags the
+    /// alias itself encodes are removed.
+    static func equivalentAliasResumeShellCommand(
+        kind: RestorableAgentKind,
+        sessionId: String,
+        launchCommand: AgentLaunchCommandSnapshot?,
+        workingDirectory: String?,
+        registrationOverride: CmuxVaultAgentRegistration?,
+        includeWorkingDirectoryPrefix: Bool,
+        observedPermissionMode: String?
+    ) -> String? {
+        guard observedPermissionMode == nil,
+              launchCommand?.environment?.isEmpty ?? true,
+              let argv = resumeArguments(
+                  kind: kind,
+                  sessionId: sessionId,
+                  launchCommand: launchCommand,
+                  workingDirectory: workingDirectory,
+                  customRegistration: registrationOverride,
+                  observedPermissionMode: observedPermissionMode
+              ),
+              argv.count >= 3
+        else { return nil }
+
+        // argv is [executable, resumeToken, sessionId, ...]; the alias supplies
+        // the first three, so only the tail decides equivalence.
+        let resumeToken = kind == .codex ? "resume" : "--resume"
+        let resumeTail = argumentsDroppingGeneratedResumeBookkeeping(
+            Array(argv.dropFirst(3)),
+            kind: kind,
+            launchCommand: launchCommand
+        )
+        guard argv[1] == resumeToken, argv[2] == sessionId,
+              let remainder = argumentsDroppingEncodedPosture(
+                  resumeTail, kind: kind
+              ),
+              remainder.isEmpty
+        else { return nil }
+
+        return aliasResumeShellCommand(
+            kind: kind,
+            sessionId: sessionId,
+            launchCommand: launchCommand,
+            workingDirectory: workingDirectory,
+            includeWorkingDirectoryPrefix: includeWorkingDirectoryPrefix
+        )
+    }
+
+    /// Single-quote one token for the alias resume line.
+    ///
+    /// Deliberately local rather than reusing the shared quoting helper: see
+    /// the bisect note in the clean-trunk plan — referencing that type from
+    /// this file is being tested as the cause of a launch hang.
+    private static func aliasQuoted(_ value: String) -> String {
+        "'" + value.replacingOccurrences(of: "'", with: "'\\''") + "'"
+    }
+
+    /// The shell-integration alias for `kind`, choosing the yolo variant when
+    /// the captured launch was itself permission-skipping.
+    static func aliasToken(
+        kind: RestorableAgentKind,
+        launchCommand: AgentLaunchCommandSnapshot?
+    ) -> String? {
+        let arguments = launchCommand?.arguments
+        switch kind {
+        case .claude:
+            guard let arguments else { return "ccy" }
+            return arguments.contains("--dangerously-skip-permissions") ? "ccy" : "cc"
+        case .codex:
+            guard let arguments else { return "cxy" }
+            if arguments.contains("--dangerously-bypass-approvals-and-sandbox") { return "cxy" }
+            if arguments.contains("danger-full-access"), arguments.contains("never") { return "cxy" }
+            return "cx"
+        default:
+            return nil
+        }
+    }
+
+    /// A resume line that runs through the shell-integration alias.
+    static func aliasResumeShellCommand(
+        kind: RestorableAgentKind,
+        sessionId: String,
+        launchCommand: AgentLaunchCommandSnapshot?,
+        workingDirectory: String?,
+        includeWorkingDirectoryPrefix: Bool = true
+    ) -> String? {
+        let trimmedSessionID = sessionId.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedSessionID.isEmpty,
+              let alias = aliasToken(kind: kind, launchCommand: launchCommand) else {
+            return nil
+        }
+        let resumeToken = kind == .codex ? "resume" : "--resume"
+        var command = "\(alias) \(aliasQuoted(resumeToken)) \(aliasQuoted(trimmedSessionID))"
+        if includeWorkingDirectoryPrefix,
+           let workingDirectory = workingDirectory?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !workingDirectory.isEmpty {
+            command = "cd \(aliasQuoted(workingDirectory)) && \(command)"
+        }
+        return command
+    }
+
     private static let claudeAuthSelectionEnvironmentKeys: Set<String> = [
         "ANTHROPIC_API_KEY",
         "ANTHROPIC_AUTH_TOKEN",

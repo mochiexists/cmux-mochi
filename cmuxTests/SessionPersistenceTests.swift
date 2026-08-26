@@ -1881,6 +1881,123 @@ final class SessionPersistenceTests: XCTestCase {
         let attributes = try FileManager.default.attributesOfItem(atPath: fileURL.path)
         return try XCTUnwrap(attributes[.systemFileNumber] as? Int)
     }
+
+    func testClaudeResumeCommandDefaultsToYoloAliasWhenLaunchArgumentsUnknown() {
+        let snapshot = SessionRestorableAgentSnapshot(
+            kind: .claude,
+            sessionId: "claude-session-456",
+            workingDirectory: "/tmp/cmux project",
+            launchCommand: nil
+        )
+
+        XCTAssertEqual(
+            snapshot.resumeCommand,
+            "cd '/tmp/cmux project' && ccy '--resume' 'claude-session-456'"
+        )
+    }
+
+    func testClaudeResumeCommandUsesNonYoloAliasWhenNoSkipPermissionsFlag() {
+        let snapshot = SessionRestorableAgentSnapshot(
+            kind: .claude,
+            sessionId: "claude-session-123",
+            workingDirectory: "/tmp/cmux project",
+            launchCommand: AgentLaunchCommandSnapshot(
+                launcher: "claude",
+                executablePath: "/opt/Claude Code/bin/claude",
+                arguments: ["claude", "--permission-mode", "auto"],
+                workingDirectory: "/tmp/cmux project"
+            )
+        )
+
+        XCTAssertEqual(
+            snapshot.resumeCommand,
+            "cd '/tmp/cmux project' && cc '--resume' 'claude-session-123'"
+        )
+    }
+
+    func testClaudeResumeCommandUsesYoloAliasWhenSkipPermissionsFlagPresent() {
+        let snapshot = SessionRestorableAgentSnapshot(
+            kind: .claude,
+            sessionId: "24ec0052-450c-4914-b1dd-2ee80d4bc84b",
+            workingDirectory: "/Users/lawrence/fun",
+            launchCommand: AgentLaunchCommandSnapshot(
+                launcher: "claude",
+                executablePath: "/Users/lawrence/.local/bin/claude",
+                arguments: ["claude", "--dangerously-skip-permissions"],
+                workingDirectory: "/Users/lawrence/fun"
+            )
+        )
+
+        XCTAssertEqual(
+            snapshot.resumeCommand,
+            "cd '/Users/lawrence/fun' && ccy '--resume' '24ec0052-450c-4914-b1dd-2ee80d4bc84b'"
+        )
+    }
+
+    func testCodexResumeCommandUsesNonYoloAliasWhenNoBypassFlag() {
+        let snapshot = SessionRestorableAgentSnapshot(
+            kind: .codex,
+            sessionId: "019dad34-d218-7943-b81a-eddac5c87951",
+            workingDirectory: "/Users/example/repo",
+            launchCommand: AgentLaunchCommandSnapshot(
+                launcher: "codex",
+                executablePath: "/Users/example/.bun/bin/codex",
+                arguments: [
+                    "codex", "--sandbox", "danger-full-access",
+                    "--ask-for-approval", "never"
+                ],
+                workingDirectory: "/Users/example/repo"
+            )
+        )
+
+        XCTAssertEqual(
+            snapshot.resumeCommand,
+            "cd '/Users/example/repo' && cxy 'resume' '019dad34-d218-7943-b81a-eddac5c87951'"
+        )
+    }
+
+    func testCodexResumeCommandUsesYoloAliasWhenBypassFlagPresent() {
+        let snapshot = SessionRestorableAgentSnapshot(
+            kind: .codex,
+            sessionId: "019dad34-d218-7943-b81a-eddac5c87951",
+            workingDirectory: "/Users/example/repo",
+            launchCommand: AgentLaunchCommandSnapshot(
+                launcher: "codex",
+                executablePath: "/Users/example/.bun/bin/codex",
+                arguments: ["codex", "--dangerously-bypass-approvals-and-sandbox"],
+                workingDirectory: "/Users/example/repo"
+            )
+        )
+
+        XCTAssertEqual(
+            snapshot.resumeCommand,
+            "cd '/Users/example/repo' && cxy 'resume' '019dad34-d218-7943-b81a-eddac5c87951'"
+        )
+    }
+
+    func testCodexResumeCommandPreservesExplicitUpdateCheckOverride() {
+        let snapshot = SessionRestorableAgentSnapshot(
+            kind: .codex,
+            sessionId: "019dad34-d218-7943-b81a-eddac5c87951",
+            workingDirectory: "/Users/example/repo",
+            launchCommand: AgentLaunchCommandSnapshot(
+                launcher: "codex",
+                executablePath: "/Users/example/.bun/bin/codex",
+                arguments: [
+                    "codex", "-c", "check_for_update_on_startup=true",
+                    "--sandbox", "danger-full-access",
+                    "--ask-for-approval", "never"
+                ],
+                workingDirectory: "/Users/example/repo"
+            )
+        )
+
+        XCTAssertEqual(
+            snapshot.resumeCommand,
+            "cd -- '/Users/example/repo' 2>/dev/null || [ ! -d '/Users/example/repo' ] && '/Users/example/.bun/bin/codex' 'resume' '019dad34-d218-7943-b81a-eddac5c87951' '-c' 'check_for_update_on_startup=true' '--sandbox' 'danger-full-access' '--ask-for-approval' 'never'"
+        )
+    }
+
 }
 
 final class SocketListenerAcceptPolicyTests: XCTestCase {

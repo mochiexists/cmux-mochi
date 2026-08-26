@@ -58,6 +58,23 @@ extension SessionRestorableAgentSnapshot {
                 includeWorkingDirectoryPrefix: includeWorkingDirectoryPrefix
             )
         }
+        // Fork (cmux Mochi): prefer the shell-integration alias (cx/cxy/cc/ccy)
+        // when it resumes the session identically. It resolves the agent through
+        // the integration's PATH shim, so cmux hooks stay wired, and keeps the
+        // resumed line short instead of carrying the captured binary path.
+        // `equivalentAliasResumeShellCommand` returns nil the moment anything
+        // would be lost, so this can only ever substitute, never approximate.
+        if let aliasCommand = AgentResumeCommandBuilder.equivalentAliasResumeShellCommand(
+            kind: kind,
+            sessionId: sessionId,
+            launchCommand: launchCommand,
+            workingDirectory: effectiveWorkingDirectory,
+            registrationOverride: registration,
+            includeWorkingDirectoryPrefix: includeWorkingDirectoryPrefix,
+            observedPermissionMode: permissionMode
+        ) {
+            return aliasCommand
+        }
         return AgentResumeCommandBuilder.resumeShellCommand(
             kind: kind,
             sessionId: sessionId,
