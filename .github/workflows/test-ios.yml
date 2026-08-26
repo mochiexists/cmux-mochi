@@ -1,7 +1,17 @@
 name: iOS simulator tests
 
 on:
-  # Temporarily manual-only beginning 2026-07-13 to pause automatic CI.
+  pull_request:
+    paths:
+      - "ios/**"
+      - "Packages/Shared/**"
+      - "Packages/iOS/**"
+      - "Sources/Mobile/**"
+      - "scripts/mobile-dev-launch.sh"
+      - "scripts/mobile-devicelink-e2e.sh"
+      - "scripts/mobile-attach-qr.sh"
+      - "scripts/lib/mobile-attach.sh"
+      - ".github/workflows/test-ios.yml"
   workflow_dispatch:
     inputs:
       ref:
@@ -64,7 +74,7 @@ jobs:
           fi
           BASE_MERGE_BASE="$(git merge-base "$BASE_SHA" "$HEAD_SHA")"
           git diff --name-only "$BASE_MERGE_BASE" "$HEAD_SHA" > /tmp/changed-files.txt
-          if grep -Eq '^(ios/|Packages/Shared/|Packages/iOS/|Sources/Mobile/|vendor/stack-auth-swift-sdk-prerelease/|scripts/lint-ios-package-conventions\.sh$)' /tmp/changed-files.txt; then
+          if grep -Eq '^(ios/|Packages/Shared/|Packages/iOS/|Sources/Mobile/|vendor/stack-auth-swift-sdk-prerelease/|scripts/(mobile-dev-launch|mobile-devicelink-e2e|mobile-attach-qr)\.sh$|scripts/lib/mobile-attach\.sh$|scripts/lint-ios-package-conventions\.sh$)' /tmp/changed-files.txt; then
             echo "should_run=true" >> "$GITHUB_OUTPUT"
           else
             echo "No iOS-owned files changed; skipping iOS tests."
@@ -151,6 +161,12 @@ jobs:
       - name: Run CMUXMobileCore package tests
         run: |
           swift test --package-path Packages/Shared/CMUXMobileCore
+
+      - name: Run DeviceLinkKit package tests
+        run: |
+          # Executable coverage for the v3 no-bearer QR grammar, single-use
+          # enrollment, TLS pinning, and reconnect policy.
+          swift test --package-path Packages/Shared/DeviceLinkKit
 
       - name: Run CmuxSyncStore package tests
         run: |
@@ -417,6 +433,22 @@ jobs:
             fi
             exit "$status"
           done
+
+      - name: Run no-account QR onboarding journey
+        if: ${{ matrix.family == 'iphone' && !inputs.test_filter && !(github.event_name == 'workflow_dispatch' && inputs.device_family != 'both' && inputs.device_family != matrix.family) }}
+        run: |
+          set -euo pipefail
+          LOG_PATH="$IOS_DERIVED_DATA/logs/no-auth-qr-onboarding.log"
+          xcodebuild \
+            -workspace ios/cmux.xcworkspace \
+            -scheme cmux-ios \
+            -destination "platform=iOS Simulator,id=$SIMULATOR_ID" \
+            -derivedDataPath "$IOS_DERIVED_DATA" \
+            -only-testing:cmuxUITests/cmuxUITests/testSignedOutOnboardingOpensQRScannerWithoutSignIn \
+            test 2>&1 | tee "$LOG_PATH"
+          ./scripts/ci/require_selected_test_execution.sh \
+            "$LOG_PATH" \
+            "cmuxUITests/cmuxUITests/testSignedOutOnboardingOpensQRScannerWithoutSignIn"
 
   ios-tests:
     name: ios-tests

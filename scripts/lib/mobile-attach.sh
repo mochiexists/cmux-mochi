@@ -334,3 +334,146 @@ NODE
   fi
   return 1
 }
+
+# Mint the v3 DeviceLink pairing URL used by the account-free QR flow. Unlike
+# cmux_attach_mint_url, this URL contains no Stack bearer and never depends on
+# Iroh. Its single-use enrollment capability is still sensitive, so callers
+# must pass it directly to the app/QR renderer and must not print it.
+#
+# Args: <tag> <ttl_seconds> <repo_root>
+#       <simulator_injection|physical_device> [max_attempts]
+cmux_attach_mint_devicelink_url() {
+  local tag="$1" ttl="$2" repo_root="$3" target="$4" max="${5:-20}"
+  local sock slug cli_output cli_status parsed_url parse_status _i
+  local last_reason="route_not_ready" saw_loopback_only=0
+  case "$target" in
+    simulator_injection|physical_device) ;;
+    *) echo "error: invalid DeviceLink target '$target'" >&2; return 1 ;;
+  esac
+  sock="$(cmux_attach_socket_path "$tag")"
+  slug="$(cmux_attach__slug "$tag")"
+  for _i in $(seq 1 "$max"); do
+    if [[ ! -S "$sock" ]]; then
+      last_reason="control_socket_unavailable"
+      sleep 0.5
+      continue
+    fi
+    cli_status=0
+    cli_output="$(CMUX_TAG="$slug" "$repo_root/scripts/cmux-debug-cli.sh" rpc \
+      mobile.pairing.code.create "{\"ttl_seconds\":${ttl}}" 2>&1)" || cli_status=$?
+    if [[ "$cli_status" -ne 0 ]]; then
+      case "$cli_output" in
+        *"Mobile host routes are not available yet"*) last_reason="host_routes_unavailable" ;;
+        *"no DeviceLink identity"*) last_reason="identity_unavailable" ;;
+        *) last_reason="pairing_rpc_unavailable" ;;
+      esac
+    elif [[ -n "$cli_output" ]]; then
+      parse_status=0
+      parsed_url="$(PAIRING_RESPONSE="$cli_output" PAIRING_TARGET="$target" /usr/bin/python3 - <<'PY'
+import ipaddress
+import json
+import os
+import sys
+import urllib.parse
+
+try:
+    response = json.loads(os.environ["PAIRING_RESPONSE"])
+    pairing_url = response["pairing_url"]
+    parsed = urllib.parse.urlparse(pairing_url)
+    query = urllib.parse.parse_qs(parsed.query)
+    routes = query.get("r", [])
+    fingerprint = query.get("f", [""])[0]
+    ticket = query.get("t", [""])[0]
+except (KeyError, TypeError, ValueError, json.JSONDecodeError):
+    raise SystemExit(1)
+
+if parsed.scheme == "" or parsed.netloc.lower() not in {"attach", "pair"}:
+    raise SystemExit(1)
+if query.get("v") != ["3"] or len(fingerprint) != 64 or not ticket or not routes:
+    raise SystemExit(1)
+
+def is_loopback(route: str) -> bool:
+    host = route.rsplit(":", 1)[0].strip("[]").lower()
+    if host == "localhost":
+        return True
+    try:
+        return ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        return False
+
+if os.environ["PAIRING_TARGET"] == "physical_device" and not any(
+    not is_loopback(route) for route in routes
+):
+    raise SystemExit(2)
+
+sys.stdout.write(pairing_url)
+PY
+      )" || parse_status=$?
+      if [[ "$parse_status" -eq 2 ]]; then
+        saw_loopback_only=1
+        last_reason="tailscale_route_unavailable"
+      elif [[ "$parse_status" -ne 0 ]]; then
+        last_reason="malformed_pairing_response"
+      elif [[ -n "$parsed_url" ]]; then
+        printf '%s' "$parsed_url"
+        return 0
+      else
+        last_reason="pairing_url_missing"
+      fi
+    else
+      last_reason="empty_response"
+    fi
+    sleep 0.5
+  done
+  printf 'warning: DeviceLink readiness exhausted: %s\n' "$last_reason" >&2
+  if [[ "$saw_loopback_only" -eq 1 ]]; then
+    return 2
+  fi
+  return 1
+}
+
+# Bring up the exact tagged Mac and prove it can mint a target-appropriate v3
+# DeviceLink code. This is separate from the legacy Stack/Iroh readiness path
+# so account-free callers cannot silently fall back to bearer-ticket behavior.
+cmux_attach_ensure_mac_devicelink() {
+  local tag="$1" repo_root="${2:?repo root is required}" target="${3:?target is required}"
+  local sock app slug mint_attempts _i
+  sock="$(cmux_attach_socket_path "$tag")"
+  app="$(cmux_attach_mac_app_path "$tag")"
+  slug="$(cmux_attach__slug "$tag")"
+  cmux_attach_enable_pairing_host "$tag" || true
+
+  if [[ -S "$sock" ]]; then
+    if [[ -n "$(cmux_attach_mint_devicelink_url "$tag" 60 "$repo_root" "$target" 2)" ]]; then
+      return 0
+    fi
+    if [[ "${CMUX_ATTACH_ALLOW_RELAUNCH:-0}" != "1" ]]; then
+      echo "warning: tagged Mac '$tag' cannot mint a v3 DeviceLink code; relaunch it or set CMUX_ATTACH_ALLOW_RELAUNCH=1" >&2
+      return 1
+    fi
+    [[ -d "$app" ]] || {
+      echo "warning: tagged Mac build not found at $app" >&2
+      return 1
+    }
+    pkill -f "$CMUX_FORK_APP_NAME DEV ${slug}.app/Contents/MacOS/$CMUX_FORK_APP_NAME DEV" 2>/dev/null || true
+    for _i in $(seq 1 25); do [[ -S "$sock" ]] || break; sleep 0.2; done
+  fi
+
+  [[ -d "$app" ]] || {
+    echo "warning: tagged Mac build not found at $app" >&2
+    return 1
+  }
+  open -g "$app" >/dev/null 2>&1 || open "$app" >/dev/null 2>&1 || true
+  for _i in $(seq 1 60); do
+    if [[ -S "$sock" ]]; then
+      mint_attempts="${CMUX_ATTACH_MINT_MAX_ATTEMPTS:-20}"
+      if [[ -n "$(cmux_attach_mint_devicelink_url "$tag" 60 "$repo_root" "$target" "$mint_attempts")" ]]; then
+        return 0
+      fi
+      return 1
+    fi
+    sleep 0.2
+  done
+  echo "warning: tagged Mac socket $sock did not appear after launch" >&2
+  return 1
+}

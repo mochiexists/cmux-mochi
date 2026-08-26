@@ -41,7 +41,7 @@ struct PairingView: View {
 
     init(
         pairingCode: Binding<String>,
-        initialPresentation: PairingPresentation = .manual,
+        initialPresentation: PairingPresentation = .scanner(entry: .settingsReplay),
         connectionError: String?,
         connectionErrorGuidance: String?,
         versionWarning: String?,
@@ -101,6 +101,7 @@ struct PairingView: View {
                 }
                 #endif
 
+                #if DEBUG
                 Section {
                     TextField(
                         L10n.string("mobile.addDevice.namePlaceholder", defaultValue: "Work Mac"),
@@ -137,7 +138,6 @@ struct PairingView: View {
                     ))
                 }
                 .overlay(alignment: .topLeading) {
-                    #if DEBUG
                     if UITestConfig.mockDataEnabled {
                         Color.clear
                             .frame(width: 1, height: 1)
@@ -145,7 +145,6 @@ struct PairingView: View {
                             .accessibilityLabel(L10n.string("mobile.addDevice.formAccessibilityLabel", defaultValue: "Add Computer form"))
                             .accessibilityIdentifier("MobileAddDeviceForm")
                     }
-                    #endif
                 }
 
                 Section {
@@ -175,7 +174,9 @@ struct PairingView: View {
                     }
                     .accessibilityElement(children: .contain)
                 }
+                #endif
 
+                #if DEBUG
                 if let manualRouteWarningText {
                     Section {
                         Label {
@@ -187,6 +188,7 @@ struct PairingView: View {
                         .accessibilityIdentifier("MobileManualRouteWarning")
                     }
                 }
+                #endif
 
                 if let versionWarning {
                     Section {
@@ -229,11 +231,13 @@ struct PairingView: View {
                                     .foregroundStyle(.secondary)
                                     .accessibilityIdentifier("MobilePairingErrorGuidance")
                             }
+                            #if DEBUG
                             Text(signedInAccountText)
                                 .font(.footnote)
                                 .foregroundStyle(.secondary)
                                 .textSelection(.enabled)
                                 .accessibilityIdentifier("MobilePairingErrorSignedInAccount")
+                            #endif
                         }
                     }
                 }
@@ -241,6 +245,7 @@ struct PairingView: View {
             #if os(iOS)
             .scrollDismissesKeyboard(.interactively)
             #endif
+            #if DEBUG
             .safeAreaInset(edge: .bottom) {
                 Button {
                     pair()
@@ -265,6 +270,7 @@ struct PairingView: View {
                         .ignoresSafeArea(edges: .bottom)
                 }
             }
+            #endif
             .navigationTitle(L10n.string("mobile.addDevice.title", defaultValue: "Add Computer"))
             .mobileInlineNavigationTitle()
             .toolbar {
@@ -338,12 +344,21 @@ struct PairingView: View {
 
     private var scannerCancelAction: (() -> Void)? {
         guard initialPresentation.showsScanner else { return nil }
+        #if DEBUG
+        if initialPresentation == .scanner(entry: .settingsReplay) {
+            return { isShowingScanner = false }
+        }
+        #endif
         return { cancelDirectScanner() }
     }
 
     private var scannerManualEntryAction: (() -> Void)? {
+        #if DEBUG
         guard initialPresentation.showsScanner else { return nil }
         return { isShowingScanner = false }
+        #else
+        return nil
+        #endif
     }
 
     private var scannerPreviewEnabled: Bool {
@@ -376,7 +391,7 @@ struct PairingView: View {
         }
         return L10n.string(
             "mobile.addDevice.manualRouteWarning",
-            defaultValue: "Manual host and port bypasses Iroh. Account credentials are allowed only over simulator loopback; use the Mac's Iroh QR for physical devices."
+            defaultValue: "Manual host and port is for simulator development only. On a physical device, scan the Mac's Tailscale pairing code."
         )
     }
 

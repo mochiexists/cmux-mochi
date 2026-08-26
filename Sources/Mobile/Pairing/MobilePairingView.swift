@@ -1,36 +1,16 @@
-import CmuxFoundation
 import AppKit
-import CMUXMobileCore
-import CmuxAuthRuntime
+import CmuxFoundation
 import SwiftUI
 
 /// The macOS onboarding window for pairing an iPhone with this Mac.
 ///
-/// Walks the user through same-account authorization and Iroh reachability,
-/// then shows an identity-only QR. Tailscale remains an optional compatibility
-/// path for released iOS clients and private-only networks.
+/// Shows the account-free DeviceLink QR once this Mac has a phone-reachable
+/// Tailscale route.
 struct MobilePairingView: View {
     @State private var model = MobilePairingModel()
-    @State private var signInModel = AccountSignInModel(
-        flow: AppDelegate.shared?.auth?.accountFlow
-    )
-    /// The manual-entry value that was just copied (the host or the port
-    /// string), so only the matching button shows the brief "Copied" flash.
-    /// The two values can never collide: one is a host, the other a port.
-    @State var copiedValue: String?
-    /// Bumped per copy so an older flash's dismissal can't clear a newer one.
-    @State var copiedValueGeneration = 0
-    /// Defaults to the Iroh identity QR. The user may explicitly reveal the
-    /// separately minted released-client Tailscale code when one is available.
-    @State private var showsLegacyPairingCode = false
     /// Reports the scroll content's unconstrained height so the AppKit window
     /// can grow to reveal it while retaining scrolling on shorter displays.
     private let onContentHeightChange: (CGFloat) -> Void
-
-    /// The shared auth coordinator, observed so the view re-runs `refresh()`
-    /// when sign-in completes or settles. Captured once; stable post-startup.
-    private let coordinator: AuthCoordinator? = AppDelegate.shared?.auth?.coordinator
-    private let accountFlow: HostAccountFlow? = AppDelegate.shared?.auth?.accountFlow
 
     private static let tailscaleDownloadURL = URL(string: "https://tailscale.com/download")!
     /// Where a Mac user goes to get cmux for iPhone while the beta is invite-only.
@@ -56,8 +36,7 @@ struct MobilePairingView: View {
                         key: MobilePairingContentHeightPreferenceKey.self,
                         value: MobilePairingContentMeasurement(
                             height: geometry.size.height,
-                            state: model.state,
-                            showsLegacyPairingCode: showsLegacyPairingCode
+                            state: model.state
                         )
                     )
                 }
@@ -68,14 +47,6 @@ struct MobilePairingView: View {
         }
         .task { await model.refresh() }
         .onDisappear { model.stopObserving() }
-        .onChange(of: coordinator?.isAuthenticated ?? false) { _, _ in
-            Task { await model.refresh() }
-        }
-        .onChange(of: accountFlow?.isPresentingSignIn ?? false) { _, signingIn in
-            // When the browser flow settles (success or cancel), re-evaluate so a
-            // cancelled sign-in returns to the signed-out state instead of spinning.
-            if !signingIn { Task { await model.refresh() } }
-        }
     }
 
     private var header: some View {
@@ -83,12 +54,12 @@ struct MobilePairingView: View {
             Text(String(localized: "mobile.pairing.window.heading", defaultValue: "Pair your iPhone"))
                 .cmuxFont(.title2, weight: .semibold)
             Text(String(
-                localized: "mobile.pairing.window.subheading",
-                defaultValue: "iPhones signed in to the same cmux account connect automatically. Scan this code with the cmux app if this Mac doesn't appear on its own."
+                localized: "mobile.pairing.window.deviceLinkSubheading",
+                defaultValue: "Connect this Mac and your iPhone to the same Tailscale network, then scan this code in the cmux app."
             ))
-                .cmuxFont(.callout)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
+            .cmuxFont(.callout)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
         }
     }
 
@@ -96,55 +67,34 @@ struct MobilePairingView: View {
 
     private var requirements: some View {
         VStack(alignment: .leading, spacing: 12) {
-            signInRow
-            irohRow
-            privateNetworkRow
+            noAccountRow
+            tailscaleRow
         }
     }
 
-    private var signInRow: some View {
-        // Fork (cmux Mochi): an account is optional — the account-free QR is the
-        // fork's USP. The host authorizes pairing with the DeviceLink enrollment
-        // ticket in the QR code, so a signed-out Mac pairs fine; signing in only
-        // adds account-scoped extras (push forwarding, sync).
+    private var noAccountRow: some View {
         requirementRow(
-            title: model.signedInEmail == nil
-                ? String(
-                    localized: "mobile.pairing.req.account.optional.title",
-                    defaultValue: "No account needed"
-                )
-                : String(localized: "mobile.pairing.req.signIn.title", defaultValue: "Signed in to cmux"),
-            subtitle: model.signedInEmail
-                ?? String(
-                    localized: "mobile.pairing.req.account.optional.subtitle",
-                    defaultValue: "This code authorizes your iPhone directly. Sign in only if you want push notifications and cross-device sync."
-                )
-        ) {
-            EmptyView()
-        }
-    }
-
-    private var irohRow: some View {
-        let ready = irohReady
-        return requirementRow(
             title: String(
-                localized: "mobile.pairing.req.iroh.title",
-                defaultValue: "Iroh encrypted transport"
+                localized: "mobile.pairing.req.account.optional.title",
+                defaultValue: "No account needed"
             ),
-            subtitle: irohSubtitle(ready: ready)
+            subtitle: String(
+                localized: "mobile.pairing.req.account.optional.subtitle",
+                defaultValue: "No cmux account is involved. This one-time code authorizes your iPhone directly."
+            )
         ) {
             EmptyView()
         }
     }
 
-    private var privateNetworkRow: some View {
+    private var tailscaleRow: some View {
         let reachable = tailscaleReachable
         return requirementRow(
             title: String(
-                localized: "mobile.pairing.req.privateNetwork.title",
-                defaultValue: "Private network (optional)"
+                localized: "mobile.pairing.req.tailscale.title",
+                defaultValue: "Tailscale"
             ),
-            subtitle: privateNetworkSubtitle(reachable: reachable)
+            subtitle: tailscaleSubtitle(reachable: reachable)
         ) {
             if reachable == false {
                 Link(
@@ -159,17 +109,6 @@ struct MobilePairingView: View {
         }
     }
 
-    /// `true` when the primary QR is Iroh, `false` for compatibility-only, and
-    /// `nil` while route registration is unresolved.
-    private var irohReady: Bool? {
-        switch model.state {
-        case let .ready(ready): return ready.reachableViaIroh
-        case let .connected(ready): return ready.reachableViaIroh
-        case .needsReachableTransport: return false
-        default: return nil
-        }
-    }
-
     private var tailscaleReachable: Bool? {
         switch model.state {
         case let .ready(ready): return ready.reachableViaTailscale
@@ -179,42 +118,22 @@ struct MobilePairingView: View {
         }
     }
 
-    private func irohSubtitle(ready: Bool?) -> String {
-        switch ready {
-        case .some(true):
-            return String(
-                localized: "mobile.pairing.req.iroh.ready",
-                defaultValue: "Ready. Iroh connects directly when possible and uses a cmux relay when needed."
-            )
-        case .some(false):
-            return String(
-                localized: "mobile.pairing.req.iroh.unavailable",
-                defaultValue: "Not ready. A Tailscale compatibility route may still be available."
-            )
-        case .none:
-            return String(
-                localized: "mobile.pairing.req.iroh.preparing",
-                defaultValue: "Registering this Mac's encrypted endpoint."
-            )
-        }
-    }
-
-    private func privateNetworkSubtitle(reachable: Bool?) -> String {
+    private func tailscaleSubtitle(reachable: Bool?) -> String {
         switch reachable {
         case .some(true):
             return String(
-                localized: "mobile.pairing.req.privateNetwork.reachable",
-                defaultValue: "Tailscale is available for older-client compatibility and may become a direct Iroh path after admission."
+                localized: "mobile.pairing.req.tailscale.reachable",
+                defaultValue: "Reachable over Tailscale."
             )
         case .some(false):
             return String(
-                localized: "mobile.pairing.req.privateNetwork.missing",
-                defaultValue: "Not detected. Iroh pairing does not require Tailscale."
+                localized: "mobile.pairing.req.tailscale.missing",
+                defaultValue: "Not detected. Install Tailscale on this Mac and your iPhone, signed in to the same account."
             )
         case .none:
             return String(
-                localized: "mobile.pairing.req.privateNetwork.hint",
-                defaultValue: "After Iroh admits the phone, Tailscale, another VPN, or the same LAN may become a direct path."
+                localized: "mobile.pairing.req.tailscale.hint",
+                defaultValue: "Your Mac and iPhone both need Tailscale to connect over the internet."
             )
         }
     }
@@ -244,8 +163,6 @@ struct MobilePairingView: View {
         switch model.state {
         case .loading:
             loadingContent
-        case .signedOut:
-            AccountSignInView(model: signInModel, automaticallyStartsSignIn: false)
         case .preparing:
             centered {
                 ProgressView().controlSize(.small)
@@ -269,12 +186,12 @@ struct MobilePairingView: View {
                 .cmuxFont(size: 28)
                 .foregroundStyle(.orange)
             Text(String(
-                localized: "mobile.pairing.needsReachableTransport.body",
-                defaultValue: "Iroh has not registered this Mac yet, and no Tailscale compatibility route is available. Check the Mac's connection, or enable Tailscale on both devices, then refresh."
+                localized: "mobile.pairing.needsTailscale.body",
+                defaultValue: "No Tailscale route is available. Connect this Mac and your iPhone to the same Tailscale network, then refresh."
             ))
-                .multilineTextAlignment(.center)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
+            .multilineTextAlignment(.center)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
             Link(
                 String(localized: "mobile.pairing.req.tailscale.get", defaultValue: "Get Tailscale"),
                 destination: Self.tailscaleDownloadURL
@@ -289,16 +206,11 @@ struct MobilePairingView: View {
         .frame(maxWidth: .infinity, minHeight: 200)
     }
 
-    @ViewBuilder
     private var loadingContent: some View {
-        if accountFlow?.isPresentingSignIn == true {
-            AccountSignInView(model: signInModel, automaticallyStartsSignIn: false)
-        } else {
-            centered {
-                ProgressView().controlSize(.small)
-                Text(String(localized: "mobile.pairing.checking", defaultValue: "Checking…"))
-                    .foregroundStyle(.secondary)
-            }
+        centered {
+            ProgressView().controlSize(.small)
+            Text(String(localized: "mobile.pairing.checking", defaultValue: "Checking…"))
+                .foregroundStyle(.secondary)
         }
     }
 
@@ -320,19 +232,13 @@ struct MobilePairingView: View {
 
     @ViewBuilder
     private func readyContent(_ ready: MobilePairingModel.Ready) -> some View {
-        // Manual entry sits above the QR so Copy IP / Copy Port are reachable
-        // without scrolling (they used to sit below the steps, below the fold).
-        if ready.reachableViaTailscale {
-            manualFallback(ready)
-        }
-
         VStack(alignment: .center, spacing: 14) {
             // The spec 4-module quiet zone (white margin) is baked into the QR
             // bitmap itself, so the code gets no extra white card padding here:
             // the old 12pt-padded white card doubled the visible quiet zone.
-            // Width is capped so the manual block, the whole QR, and the
-            // waiting indicator all fit the default window without scrolling.
-            MobilePairingQRImageView(payload: displayedAttachURL(ready))
+            // Width is capped so the whole QR and waiting indicator fit the
+            // default window without scrolling.
+            MobilePairingQRImageView(payload: ready.attachURL)
                 .frame(maxWidth: 380)
                 .clipShape(RoundedRectangle(cornerRadius: 8))
                 .overlay(
@@ -346,8 +252,6 @@ struct MobilePairingView: View {
                     .cmuxFont(.callout)
                     .foregroundStyle(.secondary)
             }
-
-            pairingCodeModeControls(ready)
         }
         .frame(maxWidth: .infinity)
 
@@ -362,80 +266,17 @@ struct MobilePairingView: View {
             .controlSize(.small)
         }
     }
-
-    private func displayedAttachURL(_ ready: MobilePairingModel.Ready) -> String {
-        guard showsLegacyPairingCode,
-              let legacyAttachURL = ready.legacyAttachURL else {
-            return ready.attachURL
-        }
-        return legacyAttachURL
-    }
-
-    @ViewBuilder
-    private func pairingCodeModeControls(_ ready: MobilePairingModel.Ready) -> some View {
-        if let _ = ready.legacyAttachURL {
-            Text(
-                showsLegacyPairingCode
-                    ? String(
-                        localized: "mobile.pairing.codeMode.legacyDetail",
-                        defaultValue: "Tailscale code: for the Tailscale connection method and older iPhone apps. The iPhone must be on the same Tailscale network."
-                    )
-                    : String(
-                        localized: "mobile.pairing.codeMode.irohDetail",
-                        defaultValue: "Iroh code: encrypted end to end, with direct and relay paths selected automatically."
-                    )
-            )
-            .cmuxFont(.caption)
-            .foregroundStyle(.secondary)
-            .multilineTextAlignment(.center)
-
-            Button(
-                showsLegacyPairingCode
-                    ? String(
-                        localized: "mobile.pairing.codeMode.useIroh",
-                        defaultValue: "Use Iroh Code"
-                    )
-                    : String(
-                        localized: "mobile.pairing.codeMode.useLegacy",
-                        defaultValue: "Use Tailscale Pairing Code"
-                    )
-            ) {
-                showsLegacyPairingCode.toggle()
-            }
-            .buttonStyle(.link)
-            .controlSize(.small)
-        } else if ready.primaryTransport == .iroh {
-            Text(String(
-                localized: "mobile.pairing.codeMode.irohDetail",
-                defaultValue: "Iroh code: encrypted end to end, with direct and relay paths selected automatically."
-            ))
-            .cmuxFont(.caption)
-            .foregroundStyle(.secondary)
-            .multilineTextAlignment(.center)
-        } else {
-            Text(String(
-                localized: "mobile.pairing.codeMode.legacyOnlyDetail",
-                defaultValue: "Iroh is unavailable, so this code uses the Tailscale compatibility path."
-            ))
-            .cmuxFont(.caption)
-            .foregroundStyle(.secondary)
-            .multilineTextAlignment(.center)
-        }
-    }
-
 }
 
 private struct MobilePairingContentMeasurement: Equatable {
     let height: CGFloat
     let state: MobilePairingModel.State
-    let showsLegacyPairingCode: Bool
 }
 
 private struct MobilePairingContentHeightPreferenceKey: PreferenceKey {
     static let defaultValue = MobilePairingContentMeasurement(
         height: 0,
-        state: .loading,
-        showsLegacyPairingCode: false
+        state: .loading
     )
 
     static func reduce(

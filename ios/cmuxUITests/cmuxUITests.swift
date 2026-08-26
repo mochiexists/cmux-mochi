@@ -24,36 +24,11 @@ final class cmuxUITests: XCTestCase {
         XCTAssertNotEqual(mockHostInstanceTag(), "uitests")
     }
 
+    /// Exercises the account-free first-run path without a Mac, camera hardware,
+    /// or network access. QR pairing is the only connection action and remains
+    /// the primary action after durable onboarding resume.
     @MainActor
-    func testStackAuthEntryUsesStableIdentifiers() throws {
-        let app = launchApp(mockData: false, clearAuth: true)
-
-        XCTAssertTrue(app.buttons["signin.apple"].waitForExistence(timeout: 8))
-        XCTAssertTrue(app.buttons["signin.google"].exists)
-
-        let emailField = app.textFields["Email"]
-        XCTAssertTrue(emailField.exists)
-
-        let emailCodeButton = app.buttons["signin.emailCode"]
-        XCTAssertTrue(emailCodeButton.exists)
-        XCTAssertFalse(emailCodeButton.isEnabled)
-
-        try typeText("dogfood@example.com", into: emailField, in: app)
-        XCTAssertTrue(emailCodeButton.isEnabled)
-    }
-
-    /// Exercises the complete first-run activation path without Stack auth,
-    /// a Mac, camera hardware, or network access. The first launch forces the
-    /// durable progress key to `welcome`; advancing to Connect writes the real
-    /// `.connect` milestone. The default connection scene must describe
-    /// same-account automatic discovery without presenting QR as the primary
-    /// path. The first two product scenes use production-app screenshots, with
-    /// the notification scene showing the shipped chronological feed. The
-    /// connection scene keeps its live connection-state illustration. Relaunching
-    /// after the simulated search finishes must resume at Connect and expose QR
-    /// as an explicit fallback.
-    @MainActor
-    func testOnboardingScenesNotificationFeedResumeAndScannerFallback() throws {
+    func testOnboardingScenesNotificationFeedResumeAndQRFirstScanner() throws {
         let app = XCUIApplication()
         let baseArguments = ["-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
         let progressOverride = [
@@ -64,7 +39,6 @@ final class cmuxUITests: XCTestCase {
         app.launchEnvironment = [
             "CMUX_UITEST_MOCK_DATA": "1",
             "CMUX_UITEST_ONBOARDING_PREVIEW": "1",
-            "CMUX_UITEST_ONBOARDING_CONNECTION_FALLBACK": "0",
             "CMUX_UITEST_SCANNER_PREVIEW": "1",
         ]
         app.launch()
@@ -165,56 +139,51 @@ final class cmuxUITests: XCTestCase {
 
         let connectScene = element("MobileOnboardingConnectScene")
         assertPageVisible(connectScene)
-        XCTAssertTrue(app.staticTexts["Your Mac connects automatically"].exists)
+        XCTAssertTrue(app.staticTexts["Connect over Tailscale"].exists)
         XCTAssertTrue(app.staticTexts[
-            "Use the same cmux account on both devices. Your Mac connects automatically."
+            "Connect over your Tailscale network. Scan the pairing code shown on your Mac."
         ].exists)
-        XCTAssertTrue(app.staticTexts["Looking for your Mac…"].exists)
         XCTAssertFalse(element("MobileOnboardingSignInBridge").exists)
         XCTAssertFalse(app.buttons["signin.apple"].exists)
-        XCTAssertFalse(app.buttons["Scan Mac QR"].exists)
+        XCTAssertTrue(app.buttons["Scan Pairing Code"].exists)
         XCTAssertFalse(app.buttons["Use QR Code Instead"].exists)
-        assertStableChrome(includeFooter: false)
+        assertStableChrome()
         capture("onboarding-03-connect")
 
-        // Drop only the launch-domain override. The application-domain value
-        // written while entering Connect must now be the source of truth. The
-        // preview marks automatic discovery finished so QR appears only as the
-        // fallback on this second launch.
-        app.terminate()
-        app.launchArguments = baseArguments
-        app.launchEnvironment["CMUX_UITEST_ONBOARDING_CONNECTION_FALLBACK"] = "1"
-        app.launch()
-
-        assertPageVisible(connectScene, timeout: 8)
-        XCTAssertTrue(app.buttons["Check Again"].exists)
-        XCTAssertTrue(app.buttons["Use QR Code Instead"].exists)
-        capture("onboarding-04-resumed-connect")
-
-        let qrFallbackButton = app.buttons["MobileOnboardingSecondaryButton"]
-        XCTAssertTrue(qrFallbackButton.waitForExistence(timeout: 4))
-        qrFallbackButton.tap()
-
+        primaryButton.tap()
         let scannerPreview = element("MobilePairingScannerPreview")
         let scannerCancel = app.buttons["MobileScannerCancelButton"]
         XCTAssertTrue(scannerPreview.waitForExistence(timeout: 4))
         XCTAssertTrue(scannerCancel.waitForExistence(timeout: 4))
-        capture("onboarding-05-scanner-fallback")
+        capture("onboarding-04-scanner")
 
         scannerCancel.tap()
         XCTAssertTrue(connectScene.waitForExistence(timeout: 4))
         XCTAssertTrue(scannerPreview.waitForNonExistence(timeout: 2))
-        capture("onboarding-06-scanner-cancelled")
+
+        // Drop the launch-domain progress override. The application-domain value
+        // written while entering Connect must resume directly at the same QR-first
+        // connection scene.
+        app.terminate()
+        app.launchArguments = baseArguments
+        app.launch()
+
+        assertPageVisible(connectScene, timeout: 8)
+        XCTAssertTrue(app.buttons["Scan Pairing Code"].exists)
+        XCTAssertFalse(app.buttons["Use QR Code Instead"].exists)
+        XCTAssertFalse(app.buttons["signin.apple"].exists)
+        capture("onboarding-05-resumed-connect")
     }
 
     @MainActor
-    func testSignedOutOnboardingCompletesBeforeShowingSignIn() throws {
+    func testSignedOutOnboardingOpensQRScannerWithoutSignIn() throws {
         let app = launchApp(
             mockData: false,
             clearAuth: true,
+            environment: ["CMUX_UITEST_SCANNER_PREVIEW": "1"],
             launchArguments: [
                 "-dev.cmux.mobile.onboarding.redesign.progress.v1",
-                "welcome",
+                "connect",
             ]
         )
         defer { app.terminate() }
@@ -223,24 +192,16 @@ final class cmuxUITests: XCTestCase {
             app.descendants(matching: .any)[identifier]
         }
 
-        let primaryButton = app.buttons["MobileOnboardingPrimaryButton"]
-        XCTAssertTrue(element("MobileOnboardingAgentsScene").waitForExistence(timeout: 8))
-        XCTAssertTrue(primaryButton.waitForExistence(timeout: 4))
-        primaryButton.tap()
-
-        XCTAssertTrue(element("MobileOnboardingNotificationsScene").waitForExistence(timeout: 4))
-        XCTAssertTrue(primaryButton.waitForExistence(timeout: 4))
-        primaryButton.tap()
-
-        XCTAssertTrue(element("MobileOnboardingConnectScene").waitForExistence(timeout: 4))
+        XCTAssertTrue(element("MobileOnboardingConnectScene").waitForExistence(timeout: 8))
         XCTAssertFalse(element("MobileOnboardingSignInBridge").exists)
         XCTAssertFalse(app.buttons["signin.apple"].exists)
+
+        let primaryButton = app.buttons["MobileOnboardingPrimaryButton"]
         XCTAssertTrue(primaryButton.waitForExistence(timeout: 4))
+        tap(primaryButton, in: app)
 
-        primaryButton.tap()
-
-        XCTAssertTrue(app.buttons["signin.apple"].waitForExistence(timeout: 8))
-        XCTAssertFalse(element("MobileOnboardingConnectScene").exists)
+        XCTAssertTrue(element("MobilePairingScannerPreview").waitForExistence(timeout: 8))
+        XCTAssertFalse(app.buttons["signin.apple"].exists)
     }
 
     @MainActor
@@ -4189,9 +4150,13 @@ final class cmuxUITests: XCTestCase {
         }
         let app = launchApp(mockData: true, environment: [
             "CMUX_UITEST_ADD_DEVICE_PORT": String(portText.dropLast()),
+            "CMUX_UITEST_SCANNER_PREVIEW": "1",
         ], launchArguments: [
             "-cmux.mobile.taskComposerEnabled", "YES",
         ])
+        let scannerCancel = app.buttons["MobileScannerCancelButton"]
+        XCTAssertTrue(scannerCancel.waitForExistence(timeout: 8))
+        scannerCancel.tap()
         let pairingForm = app.otherElements["MobileAddDeviceForm"]
         XCTAssertTrue(pairingForm.waitForExistence(timeout: 8))
 
@@ -4262,7 +4227,12 @@ final class cmuxUITests: XCTestCase {
 
     @MainActor
     private func launchAddDeviceApp(environment: [String: String] = [:]) -> XCUIApplication {
-        let app = launchApp(mockData: true, environment: environment)
+        var launchEnvironment = environment
+        launchEnvironment["CMUX_UITEST_SCANNER_PREVIEW"] = "1"
+        let app = launchApp(mockData: true, environment: launchEnvironment)
+        let scannerCancel = app.buttons["MobileScannerCancelButton"]
+        XCTAssertTrue(scannerCancel.waitForExistence(timeout: 8))
+        scannerCancel.tap()
         XCTAssertTrue(app.otherElements["MobileAddDeviceForm"].waitForExistence(timeout: 8))
         return app
     }

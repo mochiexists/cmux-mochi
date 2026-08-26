@@ -10,13 +10,15 @@ PORT="${PORT:-0}"
 TAG="${CMUX_TAG:-mobile}"
 IOS_TAG="${CMUX_IOS_TAG:-$TAG}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/fork-identity.env
+source "$SCRIPT_DIR/fork-identity.env"
 
 if ! command -v python3 >/dev/null 2>&1; then
   echo "python3 is required" >&2
   exit 1
 fi
 
-export TAG IOS_TAG SCRIPT_DIR
+export TAG IOS_TAG SCRIPT_DIR CMUX_FORK_APP_NAME CMUX_FORK_BUNDLE_ID CMUX_FORK_TEAM_ID
 
 exec python3 - "$PORT" <<'PYEOF'
 import http.server
@@ -38,7 +40,7 @@ PROJECT_DIR = os.path.dirname(SCRIPT_DIR)
 # the connected iPhone. The Open button shells out to it so a stale (or
 # missing) device build is brought current before launch — no manual reload.
 IOS_RELOAD = os.path.join(PROJECT_DIR, "ios", "scripts", "reload.sh")
-IOS_TEAM = os.environ.get("CMUX_IOS_TEAM", "7WLXT3NR37")
+IOS_TEAM = os.environ.get("CMUX_IOS_TEAM", os.environ["CMUX_FORK_TEAM_ID"])
 # Build can take a couple minutes (xcodebuild incremental + install over the
 # tunnel); give it generous headroom.
 IOS_BUILD_TIMEOUT_SECONDS = 600
@@ -46,7 +48,8 @@ QR_SCRIPT = os.path.join(SCRIPT_DIR, "mobile-attach-qr.sh")
 TMP_ROOT = os.environ.get("TMPDIR", "/tmp").rstrip("/") or "/tmp"
 OUT_DIR = os.path.join(TMP_ROOT, f"cmux-mobile-attach-qr-{TAG}")
 IOS_TAG_SLUG = re.sub(r"-+", "-", re.sub(r"[^a-z0-9]+", "-", IOS_TAG.lower())).strip("-") or "dev"
-IOS_BUNDLE_ID = f"dev.cmux.ios.{IOS_TAG_SLUG}"
+IOS_BUNDLE_ID = f"{os.environ['CMUX_FORK_BUNDLE_ID']}.ios.{IOS_TAG_SLUG}"
+FORK_APP_NAME = os.environ["CMUX_FORK_APP_NAME"]
 
 _LOCK = threading.Lock()
 _LAST_GEN_TS = 0.0
@@ -63,16 +66,16 @@ def tagged_app_path() -> str:
     button label and the click handler can't drift apart."""
     return os.path.join(
         DERIVED_DATA_ROOT,
-        f"cmux-{TAG}",
+        f"cmux-{IOS_TAG_SLUG}",
         "Build",
         "Products",
         "Debug",
-        f"cmux DEV {TAG}.app",
+        f"{FORK_APP_NAME} DEV {IOS_TAG_SLUG}.app",
     )
 
 
 def tagged_app_executable() -> str:
-    return os.path.join(tagged_app_path(), "Contents", "MacOS", "cmux DEV")
+    return os.path.join(tagged_app_path(), "Contents", "MacOS", f"{FORK_APP_NAME} DEV")
 
 
 def app_info() -> dict:
@@ -98,7 +101,7 @@ def app_info() -> dict:
         pass
     try:
         out = subprocess.run(
-            ["pgrep", "-f", f"cmux DEV {TAG}.app/Contents/MacOS/cmux DEV"],
+            ["pgrep", "-f", f"{FORK_APP_NAME} DEV {IOS_TAG_SLUG}.app/Contents/MacOS/{FORK_APP_NAME} DEV"],
             check=False,
             timeout=2,
             stdout=subprocess.PIPE,
@@ -365,7 +368,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
     def _serve_ticket_json(self) -> None:
         ok, msg = regenerate()
-        path = os.path.join(OUT_DIR, "attach-ticket.raw.json")
+        path = os.path.join(OUT_DIR, "pairing-code.raw.json")
         if not ok or not os.path.exists(path):
             self._send(500, "application/json", json.dumps({"error": msg}).encode())
             return

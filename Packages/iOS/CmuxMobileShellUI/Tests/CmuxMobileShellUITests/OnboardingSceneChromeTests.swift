@@ -29,11 +29,12 @@ import UIKit
         #expect(notifications.secondaryTitle == nil)
     }
 
-    @Test func connectionChromeFollowsAuthenticationAndDiscoveryPhase() {
-        let signIn = OnboardingSceneChrome(
+    @Test func connectionChromeIsQRFirstWithOrWithoutAccountAuthentication() {
+        let signedOut = OnboardingSceneChrome(
             stage: .connect,
             isAuthenticated: false,
-            connectionPhase: .searching
+            connectionPhase: .idle,
+            connectionMethod: .tailscale
         )
         let searching = OnboardingSceneChrome(
             stage: .connect,
@@ -56,17 +57,17 @@ import UIKit
             connectionPhase: .ready
         )
 
-        #expect(signIn.showsBack)
-        #expect(!signIn.showsSkip)
-        #expect(signIn.primaryTitle != nil)
-        #expect(signIn.secondaryTitle == nil)
+        #expect(signedOut.showsBack)
+        #expect(!signedOut.showsSkip)
+        #expect(signedOut.primaryTitle == "Scan Pairing Code")
+        #expect(signedOut.secondaryTitle == nil)
 
         #expect(searching.primaryTitle == nil)
         #expect(searching.secondaryTitle == nil)
         #expect(idle.primaryTitle != nil)
         #expect(idle.secondaryTitle == nil)
-        #expect(fallback.primaryTitle != nil)
-        #expect(fallback.secondaryTitle != nil)
+        #expect(fallback.primaryTitle == "Scan Pairing Code")
+        #expect(fallback.secondaryTitle == nil)
         #expect(ready.primaryTitle != nil)
         #expect(ready.secondaryTitle == nil)
     }
@@ -134,7 +135,7 @@ import UIKit
         let label = OnboardingBalancedText.makeLabel()
         OnboardingBalancedText.configure(
             label,
-            text: "Use the same cmux account on both devices. Your Mac connects automatically.",
+            text: "Connect over your Tailscale network. Scan the pairing code shown on your Mac.",
             role: .body,
             alignment: .center,
             maximumNumberOfLines: 2

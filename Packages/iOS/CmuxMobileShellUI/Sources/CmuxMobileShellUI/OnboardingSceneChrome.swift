@@ -31,46 +31,16 @@ struct OnboardingSceneChrome: Equatable {
             )
             secondaryTitle = nil
         case .connect:
-            guard isAuthenticated else {
-                primaryTitle = L10n.string(
-                    "mobile.onboarding.continue",
-                    defaultValue: "Continue"
-                )
-                secondaryTitle = nil
-                return
-            }
-
             switch connectionPhase {
             case .idle:
-                if connectionMethod == .tailscale {
-                    primaryTitle = Self.scanPairingCodeTitle
-                } else {
-                    primaryTitle = L10n.string(
-                        "mobile.onboarding.connect.start",
-                        defaultValue: "Check for My Mac"
-                    )
-                }
+                primaryTitle = Self.scanPairingCodeTitle
                 secondaryTitle = nil
             case .searching:
                 primaryTitle = nil
                 secondaryTitle = nil
             case .fallback:
-                if connectionMethod == .tailscale {
-                    primaryTitle = Self.scanPairingCodeTitle
-                    secondaryTitle = L10n.string(
-                        "mobile.onboarding.connect.primary",
-                        defaultValue: "Check Again"
-                    )
-                } else {
-                    primaryTitle = L10n.string(
-                        "mobile.onboarding.connect.primary",
-                        defaultValue: "Check Again"
-                    )
-                    secondaryTitle = L10n.string(
-                        "mobile.onboarding.connect.fallback",
-                        defaultValue: "Use QR Code Instead"
-                    )
-                }
+                primaryTitle = Self.scanPairingCodeTitle
+                secondaryTitle = nil
             case .ready:
                 primaryTitle = L10n.string(
                     "mobile.onboarding.ready.primary",

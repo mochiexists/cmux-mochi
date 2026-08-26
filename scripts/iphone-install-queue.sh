@@ -9,7 +9,8 @@
 #
 # Verbs:
 #   enqueue --tag <tag> --app <signed .app> [--device-id <id>] [--checkout <dir>]
-#           [--no-attach] [--no-sign-in] [--no-setup] [--no-launch]
+#           [--no-attach] [--no-sign-in] [--no-setup]
+#           [--legacy-stack-attach] [--no-launch]
 #     Copy the signed app into the persistent queue (one slot per tag; a
 #     re-enqueue of the same tag replaces the older build).
 #   drain [--device-id <id>] [--wait <seconds>] [--interval <seconds>]
@@ -32,10 +33,10 @@
 #   2. first line of ${CMUX_CONFIG_DIR:-~/.config/cmux}/iphone-device-id
 #
 # Launch policy mirrors the reload scripts: the queued launch goes through the
-# checkout's scripts/mobile-dev-launch.sh (auto sign-in + auto-pair via
-# --ensure-mac, which also launches the same-tag Mac app). A failed signed
-# launch never falls back to a plain launch; the entry moves to failed/ with
-# the error preserved.
+# checkout's scripts/mobile-dev-launch.sh (account-free DeviceLink pairing via
+# --ensure-mac, which also launches the same-tag Mac app). Stack/Iroh requires
+# explicit --legacy-stack-attach. A failed paired launch never falls back to a
+# plain launch; the entry moves to failed/ with the error preserved.
 #
 # This script is intentionally SELF-CONTAINED (no repo lib sourcing) so the
 # LaunchAgent can run a stable copy from the queue dir even after the worktree
@@ -163,7 +164,7 @@ notify() {
 }
 
 cmd_enqueue() {
-  local tag="" app="" device_id="" checkout="" no_attach=0 no_sign_in=0 no_setup=0 launch=1
+  local tag="" app="" device_id="" checkout="" no_attach=0 no_sign_in=0 no_setup=0 legacy_stack_attach=0 launch=1
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --tag) tag="${2:-}"; shift 2 ;;
@@ -173,20 +174,21 @@ cmd_enqueue() {
       --no-attach) no_attach=1; shift ;;
       --no-sign-in) no_sign_in=1; shift ;;
       --no-setup) no_setup=1; shift ;;
+      --legacy-stack-attach) legacy_stack_attach=1; shift ;;
       --no-launch) launch=0; shift ;;
       *) die "enqueue: unknown argument: $1" ;;
     esac
   done
   [[ -n "$tag" ]] || die "enqueue: --tag is required"
   [[ -n "$app" && -d "$app" ]] || die "enqueue: --app must point at a signed .app directory"
-  local bundle_id
+  local bundle_id slug
   bundle_id="$(app_bundle_id "$app")"
   [[ -n "$bundle_id" ]] || die "enqueue: could not read CFBundleIdentifier from $app"
   case "$bundle_id" in
-    dev.cmux.ios.*) ;;
-    *) die "enqueue: refusing non-dev bundle id '$bundle_id' (expected dev.cmux.ios.<slug>)" ;;
+    com.cmux-mochi.ios.*) slug="${bundle_id#com.cmux-mochi.ios.}" ;;
+    dev.cmux.ios.*) slug="${bundle_id#dev.cmux.ios.}" ;;
+    *) die "enqueue: refusing non-dev bundle id '$bundle_id'" ;;
   esac
-  local slug="${bundle_id#dev.cmux.ios.}"
   [[ -n "$device_id" ]] || device_id="$(default_device_id)"
   [[ -n "$device_id" ]] || die "enqueue: no device id (pass --device-id, set CMUX_IPHONE_DEVICE_ID, or write $CONFIG_DIR/iphone-device-id)"
   if [[ -z "$checkout" ]]; then
@@ -205,7 +207,7 @@ cmd_enqueue() {
   # never install a half-copied app.
   TAG="$tag" SLUG="$slug" BUNDLE_ID="$bundle_id" DEVICE_ID="$device_id" \
   CHECKOUT="$checkout" NO_ATTACH="$no_attach" NO_SIGN_IN="$no_sign_in" \
-  NO_SETUP="$no_setup" LAUNCH="$launch" META="$staging/meta.json" \
+  NO_SETUP="$no_setup" LEGACY_STACK_ATTACH="$legacy_stack_attach" LAUNCH="$launch" META="$staging/meta.json" \
   /usr/bin/python3 - <<'PY'
 import json, os, time
 meta = {
@@ -217,6 +219,7 @@ meta = {
     "no_attach": os.environ["NO_ATTACH"] == "1",
     "no_sign_in": os.environ["NO_SIGN_IN"] == "1",
     "no_setup": os.environ["NO_SETUP"] == "1",
+    "legacy_stack_attach": os.environ["LEGACY_STACK_ATTACH"] == "1",
     "launch": os.environ["LAUNCH"] == "1",
     "enqueued_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
 }
@@ -268,7 +271,7 @@ drain_entry() {
   local entry="$PENDING_DIR/$slug"
   local meta="$entry/meta.json"
   local app="$entry/cmux.app"
-  local tag device_id bundle_id checkout no_attach no_sign_in no_setup launch
+  local tag device_id bundle_id checkout no_attach no_sign_in no_setup legacy_stack_attach launch
   local stamp
   stamp="$(meta_field "$meta" enqueued_at 2>/dev/null || true)"
   entry_unchanged() {
@@ -298,6 +301,7 @@ drain_entry() {
   no_attach="$(meta_field "$meta" no_attach)"
   no_sign_in="$(meta_field "$meta" no_sign_in)"
   no_setup="$(meta_field "$meta" no_setup)"
+  legacy_stack_attach="$(meta_field "$meta" legacy_stack_attach 2>/dev/null || printf 0)"
   launch="$(meta_field "$meta" launch)"
 
   if [[ -z "$device_id" ]]; then
@@ -322,7 +326,7 @@ drain_entry() {
     return $?
   fi
 
-  if [[ "$no_setup" == "1" || "$no_sign_in" == "1" ]]; then
+  if [[ "$no_setup" == "1" || ( "$legacy_stack_attach" == "1" && "$no_sign_in" == "1" ) ]]; then
     if ! xcrun devicectl device process launch --terminate-existing \
         --device "$device_id" "$bundle_id" >>"$LOGS_DIR/drain.log" 2>&1; then
       finish_failed "plain launch failed (device locked?)"
@@ -353,9 +357,10 @@ drain_entry() {
   # --ensure-mac launches the same-tag Mac app if its socket is down, so the
   # phone build is never left without its Mac counterpart.
   [[ "$no_attach" == "1" ]] || args+=(--ensure-mac)
+  [[ "$legacy_stack_attach" == "1" ]] && args+=(--legacy-stack-attach)
   if ! ( cd "$checkout" && "$mdl" "${args[@]}" ) >>"$LOGS_DIR/drain.log" 2>&1; then
-    # Policy: never degrade a failed signed setup to a plain launch.
-    finish_failed "signed launch (mobile-dev-launch.sh) failed; see logs/drain.log"
+    # Policy: never degrade a failed pairing setup to a plain launch.
+    finish_failed "paired launch (mobile-dev-launch.sh) failed; see logs/drain.log"
     return $?
   fi
   log "installed + launched $bundle_id (tag $tag) on $device_id"

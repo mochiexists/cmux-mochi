@@ -115424,6 +115424,40 @@
         }
       }
     },
+    "filePreview.mediaUnsupported.message": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This Mac can’t decode this media. Open it with another app to play it."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "この Mac ではこのメディアをデコードできません。他の App で開いて再生してください。"
+          }
+        }
+      }
+    },
+    "filePreview.mediaUnsupported.title": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Can’t play this file"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "このファイルは再生できません"
+          }
+        }
+      }
+    },
     "filePreview.openExternally": {
       "extractionState": "manual",
       "localizations": {
@@ -135171,13 +135205,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "This code authorizes your iPhone directly. Sign in only if you want push notifications and cross-device sync."
+            "value": "No cmux account is involved. This one-time code authorizes your iPhone directly."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "このコードで iPhone を直接認証します。プッシュ通知やデバイス間同期が必要な場合のみサインインしてください。"
+            "value": "cmux アカウントは使用しません。この一度限りのコードで iPhone を直接認証します。"
           }
         }
       }
@@ -135795,6 +135829,23 @@
         }
       }
     },
+    "mobile.pairing.step.tailscale": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connect your iPhone to the same Tailscale network as this Mac."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "iPhone をこの Mac と同じ Tailscale ネットワークに接続します。"
+          }
+        }
+      }
+    },
     "mobile.pairing.waiting": {
       "extractionState": "manual",
       "localizations": {
@@ -135825,6 +135876,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "iPhone をペアリング"
+          }
+        }
+      }
+    },
+    "mobile.pairing.window.deviceLinkSubheading": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connect this Mac and your iPhone to the same Tailscale network, then scan this code in the cmux app."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "この Mac と iPhone を同じ Tailscale ネットワークに接続し、cmux アプリでこのコードをスキャンします。"
           }
         }
       }

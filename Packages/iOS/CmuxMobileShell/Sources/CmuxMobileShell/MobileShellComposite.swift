@@ -2357,6 +2357,14 @@ public final class MobileShellComposite: MobileTerminalOutputSinking {
             finishStoredMacReconnectAttempt(generation: generation)
             return .failed(.noRoute)
         }
+        // A failed session publishes the disconnected shell before its retired
+        // client necessarily releases the physical route. Wait inside the
+        // reconnect operation (and therefore inside its hard deadline) so the
+        // replacement is not synchronously rejected as `connectAttemptGated`.
+        await awaitScheduledClientDisconnects()
+        guard generation == storedMacReconnectGeneration else {
+            return .superseded
+        }
         let resolvedScope = await currentScopeSnapshot(userID: stackUserID)
         // An account-free pairing lives under this install's local scope, so
         // "not signed in" and "no scope" are the two ways this silently does
@@ -8716,8 +8724,17 @@ public final class MobileShellComposite: MobileTerminalOutputSinking {
     private func scheduleClientDisconnect(_ client: MobileCoreRPCClient) {
         let id = UUID()
         clientDisconnectTasks[id] = Task { @MainActor [weak self] in
-            await client.disconnect()
+            await client.disconnectAndWaitForTransportDrain()
             self?.clientDisconnectTasks[id] = nil
+        }
+    }
+
+    /// Waits for clients that this shell has already retired to finish handing
+    /// their route leases to cleanup before a lifecycle recovery redials.
+    func awaitScheduledClientDisconnects() async {
+        let tasks = Array(clientDisconnectTasks.values)
+        for task in tasks {
+            await task.value
         }
     }
 

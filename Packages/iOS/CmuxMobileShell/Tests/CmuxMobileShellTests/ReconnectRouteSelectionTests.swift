@@ -231,7 +231,9 @@ import Testing
 
         #expect(connected)
         #expect(store.connectionState == .connected)
-        #expect(factory.attemptedPorts() == [51000, 51001, 51001])
+        // A trusted stored loopback route is dialed directly, so recovery
+        // falls through to the good route without a redundant attach probe.
+        #expect(factory.attemptedPorts() == [51000, 51001])
     }
 
     @Test func connectionPoolRecordsFallbackRouteThatActuallyConnected() async throws {
@@ -313,7 +315,11 @@ import Testing
 
         #expect(!firstConnected)
         #expect(secondConnected)
-        #expect(factory.attemptedPorts() == [51000, 51001, 51001])
+        // Stored loopback reconnect now uses the same direct multi-route dial
+        // as authenticated transports. The replacement attempt may observe the
+        // superseded attempt's first route before falling through to the good
+        // route; the superseded generation must never continue to 51001.
+        #expect(factory.attemptedPorts() == [51000, 51000, 51001])
     }
 
     @Test func staleConnectCannotReplaceAnEstablishedClientBeforeDialing() async throws {

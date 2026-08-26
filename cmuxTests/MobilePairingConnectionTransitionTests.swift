@@ -3,9 +3,9 @@ import Foundation
 import Testing
 
 #if canImport(cmux_DEV)
-@testable import cmux_DEV
+    @testable import cmux_DEV
 #elseif canImport(cmux)
-@testable import cmux
+    @testable import cmux
 #endif
 
 @MainActor
@@ -13,23 +13,8 @@ import Testing
 struct MobilePairingConnectionTransitionTests {
     private func makeReady() -> MobilePairingModel.Ready {
         MobilePairingModel.Ready(
-            attachURL: "cmux-ios://attach?ticket=abc",
-            legacyAttachURL: "cmux-ios://attach?v=2&r=100.64.0.1:7777",
-            primaryTransport: .iroh,
-            macName: "Test Mac",
-            tailscaleLines: ["100.64.0.1:7777"],
-            manualEntry: CmxManualPairingEntry(host: "100.64.0.1", port: 7777)
-        )
-    }
-
-    private func makeTailscaleReady() -> MobilePairingModel.Ready {
-        MobilePairingModel.Ready(
-            attachURL: "cmux-ios://attach?v=2&r=100.64.0.1:7777",
-            legacyAttachURL: nil,
-            primaryTransport: .tailscaleCompatibility,
-            macName: "Test Mac",
-            tailscaleLines: ["100.64.0.1:7777"],
-            manualEntry: CmxManualPairingEntry(host: "100.64.0.1", port: 7777)
+            attachURL: "cmux-ios://pair?v=3&r=100.64.0.1:7777",
+            tailscaleLines: ["100.64.0.1:7777"]
         )
     }
 
@@ -107,56 +92,31 @@ struct MobilePairingConnectionTransitionTests {
         #expect(next == .preparing)
     }
 
-    @Test("Signed-out is unaffected by connection-count changes")
-    func signedOutIsUnaffected() {
-        let next = MobilePairingModel.connectionTransition(
-            from: .signedOut,
-            activeConnectionCount: 1,
-            baselineConnectionCount: 0
-        )
-        #expect(next == .signedOut)
+    @Test("A mixed route set selects only the Tailscale DeviceLink endpoint")
+    func mixedRouteSetSelectsOnlyTailscale() throws {
+        let routes = try [
+            irohRoute(),
+            tailscaleRoute(),
+        ]
+        let plan = try #require(MobilePairingModel.PairingRoutePlan.make(routes: routes))
+
+        #expect(plan.tailscaleLines == ["100.64.0.1:7777"])
     }
 
-    @Test("Iroh is the default and Tailscale remains a compatibility code")
-    func irohRouteWinsWithLegacyCompatibility() throws {
-        let plan = try #require(MobilePairingModel.PairingRoutePlan.make(routes: [
-            try irohRoute(),
-            try tailscaleRoute(),
-        ]))
+    @Test("A Tailscale route produces the DeviceLink route plan")
+    func tailscaleRouteProducesPlan() throws {
+        let routes = try [tailscaleRoute()]
+        let plan = try #require(MobilePairingModel.PairingRoutePlan.make(routes: routes))
 
-        #expect(plan.primaryDisclosureMode == .irohIdentityOnly)
-        #expect(plan.primaryTransport == .iroh)
-        #expect(plan.offersLegacyCode)
+        #expect(plan.tailscaleLines == ["100.64.0.1:7777"])
     }
 
-    @Test("Tailscale remains usable when Iroh is unavailable")
-    func tailscaleOnlyPlanRetainsReleasedClientSupport() throws {
-        let plan = try #require(MobilePairingModel.PairingRoutePlan.make(routes: [
-            try tailscaleRoute(),
-        ]))
-
-        #expect(plan.primaryDisclosureMode == .legacyPrivateNetworkCompatibility)
-        #expect(plan.primaryTransport == .tailscaleCompatibility)
-        #expect(!plan.offersLegacyCode)
-    }
-
-    @Test("A displayed compatibility QR upgrades when Iroh publishes")
-    func tailscaleCompatibilityUpgradesToIroh() throws {
-        let compatibility = makeTailscaleReady()
-        let publishedRoutes = [try tailscaleRoute(), try irohRoute()]
-
-        #expect(MobilePairingModel.shouldUpgradePrimaryTransport(
-            from: .ready(compatibility),
-            routes: publishedRoutes
-        ))
-        #expect(!MobilePairingModel.shouldUpgradePrimaryTransport(
-            from: .ready(makeReady()),
-            routes: publishedRoutes
-        ))
-        #expect(!MobilePairingModel.shouldUpgradePrimaryTransport(
-            from: .ready(compatibility),
-            routes: [try tailscaleRoute()]
-        ))
+    @Test("Iroh alone cannot produce a DeviceLink route plan")
+    func irohAloneIsUnavailable() throws {
+        let routes = try [irohRoute()]
+        #expect(MobilePairingModel.PairingRoutePlan.make(
+            routes: routes
+        ) == nil)
     }
 
     @Test("Loopback alone never produces a physical-device QR")

@@ -7,10 +7,9 @@ import CmuxMobileToast
 import CmuxMobileWorkspace
 import SwiftUI
 
-/// The mobile app's settings page. Surfaces the signed-in account (so the user
-/// can confirm which cmux account this device uses — the account must match the
-/// Mac it pairs with), plus terminal shortcuts, agent notifications, and the
-/// paired Mac. Presented as a sheet from the workspace list.
+/// The mobile app's settings page. Production pairing is account-free and uses
+/// the Mac's QR code over Tailscale; account and alternate-transport controls
+/// remain available only to development builds.
 struct MobileSettingsView: View {
     /// Shared with `UserDefaultsAnalyticsConsentProvider`; keep the string stable
     /// so Settings controls the same gate used by analytics and crash reporting.
@@ -57,6 +56,7 @@ struct MobileSettingsView: View {
         @Bindable var toasts = self.toasts
         return NavigationStack {
             Form {
+                #if DEBUG
                 MobileSettingsAccountSection(signOut: signOut)
 
                 // Stack team switcher. Only shown when the user belongs to more than
@@ -89,6 +89,7 @@ struct MobileSettingsView: View {
                         ))
                     }
                 }
+                #endif
 
                 // Hidden entirely when there is nothing to show (no connected
                 // Mac and no store to switch with), so the no-devices screen's
@@ -132,6 +133,7 @@ struct MobileSettingsView: View {
                             .accessibilityIdentifier("MobileSettingsSwitchMac")
                         }
                     }
+                    #if DEBUG
                     Button {
                         showingSetupHelp = true
                     } label: {
@@ -141,6 +143,7 @@ struct MobileSettingsView: View {
                         )
                     }
                     .accessibilityIdentifier("MobileSettingsSetUpYourMac")
+                    #endif
                     Button {
                         showingOnboarding = true
                     } label: {
@@ -155,6 +158,7 @@ struct MobileSettingsView: View {
                     .accessibilityIdentifier("MobileSettingsHowPairingWorks")
                 }
 
+                #if DEBUG
                 if let connectionMethodStore {
                     MobileConnectionMethodSection(
                         store: connectionMethodStore,
@@ -162,7 +166,31 @@ struct MobileSettingsView: View {
                         startPairingScanner: startPairingScanner
                     )
                 }
+                #else
+                if startPairingScanner != nil {
+                    Section {
+                        Button {
+                            startPairingScanner?()
+                        } label: {
+                            Label(
+                                L10n.string(
+                                    "mobile.settings.connectionMethod.scanCode",
+                                    defaultValue: "Scan Pairing Code"
+                                ),
+                                systemImage: "qrcode.viewfinder"
+                            )
+                        }
+                        .accessibilityIdentifier("MobileSettingsTailscaleScanButton")
+                    } footer: {
+                        Text(L10n.string(
+                            "mobile.onboarding.connect.tailscaleBody",
+                            defaultValue: "Connect over your Tailscale network. Scan the pairing code shown on your Mac."
+                        ))
+                    }
+                }
+                #endif
 
+                #if DEBUG
                 if let irohSettingsController {
                     Section(L10n.string("mobile.settings.networking", defaultValue: "Networking")) {
                         NavigationLink {
@@ -176,6 +204,7 @@ struct MobileSettingsView: View {
                         .accessibilityIdentifier("MobileSettingsIroh")
                     }
                 }
+                #endif
 
                 Section(L10n.string("mobile.settings.terminal", defaultValue: "Terminal")) {
                     Toggle(isOn: $displaySettings.showAltScreenNotice) {
@@ -492,6 +521,7 @@ struct MobileSettingsView: View {
                     onComplete: { showingOnboarding = false }
                 )
             }
+            #if DEBUG
             .sheet(isPresented: $showingSetupHelp) {
                 // Re-enterable setup help as a plain reference: every pre-pairing
                 // gate with its concrete next step. Settings is reached only from
@@ -499,6 +529,7 @@ struct MobileSettingsView: View {
                 // mark "You are here".
                 SetupHelpView(highlight: setupHelpHighlight) { showingSetupHelp = false }
             }
+            #endif
         }
         .accessibilityIdentifier("MobileSettingsView")
     }

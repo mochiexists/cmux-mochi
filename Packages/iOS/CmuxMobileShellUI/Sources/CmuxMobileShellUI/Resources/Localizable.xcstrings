@@ -1,6 +1,23 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "mobile.addDevice.manualRouteWarning" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Manual host and port is for simulator development only. On a physical device, scan the Mac's Tailscale pairing code."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ホストとポートの手動入力はシミュレータでの開発専用です。実機では、Mac に表示された Tailscale ペアリングコードをスキャンしてください。"
+          }
+        }
+      }
+    },
     "^[%lld file](inflect: true)" : {
       "extractionState" : "manual",
       "localizations" : {

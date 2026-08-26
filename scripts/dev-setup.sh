@@ -1,29 +1,29 @@
 #!/usr/bin/env bash
-# Turnkey dev-build entrypoint: build + launch the macOS dev app auto-signed-in,
-# and (optionally) the iOS dev build auto-paired to it, with no QR scan and no
-# manual sign-in. Wraps the P1 macOS auto-sign-in path and the P2 iOS auto-pair.
+# Turnkey dev-build entrypoint: build + launch the macOS dev app and
+# (optionally) account-free pair the iOS dev build through a v3 DeviceLink code.
+# The compatibility Stack/Iroh path is available only by explicit opt-in.
 #
 # Everything here is DEBUG-only and targets the TAGGED app/socket/bundle id, so
 # it never touches the user's stable cmux instance.
 #
 # Flow (--surface both):
-#   1. Load dev sign-in creds (dogfood account wins; --agent forces agent).
-#   2. Enable the iOS pairing host on the tagged build (opt-in, default OFF):
+#   1. Enable the iOS pairing host on the tagged build (opt-in, default OFF):
 #        defaults write <fork-bundle-id>.debug.<tag-id> mobile.iOSPairingHost.enabled -bool true
 #      Written BEFORE the macOS launch so a single build binds the NWListener on
 #      first launch. NOTE: the first bind per bundle id triggers a one-time macOS
 #      "Local Network" permission prompt; click Allow.
-#   3. Build + launch the macOS dev app via reload.sh --tag <t> --launch. It
+#   2. Build + launch the macOS dev app via reload.sh --tag <t> --launch. It
 #      auto-signs-in from ~/.secrets/cmuxterm-dev.env (DebugDogfoodCredentialResolver).
-#   4. Build the iOS dev app, then let mobile-dev-launch.sh mint a target-specific
-#      ticket and launch the app. Simulator and device policies stay distinct.
+#   3. Build the iOS dev app, then let mobile-dev-launch.sh mint a v3 DeviceLink
+#      code and launch the app with no Stack account. Simulator and physical
+#      device route policies stay distinct.
 #
 # Usage:
 #   scripts/dev-setup.sh --tag grid                 # macOS + iOS, auto-pair
 #   scripts/dev-setup.sh --tag grid --surface mac   # macOS only
 #   scripts/dev-setup.sh --tag grid --surface ios   # iOS only (needs Mac listener up)
 #   scripts/dev-setup.sh --tag grid --no-pair       # build both, skip auto-pair
-#   scripts/dev-setup.sh --tag grid --agent         # sign in as the agent account
+#   scripts/dev-setup.sh --tag grid --legacy-stack-attach --agent
 #
 # Flags:
 #   --tag <t>           required; tags the macOS + iOS dev builds.
@@ -36,12 +36,15 @@
 #   --no-pair           skip enabling the host + minting + auto-pair.
 #   --simulator <name>  iOS simulator name (default "iPhone 17").
 #   --device            target a connected iPhone instead of the simulator.
-#   --agent             use the shared agent account for the iOS sign-in. NOTE:
+#   --legacy-stack-attach
+#                       explicitly restore the old Stack + Iroh mobile flow.
+#   --agent             legacy mode only: use the shared agent account. NOTE:
 #                       this does NOT change the macOS account: the Mac app picks
 #                       its account from disk via DebugDogfoodCredentialResolver
 #                       (dogfood-first), which has no agent-force selector and
 #                       which we cannot override without env-leaking the password.
-#                       For a pure agent-account run, use --surface ios --agent.
+#                       For a pure agent-account run, use --surface ios with
+#                       --legacy-stack-attach --agent.
 
 set -euo pipefail
 
@@ -50,10 +53,11 @@ SURFACE="both"            # mac | ios | both
 PROFILE=""
 NO_PAIR=0
 AGENT=0
+LEGACY_STACK_ATTACH=0
 SIMULATOR_NAME="iPhone 17"
 IOS_TARGET="simulator"   # simulator | device
 
-usage() { sed -n '2,40p' "$0"; }
+usage() { sed -n '2,47p' "$0"; }
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -63,6 +67,7 @@ while [[ $# -gt 0 ]]; do
     --no-pair) NO_PAIR=1; shift ;;
     --simulator) SIMULATOR_NAME="${2:-}"; shift 2 ;;
     --device) IOS_TARGET="device"; shift ;;
+    --legacy-stack-attach) LEGACY_STACK_ATTACH=1; shift ;;
     --agent) AGENT=1; shift ;;
     -h|--help) usage; exit 0 ;;
     *) echo "error: unknown arg $1" >&2; usage >&2; exit 2 ;;
@@ -75,6 +80,10 @@ case "$SURFACE" in
   *) echo "error: --surface must be mac|ios|both (got '$SURFACE')" >&2; exit 2 ;;
 esac
 
+if [[ "$AGENT" -eq 1 && "$LEGACY_STACK_ATTACH" -ne 1 ]]; then
+  echo "error: --agent requires --legacy-stack-attach" >&2
+  exit 2
+fi
 if [[ "$AGENT" -eq 1 && ( "$SURFACE" == "mac" || "$SURFACE" == "both" ) ]]; then
   echo "warning: --agent only changes the iOS sign-in account. The macOS app picks its" >&2
   echo "         account from ~/.secrets via DebugDogfoodCredentialResolver (dogfood-first)," >&2
@@ -106,7 +115,7 @@ if [[ -n "$PROFILE" ]]; then
   fi
 fi
 
-# --- credentials: validate only, do NOT export into this process -------------
+# --- explicit legacy credentials: validate only, do NOT export here ----------
 # The macOS app reads dogfood creds from disk (DebugDogfoodCredentialResolver),
 # and mobile-dev-launch.sh loads its own creds for the iOS launch. So this script
 # must NOT export CMUX_UITEST_STACK_PASSWORD: reload.sh launches the long-lived
@@ -114,11 +123,13 @@ fi
 # Stack vars are not on it), which would leak the password to every child
 # terminal/CLI the app spawns. Validate in a subshell to surface a clear early
 # error, but keep the password out of dev-setup.sh's environment.
-DEV_SECRETS_ARGS=()
-[[ "$AGENT" -eq 1 ]] && DEV_SECRETS_ARGS+=(--agent)
-# shellcheck source=scripts/lib/dev-secrets.sh
-if ! ( source "$SCRIPT_DIR/lib/dev-secrets.sh"; cmux_dev_secrets_load "${DEV_SECRETS_ARGS[@]}" ); then
-  exit 2
+if [[ "$LEGACY_STACK_ATTACH" -eq 1 ]]; then
+  DEV_SECRETS_ARGS=()
+  [[ "$AGENT" -eq 1 ]] && DEV_SECRETS_ARGS+=(--agent)
+  # shellcheck source=scripts/lib/dev-secrets.sh
+  if ! ( source "$SCRIPT_DIR/lib/dev-secrets.sh"; cmux_dev_secrets_load "${DEV_SECRETS_ARGS[@]}" ); then
+    exit 2
+  fi
 fi
 
 # --- tag identity (delegated to scripts/lib/mobile-attach.sh) ----------------
@@ -185,6 +196,9 @@ build_and_launch_ios() {
   local launch_args=(--tag "$TAG")
   if [[ "$auto_pair" -eq 1 ]]; then
     launch_args+=(--attach)
+  fi
+  if [[ "$LEGACY_STACK_ATTACH" -eq 1 ]]; then
+    launch_args+=(--legacy-stack-attach)
   fi
   if [[ "$AGENT" -eq 1 ]]; then
     launch_args+=(--agent)

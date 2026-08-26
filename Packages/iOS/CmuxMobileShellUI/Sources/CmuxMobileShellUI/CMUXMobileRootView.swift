@@ -35,17 +35,11 @@ struct CMUXMobileRootView: View {
     #endif
     @State private var pendingAttachURL: String?
     @State private var didAuthenticateWithAttachTicket = false
-    /// Fork (cmux Mochi): the operator chose "continue without an account" on the
-    /// sign-in screen. This fork's Mac host authorizes on the DeviceLink
-    /// enrollment ticket alone, so an account is a convenience — not a security
-    /// boundary. Persisted so the choice survives relaunch: a skipped user lands
-    /// on pairing, never back at the wall.
-    @AppStorage("mochi.mobile.skippedSignIn") private var didSkipSignIn = false
     /// Whether this device holds a DeviceLink key and pin for some Mac.
     @State private var hasPairedDeviceIdentity = false
     @State private var didExceedStartupRestoringGate = false
     @State private var isShowingAddDeviceSheet = false
-    @State private var pairingPresentation: PairingPresentation = .manual
+    @State private var pairingPresentation: PairingPresentation = .scanner(entry: .settingsReplay)
     #if os(iOS)
     @State private var addDeviceSheetDetent: PresentationDetent = .large
     #endif
@@ -189,6 +183,10 @@ struct CMUXMobileRootView: View {
         .animation(.snappy(duration: 0.18), value: isAuthenticated)
         .animation(.snappy(duration: 0.18), value: store.phase)
         .onAppear {
+            // Restore the durable DeviceLink credential before syncing the shell.
+            // On a cold account-free launch, syncing first would briefly report no
+            // credential and sign out the store that is about to reconnect.
+            refreshPairedDeviceIdentity()
             syncShellAuthentication(isAuthenticated)
             store.resumeForegroundRefresh()
             #if os(iOS)
@@ -202,7 +200,6 @@ struct CMUXMobileRootView: View {
             // A pairing stored by an earlier launch is a credential this launch
             // still holds, so resolve it before the first render decides whether
             // to show the sign-in screen.
-            refreshPairedDeviceIdentity()
             reconnectStoredMacIfNeeded()
             #if os(iOS)
             updateOnboardingMacDiscoveryKeepAlive()
@@ -338,8 +335,6 @@ struct CMUXMobileRootView: View {
             onboardingPreview
         } else if shouldShowOnboarding {
             onboardingFlow
-        } else if !isAuthenticated, !didSkipSignIn {
-            SignInView(onSkipSignIn: { didSkipSignIn = true })
         } else {
             switch MobileRootAuthGate.shellSurface(
                 connectionState: store.connectionState,
@@ -493,7 +488,7 @@ struct CMUXMobileRootView: View {
             context: .firstRun,
             isAuthenticated: isAuthenticated,
             connectionPhase: onboardingConnectionPhase,
-            connectionMethod: connectionMethodStore?.method ?? .automatic,
+            connectionMethod: .tailscale,
             onSelectConnectionMethod: { connectionMethodStore?.method = $0 },
             onReachedConnection: markOnboardingReadyToConnect,
             onSkip: completeOnboarding,
@@ -513,9 +508,8 @@ struct CMUXMobileRootView: View {
             initialStage: initialOnboardingStage,
             context: .preview,
             isAuthenticated: true,
-            connectionPhase: UITestConfig.onboardingConnectionFallbackEnabled
-                ? .fallback
-                : .searching,
+            connectionPhase: .idle,
+            connectionMethod: .tailscale,
             onReachedConnection: markOnboardingReadyToConnect,
             onSkip: completeOnboarding,
             onRetryConnection: {},
@@ -542,13 +536,6 @@ struct CMUXMobileRootView: View {
 
     private func markOnboardingReadyToConnect() {
         onboardingStore.markReadyToConnect()
-        guard isAuthenticated, store.connectionState != .connected else { return }
-        let stackUserID = authManager.currentUser?.id
-        isAwaitingOnboardingReconnectStart = true
-        Task {
-            defer { isAwaitingOnboardingReconnectStart = false }
-            _ = await store.retryActiveMacReconnect(stackUserID: stackUserID)
-        }
     }
 
     private func completeOnboarding() {
@@ -619,6 +606,20 @@ struct CMUXMobileRootView: View {
     /// sign-in that completes after mount) so the restoring gate always resolves
     /// even when the auth state never transitions while this view is mounted.
     private func reconnectStoredMacIfNeeded() {
+        #if os(iOS)
+        let hasInjectedAttachURL = hasInjectedAttachLaunchRoute
+        #else
+        let hasInjectedAttachURL = false
+        #endif
+        MobileShellComposite.logReconnectGate(
+            uiTestURL: hasInjectedAttachURL,
+            authenticated: isAuthenticated,
+            stackAuthenticated: authManager.isAuthenticated,
+            hasPairedDevice: hasPairedDeviceIdentity,
+            attachTicket: hasActiveAttachTicketAuthentication,
+            restoring: authManager.isRestoringSession,
+            connected: store.connectionState == .connected
+        )
         // An injected attach ticket carries its own credential, so it has to be
         // able to start before any Stack session exists -- the same rule
         // `onOpenURL` already applies for a scanned ticket. This check sits
@@ -663,7 +664,7 @@ struct CMUXMobileRootView: View {
     }
 
     private func showAddDevice() {
-        presentAddDevice(.manual)
+        presentAddDevice(.scanner(entry: .settingsReplay))
     }
 
     private func showPairingScanner() {
@@ -697,7 +698,10 @@ struct CMUXMobileRootView: View {
         Task {
             let result = await store.connectPairingURLResult(rawURL)
             if result == .needsUserApproval {
-                showAddDevice()
+                // The scanned/deep-linked code is already loaded. Present the
+                // approval details without covering them with a second scanner.
+                // In production `.manual` contains no host/port controls.
+                presentAddDevice(.manual)
             }
             clearAttachTicketAuthentication(after: result)
             if result == .failed, store.connectionState != .connected {
@@ -738,7 +742,7 @@ struct CMUXMobileRootView: View {
 
     private func dismissAddDeviceSheet() {
         isShowingAddDeviceSheet = false
-        pairingPresentation = .manual
+        pairingPresentation = .scanner(entry: .settingsReplay)
         if store.pairingVersionWarning != nil {
             cancelPairing()
         } else {
@@ -753,7 +757,7 @@ struct CMUXMobileRootView: View {
             hasActiveUnexpiredTicket: store.hasActiveUnexpiredAttachTicket
         ) else { return }
         didAuthenticateWithAttachTicket = false
-        syncShellAuthentication(authManager.isAuthenticated)
+        syncShellAuthentication(isAuthenticated)
     }
 
     private func clearAttachTicketAuthenticationIfNeeded() {
@@ -762,7 +766,7 @@ struct CMUXMobileRootView: View {
             return
         }
         didAuthenticateWithAttachTicket = false
-        syncShellAuthentication(authManager.isAuthenticated)
+        syncShellAuthentication(isAuthenticated)
     }
 
     private func signOut() {

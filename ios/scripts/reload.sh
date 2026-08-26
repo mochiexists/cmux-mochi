@@ -23,11 +23,13 @@ Every device build requires the same-tag Mac dev build (the iOS app is unusable
 without its Mac); when it is missing, the Mac tag is built first, and the reload
 refuses to ship a phone-only build if that fails.
 
-After install, the app is launched signed in (dogfood creds) and auto-paired to
-the tagged Mac app. Opt out granularly:
-  --no-sign-in   plain launch, no auto sign-in (implies no auto-pair)
-  --no-attach    sign in, but do not auto-pair to the Mac
-  --no-setup     plain install + launch (today's behavior)
+After install, the app is launched with no account and auto-paired to the
+tagged Mac through a v3 DeviceLink code over Tailscale. Opt out granularly:
+  --no-sign-in   compatibility no-op; no-account is already the default
+  --no-attach    launch without pairing to the Mac
+  --no-setup     plain install + launch
+  --legacy-stack-attach
+                 explicitly restore the old dogfood Stack + Iroh attach flow
 
   --prod-auth    sign this DEV build in against PRODUCTION auth (bakes
                  CMUXAuthEnvironment=production into Info.plist; the presence
@@ -77,11 +79,12 @@ RELOAD_DEVICE=0
 SIMULATOR_ONLY=0
 ALLOW_PROVISIONING_UPDATES=1
 ALLOW_DEVICE_REGISTRATION=0
-# Auto-setup: after install + launch, sign in (inject dogfood creds) and auto-pair
-# to the tagged Mac app. Default ON; opt out granularly.
+# Auto-setup: after install, account-free DeviceLink pair to the tagged Mac.
+# Legacy Stack/Iroh setup is available only through explicit opt-in.
 NO_SIGN_IN=0
 NO_ATTACH=0
 NO_SETUP=0
+LEGACY_STACK_ATTACH=0
 # Disable AArch64 GlobalISel codegen for this build. Xcode 26's Swift frontend
 # can miscompile under -O/wholemodule on the GlobalISel path, surfacing as bogus
 # "undefined symbol: _abort/_free/..." link failures. Mirrors scripts/reload.sh.
@@ -165,6 +168,10 @@ while [[ $# -gt 0 ]]; do
       NO_SETUP=1
       shift
       ;;
+    --legacy-stack-attach)
+      LEGACY_STACK_ATTACH=1
+      shift
+      ;;
     --swift-frontend-workaround|--swift-workaround)
       SWIFT_FRONTEND_WORKAROUND=1
       shift
@@ -237,10 +244,9 @@ fi
 CMUX_IOS_AUTH_ENV_VALUE=""
 if [[ "$PROD_AUTH" -eq 1 ]]; then
   CMUX_IOS_AUTH_ENV_VALUE="production"
-  # The dogfood auto-login creds are dev-Stack-project accounts; against
-  # production auth they cannot sign in. Launch plain and sign in in-app with
-  # the same account as the Mac you want to pair with.
-  if [[ "$NO_SETUP" -eq 0 && "$NO_SIGN_IN" -eq 0 ]]; then
+  # Only the explicit legacy mode needs dogfood credentials; v3 DeviceLink is
+  # independent of the configured Stack environment.
+  if [[ "$LEGACY_STACK_ATTACH" -eq 1 && "$NO_SETUP" -eq 0 && "$NO_SIGN_IN" -eq 0 ]]; then
     echo "==> --prod-auth: skipping auto sign-in/auto-pair (dogfood creds are dev-channel); sign in in the app"
     NO_SIGN_IN=1
   fi
@@ -360,9 +366,9 @@ if [[ ! -x "$GHOSTTYKIT_ENSURE" ]]; then
 fi
 "$GHOSTTYKIT_ENSURE"
 
-# Auto-setup launch: relaunch the just-installed app signed in (dogfood creds
-# injected) and, unless --no-attach, auto-paired to the tagged Mac app. Delegates
-# to scripts/mobile-dev-launch.sh so there is ONE signed-launch path. Returns
+# Auto-setup launch: relaunch the just-installed app signed out and, unless
+# --no-attach, pair it with a v3 DeviceLink code from the tagged Mac. Delegates
+# to scripts/mobile-dev-launch.sh so there is one launch path. Returns
 # non-zero on any failure so callers can warn + leave the app installed. $1 =
 # device|simulator, $2 = device install id (device only).
 auto_setup_launch() {
@@ -379,10 +385,11 @@ auto_setup_launch() {
     [[ -n "$id" ]] && args+=(--simulator-id "$id")
   fi
   # Auto-pair by default (--ensure-mac enables the pairing host + launches the
-  # tagged Mac app if down, then mints a ticket); --no-attach signs in only.
+  # tagged Mac app if down, then mints a v3 pairing code).
   [[ "$NO_ATTACH" -eq 0 ]] && args+=(--ensure-mac)
+  [[ "$LEGACY_STACK_ATTACH" -eq 1 ]] && args+=(--legacy-stack-attach)
   if [[ ! -x "$MOBILE_DEV_LAUNCH" ]]; then
-    echo "warning: $MOBILE_DEV_LAUNCH not found/executable; cannot auto-sign-in" >&2
+    echo "warning: $MOBILE_DEV_LAUNCH not found/executable; cannot auto-pair" >&2
     return 1
   fi
   "$MOBILE_DEV_LAUNCH" "${args[@]}"
@@ -711,11 +718,11 @@ PY
 
   if [[ "$LAUNCH" -eq 1 ]]; then
     xcrun simctl terminate "$SIM_ID" "$BUNDLE_ID" >/dev/null 2>&1 || true
-    if [[ "$NO_SETUP" -eq 1 || "$NO_SIGN_IN" -eq 1 ]]; then
+    if [[ "$NO_SETUP" -eq 1 || ( "$LEGACY_STACK_ATTACH" -eq 1 && "$NO_SIGN_IN" -eq 1 ) ]]; then
       xcrun simctl launch "$SIM_ID" "$BUNDLE_ID" >/dev/null
     elif ! auto_setup_launch simulator "$SIM_ID"; then
-      echo "error: installed $BUNDLE_ID, but signed setup failed; refusing an unpaired fallback launch" >&2
-      echo "error: repair the tagged Mac/Iroh route, or pass --no-attach, --no-sign-in, or --no-setup explicitly" >&2
+      echo "error: installed $BUNDLE_ID, but DeviceLink setup failed; refusing an unpaired fallback launch" >&2
+      echo "error: repair the tagged Mac/Tailscale route, or pass --no-attach or --no-setup explicitly" >&2
       return 1
     fi
   fi
@@ -914,6 +921,7 @@ reload_device() {
     [[ "$NO_ATTACH" -eq 1 ]] && enqueue_args+=(--no-attach)
     [[ "$NO_SIGN_IN" -eq 1 ]] && enqueue_args+=(--no-sign-in)
     [[ "$NO_SETUP" -eq 1 ]] && enqueue_args+=(--no-setup)
+    [[ "$LEGACY_STACK_ATTACH" -eq 1 ]] && enqueue_args+=(--legacy-stack-attach)
     [[ "$LAUNCH" -eq 0 ]] && enqueue_args+=(--no-launch)
     "$QUEUE_SCRIPT" "${enqueue_args[@]}"
     return 0
@@ -926,9 +934,9 @@ reload_device() {
     # Build + install already succeeded; a launch failure (most commonly a
     # LOCKED device — "could not be unlocked") must not fail the whole reload
     # or skip the QR marker update below. Warn and continue.
-    if [[ "$NO_SETUP" -eq 1 || "$NO_SIGN_IN" -eq 1 ]]; then
-      # Plain launch (no sign-in / no pair). --no-sign-in implies no auto-setup
-      # since attaching without a signed-in session is meaningless.
+    if [[ "$NO_SETUP" -eq 1 || ( "$LEGACY_STACK_ATTACH" -eq 1 && "$NO_SIGN_IN" -eq 1 ) ]]; then
+      # Plain launch. In the default DeviceLink mode --no-sign-in is already
+      # satisfied and does not disable account-free pairing.
       if ! xcrun devicectl device process launch --terminate-existing --device "$selected_device_install_id" "$BUNDLE_ID" >/dev/null 2>&1; then
         echo "warning: installed but could not launch $BUNDLE_ID (device locked? unlock the iPhone and tap the app)" >&2
       fi
@@ -936,8 +944,8 @@ reload_device() {
       # A plain fallback can reuse stale pairing state and look dogfood-ready
       # while the matching tagged Iroh route is absent. Fail closed unless the
       # caller explicitly requested a plain launch above.
-      echo "error: installed $BUNDLE_ID, but signed setup failed; refusing an unpaired fallback launch" >&2
-      echo "error: repair the tagged Mac/Iroh route, or pass --no-attach, --no-sign-in, or --no-setup explicitly" >&2
+      echo "error: installed $BUNDLE_ID, but DeviceLink setup failed; refusing an unpaired fallback launch" >&2
+      echo "error: repair the tagged Mac/Tailscale route, or pass --no-attach or --no-setup explicitly" >&2
       return 1
     fi
   fi

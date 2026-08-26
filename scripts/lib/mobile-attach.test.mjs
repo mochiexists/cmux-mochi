@@ -98,7 +98,12 @@ function resolveIOSIrohBrokerBaseURL(extraEnv = {}) {
   );
 }
 
-async function mintAttachURL(target, payload, maxAttempts = 1) {
+async function mintAttachURL(
+  target,
+  payload,
+  maxAttempts = 1,
+  functionName = "cmux_attach_mint_url",
+) {
   const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "cmux-mobile-attach-test-"));
   const scriptsDir = path.join(tempRoot, "scripts");
   const socketPath = path.join(tempRoot, "mobile.sock");
@@ -154,7 +159,7 @@ async function mintAttachURL(target, payload, maxAttempts = 1) {
         [
           'source "$1"',
           'cmux_attach_socket_path() { printf "%s" "$CMUX_TEST_SOCKET"; }',
-          'cmux_attach_mint_url "test" 60 "$2" "$3" "$4"',
+          `${functionName} "test" 60 "$2" "$3" "$4"`,
         ].join("; "),
         "mobile-attach-test",
         validator,
@@ -254,7 +259,7 @@ function attachPayload(kind) {
   };
 }
 
-function runQRGenerator(payloads) {
+function runQRGenerator(payloads, extraArgs = []) {
   const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "cmux-mobile-qr-test-"));
   const scriptsDir = path.join(tempRoot, "scripts");
   const libDir = path.join(scriptsDir, "lib");
@@ -267,6 +272,14 @@ function runQRGenerator(payloads) {
   fs.copyFileSync(
     path.join(repoRoot, "scripts/mobile-attach-qr.sh"),
     path.join(scriptsDir, "mobile-attach-qr.sh"),
+  );
+  fs.copyFileSync(
+    path.join(repoRoot, "scripts/lib/mobile-attach.sh"),
+    path.join(libDir, "mobile-attach.sh"),
+  );
+  fs.copyFileSync(
+    path.join(repoRoot, "scripts/fork-identity.env"),
+    path.join(scriptsDir, "fork-identity.env"),
   );
   payloads.forEach((payload, index) => {
     fs.writeFileSync(
@@ -298,6 +311,7 @@ function runQRGenerator(payloads) {
       "lane-a",
       "--out-dir",
       outputDirectory,
+      ...extraArgs,
     ],
     {
       CMUX_ATTACH_QR_MAX_ATTEMPTS: String(payloads.length),
@@ -313,8 +327,8 @@ function runQRGenerator(payloads) {
   result.params = fs.existsSync(paramsLogPath)
     ? fs.readFileSync(paramsLogPath, "utf8").trim().split("\n").map(JSON.parse)
     : [];
-  result.filteredPayload = fs.existsSync(path.join(outputDirectory, "attach-ticket.filtered.json"))
-    ? JSON.parse(fs.readFileSync(path.join(outputDirectory, "attach-ticket.filtered.json"), "utf8"))
+  result.report = fs.existsSync(path.join(outputDirectory, "pairing-code.report.json"))
+    ? JSON.parse(fs.readFileSync(path.join(outputDirectory, "pairing-code.report.json"), "utf8"))
     : null;
   fs.rmSync(tempRoot, { recursive: true, force: true });
   return result;
@@ -526,11 +540,47 @@ test("physical-device mint accepts an encrypted Iroh route", async () => {
   assert.equal(result.stdout, payload.attach_url);
 });
 
-test("QR fallback waits for the exact tagged Mac's authenticated Iroh route", () => {
+test("DeviceLink physical mint accepts v3 Tailscale and no bearer", async () => {
+  const pairingURL = new URL("cmux-ios://attach");
+  pairingURL.searchParams.set("v", "3");
+  pairingURL.searchParams.append("r", "100.82.214.112:50906");
+  pairingURL.searchParams.set("f", "b".repeat(64));
+  pairingURL.searchParams.set("t", "single-use-enrollment");
+  const result = await mintAttachURL(
+    "physical_device",
+    { pairing_url: pairingURL.toString() },
+    1,
+    "cmux_attach_mint_devicelink_url",
+  );
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.stdout, pairingURL.toString());
+  assert.doesNotMatch(result.stdout, /authToken|bearer/i);
+});
+
+test("DeviceLink physical mint rejects loopback-only v3 codes", async () => {
+  const pairingURL = new URL("cmux-ios://attach");
+  pairingURL.searchParams.set("v", "3");
+  pairingURL.searchParams.append("r", "127.0.0.1:50906");
+  pairingURL.searchParams.set("f", "c".repeat(64));
+  pairingURL.searchParams.set("t", "single-use-enrollment");
+  const result = await mintAttachURL(
+    "physical_device",
+    { pairing_url: pairingURL.toString() },
+    1,
+    "cmux_attach_mint_devicelink_url",
+  );
+
+  assert.equal(result.status, 2);
+  assert.equal(result.stdout, "");
+  assert.match(result.stderr, /tailscale_route_unavailable/);
+});
+
+test("legacy QR mode waits for the exact tagged Mac's authenticated Iroh route", () => {
   const result = runQRGenerator([
     attachPayload("tailscale"),
     attachPayload("iroh"),
-  ]);
+  ], ["--legacy-stack-attach"]);
 
   assert.equal(result.status, 0, result.stderr);
   assert.equal(result.callCount, 2);
@@ -538,10 +588,26 @@ test("QR fallback waits for the exact tagged Mac's authenticated Iroh route", ()
     result.params.map((params) => params.route_kind),
     ["iroh", "iroh"],
   );
-  assert.deepEqual(
-    result.filteredPayload.ticket.routes.map((route) => route.kind),
-    ["iroh"],
-  );
+  assert.equal(result.report.mode, "legacy_stack_iroh");
+  assert.equal(result.report.contains_stack_bearer, true);
+});
+
+test("QR defaults to a no-bearer v3 DeviceLink code with a phone route", () => {
+  const pairingURL = new URL("cmux-ios://attach");
+  pairingURL.searchParams.set("v", "3");
+  pairingURL.searchParams.append("r", "100.82.214.112:50906");
+  pairingURL.searchParams.set("f", "a".repeat(64));
+  pairingURL.searchParams.set("t", "single-use-enrollment");
+  const result = runQRGenerator([{ pairing_url: pairingURL.toString() }]);
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.callCount, 1);
+  assert.deepEqual(result.params, [{ ttl_seconds: 3600 }]);
+  assert.equal(result.report.mode, "devicelink_v3_tailscale");
+  assert.equal(result.report.contains_stack_bearer, false);
+  assert.deepEqual(result.report.routes, [
+    { kind: "tailscale", address: "100.82.214.112:50906" },
+  ]);
 });
 
 test("QR server pins its launch tags and allocates an isolated port", () => {
@@ -792,6 +858,7 @@ test("physical-device attach reports a missing tagged Mac before blaming Iroh", 
       "--device-id",
       "not-used",
       "--attach",
+      "--legacy-stack-attach",
       "--agent",
     ],
     {

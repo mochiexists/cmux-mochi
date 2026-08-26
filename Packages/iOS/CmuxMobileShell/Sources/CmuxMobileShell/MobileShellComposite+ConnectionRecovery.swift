@@ -638,6 +638,10 @@ extension MobileShellComposite {
         // it refuses every route as untrusted and the pairing can never connect.
         let hasDeviceLinkCredential = MobileDeviceLinkClient.shared
             .hasUsableCredential(forMacDeviceID: pairedMacDeviceID)
+        let canDialWithStoredAuthority = firstRoute.kind == .iroh
+            || firstRoute.kind == .debugLoopback
+            || hasAuthorizedLegacyTailscaleRoute
+            || hasDeviceLinkCredential
         MobileShellComposite.logStoredMacDialDecision(
             mac: pairedMacDeviceID,
             routeKinds: pinnedRoutes.map { route in
@@ -647,11 +651,9 @@ extension MobileShellComposite {
                 return "\(route.kind.rawValue)@\(host):\(port)"
             },
             hasDeviceLinkCredential: hasDeviceLinkCredential,
-            canConnect: firstRoute.kind == .iroh
-                || hasAuthorizedLegacyTailscaleRoute
-                || hasDeviceLinkCredential
+            canConnect: canDialWithStoredAuthority
         )
-        if firstRoute.kind == .iroh || hasAuthorizedLegacyTailscaleRoute || hasDeviceLinkCredential {
+        if canDialWithStoredAuthority {
             do {
                 let ticket = try Self.storedMacTicket(
                     name: name,
