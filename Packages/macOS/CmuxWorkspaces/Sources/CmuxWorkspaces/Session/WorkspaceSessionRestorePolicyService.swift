@@ -42,12 +42,17 @@ public struct WorkspaceSessionRestorePolicyService<Binding: WorkspaceSurfaceResu
     }
 
     /// Returns whether restored scrollback should be replayed for a terminal.
+    ///
+    /// A restorable agent record is only metadata. It does not guarantee that
+    /// restore will launch the agent: liveness checks can deliberately suppress
+    /// that launch. Keep the saved terminal contents unless startup work will
+    /// actually replace them.
     public func shouldReplaySessionScrollback(
-        hasRestorableAgent: Bool,
+        hasRestorableAgent _: Bool,
         tmuxStartCommand: String? = nil,
         hasResumeStartupWork: Bool = false
     ) -> Bool {
-        !hasRestorableAgent && restorableTmuxStartCommand(tmuxStartCommand) == nil && !hasResumeStartupWork
+        restorableTmuxStartCommand(tmuxStartCommand) == nil && !hasResumeStartupWork
     }
 
     /// Returns whether a restored remote workspace should auto-connect.

@@ -117,7 +117,7 @@ final class AgentSessionAutoResumeSettingsTests: XCTestCase {
 
     /// When autoResumeAgentSessions is enabled but the agent was already exited at snapshot time
     /// (wasAgentRunning == false), cmux must NOT inject the resume command on restore.
-    /// The session ID must still be preserved for manual resume.
+    /// The session ID and saved scrollback must still be preserved for manual resume.
     @MainActor
     func testAgentExitedBeforeSnapshotDoesNotAutoResumeEvenWhenSettingEnabled() throws {
         try withRestoredDefaults(key: AgentSessionAutoResumeSettings.autoResumeAgentSessionsKey) {
@@ -133,7 +133,10 @@ final class AgentSessionAutoResumeSettingsTests: XCTestCase {
             )
             // Simulate: agent was already exited (shell at promptIdle) before snapshot
             source.updatePanelShellActivityState(panelId: sourcePanelId, state: .promptIdle)
-            let snapshot = source.sessionSnapshot(includeScrollback: false, restorableAgentIndex: sourceIndex)
+            let seededScrollback = source.debugSeedSessionSnapshotScrollback(charactersPerTerminal: 160)
+            XCTAssertEqual(seededScrollback.terminals, 1)
+            let snapshot = source.sessionSnapshot(includeScrollback: true, restorableAgentIndex: sourceIndex)
+            let savedScrollback = try XCTUnwrap(snapshot.panels.first?.terminal?.scrollback)
 
             XCTAssertEqual(snapshot.panels.first?.terminal?.wasAgentRunning, false,
                            "snapshot should record wasAgentRunning=false when shell was idle at save time")
@@ -145,10 +148,13 @@ final class AgentSessionAutoResumeSettingsTests: XCTestCase {
             let restoredPanelId = try XCTUnwrap(restored.focusedPanelId)
             let restoredPanel = try XCTUnwrap(restored.terminalPanel(for: restoredPanelId))
             let restoredInput = restoredPanel.surface.debugInitialInputMetadata()
+            let replayFileURL = try XCTUnwrap(restoredPanel.ownedSessionScrollbackReplayFileURL)
+            defer { try? FileManager.default.removeItem(at: replayFileURL) }
 
             XCTAssertFalse(restoredInput.hasInitialInput,
                            "must not auto-resume when agent was already exited at snapshot time")
             XCTAssertNil(restoredPanel.surface.debugInitialCommand())
+            XCTAssertEqual(try String(contentsOf: replayFileURL, encoding: .utf8), savedScrollback)
             XCTAssertEqual(
                 restored.sessionSnapshot(includeScrollback: false).panels.first?.terminal?.agent?.sessionId,
                 "codex-exited-before-snapshot-session",

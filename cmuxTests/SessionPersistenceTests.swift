@@ -1314,7 +1314,7 @@ final class SessionPersistenceTests: XCTestCase {
         XCTAssertNil(resolved)
     }
 
-    func testRestorableAgentRestoreSuppressesSavedScrollbackReplay() {
+    func testRestorableAgentWithoutResumeWorkReplaysSavedScrollback() {
         let agent = SessionRestorableAgentSnapshot(
             kind: .claude,
             sessionId: "claude-session-123",
@@ -1322,7 +1322,7 @@ final class SessionPersistenceTests: XCTestCase {
             launchCommand: nil
         )
 
-        XCTAssertFalse(Workspace.shouldReplaySessionScrollback(restorableAgent: agent))
+        XCTAssertTrue(Workspace.shouldReplaySessionScrollback(restorableAgent: agent))
         XCTAssertTrue(Workspace.shouldReplaySessionScrollback(restorableAgent: nil))
     }
 
