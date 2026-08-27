@@ -117,6 +117,18 @@ class ForkParityValidationTests(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("Test files wired", result.stdout)
 
+    def test_rejects_prefixed_pending_candidate_gate(self) -> None:
+        result = self.run_checker(matrix(gate="Pending final evidence rerun"))
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("Test files wired", result.stdout)
+
+    def test_rejects_prefixed_failed_mobile_journey(self) -> None:
+        result = self.run_checker(matrix(mobile="Failed: device disconnected"))
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("QR journey", result.stdout)
+
     def test_rejects_pending_mobile_journey(self) -> None:
         result = self.run_checker(matrix(mobile="Pending"))
 

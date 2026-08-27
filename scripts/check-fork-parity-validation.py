@@ -39,7 +39,14 @@ def table_rows(table: str, expected_cells: int) -> list[list[str]]:
 
 
 def is_unresolved(value: str) -> bool:
-    return value.strip().lower() in UNRESOLVED_RESULTS
+    normalized = value.strip().lower()
+    return any(
+        normalized == marker
+        or normalized.startswith(f"{marker} ")
+        or normalized.startswith(f"{marker}:")
+        for marker in UNRESOLVED_RESULTS
+        if marker
+    ) or normalized == ""
 
 
 def ledger_feature_ids(ledger: Path) -> set[str]:
