@@ -102,12 +102,25 @@ cli() {
 selected_surface() {
   local surface
   surface="$(cli list-pane-surfaces | awk '
-    {
-      for (field = 1; field <= NF; field += 1) {
+    $1 == "*" {
+      for (field = 2; field <= NF; field += 1) {
         if ($field ~ /^surface:/) {
           print $field
+          foundSelected = 1
           exit
         }
+      }
+    }
+    {
+      for (field = 1; field <= NF; field += 1) {
+        if ($field ~ /^surface:/ && fallback == "") {
+          fallback = $field
+        }
+      }
+    }
+    END {
+      if (!foundSelected && fallback != "") {
+        print fallback
       }
     }
   ')"
@@ -116,6 +129,19 @@ selected_surface() {
     exit 1
   fi
   printf '%s\n' "$surface"
+}
+
+wait_for_surface_readable() {
+  local surface="$1"
+  local deadline=$((SECONDS + 20))
+  while (( SECONDS < deadline )); do
+    if cli read-screen --surface "$surface" --scrollback --lines 1 >/dev/null 2>&1; then
+      return
+    fi
+    sleep 0.2
+  done
+  echo "terminal did not become readable: $surface" >&2
+  exit 1
 }
 
 wait_for_text() {
@@ -194,16 +220,20 @@ stop_existing_tagged_app() {
 run_id="$(date -u +%Y%m%dT%H%M%SZ)-$$"
 first="CMUX-FORCE-QUIT-A-${run_id}"
 second="CMUX-FORCE-QUIT-B-${run_id}"
+workspace_name="CMUX-FORCE-QUIT-${run_id}"
 
 stop_existing_tagged_app
 launch_app
+cli new-workspace --name "$workspace_name" --cwd "$ROOT_DIR" --focus true >/dev/null
 surface="$(selected_surface)"
+wait_for_surface_readable "$surface"
 seed_cycle "$surface" "$first"
 sleep 10
 force_quit
 
 launch_app
 surface="$(selected_surface)"
+wait_for_surface_readable "$surface"
 assert_cycle "$surface" "$first"
 seed_cycle "$surface" "$second"
 sleep 10
@@ -211,6 +241,7 @@ force_quit
 
 launch_app
 surface="$(selected_surface)"
+wait_for_surface_readable "$surface"
 assert_cycle "$surface" "$first"
 assert_cycle "$surface" "$second"
 
