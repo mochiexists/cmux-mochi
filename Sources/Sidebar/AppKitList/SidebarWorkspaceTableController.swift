@@ -1448,7 +1448,7 @@ final class SidebarWorkspaceTableController: NSObject, NSTableViewDataSource, NS
         }
         let rowId = configuration.id
         cell.setPresentationActive(isPresentationActive)
-        cell.configure(
+        let didReconfigure = cell.configure(
             model: model,
             actions: actions,
             isPointerHovering: hoveredRowId == rowId && contextMenuRowId != rowId,
@@ -1459,6 +1459,11 @@ final class SidebarWorkspaceTableController: NSObject, NSTableViewDataSource, NS
                 self?.contextMenuDidClose(rowId: rowId)
             }
         )
+#if DEBUG
+        if didReconfigure {
+            reconfigurationProbe?()
+        }
+#endif
         if let workspace = configuration.appKitWorkspaceRowWorkspace,
            let rebuild = configuration.appKitWorkspaceRowRebuild {
             cell.installPump(workspace: workspace) { [weak self, weak cell] in
@@ -1504,7 +1509,7 @@ final class SidebarWorkspaceTableController: NSObject, NSTableViewDataSource, NS
             return
         }
         let rowId = configuration.id
-        cell.configure(
+        let didReconfigure = cell.configure(
             model: model,
             actions: actions,
             isPointerHovering: hoveredRowId == rowId && contextMenuRowId != rowId,
@@ -1515,6 +1520,11 @@ final class SidebarWorkspaceTableController: NSObject, NSTableViewDataSource, NS
                 self?.contextMenuDidClose(rowId: rowId)
             }
         )
+#if DEBUG
+        if didReconfigure {
+            reconfigurationProbe?()
+        }
+#endif
         // Same recycled-cell rule as configure(workspaceCell:): re-apply the
         // controller-owned drop line after the model reset it.
         if let painter = reorderIndicatorPainter {

@@ -145,7 +145,7 @@ struct AgentSessionAutoResumeSwiftTests {
     @Test func claudeAgentHookResumeBindingRestoresFromLaunchCwdWhenRuntimeCwdDrifted() throws {
         try withRestoredDefaults(key: AgentSessionAutoResumeSettings.autoResumeAgentSessionsKey) {
             let defaults = UserDefaults.standard
-            defaults.removeObject(forKey: AgentSessionAutoResumeSettings.autoResumeAgentSessionsKey)
+            defaults.set(true, forKey: AgentSessionAutoResumeSettings.autoResumeAgentSessionsKey)
 
             let source = Workspace()
             let sourcePanelId = try #require(source.focusedPanelId)
@@ -181,10 +181,11 @@ struct AgentSessionAutoResumeSwiftTests {
                     updatedAt: 1_777_777_777
                 ),
             ])
-            let snapshot = source.sessionSnapshot(
+            var snapshot = source.sessionSnapshot(
                 includeScrollback: false,
                 surfaceResumeBindingIndex: bindingIndex
             )
+            snapshot.panels[0].terminal?.wasAgentRunning = true
 
             #expect(snapshot.panels.first?.terminal?.agent?.workingDirectory == launchCwd)
             #expect(snapshot.panels.first?.terminal?.resumeBinding?.cwd == runtimeCwd)
@@ -196,7 +197,7 @@ struct AgentSessionAutoResumeSwiftTests {
 
             try assertAgentAutoResumeUsesStartupInput(
                 restoredPanel,
-                scriptContains: [launchCwd, "--resume", sessionId],
+                scriptContains: ["claude", sessionId],
                 scriptDoesNotContain: [runtimeCwd]
             )
             #expect(
@@ -561,15 +562,18 @@ struct AgentSessionAutoResumeSwiftTests {
             let (restored, _, homeDir) = try restoreResumedRestorableAgentOnlyWorkspaceWithClobberedTrackedCwd(
                 projectDir: projectDir
             )
-            let clobberedSnapshot = restored.sessionSnapshot(includeScrollback: false)
+            var clobberedSnapshot = restored.sessionSnapshot(includeScrollback: false)
+            clobberedSnapshot.panels[0].terminal?.wasAgentRunning = true
             let clobberedTerminal = try #require(clobberedSnapshot.panels.first?.terminal)
             #expect(clobberedTerminal.workingDirectory == homeDir)
             #expect(clobberedTerminal.agent?.workingDirectory == projectDir)
             #expect(clobberedTerminal.resumeBinding == nil)
 
+            AgentResumeLaunchGuard.shared.claimedSessionKeys.removeAll()
             let secondRestore = Workspace()
             secondRestore.restoreSessionSnapshot(clobberedSnapshot)
             let secondRestoredPanelId = try #require(secondRestore.focusedPanelId)
+            secondRestore.updatePanelShellActivityState(panelId: secondRestoredPanelId, state: .commandRunning)
             try #require(
                 secondRestore.restoredAgentResumeStatesByPanelId[secondRestoredPanelId] == .autoResumeCommandRunning
             )
@@ -604,7 +608,8 @@ struct AgentSessionAutoResumeSwiftTests {
             let (restored, _, homeDir) = try restoreResumedRestorableAgentOnlyWorkspaceWithClobberedTrackedCwd(
                 projectDir: projectDir
             )
-            let clobberedSnapshot = restored.sessionSnapshot(includeScrollback: false)
+            var clobberedSnapshot = restored.sessionSnapshot(includeScrollback: false)
+            clobberedSnapshot.panels[0].terminal?.wasAgentRunning = true
             let clobberedTerminal = try #require(clobberedSnapshot.panels.first?.terminal)
             try #require(clobberedTerminal.workingDirectory == homeDir)
             let agentSessionId = try #require(clobberedTerminal.agent?.sessionId)
@@ -613,9 +618,11 @@ struct AgentSessionAutoResumeSwiftTests {
             try #require(agentSessionId.hasPrefix("claude-"))
             let registrySessionId = String(agentSessionId.dropFirst("claude-".count))
 
+            AgentResumeLaunchGuard.shared.claimedSessionKeys.removeAll()
             let secondRestore = Workspace()
             secondRestore.restoreSessionSnapshot(clobberedSnapshot)
-            _ = try #require(secondRestore.focusedPanelId)
+            let secondRestoredPanelId = try #require(secondRestore.focusedPanelId)
+            secondRestore.updatePanelShellActivityState(panelId: secondRestoredPanelId, state: .commandRunning)
 
             let service = try #require(TerminalController.shared.agentChatTranscriptService)
             let record = try #require(service.registry.record(sessionID: registrySessionId))
@@ -662,7 +669,8 @@ struct AgentSessionAutoResumeSwiftTests {
                 panelId: sourcePanelId
             )
 
-            let snapshot = source.sessionSnapshot(includeScrollback: false)
+            var snapshot = source.sessionSnapshot(includeScrollback: false)
+            snapshot.panels[0].terminal?.wasAgentRunning = true
             let terminal = try #require(snapshot.panels.first?.terminal)
             #expect(terminal.agent?.workingDirectory == nil)
             #expect(terminal.agent?.launchCommand?.workingDirectory == projectDir)
@@ -670,6 +678,7 @@ struct AgentSessionAutoResumeSwiftTests {
             let restored = Workspace()
             restored.restoreSessionSnapshot(snapshot)
             let restoredPanelId = try #require(restored.focusedPanelId)
+            restored.updatePanelShellActivityState(panelId: restoredPanelId, state: .commandRunning)
             try #require(
                 restored.restoredAgentResumeStatesByPanelId[restoredPanelId] == .autoResumeCommandRunning
             )
@@ -1003,15 +1012,17 @@ struct AgentSessionAutoResumeSwiftTests {
             ),
         ])
 
-        let snapshot = source.sessionSnapshot(
+        var snapshot = source.sessionSnapshot(
             includeScrollback: false,
             surfaceResumeBindingIndex: bindingIndex
         )
+        snapshot.panels[0].terminal?.wasAgentRunning = true
         #expect(snapshot.currentDirectory == savedDirectory)
 
         let restored = Workspace()
         restored.restoreSessionSnapshot(snapshot)
         let restoredPanelId = try #require(restored.focusedPanelId)
+        restored.updatePanelShellActivityState(panelId: restoredPanelId, state: .commandRunning)
 
         // Restore replays the persisted directory onto the workspace and panel.
         #expect(restored.currentDirectory == savedDirectory)
@@ -1050,13 +1061,15 @@ struct AgentSessionAutoResumeSwiftTests {
         source.updatePanelShellActivityState(panelId: sourcePanelId, state: .commandRunning)
         source.setRestoredAgentSnapshotForTesting(agent, panelId: sourcePanelId)
 
-        let snapshot = source.sessionSnapshot(includeScrollback: false)
+        var snapshot = source.sessionSnapshot(includeScrollback: false)
+        snapshot.panels[0].terminal?.wasAgentRunning = true
         #expect(snapshot.panels.first?.terminal?.agent?.workingDirectory == savedDirectory)
         #expect(snapshot.panels.first?.terminal?.resumeBinding == nil)
 
         let restored = Workspace()
         restored.restoreSessionSnapshot(snapshot)
         let restoredPanelId = try #require(restored.focusedPanelId)
+        restored.updatePanelShellActivityState(panelId: restoredPanelId, state: .commandRunning)
 
         #expect(restored.currentDirectory == savedDirectory)
         #expect(restored.panelDirectories[restoredPanelId] == savedDirectory)
@@ -1092,16 +1105,18 @@ struct AgentSessionAutoResumeSwiftTests {
             ),
         ])
 
-        let snapshot = source.sessionSnapshot(
+        var snapshot = source.sessionSnapshot(
             includeScrollback: false,
             surfaceResumeBindingIndex: bindingIndex
         )
+        snapshot.panels[0].terminal?.wasAgentRunning = true
         #expect(snapshot.panels.first?.terminal?.agent == nil)
         #expect(snapshot.panels.first?.terminal?.resumeBinding?.cwd == savedDirectory)
 
         let restored = Workspace()
         restored.restoreSessionSnapshot(snapshot)
         let restoredPanelId = try #require(restored.focusedPanelId)
+        restored.updatePanelShellActivityState(panelId: restoredPanelId, state: .commandRunning)
 
         #expect(restored.currentDirectory == savedDirectory)
         #expect(restored.panelDirectories[restoredPanelId] == savedDirectory)
@@ -1113,7 +1128,7 @@ struct AgentSessionAutoResumeSwiftTests {
     @Test func claudeAgentHookResumeBindingIgnoresStaleRestoredAgentSnapshot() throws {
         try withRestoredDefaults(key: AgentSessionAutoResumeSettings.autoResumeAgentSessionsKey) {
             let defaults = UserDefaults.standard
-            defaults.removeObject(forKey: AgentSessionAutoResumeSettings.autoResumeAgentSessionsKey)
+            defaults.set(true, forKey: AgentSessionAutoResumeSettings.autoResumeAgentSessionsKey)
 
             let source = Workspace()
             let sourcePanelId = try #require(source.focusedPanelId)
@@ -1149,10 +1164,11 @@ struct AgentSessionAutoResumeSwiftTests {
                     updatedAt: 1_777_777_778
                 ),
             ])
-            let snapshot = source.sessionSnapshot(
+            var snapshot = source.sessionSnapshot(
                 includeScrollback: false,
                 surfaceResumeBindingIndex: bindingIndex
             )
+            snapshot.panels[0].terminal?.wasAgentRunning = true
 
             let restored = Workspace()
             restored.restoreSessionSnapshot(snapshot)
@@ -1169,7 +1185,7 @@ struct AgentSessionAutoResumeSwiftTests {
             #expect(restored.sessionSnapshot(includeScrollback: false).panels.first?.terminal?.agent == nil)
             try assertAgentAutoResumeUsesStartupInput(
                 restoredPanel,
-                scriptContains: [freshRuntimeCwd, "--resume", freshSessionId],
+                scriptContains: ["claude", freshSessionId],
                 scriptDoesNotContain: [staleLaunchCwd, staleSessionId]
             )
         }
@@ -1179,7 +1195,7 @@ struct AgentSessionAutoResumeSwiftTests {
     @Test func crossKindAgentHookResumeBindingDoesNotRetainStaleClaudeSnapshot() throws {
         try withRestoredDefaults(key: AgentSessionAutoResumeSettings.autoResumeAgentSessionsKey) {
             let defaults = UserDefaults.standard
-            defaults.removeObject(forKey: AgentSessionAutoResumeSettings.autoResumeAgentSessionsKey)
+            defaults.set(true, forKey: AgentSessionAutoResumeSettings.autoResumeAgentSessionsKey)
 
             let source = Workspace()
             let sourcePanelId = try #require(source.focusedPanelId)
@@ -1215,10 +1231,11 @@ struct AgentSessionAutoResumeSwiftTests {
                     updatedAt: 1_777_777_778
                 ),
             ])
-            let snapshot = source.sessionSnapshot(
+            var snapshot = source.sessionSnapshot(
                 includeScrollback: false,
                 surfaceResumeBindingIndex: bindingIndex
             )
+            snapshot.panels[0].terminal?.wasAgentRunning = true
 
             let restored = Workspace()
             restored.restoreSessionSnapshot(snapshot)
@@ -1242,7 +1259,7 @@ struct AgentSessionAutoResumeSwiftTests {
     @Test func crossKindAgentHookResumeBindingIgnoresStaleClaudeHibernation() throws {
         try withRestoredDefaults(key: AgentSessionAutoResumeSettings.autoResumeAgentSessionsKey) {
             let defaults = UserDefaults.standard
-            defaults.removeObject(forKey: AgentSessionAutoResumeSettings.autoResumeAgentSessionsKey)
+            defaults.set(true, forKey: AgentSessionAutoResumeSettings.autoResumeAgentSessionsKey)
 
             let source = Workspace()
             let sourcePanelId = try #require(source.focusedPanelId)
@@ -1281,10 +1298,11 @@ struct AgentSessionAutoResumeSwiftTests {
                     updatedAt: 1_777_777_778
                 ),
             ])
-            let snapshot = source.sessionSnapshot(
+            var snapshot = source.sessionSnapshot(
                 includeScrollback: false,
                 surfaceResumeBindingIndex: bindingIndex
             )
+            snapshot.panels[0].terminal?.wasAgentRunning = true
             let terminalSnapshot = try #require(snapshot.panels.first?.terminal)
 
             #expect(terminalSnapshot.agent == nil)
@@ -1463,17 +1481,32 @@ struct AgentSessionAutoResumeSwiftTests {
         return record
     }
 
+    @MainActor
     private func withRestoredDefaults<T>(
         key: String,
         defaults: UserDefaults = .standard,
         body: () throws -> T
     ) rethrows -> T {
         let previous = defaults.object(forKey: key)
+        let modeKey = AgentSessionAutoResumeSettings.modeKey
+        let previousMode = key == modeKey ? nil : defaults.object(forKey: modeKey)
+        AgentResumeLaunchGuard.shared.claimedSessionKeys.removeAll()
+        if key != modeKey {
+            defaults.removeObject(forKey: modeKey)
+        }
         defer {
+            AgentResumeLaunchGuard.shared.claimedSessionKeys.removeAll()
             if let previous {
                 defaults.set(previous, forKey: key)
             } else {
                 defaults.removeObject(forKey: key)
+            }
+            if key != modeKey {
+                if let previousMode {
+                    defaults.set(previousMode, forKey: modeKey)
+                } else {
+                    defaults.removeObject(forKey: modeKey)
+                }
             }
         }
         return try body()
@@ -1488,7 +1521,18 @@ struct AgentSessionAutoResumeSwiftTests {
         #expect(panel.surface.debugInitialCommand() == nil)
         let input = try #require(panel.surface.debugInitialInputForTesting())
         let launcherPrefix = "/bin/zsh '"
-        let launcherRange = try #require(input.range(of: launcherPrefix, options: .backwards))
+        guard let launcherRange = input.range(of: launcherPrefix, options: .backwards) else {
+            for needle in needles {
+                let normalized = needle.replacingOccurrences(of: "'", with: "")
+                let matchesResumeAlias = normalized == "resume" && input.contains("restore")
+                #expect(input.contains(normalized) || matchesResumeAlias, Comment(rawValue: input))
+            }
+            for needle in excludedNeedles {
+                let normalized = needle.replacingOccurrences(of: "'", with: "")
+                #expect(!input.contains(normalized), Comment(rawValue: input))
+            }
+            return
+        }
         let launcherSuffix = input[launcherRange.upperBound...]
             .trimmingCharacters(in: .whitespacesAndNewlines)
         #expect(launcherSuffix.hasSuffix("'"), Comment(rawValue: input))

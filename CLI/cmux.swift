@@ -3462,7 +3462,10 @@ struct CMUXCLI {
         if command == "help" { print(usage()); return }; if command == "remote-daemon-status" { try runRemoteDaemonStatus(commandArgs: commandArgs, jsonOutput: jsonOutput); return }
         if command == "vm-pty-connect" { try runVMPtyConnect(commandArgs: commandArgs); return }
         if command == "docs" { try runDocsCommand(commandArgs: commandArgs, jsonOutput: jsonOutput); return }
-        if command == "welcome" { printWelcome(); return }
+        if command == "welcome" {
+            try printWelcome(commandArgs: commandArgs, jsonOutput: jsonOutput)
+            return
+        }
         if command == "sessions" || command == "session-debug" { try runSessionsCommand(commandArgs: command == "session-debug" ? ["debug"] + commandArgs : commandArgs, jsonOutput: jsonOutput, processEnv: processEnv); return }
         if command == "__sigpipe-probe" { try runSIGPIPEProbe(commandArgs: commandArgs); return }
         if command == "__sigpipe-stdin-pipe-probe" { try runSIGPIPEStdinPipeProbe(); return }
@@ -15824,10 +15827,13 @@ struct CMUXCLI {
             return configUsage()
         case "welcome":
             return """
-            Usage: cmux welcome
+            Usage: cmux welcome [--json]
 
             Show a welcome screen with the cmux logo and useful shortcuts.
             Auto-runs once on first launch.
+
+            Flags:
+              --json   Print the stable fork feature identifiers as JSON.
             """
         case "shortcuts":
             return """
@@ -35821,7 +35827,88 @@ export default CMUXSessionRestore;
         return "\(baseSummary) [\(commit)]"
     }
 
-    private func printWelcome() {
+    private struct MochiWelcomeCategory {
+        let featureIDs: [String]
+        let text: String
+    }
+
+    private var mochiWelcomeCategories: [MochiWelcomeCategory] {
+        [
+            MochiWelcomeCategory(
+                featureIDs: [
+                    "session.force-quit-continuity",
+                    "agent.resume-continuity",
+                    "pane.zoom-persistence",
+                ],
+                text: "Session continuity — restored scrollback, agent resume prompts, and pane maximization survive quit and relaunch"
+            ),
+            MochiWelcomeCategory(
+                featureIDs: ["mobile.account-free-pairing", "mobile.reconnect-continuity"],
+                text: "Account-free iPhone access — pair by QR over Tailscale; no cmux account or login required"
+            ),
+            MochiWelcomeCategory(
+                featureIDs: ["task.resource-monitor"],
+                text: "Resource Monitor — an always-visible CPU/memory footer opens the full-area Task Manager"
+            ),
+            MochiWelcomeCategory(
+                featureIDs: [
+                    "capture.workspace",
+                    "conductor.live-job-guard",
+                    "conductor.atomic-submit",
+                    "conductor.agent-settle-wait",
+                ],
+                text: "Conductor — drive visible Codex and Claude worker panes with workspace capture and guarded, surface-pinned send/submit/wait"
+            ),
+            MochiWelcomeCategory(
+                featureIDs: ["artifacts.panes"],
+                text: "Artifact panes — create React, HTML, SVG, Mermaid, code, and file artifacts"
+            ),
+            MochiWelcomeCategory(
+                featureIDs: ["files.backed-tab-actions"],
+                text: "File-backed tabs — Reveal in Finder, Copy File, and Copy Path across previews and artifacts"
+            ),
+            MochiWelcomeCategory(
+                featureIDs: [
+                    "placement.adaptive-right",
+                    "navigation.reopen-closed",
+                    "navigation.sidebar-spring-load",
+                ],
+                text: "Navigation polish — adaptive right-side pane placement, closed-tab restore, and sidebar spring-load switching"
+            ),
+            MochiWelcomeCategory(
+                featureIDs: ["privacy.frost"],
+                text: "Privacy Frost — blur sensitive workspaces or groups and redact their sidebar content"
+            ),
+            MochiWelcomeCategory(
+                featureIDs: ["sidebar.render-stability"],
+                text: "Sidebar stability — render-storm and lazy-layout fixes keep busy agent workspaces responsive"
+            ),
+        ]
+    }
+
+    private var mochiWelcomeFeatureIDs: [String] {
+        (["shell.safe-resume-aliases"] + mochiWelcomeCategories.flatMap(\.featureIDs) + ["fork.no-pro-upsell"])
+            .sorted()
+    }
+
+    private func printWelcome(commandArgs: [String], jsonOutput: Bool) throws {
+        guard commandArgs.isEmpty else {
+            throw CLIError(message: "welcome: unexpected arguments: \(commandArgs.joined(separator: " "))")
+        }
+        if jsonOutput {
+            let categories = mochiWelcomeCategories.map { category in
+                ["feature_ids": category.featureIDs, "text": category.text] as [String: Any]
+            }
+            let payload: [String: Any] = [
+                "schema_version": 1,
+                "feature_ids": mochiWelcomeFeatureIDs,
+                "categories": categories,
+            ]
+            let data = try JSONSerialization.data(withJSONObject: payload, options: [.prettyPrinted, .sortedKeys])
+            print(String(decoding: data, as: UTF8.self))
+            return
+        }
+
         let reset = "\u{001B}[0m"
         let bold = "\u{001B}[1m"
         let italic = "\u{001B}[3m"
@@ -35902,15 +35989,9 @@ export default CMUXSessionRestore;
         print("  \(bold)Also see\(reset)\(subdued)            ovm · https://github.com/mochiexists/ovm\(reset)")
         print()
         print("  \(tagline)Added in this fork\(reset)")
-        print("  \(mochi)•\(reset) Session continuity — restored scrollback, agent resume prompts, and pane maximization survive quit and relaunch")
-        print("  \(mochi)•\(reset) Account-free iPhone access — pair by QR over Tailscale; no cmux account or login required")
-        print("  \(mochi)•\(reset) Resource Monitor — an always-visible CPU/memory footer opens the full-area Task Manager")
-        print("  \(mochi)•\(reset) Conductor — drive visible Codex and Claude worker panes with workspace capture and guarded, surface-pinned send/submit/wait")
-        print("  \(mochi)•\(reset) Artifact panes — create React, HTML, SVG, Mermaid, code, and file artifacts")
-        print("  \(mochi)•\(reset) File-backed tabs — Reveal in Finder, Copy File, and Copy Path across previews and artifacts")
-        print("  \(mochi)•\(reset) Navigation polish — adaptive right-side pane placement, closed-tab restore, and sidebar spring-load switching")
-        print("  \(mochi)•\(reset) Privacy Frost — blur sensitive workspaces or groups and redact their sidebar content")
-        print("  \(mochi)•\(reset) Sidebar stability — render-storm and lazy-layout fixes keep busy agent workspaces responsive")
+        for category in mochiWelcomeCategories {
+            print("  \(mochi)•\(reset) \(category.text)")
+        }
         print()
         print("  \(italic)\(subdued)This personal fork has no Pro plan or upgrade prompts. Support cmux upstream instead.\(reset)")
         print("  \(subdued)\(String(repeating: "\u{2500}", count: 58))\(reset)")

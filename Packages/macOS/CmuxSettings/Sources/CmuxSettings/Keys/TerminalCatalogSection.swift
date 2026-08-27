@@ -43,10 +43,10 @@ public struct TerminalCatalogSection: SettingCatalogSection {
         userDefaultsKey: "terminal.copyOnSelect"
     )
 
-    public let autoResumeAgentSessions = DefaultsKey<Bool>(
-        id: "terminal.autoResumeAgentSessions",
-        defaultValue: true,
-        userDefaultsKey: "terminal.autoResumeAgentSessions"
+    public let agentResumeMode = DefaultsKey<String>(
+        id: "terminal.agentResumeMode",
+        defaultValue: "medium",
+        userDefaultsKey: "terminal.agentResumeMode"
     )
 
     public let agentHibernationEnabled = DefaultsKey<Bool>(

@@ -56,6 +56,7 @@ struct ControlCommandExecutionPolicyTests {
     }
 
     @Test func artifactOpenAndListRunOnTheSocketWorker() {
+        #expect(ControlCommandExecutionPolicy(forMethod: "artifact.new") == .socketWorker(mainThreadCallable: false))
         #expect(ControlCommandExecutionPolicy(forMethod: "artifact.open") == .socketWorker(mainThreadCallable: false))
         #expect(ControlCommandExecutionPolicy(forMethod: "artifact.list") == .socketWorker(mainThreadCallable: false))
     }

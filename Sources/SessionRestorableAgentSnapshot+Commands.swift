@@ -42,12 +42,16 @@ extension SessionRestorableAgentSnapshot {
     }
 
     var resumeCommand: String? {
-        resumeCommand(includeWorkingDirectoryPrefix: true)
+        resumeCommand(
+            includeWorkingDirectoryPrefix: true,
+            style: AgentResumeCommandStyleSettings.style()
+        )
     }
 
     func resumeCommand(
         includeWorkingDirectoryPrefix: Bool,
-        restoringWorkingDirectory: String? = nil
+        restoringWorkingDirectory: String? = nil,
+        style: AgentResumeCommandStyle = AgentResumeCommandStyleSettings.style()
     ) -> String? {
         let effectiveWorkingDirectory = restoringWorkingDirectory ?? workingDirectory
         if kind.restoreMode == .relaunchCommand {
@@ -64,7 +68,8 @@ extension SessionRestorableAgentSnapshot {
         // resumed line short instead of carrying the captured binary path.
         // `equivalentAliasResumeShellCommand` returns nil the moment anything
         // would be lost, so this can only ever substitute, never approximate.
-        if let aliasCommand = AgentResumeCommandBuilder.equivalentAliasResumeShellCommand(
+        if style == .alias,
+           let aliasCommand = AgentResumeCommandBuilder.equivalentAliasResumeShellCommand(
             kind: kind,
             sessionId: sessionId,
             launchCommand: launchCommand,

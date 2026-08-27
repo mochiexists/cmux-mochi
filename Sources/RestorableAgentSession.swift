@@ -962,6 +962,7 @@ enum AgentResumeCommandBuilder {
 
 struct SessionRestorableAgentSnapshot: Codable, Sendable {
     private static let maxInlineForkInputBytes = 900
+    private static let maxInlineResumeInputBytes = 900
 
     var kind: RestorableAgentKind
     var sessionId: String
@@ -1010,6 +1011,23 @@ struct SessionRestorableAgentSnapshot: Codable, Sendable {
                 .applying(toStoredCommand: command) ?? command
         }
         return restoreCommand.map { $0 + "\n" }
+    }
+
+    /// A resume command suitable for placing at an interactive prompt without
+    /// submitting it. Unlike `resumeStartupInput`, this intentionally has no
+    /// leading space or trailing newline.
+    func resumePreparedStartupInput(
+        style: AgentResumeCommandStyle = AgentResumeCommandStyleSettings.style(),
+        restoringWorkingDirectory: String? = nil
+    ) -> String? {
+        guard let command = resumeCommand(
+            includeWorkingDirectoryPrefix: true,
+            restoringWorkingDirectory: restoringWorkingDirectory,
+            style: style
+        ), command.utf8.count <= Self.maxInlineResumeInputBytes else {
+            return nil
+        }
+        return command
     }
 
     func forkStartupInput(

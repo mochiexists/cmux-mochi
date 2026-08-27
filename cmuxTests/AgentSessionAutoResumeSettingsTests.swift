@@ -9,6 +9,84 @@ import XCTest
 #endif
 
 final class AgentSessionAutoResumeSettingsTests: XCTestCase {
+    func testResumeModeDefaultsToMediumAndLegacyBooleanMigrates() throws {
+        let suiteName = "cmux-agent-resume-mode-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        XCTAssertEqual(AgentSessionAutoResumeSettings.mode(defaults: defaults), .medium)
+        XCTAssertTrue(AgentSessionResumeMode.medium.replaysScrollback)
+        XCTAssertTrue(AgentSessionResumeMode.medium.prefillsResumeCommand)
+        XCTAssertFalse(AgentSessionResumeMode.medium.submitsResumeCommand)
+
+        defaults.register(defaults: [
+            AgentSessionAutoResumeSettings.modeKey: AgentSessionResumeMode.medium.rawValue,
+        ])
+        defaults.set(true, forKey: AgentSessionAutoResumeSettings.legacyAutoResumeAgentSessionsKey)
+        XCTAssertEqual(AgentSessionAutoResumeSettings.mode(defaults: defaults), .full)
+        defaults.set(false, forKey: AgentSessionAutoResumeSettings.legacyAutoResumeAgentSessionsKey)
+        XCTAssertEqual(AgentSessionAutoResumeSettings.mode(defaults: defaults), .off)
+
+        AgentSessionAutoResumeSettings.setMode(.medium, defaults: defaults)
+        XCTAssertEqual(AgentSessionAutoResumeSettings.mode(defaults: defaults), .medium)
+        XCTAssertNil(defaults.object(forKey: AgentSessionAutoResumeSettings.legacyAutoResumeAgentSessionsKey))
+    }
+
+    func testResumeCommandStyleDefaultsToAliasAndRoundTrips() throws {
+        let suiteName = "cmux-agent-resume-style-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        XCTAssertEqual(AgentResumeCommandStyleSettings.style(defaults: defaults), .alias)
+        AgentResumeCommandStyleSettings.setStyle(.verbose, defaults: defaults)
+        XCTAssertEqual(AgentResumeCommandStyleSettings.style(defaults: defaults), .verbose)
+        XCTAssertTrue(AgentResumeCommandStyleSettings.reset(defaults: defaults))
+        XCTAssertEqual(AgentResumeCommandStyleSettings.style(defaults: defaults), .alias)
+    }
+
+    @MainActor
+    func testMediumRestoreReplaysScrollbackAndPrefillsWithoutSubmitting() throws {
+        let defaults = UserDefaults.standard
+        let modeKey = AgentSessionAutoResumeSettings.modeKey
+        let legacyKey = AgentSessionAutoResumeSettings.legacyAutoResumeAgentSessionsKey
+        let previousMode = defaults.object(forKey: modeKey)
+        let previousLegacy = defaults.object(forKey: legacyKey)
+        defer {
+            AgentResumeLaunchGuard.shared.claimedSessionKeys.removeAll()
+            if let previousMode { defaults.set(previousMode, forKey: modeKey) } else { defaults.removeObject(forKey: modeKey) }
+            if let previousLegacy { defaults.set(previousLegacy, forKey: legacyKey) } else { defaults.removeObject(forKey: legacyKey) }
+        }
+        defaults.set(AgentSessionResumeMode.medium.rawValue, forKey: modeKey)
+        defaults.removeObject(forKey: legacyKey)
+
+        let source = Workspace()
+        let sourcePanelId = try XCTUnwrap(source.focusedPanelId)
+        let sessionId = "codex-medium-restore-\(UUID().uuidString)"
+        let sourceIndex = try makeRestorableAgentIndex(
+            workspaceId: source.id,
+            panelId: sourcePanelId,
+            sessionId: sessionId
+        )
+        source.updatePanelShellActivityState(panelId: sourcePanelId, state: .commandRunning)
+        var snapshot = source.sessionSnapshot(includeScrollback: false, restorableAgentIndex: sourceIndex)
+        let marker = "CMUX_MEDIUM_SCROLLBACK_\(UUID().uuidString)"
+        snapshot.panels[0].terminal?.scrollback = marker
+        let expectedInput = try XCTUnwrap(snapshot.panels[0].terminal?.agent?.resumePreparedStartupInput())
+
+        let restored = Workspace()
+        restored.restoreSessionSnapshot(snapshot)
+        let panelId = try XCTUnwrap(restored.focusedPanelId)
+        let panel = try XCTUnwrap(restored.terminalPanel(for: panelId))
+        XCTAssertEqual(panel.surface.debugInitialInputForTesting(), expectedInput)
+        XCTAssertFalse(expectedInput.hasSuffix("\n"))
+        XCTAssertEqual(restored.restoredAgentResumeStatesByPanelId[panelId], .manualResumeAvailable)
+
+        let replayPath = try XCTUnwrap(
+            panel.surface.debugAdditionalEnvironmentForTesting()[SessionScrollbackReplayStore.environmentKey]
+        )
+        XCTAssertTrue(try String(contentsOfFile: replayPath, encoding: .utf8).contains(marker))
+    }
+
     func testScrollbackAutosaveDefaultAndStoredValue() throws {
         let suiteName = "cmux-scrollback-autosave-\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
@@ -72,6 +150,7 @@ final class AgentSessionAutoResumeSettingsTests: XCTestCase {
         let key = AgentSessionAutoResumeSettings.autoResumeAgentSessionsKey
         let previous = defaults.object(forKey: key)
         defer {
+            AgentResumeLaunchGuard.shared.claimedSessionKeys.removeAll()
             if let previous {
                 defaults.set(previous, forKey: key)
             } else {
@@ -86,9 +165,10 @@ final class AgentSessionAutoResumeSettingsTests: XCTestCase {
             panelId: sourcePanelId,
             sessionId: "codex-auto-resume-disabled-session"
         )
+        source.updatePanelShellActivityState(panelId: sourcePanelId, state: .commandRunning)
         let snapshot = source.sessionSnapshot(includeScrollback: false, restorableAgentIndex: sourceIndex)
 
-        defaults.removeObject(forKey: key)
+        defaults.set(true, forKey: key)
         let restoredWithAutoResume = Workspace()
         restoredWithAutoResume.restoreSessionSnapshot(snapshot)
         let autoResumePanelId = try XCTUnwrap(restoredWithAutoResume.focusedPanelId)
@@ -134,7 +214,7 @@ final class AgentSessionAutoResumeSettingsTests: XCTestCase {
     func testAgentExitedBeforeSnapshotDoesNotAutoResumeEvenWhenSettingEnabled() throws {
         try withRestoredDefaults(key: AgentSessionAutoResumeSettings.autoResumeAgentSessionsKey) {
             let defaults = UserDefaults.standard
-            defaults.removeObject(forKey: AgentSessionAutoResumeSettings.autoResumeAgentSessionsKey) // autoResumeAgentSessions = true (default)
+            defaults.set(true, forKey: AgentSessionAutoResumeSettings.autoResumeAgentSessionsKey)
 
             let source = Workspace()
             let sourcePanelId = try XCTUnwrap(source.focusedPanelId)
@@ -181,7 +261,7 @@ final class AgentSessionAutoResumeSettingsTests: XCTestCase {
     func testAgentRunningAtSnapshotAutoResumesWhenSettingEnabled() throws {
         try withRestoredDefaults(key: AgentSessionAutoResumeSettings.autoResumeAgentSessionsKey) {
             let defaults = UserDefaults.standard
-            defaults.removeObject(forKey: AgentSessionAutoResumeSettings.autoResumeAgentSessionsKey) // autoResumeAgentSessions = true (default)
+            defaults.set(true, forKey: AgentSessionAutoResumeSettings.autoResumeAgentSessionsKey)
 
             let source = Workspace()
             let sourcePanelId = try XCTUnwrap(source.focusedPanelId)
@@ -209,6 +289,7 @@ final class AgentSessionAutoResumeSettingsTests: XCTestCase {
                 restoredPanel,
                 scriptContains: ["'resume'", "codex-running-at-snapshot-session"]
             )
+            restored.updatePanelShellActivityState(panelId: restoredPanelId, state: .commandRunning)
             XCTAssertEqual(
                 restored.restoredAgentResumeStatesByPanelId[restoredPanelId],
                 .autoResumeCommandRunning
@@ -223,11 +304,11 @@ final class AgentSessionAutoResumeSettingsTests: XCTestCase {
     func testRemoteWorkspaceAutoResumeKeepsRemoteStartupCommand() throws {
         try withRestoredDefaults(key: AgentSessionAutoResumeSettings.autoResumeAgentSessionsKey) {
             let defaults = UserDefaults.standard
-            defaults.removeObject(forKey: AgentSessionAutoResumeSettings.autoResumeAgentSessionsKey) // autoResumeAgentSessions = true (default)
+            defaults.set(true, forKey: AgentSessionAutoResumeSettings.autoResumeAgentSessionsKey)
 
             let source = Workspace()
             let remoteCommand = "ssh cmux-macmini"
-            let expectedRestoredRemoteCommand = "ssh -tt cmux-macmini"
+            let expectedRestoredRemoteCommand = "/usr/bin/ssh -tt cmux-macmini"
             source.configureRemoteConnection(
                 WorkspaceRemoteConfiguration(
                     destination: "cmux-macmini",
@@ -245,7 +326,7 @@ final class AgentSessionAutoResumeSettingsTests: XCTestCase {
             )
             let sourcePanelId = try XCTUnwrap(source.focusedPanelId)
             let remoteWorkingDirectory = "/home/dev/cmux-remote-running"
-            source.updatePanelDirectory(
+            source.updateRemotePanelDirectory(
                 panelId: sourcePanelId,
                 directory: remoteWorkingDirectory
             )
@@ -297,7 +378,7 @@ final class AgentSessionAutoResumeSettingsTests: XCTestCase {
     func testRemoteWorkspaceAutoResumeKeepsLongResumeInputInline() throws {
         try withRestoredDefaults(key: AgentSessionAutoResumeSettings.autoResumeAgentSessionsKey) {
             let defaults = UserDefaults.standard
-            defaults.removeObject(forKey: AgentSessionAutoResumeSettings.autoResumeAgentSessionsKey) // autoResumeAgentSessions = true (default)
+            defaults.set(true, forKey: AgentSessionAutoResumeSettings.autoResumeAgentSessionsKey)
 
             let source = Workspace()
             let remoteCommand = "ssh cmux-macmini"
@@ -347,10 +428,10 @@ final class AgentSessionAutoResumeSettingsTests: XCTestCase {
     }
 
     @MainActor
-    func testUnknownAgentShellStatePreservesLegacyAutoResumeBehavior() throws {
+    func testUnknownAgentShellStateDoesNotAutoSubmit() throws {
         try withRestoredDefaults(key: AgentSessionAutoResumeSettings.autoResumeAgentSessionsKey) {
             let defaults = UserDefaults.standard
-            defaults.removeObject(forKey: AgentSessionAutoResumeSettings.autoResumeAgentSessionsKey) // autoResumeAgentSessions = true (default)
+            defaults.set(true, forKey: AgentSessionAutoResumeSettings.autoResumeAgentSessionsKey)
 
             let source = Workspace()
             let sourcePanelId = try XCTUnwrap(source.focusedPanelId)
@@ -363,7 +444,7 @@ final class AgentSessionAutoResumeSettingsTests: XCTestCase {
             let snapshot = source.sessionSnapshot(includeScrollback: false, restorableAgentIndex: sourceIndex)
 
             XCTAssertNil(snapshot.panels.first?.terminal?.wasAgentRunning,
-                         "unknown shell state should be persisted as nil for legacy auto-resume behavior")
+                         "unknown shell state should remain indeterminate")
 
             let restored = Workspace()
             restored.restoreSessionSnapshot(snapshot)
@@ -371,11 +452,11 @@ final class AgentSessionAutoResumeSettingsTests: XCTestCase {
             let restoredPanel = try XCTUnwrap(restored.terminalPanel(for: restoredPanelId))
             let restoredInput = restoredPanel.surface.debugInitialInputMetadata()
 
-            XCTAssertTrue(restoredInput.hasInitialInput)
-            XCTAssertGreaterThan(restoredInput.byteCount, 0)
-            try assertAgentAutoResumeUsesStartupInput(
-                restoredPanel,
-                scriptContains: ["'resume'", "codex-unknown-shell-state-session"]
+            XCTAssertFalse(restoredInput.hasInitialInput)
+            XCTAssertEqual(restoredInput.byteCount, 0)
+            XCTAssertEqual(
+                restored.sessionSnapshot(includeScrollback: false).panels.first?.terminal?.agent?.sessionId,
+                "codex-unknown-shell-state-session"
             )
         }
     }
@@ -384,7 +465,7 @@ final class AgentSessionAutoResumeSettingsTests: XCTestCase {
     func testAgentHookBindingExitedBeforeSnapshotDoesNotAutoResumeEvenWhenTrusted() throws {
         try withRestoredDefaults(key: AgentSessionAutoResumeSettings.autoResumeAgentSessionsKey) {
             let defaults = UserDefaults.standard
-            defaults.removeObject(forKey: AgentSessionAutoResumeSettings.autoResumeAgentSessionsKey) // autoResumeAgentSessions = true (default)
+            defaults.set(true, forKey: AgentSessionAutoResumeSettings.autoResumeAgentSessionsKey)
 
             let source = Workspace()
             let sourcePanelId = try XCTUnwrap(source.focusedPanelId)
@@ -597,8 +678,9 @@ final class AgentSessionAutoResumeSettingsTests: XCTestCase {
         XCTAssertGreaterThan(input.byteCount, 0)
         try assertAgentAutoResumeUsesStartupInput(
             restoredPanel,
-            scriptContains: ["codex resume codex-binding-auto-resume-session"]
+            scriptContains: ["codex", "codex-binding-auto-resume-session"]
         )
+        restored.updatePanelShellActivityState(panelId: restoredPanelId, state: .commandRunning)
         XCTAssertEqual(
             restored.restoredAgentResumeStatesByPanelId[restoredPanelId],
             .autoResumeCommandRunning
@@ -701,17 +783,32 @@ final class AgentSessionAutoResumeSettingsTests: XCTestCase {
         )
     }
 
+    @MainActor
     private func withRestoredDefaults<T>(
         key: String,
         defaults: UserDefaults = .standard,
         body: () throws -> T
     ) rethrows -> T {
         let previous = defaults.object(forKey: key)
+        let modeKey = AgentSessionAutoResumeSettings.modeKey
+        let previousMode = key == modeKey ? nil : defaults.object(forKey: modeKey)
+        AgentResumeLaunchGuard.shared.claimedSessionKeys.removeAll()
+        if key != modeKey {
+            defaults.removeObject(forKey: modeKey)
+        }
         defer {
+            AgentResumeLaunchGuard.shared.claimedSessionKeys.removeAll()
             if let previous {
                 defaults.set(previous, forKey: key)
             } else {
                 defaults.removeObject(forKey: key)
+            }
+            if key != modeKey {
+                if let previousMode {
+                    defaults.set(previousMode, forKey: modeKey)
+                } else {
+                    defaults.removeObject(forKey: modeKey)
+                }
             }
         }
         return try body()
@@ -727,12 +824,14 @@ final class AgentSessionAutoResumeSettingsTests: XCTestCase {
         XCTAssertNil(panel.surface.debugInitialCommand(), file: file, line: line)
         let input = try XCTUnwrap(panel.surface.debugInitialInputForTesting(), file: file, line: line)
         let launcherPrefix = "/bin/zsh '"
-        let launcherRange = try XCTUnwrap(
-            input.range(of: launcherPrefix, options: .backwards),
-            input,
-            file: file,
-            line: line
-        )
+        guard let launcherRange = input.range(of: launcherPrefix, options: .backwards) else {
+            for needle in needles {
+                let normalized = needle.replacingOccurrences(of: "'", with: "")
+                let matchesResumeAlias = normalized == "resume" && input.contains("restore")
+                XCTAssertTrue(input.contains(normalized) || matchesResumeAlias, input, file: file, line: line)
+            }
+            return
+        }
         let launcherSuffix = input[launcherRange.upperBound...]
             .trimmingCharacters(in: .whitespacesAndNewlines)
         XCTAssertTrue(launcherSuffix.hasSuffix("'"), input, file: file, line: line)

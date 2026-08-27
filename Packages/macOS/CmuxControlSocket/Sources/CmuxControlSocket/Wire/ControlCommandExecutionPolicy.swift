@@ -148,6 +148,7 @@ public enum ControlCommandExecutionPolicy: Sendable, Equatable {
         // v2MainSync).
         "workspace.screenshot",
         "surface.text",
+        "artifact.new",
         "artifact.open",
         "artifact.list",
         "remote.tmux.sessions",

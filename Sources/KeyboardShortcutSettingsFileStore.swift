@@ -528,6 +528,29 @@ final class CmuxSettingsFileStore {
         } else if section.keys.contains("autosaveScrollback") {
             logInvalid("terminal.autosaveScrollback", sourcePath: sourcePath)
         }
+        if let rawValue = jsonString(section["agentResumeMode"]) {
+            if let mode = AgentSessionResumeMode(rawValue: rawValue) {
+                snapshot.managedUserDefaults[AgentSessionAutoResumeSettings.modeKey] = .string(mode.rawValue)
+            } else {
+                logInvalid("terminal.agentResumeMode", sourcePath: sourcePath)
+            }
+        } else if section.keys.contains("agentResumeMode") {
+            logInvalid("terminal.agentResumeMode", sourcePath: sourcePath)
+        } else if let legacyValue = jsonBool(section["autoResumeAgentSessions"]) {
+            let mode: AgentSessionResumeMode = legacyValue ? .full : .off
+            snapshot.managedUserDefaults[AgentSessionAutoResumeSettings.modeKey] = .string(mode.rawValue)
+        } else if section.keys.contains("autoResumeAgentSessions") {
+            logInvalid("terminal.autoResumeAgentSessions", sourcePath: sourcePath)
+        }
+        if let rawValue = jsonString(section["agentResumeCommandStyle"]) {
+            if let style = AgentResumeCommandStyle(rawValue: rawValue) {
+                snapshot.managedUserDefaults[AgentResumeCommandStyleSettings.styleKey] = .string(style.rawValue)
+            } else {
+                logInvalid("terminal.agentResumeCommandStyle", sourcePath: sourcePath)
+            }
+        } else if section.keys.contains("agentResumeCommandStyle") {
+            logInvalid("terminal.agentResumeCommandStyle", sourcePath: sourcePath)
+        }
         if let value = jsonDouble(section["sessionContentMaxWidth"]) {
             if value.isFinite, value >= SessionContentWidthSettings.minimumWidth {
                 snapshot.managedUserDefaults[SessionContentWidthSettings.maxWidthKey] = .double(
@@ -1551,7 +1574,7 @@ final class CmuxSettingsFileStore {
                     TerminalCopyOnSelectSettings.notifyDidChange(notificationCenter: notificationCenter)
                 }
 
-                if change.defaultsKey == AgentSessionAutoResumeSettings.autoResumeAgentSessionsKey {
+                if change.defaultsKey == AgentSessionAutoResumeSettings.modeKey {
                     agentSessionAutoResumeDidChange = true
                 }
                 if change.defaultsKey == AgentHibernationSettings.enabledKey ||

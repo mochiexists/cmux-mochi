@@ -62,41 +62,97 @@ run_app_host_suites() {
   done
 }
 
+run_isolated_app_host_suite() {
+  local suite="$1"
+  local evidence="$2"
+  local tag="parity-isolated-${suite}"
+  local log_path=""
+
+  echo "==> cmuxTests/$suite (isolated app host)"
+  CMUX_TAG="$tag" \
+  RUNNER_TEMP="$LOG_DIR" \
+  "$ROOT_DIR/scripts/ci/run-app-host-xcodebuild.sh" \
+    -project cmux.xcodeproj \
+    -scheme cmux-unit \
+    -configuration Debug \
+    -derivedDataPath "$DERIVED_DATA" \
+    -destination "platform=macOS" \
+    CMUX_SKIP_ZIG_BUILD=1 \
+    "-only-testing:cmuxTests/$suite" \
+    test
+
+  for candidate in "$LOG_DIR/cmux-app-host-xcodebuild-${tag}-attempt-"*.log; do
+    if [[ -f "$candidate" ]]; then
+      log_path="$candidate"
+    fi
+  done
+  if [[ -z "$log_path" ]]; then
+    echo "isolated app-host test log missing: $suite" >&2
+    exit 1
+  fi
+  "$ROOT_DIR/scripts/ci/require_selected_test_execution.sh" "$log_path" "$suite"
+  if ! grep -Fq "$evidence" "$log_path"; then
+    echo "isolated app-host selector did not produce passing evidence: cmuxTests/$suite" >&2
+    exit 1
+  fi
+}
+
 run_package_suite "CmuxWorkspaces" "WorkspaceRightSidePlacementPlannerTests"
 run_package_suite "CmuxFoundation" "MountedWorkspacePresentationTests"
 run_package_suite "CmuxUpdaterUI" "UpdatePillPopoverResizeTests"
 run_package_suite "CmuxSettingsUI" "ProUpgradePresentationPolicyTests"
+run_package_suite "CmuxControlSocket" "ControlSurfaceSendGuardTests"
 
 APP_HOST_SUITES=(
   CMUXCLISendSubmitWaitTests
   CMUXCLIWelcomeRegressionTests
-  CMUXCLISentryTelemetryRegressionTests
   MacSentryStartupPolicyTests
+  ArtifactStoreTests
+  CmuxSkillsBundleInstallerTests
   FilePreviewPanelTextSavingTests/testCmdClickFilePreviewRoutingReusesRightSidePane
   FilePreviewPanelTextSavingTests/testCmdClickMarkdownRoutingReusesRightSidePane
   MarkdownPanelTests/testControlMarkdownOpenReusesExistingRightSidePane
   MobileHostAuthorizationTests
   PaneZoomSessionPersistenceTests
   PrivacyFrostParityTests
+  ReopenLastClosedTests
+  SessionRestorableAgentSnapshotPermissionModeTests
+  AgentSessionAutoResumeSwiftTests
   SessionPersistenceTests/testMetadataAutosavePreservesCapturedScrollbackForForceQuitRecovery
+  SidebarBonsplitWorkspaceSpringLoadTests
   TaskManagerResourcesTests
   TaskManagerSurfaceParityTests
+  WorkspaceScreenshotParityTests
+  WorkspaceTabPathActionsTests
 )
 APP_HOST_EVIDENCE=(
   'Suite "cmux send submit and wait" passed'
   'Suite "Mochi CLI welcome" passed'
-  'Suite CMUXCLISentryTelemetryRegressionTests passed'
   'Suite MacSentryStartupPolicyTests passed'
+  'Suite "Artifact store parity" passed'
+  "Test Suite 'CmuxSkillsBundleInstallerTests' passed"
   "Test Case '-[cmuxTests.FilePreviewPanelTextSavingTests testCmdClickFilePreviewRoutingReusesRightSidePane]' passed"
   "Test Case '-[cmuxTests.FilePreviewPanelTextSavingTests testCmdClickMarkdownRoutingReusesRightSidePane]' passed"
   "Test Case '-[cmuxTests.MarkdownPanelTests testControlMarkdownOpenReusesExistingRightSidePane]' passed"
   'Suite MobileHostAuthorizationTests passed'
   'Suite "Pane zoom session persistence" passed'
   'Suite "Privacy Frost parity" passed'
+  'Suite "Reopen last closed" passed'
+  "Test Suite 'SessionRestorableAgentSnapshotPermissionModeTests' passed"
+  'Suite AgentSessionAutoResumeSwiftTests passed'
   "Test Case '-[cmuxTests.SessionPersistenceTests testMetadataAutosavePreservesCapturedScrollbackForForceQuitRecovery]' passed"
+  'Suite SidebarBonsplitWorkspaceSpringLoadTests passed'
   "Test Suite 'TaskManagerResourcesTests' passed"
   'Suite TaskManagerSurfaceParityTests passed'
+  'Suite "Workspace screenshot parity" passed'
+  'Suite "Workspace tab path actions" passed'
 )
 run_app_host_suites
+run_isolated_app_host_suite \
+  "CMUXCLISentryTelemetryRegressionTests" \
+  'Suite CMUXCLISentryTelemetryRegressionTests passed'
+run_isolated_app_host_suite \
+  "SidebarLazyLayoutScaleTests" \
+  'Suite SidebarLazyLayoutScaleTests passed'
 
 echo "Fork parity focused suites passed with non-zero execution."

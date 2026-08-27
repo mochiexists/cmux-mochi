@@ -30,7 +30,7 @@ def matrix(
         <!-- parity-features:start -->
         | Feature | Automated command or selector | Executed result | Tagged candidate journey | Result |
         | --- | --- | --- | --- | --- |
-        | Required feature | `FeatureTests` | 3 passed | Exercise it. | {feature} |
+        | `required.feature` Required feature | `FeatureTests` | 3 passed | Exercise it. | {feature} |
         <!-- parity-features:end -->
 
         <!-- parity-gates:start -->
@@ -50,12 +50,38 @@ def matrix(
 
 
 class ForkParityValidationTests(unittest.TestCase):
-    def run_checker(self, contents: str) -> subprocess.CompletedProcess[str]:
+    def run_checker(
+        self,
+        contents: str,
+        *,
+        ledger_feature: str = "required.feature",
+        ledger_state: str = "ported",
+        extra_ledger_row: str = "",
+    ) -> subprocess.CompletedProcess[str]:
         with tempfile.TemporaryDirectory() as temporary_directory:
             matrix_path = Path(temporary_directory) / "VALIDATION-MATRIX.md"
             matrix_path.write_text(contents)
+            ledger_path = Path(temporary_directory) / "FEATURE-LEDGER.md"
+            ledger_path.write_text(
+                textwrap.dedent(
+                    f"""\
+                    <!-- parity-ledger:start -->
+                    | ID | Required behavior | Source lineage | State | Automated proof | Candidate proof |
+                    | --- | --- | --- | --- | --- | --- |
+                    | `{ledger_feature}` | Required behavior. | test | `{ledger_state}` | tests | journey |
+                    {extra_ledger_row}
+                    <!-- parity-ledger:end -->
+                    """
+                )
+            )
             return subprocess.run(
-                ["python3", str(CHECKER), str(matrix_path)],
+                [
+                    "python3",
+                    str(CHECKER),
+                    str(matrix_path),
+                    "--ledger",
+                    str(ledger_path),
+                ],
                 check=False,
                 capture_output=True,
                 text=True,
@@ -77,7 +103,7 @@ class ForkParityValidationTests(unittest.TestCase):
         result = self.run_checker(matrix(feature="Pending"))
 
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn("Required feature", result.stdout)
+        self.assertIn("required.feature", result.stdout)
 
     def test_rejects_pending_automated_evidence(self) -> None:
         result = self.run_checker(matrix().replace("3 passed", "Pending"))
@@ -101,6 +127,20 @@ class ForkParityValidationTests(unittest.TestCase):
         result = self.run_checker(matrix())
 
         self.assertNotIn("Release pre-tag", result.stdout)
+
+    def test_rejects_required_ledger_feature_without_validation_row(self) -> None:
+        result = self.run_checker(matrix(), ledger_feature="missing.feature")
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("missing.feature: required ledger row has no validation row", result.stdout)
+
+    def test_ignores_retired_ledger_feature(self) -> None:
+        result = self.run_checker(
+            matrix(),
+            extra_ledger_row="| `retired.feature` | Retired. | test | `retired` | n/a | n/a |",
+        )
+
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
 
 if __name__ == "__main__":

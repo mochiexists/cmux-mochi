@@ -954,12 +954,20 @@ final class SessionPersistenceTests: XCTestCase {
     func testRestoreCompletionSavePolicySkipsManualReopen() {
         XCTAssertTrue(
             AppDelegate.shouldSaveSessionSnapshotOnRestoreCompletion(
-                isManualReopen: false
+                isManualReopen: false,
+                restoredSnapshotContainsScrollback: false
             )
         )
         XCTAssertFalse(
             AppDelegate.shouldSaveSessionSnapshotOnRestoreCompletion(
-                isManualReopen: true
+                isManualReopen: true,
+                restoredSnapshotContainsScrollback: false
+            )
+        )
+        XCTAssertFalse(
+            AppDelegate.shouldSaveSessionSnapshotOnRestoreCompletion(
+                isManualReopen: false,
+                restoredSnapshotContainsScrollback: true
             )
         )
     }

@@ -3590,6 +3590,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
     }
 
     private func completeSessionRestoreOperation(isManualReopen: Bool) {
+        let restoredSnapshotContainsScrollback = startupSessionSnapshot?.containsTerminalScrollback == true
         startupSessionSnapshot = nil
         let wasApplyingSessionRestore = isApplyingSessionRestore
         isApplyingSessionRestore = false
@@ -3604,7 +3605,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
             scheduleScreenChangeReconcileWhenIdle()
         }
         flushPendingStartupNavigationURLRequests()
-        if Self.shouldSaveSessionSnapshotOnRestoreCompletion(isManualReopen: isManualReopen) {
+        if Self.shouldSaveSessionSnapshotOnRestoreCompletion(
+            isManualReopen: isManualReopen,
+            restoredSnapshotContainsScrollback: restoredSnapshotContainsScrollback
+        ) {
             // Auto-resume input can be queued before tmux has spawned; preserve
             // restored process-detected bindings until a later live scan.
             _ = saveSessionSnapshot(includeScrollback: false)

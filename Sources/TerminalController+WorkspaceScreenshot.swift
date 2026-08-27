@@ -1,6 +1,13 @@
 import AppKit
 import Foundation
 
+enum WorkspaceCaptureOverlayRole: Equatable {
+    case terminal
+    case browser
+    case agentSession
+    case artifact
+}
+
 /// v2 `workspace.screenshot`: capture one visible workspace as a single image.
 ///
 /// The window chrome (sidebar, tab bar, dividers, SwiftUI panels) comes from a
@@ -11,6 +18,23 @@ import Foundation
 /// on-screen frames. Runs on the socket worker (see
 /// `ControlCommandExecutionPolicy`); UI reads hop to main via `v2MainSync`.
 extension TerminalController {
+    nonisolated static func workspaceCaptureOverlayRole(
+        for panelType: PanelType
+    ) -> WorkspaceCaptureOverlayRole? {
+        switch panelType {
+        case .terminal:
+            return .terminal
+        case .browser:
+            return .browser
+        case .agentSession:
+            return .agentSession
+        case .artifact:
+            return .artifact
+        default:
+            return nil
+        }
+    }
+
     private struct WorkspaceCaptureOverlay {
         var image: NSImage?
         /// Content-view coordinates, in points, honoring the view's flippedness.
@@ -192,7 +216,9 @@ extension TerminalController {
         }
 
         for (panelId, panel) in workspace.panels {
-            if let terminalPanel = panel as? TerminalPanel {
+            switch Self.workspaceCaptureOverlayRole(for: panel.panelType) {
+            case .terminal:
+                guard let terminalPanel = panel as? TerminalPanel else { continue }
                 let hostedView = terminalPanel.hostedView
                 guard terminalPanel.surface.isViewInWindow,
                       hostedView.debugPortalVisibleInUI,
@@ -214,7 +240,8 @@ extension TerminalController {
                     title: panel.displayTitle,
                     captureError: cgImage == nil ? "Terminal surface image unavailable" : nil
                 ))
-            } else if let browserPanel = panel as? BrowserPanel {
+            case .browser:
+                guard let browserPanel = panel as? BrowserPanel else { continue }
                 appendWebViewOverlay(
                     surfaceId: panelId,
                     surfaceType: panel.panelType.rawValue,
@@ -223,7 +250,8 @@ extension TerminalController {
                 ) { finish in
                     browserPanel.captureAutomationVisibleViewportSnapshot(completion: finish)
                 }
-            } else if let agentPanel = panel as? AgentSessionPanel {
+            case .agentSession:
+                guard let agentPanel = panel as? AgentSessionPanel else { continue }
                 appendWebViewOverlay(
                     surfaceId: panelId,
                     surfaceType: panel.panelType.rawValue,
@@ -232,6 +260,18 @@ extension TerminalController {
                 ) { finish in
                     agentPanel.rendererSession.captureVisibleSnapshot(completion: finish)
                 }
+            case .artifact:
+                guard let artifactPanel = panel as? ArtifactPanel else { continue }
+                appendWebViewOverlay(
+                    surfaceId: panelId,
+                    surfaceType: panel.panelType.rawValue,
+                    title: panel.displayTitle,
+                    view: artifactPanel.rendererSession.captureView
+                ) { finish in
+                    artifactPanel.rendererSession.captureVisibleSnapshot(completion: finish)
+                }
+            case nil:
+                break
             }
             // Other panel types (markdown, task manager, project, …) are
             // SwiftUI-rendered and already present in the cacheDisplay base.

@@ -23,15 +23,28 @@ struct ControlSurfaceSendGuardTests {
         ))
     }
 
-    @Test("fails open when the shell is idle or unreported")
-    func failsOpenWhenIdle() {
-        // promptIdle / unknown both arrive here as isCommandRunning == false.
-        #expect(!ControlSurfaceSendGuard.blocksTextSend(
-            isCommandRunning: false,
-            hasAgentEvidence: false,
-            foregroundCommandName: "sudo",
-            force: false
-        ))
+    @Test("a resolvable non-shell foreground process blocks when shell state is missing")
+    func foregroundProcessBlocksWithoutShellReport() {
+        for name in ["sleep", "sudo", "xcodebuild"] {
+            #expect(ControlSurfaceSendGuard.blocksTextSend(
+                isCommandRunning: false,
+                hasAgentEvidence: false,
+                foregroundCommandName: name,
+                force: false
+            ), "expected foreground process \(name) to block")
+        }
+    }
+
+    @Test("idle foreground shells remain valid send targets")
+    func idleShellDoesNotBlock() {
+        for name in ["bash", "fish", "sh", "zsh", "ZSH"] {
+            #expect(!ControlSurfaceSendGuard.blocksTextSend(
+                isCommandRunning: false,
+                hasAgentEvidence: false,
+                foregroundCommandName: name,
+                force: false
+            ), "expected idle shell \(name) not to block")
+        }
     }
 
     @Test("fails open when the foreground name is unresolvable but no job is reported")

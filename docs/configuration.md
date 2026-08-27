@@ -155,6 +155,28 @@ The spinner is compositor-driven (a Core Animation transform run by the render s
 }
 ```
 
+## `terminal.agentResumeMode`
+
+Controls restored agent terminals after cmux reopens. `"off"` starts fresh,
+`"medium"` restores scrollback and prefills the resume command without submitting
+it, and `"full"` submits the resume command immediately. The default is `"medium"`.
+
+Legacy `terminal.autoResumeAgentSessions` remains accepted for migration: `true`
+maps to Full and `false` maps to Off.
+
+```json
+{
+  "terminal": {
+    "agentResumeMode": "medium",
+    "agentResumeCommandStyle": "alias"
+  }
+}
+```
+
+`terminal.agentResumeCommandStyle` accepts `"alias"` (the default short,
+shell-integration-backed form) or `"verbose"` (the complete captured command and
+flags).
+
 ## `terminal.showTextBoxOnNewTerminals` and `terminal.focusTextBoxOnNewTerminals`
 
 `terminal.showTextBoxOnNewTerminals` opens the TextBox on newly-created terminal sessions without moving keyboard focus into it.

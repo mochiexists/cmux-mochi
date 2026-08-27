@@ -10,6 +10,7 @@ from pathlib import Path
 
 SELF_REFERENTIAL_GATES = {"Release pre-tag"}
 UNRESOLVED_RESULTS = {"", "failed", "not run", "pending", "unknown"}
+RETIRED_STATE = "retired"
 
 
 def marked_table(text: str, marker: str) -> str:
@@ -41,6 +42,28 @@ def is_unresolved(value: str) -> bool:
     return value.strip().lower() in UNRESOLVED_RESULTS
 
 
+def ledger_feature_ids(ledger: Path) -> set[str]:
+    text = ledger.read_text()
+    table = marked_table(text, "parity-ledger")
+    required: set[str] = set()
+    for line in table.splitlines():
+        cells = [cell.strip() for cell in line.split("|")[1:-1]]
+        if len(cells) != 6 or not cells[0].startswith("`"):
+            continue
+        feature_id = cells[0].strip("`")
+        state = cells[3].strip("`")
+        if state != RETIRED_STATE:
+            required.add(feature_id)
+    if not required:
+        raise SystemExit("parity ledger contains no required feature rows")
+    return required
+
+
+def matrix_feature_id(feature: str) -> str:
+    match = re.match(r"^`([^`]+)`", feature)
+    return match.group(1) if match else ""
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -49,10 +72,17 @@ def main() -> int:
         type=Path,
         default=Path("plans/clean-trunk-v0.64.22/VALIDATION-MATRIX.md"),
     )
+    parser.add_argument(
+        "--ledger",
+        type=Path,
+        default=Path("plans/clean-trunk-v0.64.22/FEATURE-LEDGER.md"),
+    )
     args = parser.parse_args()
 
     if not args.matrix.is_file():
         raise SystemExit(f"validation matrix not found: {args.matrix}")
+    if not args.ledger.is_file():
+        raise SystemExit(f"parity ledger not found: {args.ledger}")
 
     text = args.matrix.read_text()
     commit_match = re.search(r"^Candidate commit: `([^`]+)`$", text, re.MULTILINE)
@@ -63,11 +93,29 @@ def main() -> int:
         unresolved.append(f"candidate commit: {candidate or 'missing'}")
 
     feature_rows = table_rows(marked_table(text, "parity-features"), expected_cells=5)
+    matrix_ids: list[str] = []
     for feature, _selector, executed_result, _journey, journey_result in feature_rows:
+        feature_id = matrix_feature_id(feature)
+        if not feature_id:
+            unresolved.append(f"{feature}: feature row must start with a backticked ledger ID")
+        else:
+            matrix_ids.append(feature_id)
         if is_unresolved(executed_result):
             unresolved.append(f"{feature}: automated result is {executed_result or 'missing'}")
         if is_unresolved(journey_result):
             unresolved.append(f"{feature}: candidate journey is {journey_result or 'missing'}")
+
+    duplicate_ids = sorted({feature_id for feature_id in matrix_ids if matrix_ids.count(feature_id) > 1})
+    for feature_id in duplicate_ids:
+        unresolved.append(f"{feature_id}: duplicate validation rows")
+
+    required_ids = ledger_feature_ids(args.ledger)
+    missing_ids = sorted(required_ids.difference(matrix_ids))
+    extra_ids = sorted(set(matrix_ids).difference(required_ids))
+    for feature_id in missing_ids:
+        unresolved.append(f"{feature_id}: required ledger row has no validation row")
+    for feature_id in extra_ids:
+        unresolved.append(f"{feature_id}: validation row is absent or retired in the ledger")
 
     gate_rows = table_rows(marked_table(text, "parity-gates"), expected_cells=3)
     for gate, _command, result in gate_rows:

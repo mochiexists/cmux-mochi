@@ -945,10 +945,15 @@ extension Workspace {
     nonisolated static func shouldReplaySessionScrollback(
         restorableAgent: SessionRestorableAgentSnapshot?,
         tmuxStartCommand: String? = nil,
-        hasResumeStartupWork: Bool = false
+        hasResumeStartupWork: Bool = false,
+        resumeMode: AgentSessionResumeMode = .full
     ) -> Bool {
-        makeSessionRestorePolicyService().shouldReplaySessionScrollback(
-            hasRestorableAgent: restorableAgent != nil,
+        if restorableAgent != nil {
+            let modeAllowsReplay = resumeMode.replaysScrollback || resumeMode.submitsResumeCommand
+            return modeAllowsReplay && tmuxStartCommand == nil && !hasResumeStartupWork
+        }
+        return makeSessionRestorePolicyService().shouldReplaySessionScrollback(
+            hasRestorableAgent: false,
             tmuxStartCommand: tmuxStartCommand,
             hasResumeStartupWork: hasResumeStartupWork
         )
@@ -1350,11 +1355,13 @@ extension Workspace {
                 resumeBinding: persistedResumeBinding
             )
             let restoredHibernation = restorableAgent != nil ? snapshot.terminal?.hibernation : nil
-            let autoResumeAgentSessions = AgentSessionAutoResumeSettings.isEnabled(defaults: agentSessionAutoResumeDefaults)
-            // Only auto-resume if the agent was actively running when the snapshot was saved.
-            // wasAgentRunning == nil means a legacy snapshot; treat as true for backwards compatibility.
-            let agentWasRunningAtQuit = snapshot.terminal?.wasAgentRunning ?? true
-            let shouldAutoResumeAgent = autoResumeAgentSessions && agentWasRunningAtQuit
+            let resumeMode = AgentSessionAutoResumeSettings.mode(defaults: agentSessionAutoResumeDefaults)
+            // Never turn indeterminate legacy state into an automatically submitted command.
+            let agentWasRunningAtQuit = snapshot.terminal?.wasAgentRunning == true
+            let shouldPrepareMediumAgentPrefill = resumeMode == .medium &&
+                restorableAgent?.resumePreparedStartupInput() != nil
+            let shouldAutoResumeAgent = shouldPrepareMediumAgentPrefill ||
+                (resumeMode.submitsResumeCommand && agentWasRunningAtQuit)
             let remoteStartupCommand = remoteTerminalStartupCommand()
             let restoresRemoteWorkspaceTerminalSnapshot =
                 remoteStartupCommand != nil &&
@@ -1396,7 +1403,7 @@ extension Workspace {
                     : resumeBinding
             let effectiveResumeBindingForStartup = sessionRestorePolicy.approvedSurfaceResumeBinding(
                 resumeBindingForStartup,
-                autoResumeAgentSessions: shouldAutoResumeAgent,
+                autoResumeAgentSessions: resumeMode.submitsResumeCommand && agentWasRunningAtQuit,
                 promptForApproval: true,
                 approvalStoreURL: SurfaceResumeApprovalStore.defaultURL()
             )
@@ -1469,7 +1476,8 @@ extension Workspace {
             // per-launch dedup claim so two panels can't both win the race
             // before the freshly spawned process becomes visible to the index.
             let agentSessionAlreadyActive: Bool = {
-                guard shouldAutoResumeAgent, restoredHibernation == nil, restoredBindingLaunch == nil,
+                guard resumeMode.submitsResumeCommand, agentWasRunningAtQuit,
+                      restoredHibernation == nil, restoredBindingLaunch == nil,
                       let restorableAgent else {
                     return false
                 }
@@ -1491,7 +1499,11 @@ extension Workspace {
             let restoredAgentResumeLaunch: SurfaceResumeStartupLaunch? =
                 if shouldAutoResumeAgent && restoredHibernation == nil && restoredBindingLaunch == nil
                     && !agentSessionAlreadyActive {
-                    if restoresRemoteWorkspaceTerminalSnapshot {
+                    if resumeMode == .medium {
+                        restorableAgent?.resumePreparedStartupInput(
+                            restoringWorkingDirectory: resumeSessionWorkingDirectory
+                        ).map(SurfaceResumeStartupLaunch.input)
+                    } else if restoresRemoteWorkspaceTerminalSnapshot {
                         restorableAgent?.resumeStartupInput(
                             useLocalRestoreVerb: false,
                             restoringWorkingDirectory: resumeSessionWorkingDirectory
@@ -1505,10 +1517,12 @@ extension Workspace {
                 } else {
                     nil
                 }
-            let shouldReplayScrollback = sessionRestorePolicy.shouldReplaySessionScrollback(
-                hasRestorableAgent: restorableAgent != nil,
+            let resumeLaunchExecutesAtStartup = restoredAgentResumeLaunch != nil && resumeMode.submitsResumeCommand
+            let shouldReplayScrollback = Self.shouldReplaySessionScrollback(
+                restorableAgent: restorableAgent,
                 tmuxStartCommand: restoredTmuxStartCommand,
-                hasResumeStartupWork: restoredBindingLaunch != nil || restoredAgentResumeLaunch != nil
+                hasResumeStartupWork: restoredBindingLaunch != nil || resumeLaunchExecutesAtStartup,
+                resumeMode: resumeMode
             )
             // cmux is itself resuming this agent session onto the restored surface. Some agents
             // (codex) fire NO SessionStart hook on resume, and an `sr codex resume` bypasses the
@@ -1588,7 +1602,7 @@ extension Workspace {
                 restoredPersistentSSHResumeCommand != nil &&
                 resumeBinding?.isAgentHookBinding == true
             let restoredAgentWillRunStartupInput =
-                restoredAgentResumeLaunch?.initialInput != nil ||
+                (restoredAgentResumeLaunch?.initialInput != nil && resumeMode.submitsResumeCommand) ||
                 (restoredBindingLaunch?.initialInput != nil && resumeBinding?.isAgentHookBinding == true)
 #if DEBUG
             if let restorableAgent {
@@ -1599,7 +1613,7 @@ extension Workspace {
                     "kind=\(restorableAgent.kind.rawValue) session=\(sessionPreview) " +
                     "hasLaunch=\(restorableAgent.launchCommand == nil ? 0 : 1) " +
                     "launchArgc=\(launchArgc) hasResume=\(restoredAgentResumeLaunch == nil ? 0 : 1) " +
-                    "autoResume=\(autoResumeAgentSessions ? 1 : 0) typedStartup=\(restoredStartupInput == nil ? 0 : 1) " +
+                    "resumeMode=\(resumeMode.rawValue) typedStartup=\(restoredStartupInput == nil ? 0 : 1) " +
                     "replayScrollback=\(shouldReplayScrollback ? 1 : 0)"
                 )
             }

@@ -6,10 +6,12 @@ import Foundation
 /// intends.
 ///
 /// The guard fails open: it blocks only on positive evidence of a non-agent
-/// foreground job. Agent panes (Claude/Codex composers) are legitimate send
-/// targets, so any agent evidence — a detected resume binding, a registered
-/// agent lifecycle, or a foreground command recognized as an agent CLI —
-/// exempts the pane. `force` (the CLI `--force` flag) always wins.
+/// foreground job, either a shell-integration running report or a resolvable
+/// foreground process that is not the idle shell. Agent panes (Claude/Codex
+/// composers) are legitimate send targets, so any agent evidence — a detected
+/// resume binding, a registered agent lifecycle, or a foreground command
+/// recognized as an agent CLI — exempts the pane. `force` (the CLI `--force`
+/// flag) always wins.
 // lint:allow namespace-type — pure send-policy decision with no dependency or
 // lifetime; every observation required for a verdict is an explicit argument.
 public enum ControlSurfaceSendGuard {
@@ -24,12 +26,21 @@ public enum ControlSurfaceSendGuard {
         "claude", "codex", "node", "opencode", "omx", "omc", "cmux", "ovm",
     ]
 
+    /// Foreground process names that represent an idle interactive shell, not
+    /// a job consuming terminal input. This is used only when shell integration
+    /// has not reported `commandRunning`; an explicit running report still
+    /// blocks even if foreground-process discovery is momentarily stale.
+    public static let idleShellForegroundCommands: Set<String> = [
+        "bash", "dash", "fish", "ksh", "login", "nu", "pwsh", "sh", "tcsh", "xonsh", "zsh",
+    ]
+
     /// Returns `true` when the send must be refused with `live_foreground_job`.
     ///
     /// - Parameters:
     ///   - isCommandRunning: Whether shell integration reports a foreground
     ///     command on the pane (`PanelShellActivityState.commandRunning`).
-    ///     Pass `false` for `promptIdle`/`unknown` — no report means no block.
+    ///     When false, a resolvable non-shell foreground process remains
+    ///     positive evidence of a live job.
     ///   - hasAgentEvidence: Whether the app has any evidence the pane hosts an
     ///     agent session (surface resume binding or agent lifecycle entry).
     ///   - foregroundCommandName: The pane's foreground process name, if
@@ -42,13 +53,17 @@ public enum ControlSurfaceSendGuard {
         foregroundCommandName: String?,
         force: Bool
     ) -> Bool {
-        if force || !isCommandRunning || hasAgentEvidence {
+        if force || hasAgentEvidence {
             return false
         }
-        if let name = foregroundCommandName?.lowercased(),
-           exemptForegroundCommands.contains(name) {
+        let name = foregroundCommandName?.lowercased()
+        if let name, exemptForegroundCommands.contains(name) {
             return false
         }
-        return true
+        if isCommandRunning {
+            return true
+        }
+        guard let name else { return false }
+        return !idleShellForegroundCommands.contains(name)
     }
 }

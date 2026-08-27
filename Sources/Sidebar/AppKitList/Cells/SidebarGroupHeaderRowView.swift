@@ -117,13 +117,14 @@ final class SidebarGroupHeaderTableCellView: NSTableCellView {
 
     // MARK: Configure
 
+    @discardableResult
     func configure(
         model: SidebarGroupHeaderRowModel,
         actions: SidebarGroupHeaderRowActions,
         isPointerHovering: Bool,
         contextMenuDidOpen: @escaping () -> Void,
         contextMenuDidClose: @escaping () -> Void
-    ) {
+    ) -> Bool {
         let requiresFullApply = self.actions == nil
         let previous = self.model
         self.actions = actions
@@ -131,10 +132,11 @@ final class SidebarGroupHeaderTableCellView: NSTableCellView {
         self.contextMenuDidClose = contextMenuDidClose
         let hoverChanged = self.isPointerHovering != isPointerHovering
         self.isPointerHovering = isPointerHovering
-        guard requiresFullApply || previous != model || hoverChanged else { return }
+        guard requiresFullApply || previous != model || hoverChanged else { return false }
         self.model = model
         applyModel(model)
         needsLayout = true
+        return true
     }
 
     private func applyModel(_ model: SidebarGroupHeaderRowModel) {

@@ -159,17 +159,19 @@ extension DockSplitStore {
                 restorableAgent: restorableAgent
             )
         }
-        let agentWasRunning = terminalSnapshot.wasAgentRunning ?? true
-        let shouldAutoResumeAgent = AgentSessionAutoResumeSettings.isEnabled(
-            defaults: agentSessionAutoResumeDefaults
-        ) && agentWasRunning
+        let resumeMode = AgentSessionAutoResumeSettings.mode(defaults: agentSessionAutoResumeDefaults)
+        let agentWasRunning = terminalSnapshot.wasAgentRunning == true
+        let shouldPrepareMediumAgentPrefill = resumeMode == .medium &&
+            restorableAgent?.resumePreparedStartupInput() != nil
+        let shouldAutoResumeAgent = shouldPrepareMediumAgentPrefill ||
+            (resumeMode.submitsResumeCommand && agentWasRunning)
         let resumeBindingForStartup = hibernation != nil ||
             (resumeBinding?.isProcessDetected == true && resumeBinding?.autoResume != true)
             ? nil
             : resumeBinding
         let approvedResumeBinding = policy.approvedSurfaceResumeBinding(
             resumeBindingForStartup,
-            autoResumeAgentSessions: shouldAutoResumeAgent,
+            autoResumeAgentSessions: resumeMode.submitsResumeCommand && agentWasRunning,
             promptForApproval: true,
             approvalStoreURL: SurfaceResumeApprovalStore.defaultURL()
         )
@@ -209,13 +211,18 @@ extension DockSplitStore {
         let agentSessionAlreadyActive = sessionAgentAlreadyActive(
             restorableAgent: restorableAgent,
             snapshotPanelId: snapshot.id,
-            shouldAutoResume: shouldAutoResumeAgent && hibernation == nil && bindingLaunch == nil
+            shouldAutoResume: resumeMode.submitsResumeCommand && agentWasRunning &&
+                hibernation == nil && bindingLaunch == nil
         )
         let agentLaunch = shouldAutoResumeAgent && hibernation == nil && bindingLaunch == nil
             && !agentSessionAlreadyActive
-            ? restorableAgent?.resumeStartupInput(
-                restoringWorkingDirectory: resumeSessionWorkingDirectory
-            ).map(WorkspaceSurfaceResumeStartupLaunch.input)
+            ? (resumeMode == .medium
+                ? restorableAgent?.resumePreparedStartupInput(
+                    restoringWorkingDirectory: resumeSessionWorkingDirectory
+                ).map(WorkspaceSurfaceResumeStartupLaunch.input)
+                : restorableAgent?.resumeStartupInput(
+                    restoringWorkingDirectory: resumeSessionWorkingDirectory
+                ).map(WorkspaceSurfaceResumeStartupLaunch.input))
             : nil
         let initialCommand = tmuxLauncher
         let initialInput = bindingLaunch?.initialInput ?? agentLaunch?.initialInput
@@ -226,10 +233,12 @@ extension DockSplitStore {
             let candidate = tmuxLauncher != nil ? workingDirectory : resumeSessionWorkingDirectory
             return OneShotTerminalLauncherStore.enterableWorkingDirectory(candidate)
         }()
-        let shouldReplayScrollback = policy.shouldReplaySessionScrollback(
-            hasRestorableAgent: restorableAgent != nil,
+        let shouldReplayScrollback = Workspace.shouldReplaySessionScrollback(
+            restorableAgent: restorableAgent,
             tmuxStartCommand: restoredTmuxStartCommand,
-            hasResumeStartupWork: bindingLaunch != nil || agentLaunch != nil
+            hasResumeStartupWork: bindingLaunch != nil ||
+                (agentLaunch != nil && resumeMode.submitsResumeCommand),
+            resumeMode: resumeMode
         )
         let restoredScrollback = shouldReplayScrollback ? terminalSnapshot.scrollback : nil
         let replayFileURL = SessionScrollbackReplayStore.replayFileURL(for: restoredScrollback)
@@ -289,7 +298,7 @@ extension DockSplitStore {
         }
         let willRunAgentCommand = false
         let willRunAgentInput =
-            agentLaunch?.initialInput != nil ||
+            (agentLaunch?.initialInput != nil && resumeMode.submitsResumeCommand) ||
             (bindingLaunch?.initialInput != nil && resumeBinding?.isAgentHookBinding == true)
         seedSessionRestoredAgentState(
             panelId: terminal.id,

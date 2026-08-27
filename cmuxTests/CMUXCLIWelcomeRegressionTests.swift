@@ -50,6 +50,47 @@ struct CMUXCLIWelcomeRegressionTests {
         #expect(!result.output.contains("Claude browser"))
     }
 
+    @Test func welcomeJSONPublishesStableFeatureIdentifiers() throws {
+        let result = try runCLI(
+            ["welcome", "--json"],
+            environment: ["CMUX_CLI_SENTRY_DISABLED": "1"]
+        )
+
+        #expect(!result.timedOut, Comment(rawValue: result.output))
+        #expect(result.status == 0, Comment(rawValue: result.output))
+        let data = try #require(result.output.data(using: .utf8))
+        let payload = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        #expect(payload["schema_version"] as? Int == 1)
+        let featureIDs = try #require(payload["feature_ids"] as? [String])
+        #expect(Set(featureIDs) == Set([
+            "agent.resume-continuity",
+            "artifacts.panes",
+            "capture.workspace",
+            "conductor.agent-settle-wait",
+            "conductor.atomic-submit",
+            "conductor.live-job-guard",
+            "files.backed-tab-actions",
+            "fork.no-pro-upsell",
+            "mobile.account-free-pairing",
+            "mobile.reconnect-continuity",
+            "navigation.reopen-closed",
+            "navigation.sidebar-spring-load",
+            "pane.zoom-persistence",
+            "placement.adaptive-right",
+            "privacy.frost",
+            "session.force-quit-continuity",
+            "shell.safe-resume-aliases",
+            "sidebar.render-stability",
+            "task.resource-monitor",
+        ]))
+        #expect(featureIDs == featureIDs.sorted())
+
+        // Cross-file ledger coverage is enforced by check-fork-parity-validation.py.
+        // App-hosted tests must not read the source checkout because Documents-folder
+        // privacy mediation can block that access and turn a deterministic CLI test
+        // into a host-machine permission prompt.
+    }
+
     private func runCLI(
         _ arguments: [String],
         environment: [String: String]
@@ -65,13 +106,10 @@ struct CMUXCLIWelcomeRegressionTests {
         process.standardInput = FileHandle.nullDevice
         process.standardOutput = outputPipe
         process.standardError = outputPipe
+        let exited = DispatchSemaphore(value: 0)
+        process.terminationHandler = { _ in exited.signal() }
         try process.run()
 
-        let exited = DispatchSemaphore(value: 0)
-        DispatchQueue.global(qos: .userInitiated).async {
-            process.waitUntilExit()
-            exited.signal()
-        }
         let timedOut = exited.wait(timeout: .now() + 5) == .timedOut
         if timedOut {
             process.terminate()

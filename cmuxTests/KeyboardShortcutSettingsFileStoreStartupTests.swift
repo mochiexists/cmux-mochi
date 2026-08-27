@@ -927,16 +927,19 @@ final class KeyboardShortcutSettingsFileStoreStartupTests: XCTestCase {
     func testInitialSettingsFileLoadImportsDefaultsWithoutLiveDefaultNotifications() throws {
         let defaults = UserDefaults.standard
         let scrollBarKey = TerminalScrollBarSettings.showScrollBarKey
-        let autoResumeKey = AgentSessionAutoResumeSettings.autoResumeAgentSessionsKey
+        let resumeModeKey = AgentSessionAutoResumeSettings.modeKey
+        let legacyAutoResumeKey = AgentSessionAutoResumeSettings.legacyAutoResumeAgentSessionsKey
 
         try preservingDefaults(keys: [
             scrollBarKey,
-            autoResumeKey,
+            resumeModeKey,
+            legacyAutoResumeKey,
             settingsFileBackupsDefaultsKey,
             importedManagedDefaultsKey,
         ]) {
             defaults.removeObject(forKey: scrollBarKey)
-            defaults.removeObject(forKey: autoResumeKey)
+            defaults.removeObject(forKey: resumeModeKey)
+            defaults.removeObject(forKey: legacyAutoResumeKey)
             defaults.removeObject(forKey: settingsFileBackupsDefaultsKey)
             defaults.removeObject(forKey: importedManagedDefaultsKey)
 
@@ -987,7 +990,8 @@ final class KeyboardShortcutSettingsFileStoreStartupTests: XCTestCase {
             )
 
             XCTAssertEqual(defaults.object(forKey: scrollBarKey) as? Bool, false)
-            XCTAssertEqual(defaults.object(forKey: autoResumeKey) as? Bool, false)
+            XCTAssertEqual(defaults.string(forKey: resumeModeKey), AgentSessionResumeMode.off.rawValue)
+            XCTAssertNil(defaults.object(forKey: legacyAutoResumeKey))
             XCTAssertEqual(scrollBarNotificationCount, 0)
             XCTAssertEqual(autoResumeNotificationCount, 0)
 
@@ -998,57 +1002,50 @@ final class KeyboardShortcutSettingsFileStoreStartupTests: XCTestCase {
         }
     }
 
-    func testSettingsFileStoreAppliesTerminalAgentAutoResumeSetting() throws {
+    func testSettingsFileStoreAppliesTerminalAgentResumeModeAndCommandStyle() throws {
         let defaults = UserDefaults.standard
-        let key = AgentSessionAutoResumeSettings.autoResumeAgentSessionsKey
-        let previousValue = defaults.object(forKey: key)
-        let previousBackups = defaults.data(forKey: settingsFileBackupsDefaultsKey)
-        let previousImportedDefaults = defaults.data(forKey: importedManagedDefaultsKey)
-        defer {
-            if let previousValue {
-                defaults.set(previousValue, forKey: key)
-            } else {
-                defaults.removeObject(forKey: key)
-            }
+        let modeKey = AgentSessionAutoResumeSettings.modeKey
+        let styleKey = AgentResumeCommandStyleSettings.styleKey
+        let legacyKey = AgentSessionAutoResumeSettings.legacyAutoResumeAgentSessionsKey
+        try preservingDefaults(keys: [
+            modeKey,
+            styleKey,
+            legacyKey,
+            settingsFileBackupsDefaultsKey,
+            importedManagedDefaultsKey,
+        ]) {
+            defaults.removeObject(forKey: modeKey)
+            defaults.removeObject(forKey: styleKey)
+            defaults.removeObject(forKey: legacyKey)
+            defaults.removeObject(forKey: settingsFileBackupsDefaultsKey)
+            defaults.removeObject(forKey: importedManagedDefaultsKey)
 
-            if let previousBackups {
-                defaults.set(previousBackups, forKey: settingsFileBackupsDefaultsKey)
-            } else {
-                defaults.removeObject(forKey: settingsFileBackupsDefaultsKey)
-            }
-            if let previousImportedDefaults {
-                defaults.set(previousImportedDefaults, forKey: importedManagedDefaultsKey)
-            } else {
-                defaults.removeObject(forKey: importedManagedDefaultsKey)
-            }
+            let directoryURL = try makeTemporaryDirectory()
+            defer { try? FileManager.default.removeItem(at: directoryURL) }
+
+            let settingsFileURL = directoryURL.appendingPathComponent("cmux.json", isDirectory: false)
+            try writeSettingsFile(
+                """
+                {
+                  "terminal": {
+                    "agentResumeMode": "medium",
+                    "agentResumeCommandStyle": "verbose"
+                  }
+                }
+                """,
+                to: settingsFileURL
+            )
+
+            _ = KeyboardShortcutSettingsFileStore(
+                primaryPath: settingsFileURL.path,
+                fallbackPath: nil,
+                startWatching: false
+            )
+
+            XCTAssertEqual(defaults.string(forKey: modeKey), AgentSessionResumeMode.medium.rawValue)
+            XCTAssertEqual(defaults.string(forKey: styleKey), AgentResumeCommandStyle.verbose.rawValue)
+            XCTAssertNil(defaults.object(forKey: legacyKey))
         }
-
-        defaults.removeObject(forKey: key)
-        defaults.removeObject(forKey: settingsFileBackupsDefaultsKey)
-        defaults.removeObject(forKey: importedManagedDefaultsKey)
-
-        let directoryURL = try makeTemporaryDirectory()
-        defer { try? FileManager.default.removeItem(at: directoryURL) }
-
-        let settingsFileURL = directoryURL.appendingPathComponent("cmux.json", isDirectory: false)
-        try writeSettingsFile(
-            """
-            {
-              "terminal": {
-                "autoResumeAgentSessions": false
-              }
-            }
-            """,
-            to: settingsFileURL
-        )
-
-        _ = KeyboardShortcutSettingsFileStore(
-            primaryPath: settingsFileURL.path,
-            fallbackPath: nil,
-            startWatching: false
-        )
-
-        XCTAssertEqual(defaults.object(forKey: key) as? Bool, false)
     }
 
     func testSettingsFileStoreAppliesTerminalTextBoxMaxLinesSetting() throws {

@@ -11,6 +11,22 @@ import SwiftUI
 @testable import cmux
 #endif
 
+@MainActor
+private final class SidebarLayoutReentryDetectingHostingView<Content: View>: NSHostingView<Content> {
+    var onReentrantLayout: (() -> Void)?
+    private var isInsideLayout = false
+
+    override func layout() {
+        if isInsideLayout {
+            onReentrantLayout?()
+        }
+        let wasInsideLayout = isInsideLayout
+        isInsideLayout = true
+        defer { isInsideLayout = wasInsideLayout }
+        super.layout()
+    }
+}
+
 /// Behavioral gate for the workspace sidebar's lazy-layout contract: layout
 /// and diff work must stay O(visible rows) no matter how many workspaces are
 /// open, and updates must converge (no self-sustaining invalidation).
@@ -51,6 +67,8 @@ final class SidebarLazyLayoutScaleTests {
         var groupHeaderBodies = 0
         var workspaceSnapshotBuilds = 0
         var workspaceRowInputProjections = 0
+        var tableRootViewReconfigurations = 0
+        var hostingLayoutReentries = 0
         // Snapshot builds bracketed by workspaceRowBody/workspaceRowBodyEnd,
         // i.e. synchronous work inside a single TabItemView.body evaluation.
         // Builds outside the bracket (onAppear refresh, observation publishers)
@@ -63,6 +81,8 @@ final class SidebarLazyLayoutScaleTests {
             groupHeaderBodies = 0
             workspaceSnapshotBuilds = 0
             workspaceRowInputProjections = 0
+            tableRootViewReconfigurations = 0
+            hostingLayoutReentries = 0
             insideWorkspaceRowBody = false
             snapshotBuildsInCurrentRowBody = 0
             maxSnapshotBuildsInOneRowBody = 0
@@ -78,6 +98,7 @@ final class SidebarLazyLayoutScaleTests {
         let defaultsSuiteName: String
 
         func tearDown() {
+            window.orderOut(nil)
             window.contentView = nil
             window.close()
             UserDefaults(suiteName: defaultsSuiteName)?
@@ -143,10 +164,16 @@ final class SidebarLazyLayoutScaleTests {
 
         let unread = SidebarUnreadModel()
         let counter = RowBodyCounter()
+        let featureFlags = CmuxFeatureFlags(
+            defaults: defaults,
+            remoteFlagValueProvider: { _ in nil }
+        )
+        featureFlags.setOverride(true, for: CmuxFeatureFlags.appKitSidebarListFlag)
 
         let root = VerticalTabsSidebar(
             updateViewModel: UpdateStateModel(),
             fileExplorerState: FileExplorerState(),
+            featureFlags: featureFlags,
             sidebarUnread: unread,
             titlebarControlsLayoutModel: TitlebarControlsLayoutModel(),
             windowId: UUID(),
@@ -186,6 +213,9 @@ final class SidebarLazyLayoutScaleTests {
                         counter.snapshotBuildsInCurrentRowBody
                     )
                 },
+                tableRootViewReconfigure: {
+                    counter.tableRootViewReconfigurations += 1
+                },
                 workspaceRowInputProjection: {
                     counter.workspaceRowInputProjections += 1
                 }
@@ -205,7 +235,15 @@ final class SidebarLazyLayoutScaleTests {
         // release]: message sent to deallocated instance"). That crash killed
         // the host before the pass was recorded, and CI masked it (#5641).
         window.isReleasedWhenClosed = false
-        window.contentView = NSHostingView(rootView: root)
+        let hostingView = SidebarLayoutReentryDetectingHostingView(rootView: root)
+        hostingView.onReentrantLayout = {
+            counter.hostingLayoutReentries += 1
+        }
+        window.contentView = hostingView
+        // Realize the AppKit table hierarchy without putting a 300-row test
+        // fixture on the user's desktop during a local test run.
+        window.contentView?.layoutSubtreeIfNeeded()
+        window.contentView?.displayIfNeeded()
 
         return Harness(
             tabManager: tabManager,
@@ -236,6 +274,15 @@ final class SidebarLazyLayoutScaleTests {
         }
     }
 
+    @MainActor
+    static func appKitTable(in rootView: NSView) -> SidebarWorkspaceTableViewImpl? {
+        if let table = rootView as? SidebarWorkspaceTableViewImpl { return table }
+        for subview in rootView.subviews {
+            if let table = appKitTable(in: subview) { return table }
+        }
+        return nil
+    }
+
 
     /// Mounting the sidebar with 300 workspaces must realize only the rows a
     /// single viewport needs. Realizing all of them is the #5323/#6210 defeat:
@@ -249,34 +296,41 @@ final class SidebarLazyLayoutScaleTests {
 
         await Self.drainMainRunLoop(for: harness.window)
 
-        let realized = harness.counter.workspaceRowBodies
-        #expect(realized > 0, "Sidebar mounted but no workspace row body ran; harness is broken.")
+        let rootView = try #require(harness.window.contentView)
+        let table = try #require(Self.appKitTable(in: rootView))
+        let visibleRows = table.rows(in: table.visibleRect)
+        let realized = visibleRows.length
+        #expect(realized > 0, "Sidebar mounted but the native table realized no rows; harness is broken.")
         #expect(
             realized < Self.realizedRowCeiling,
             """
-            \(realized) workspace row bodies evaluated for a single ~20-row viewport with \
-            \(Self.workspaceCount) workspaces. The LazyVStack is being defeated (all rows \
-            realized per pass) — the #2586 sidebar livelock class. Look for per-row geometry \
-            feedback (GeometryReader/@State height, anchorPreference aggregation) or a \
-            force-measuring Layout; see scripts/check-sidebar-lazy-layout.py.
+            \(realized) native rows were realized for a single ~20-row viewport with \
+            \(Self.workspaceCount) workspaces. The NSTableView virtualization boundary is \
+            defeated — the #2586 sidebar livelock class.
             """
         )
 
-        let headerRealized = harness.counter.groupHeaderBodies
+        let realizedCells = (visibleRows.location..<NSMaxRange(visibleRows)).compactMap { row in
+            table.view(atColumn: 0, row: row, makeIfNecessary: false)
+        }
+        let headerRealized = realizedCells.filter { $0 is SidebarGroupHeaderTableCellView }.count
         #expect(
             headerRealized > 0,
             """
-            Groups were created at the top of the list but no group-header body ran; the \
+            Groups were created at the top of the list but no native group-header cell was realized; the \
             grouped-workspace coverage is broken.
             """
         )
         #expect(
             headerRealized < Self.realizedRowCeiling,
             """
-            \(headerRealized) group-header bodies evaluated for 5 groups in one viewport. \
-            The group-header row wrapper (sidebarWorkspaceGroupRow) is defeating \
-            virtualization or re-evaluating without bound — the #4385 regression site.
+            \(headerRealized) native group-header cells were realized for 5 groups in one viewport. \
+            The group-header path is defeating virtualization — the #4385 regression site.
             """
+        )
+        #expect(
+            harness.counter.tableRootViewReconfigurations > 0,
+            "The native cell reconfiguration probe did not run; the scale gate is not observing table work."
         )
     }
 
@@ -327,16 +381,20 @@ final class SidebarLazyLayoutScaleTests {
         // snapshot before the counter resets.
         let initialDeadline = ProcessInfo.processInfo.systemUptime + 3
         var previousInitialBuildCount = -1
+        var previousInitialProjectionCount = -1
         var stableInitialPasses = 0
         while stableInitialPasses < 4,
               ProcessInfo.processInfo.systemUptime < initialDeadline {
             Self.turnMainRunLoopOnce(layingOut: harness.window)
             await Task.yield()
             let currentBuildCount = harness.counter.workspaceSnapshotBuilds
-            if currentBuildCount == previousInitialBuildCount {
+            let currentProjectionCount = harness.counter.workspaceRowInputProjections
+            if currentBuildCount == previousInitialBuildCount,
+               currentProjectionCount == previousInitialProjectionCount {
                 stableInitialPasses += 1
             } else {
                 previousInitialBuildCount = currentBuildCount
+                previousInitialProjectionCount = currentProjectionCount
                 stableInitialPasses = 0
             }
         }
@@ -346,7 +404,7 @@ final class SidebarLazyLayoutScaleTests {
         )
         #expect(
             stableInitialPasses == 4,
-            "Initial workspace publishers did not quiesce before the batch measurement."
+            "Initial workspace publishers and parent projections did not quiesce before the batch measurement."
         )
 
         harness.counter.reset()
@@ -372,12 +430,13 @@ final class SidebarLazyLayoutScaleTests {
         await Self.drainMainRunLoop(for: harness.window)
 
         let projections = harness.counter.workspaceRowInputProjections
+        let projectedRows = harness.tabManager.tabs.count + harness.tabManager.workspaceGroups.count
         #expect(projections > 0, "The parent row-input projection probe did not run.")
         #expect(
-            projections <= Self.workspaceCount * 4,
+            projections <= projectedRows * 4,
             """
             \(projections) parent row-input projections ran for one \(targets.count)-workspace \
-            event batch at \(Self.workspaceCount) workspaces. The batch must cause O(N) parent \
+            event batch across \(projectedRows) workspace/header rows. The batch must cause O(N) parent \
             projection work, not O(N²) work from one parent invalidation per emitter.
             """
         )
@@ -444,8 +503,9 @@ final class SidebarLazyLayoutScaleTests {
 
     /// Harness self-test: prove the drain loop + body counter actually detect
     /// a layout feedback loop. This fixture reproduces the historical
-    /// GeometryReader → @State row-height shape (#6556) in divergent form; if
-    /// the harness cannot flag THIS, the two tests above are vacuous.
+    /// GeometryReader → @State row-height shape (#6556), but caps the number
+    /// of mutations so the canary cannot trip AppKit's invalid-geometry trap.
+    /// If the harness cannot flag THIS, the two tests above are vacuous.
     @Test
     @MainActor
     func testHarnessDetectsGeometryFeedbackLoopCanary() async throws {
@@ -455,7 +515,7 @@ final class SidebarLazyLayoutScaleTests {
         let rows = 8
         let root = VStack(spacing: 2) {
             ForEach(0..<rows, id: \.self) { _ in
-                DivergentGeometryFeedbackRowFixture(onBody: { counter.workspaceRowBodies += 1 })
+                BoundedGeometryFeedbackRowFixture(onBody: { counter.workspaceRowBodies += 1 })
             }
         }
         .frame(width: 200)
@@ -468,6 +528,7 @@ final class SidebarLazyLayoutScaleTests {
         )
         window.isReleasedWhenClosed = false
         defer {
+            window.orderOut(nil)
             window.contentView = nil
             window.close()
         }
@@ -478,7 +539,7 @@ final class SidebarLazyLayoutScaleTests {
         #expect(
             counter.workspaceRowBodies > rows * 3,
             """
-            The divergent GeometryReader → @State fixture only produced \
+            The bounded GeometryReader → @State fixture only produced \
             \(counter.workspaceRowBodies) body evaluations for \(rows) rows; the harness \
             can no longer observe layout feedback loops, so the lazy-contract tests above \
             are not protecting anything. Fix the harness before trusting them.
@@ -487,12 +548,14 @@ final class SidebarLazyLayoutScaleTests {
     }
 }
 
-/// Reproduces the #6556 anti-pattern in deliberately divergent form: a
+/// Reproduces the #6556 anti-pattern in bounded form: a
 /// GeometryReader writes measured height back into `@State` that feeds the
-/// row's own frame, so every layout pass invalidates the next. Test fixture
-/// only — this shape is banned in real sidebar rows by
+/// row's own frame, so successive layout passes invalidate each other until
+/// the explicit fixture ceiling is reached. Test fixture only — this shape is banned in real sidebar rows by
 /// `scripts/check-sidebar-lazy-layout.py`.
-private struct DivergentGeometryFeedbackRowFixture: View {
+private struct BoundedGeometryFeedbackRowFixture: View {
+    private static let maximumRowHeight: CGFloat = 28
+
     let onBody: () -> Void
     @State private var rowHeight: CGFloat = 20
 
@@ -503,11 +566,16 @@ private struct DivergentGeometryFeedbackRowFixture: View {
             .background {
                 GeometryReader { proxy in
                     Color.clear
-                        .onAppear { rowHeight = proxy.size.height + 1 }
+                        .onAppear { advanceHeight(from: proxy.size.height) }
                         .onChange(of: proxy.size.height) { _, newHeight in
-                            rowHeight = newHeight + 1
+                            advanceHeight(from: newHeight)
                         }
                 }
             }
+    }
+
+    private func advanceHeight(from measuredHeight: CGFloat) {
+        guard measuredHeight < Self.maximumRowHeight else { return }
+        rowHeight = min(Self.maximumRowHeight, measuredHeight + 1)
     }
 }
