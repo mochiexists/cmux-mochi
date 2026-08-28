@@ -134,22 +134,29 @@ struct MobileHostServiceSettingsTests {
         #expect(plan.startsLegacyListener)
     }
 
-    @Test func configuredPortDefaultsToCatalogDefaultWhenUnset() throws {
+    @Test func configuredPortUsesAStablePortPerInstalledChannelWhenUnset() throws {
         let suiteName = "MobileHostServiceSettingsTests.Port.Default.\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: suiteName))
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
-        let expected = SettingCatalog().mobile.iOSPairingPort.defaultValue
-        #expect(MobileHostService.configuredPort(defaults: defaults) == expected)
+        #expect(MobileHostService.configuredPort(defaults: defaults, buildFlavor: .stable) == 58_465)
+        #expect(MobileHostService.configuredPort(defaults: defaults, buildFlavor: .nightly) == 58_466)
+        #expect(MobileHostService.configuredPort(defaults: defaults, buildFlavor: .dev) == 58_467)
     }
 
-    @Test func configuredPortHonorsValidOverride() throws {
+    @Test(arguments: [BuildFlavor.stable, .nightly, .dev])
+    func configuredPortHonorsValidOverride(buildFlavor: BuildFlavor) throws {
         let suiteName = "MobileHostServiceSettingsTests.Port.Valid.\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: suiteName))
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
         defaults.set(9000, forKey: MobileHostService.portDefaultsKey)
-        #expect(MobileHostService.configuredPort(defaults: defaults) == 9000)
+        #expect(
+            MobileHostService.configuredPort(
+                defaults: defaults,
+                buildFlavor: buildFlavor
+            ) == 9000
+        )
     }
 
     @Test(arguments: [0, -1, 70000, 65536])
@@ -159,8 +166,12 @@ struct MobileHostServiceSettingsTests {
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
         defaults.set(invalidPort, forKey: MobileHostService.portDefaultsKey)
-        let expected = SettingCatalog().mobile.iOSPairingPort.defaultValue
-        #expect(MobileHostService.configuredPort(defaults: defaults) == expected)
+        #expect(
+            MobileHostService.configuredPort(
+                defaults: defaults,
+                buildFlavor: .nightly
+            ) == 58_466
+        )
     }
 
     @Test func resolvedDesiredPortIsNilForInvalidSoRunningListenerIsNotDisturbed() throws {
@@ -168,18 +179,32 @@ struct MobileHostServiceSettingsTests {
         let defaults = try #require(UserDefaults(suiteName: suiteName))
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
-        // Unset → catalog default (a valid desired port).
-        #expect(MobileHostService.resolvedDesiredPort(defaults: defaults)
-            == SettingCatalog().mobile.iOSPairingPort.defaultValue)
+        // Unset → channel default (a valid desired port).
+        #expect(
+            MobileHostService.resolvedDesiredPort(
+                defaults: defaults,
+                buildFlavor: .nightly
+            ) == 58_466
+        )
 
         // Valid override → that port.
         defaults.set(58_470, forKey: MobileHostService.portDefaultsKey)
-        #expect(MobileHostService.resolvedDesiredPort(defaults: defaults) == 58_470)
+        #expect(
+            MobileHostService.resolvedDesiredPort(
+                defaults: defaults,
+                buildFlavor: .nightly
+            ) == 58_470
+        )
 
         // Invalid override → nil, so syncToSettings keeps the running listener
         // on its applied port instead of restarting onto the default.
         defaults.set(70_000, forKey: MobileHostService.portDefaultsKey)
-        #expect(MobileHostService.resolvedDesiredPort(defaults: defaults) == nil)
+        #expect(
+            MobileHostService.resolvedDesiredPort(
+                defaults: defaults,
+                buildFlavor: .nightly
+            ) == nil
+        )
     }
 
     @Test func portApplyPreBindClassifiesNonBindCases() {
