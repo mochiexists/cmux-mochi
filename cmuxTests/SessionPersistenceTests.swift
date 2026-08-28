@@ -2123,6 +2123,50 @@ final class SessionPersistenceTests: XCTestCase {
         )
     }
 
+    func testClaudeResumeCommandKeepsEquivalentRestoreDataBehindCleanAlias() throws {
+        let snapshot = SessionRestorableAgentSnapshot(
+            kind: .claude,
+            sessionId: "72e49a39-4cbc-4870-9433-2fafb9d579ac",
+            workingDirectory: "/Users/example/ventures",
+            launchCommand: AgentLaunchCommandSnapshot(
+                launcher: "claude",
+                executablePath: "/Users/example/.local/bin/claude",
+                arguments: ["claude", "--dangerously-skip-permissions"],
+                workingDirectory: "/Users/example/ventures",
+                environment: [
+                    "NODE_OPTIONS": "--network-family-autoselection-attempt-timeout=2000"
+                ],
+                capturedAt: 123,
+                source: "environment"
+            ),
+            permissionMode: "bypassPermissions"
+        )
+
+        XCTAssertEqual(
+            snapshot.resumeCommand,
+            "cd '/Users/example/ventures' && ccy '--resume' '72e49a39-4cbc-4870-9433-2fafb9d579ac'"
+        )
+
+        let verboseCommand = try XCTUnwrap(
+            snapshot.resumeCommand(
+                includeWorkingDirectoryPrefix: true,
+                style: .verbose
+            )
+        )
+        XCTAssertTrue(verboseCommand.contains("NODE_OPTIONS="), verboseCommand)
+        XCTAssertTrue(verboseCommand.contains("--dangerously-skip-permissions"), verboseCommand)
+
+        let decoded = try JSONDecoder().decode(
+            SessionRestorableAgentSnapshot.self,
+            from: JSONEncoder().encode(snapshot)
+        )
+        XCTAssertEqual(
+            decoded.launchCommand?.environment?["NODE_OPTIONS"],
+            "--network-family-autoselection-attempt-timeout=2000"
+        )
+        XCTAssertEqual(decoded.permissionMode, "bypassPermissions")
+    }
+
     func testCodexResumeCommandUsesNonYoloAliasWhenNoBypassFlag() {
         let snapshot = SessionRestorableAgentSnapshot(
             kind: .codex,
