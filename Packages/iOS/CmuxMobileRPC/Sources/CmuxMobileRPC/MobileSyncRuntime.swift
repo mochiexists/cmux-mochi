@@ -52,6 +52,10 @@ public protocol MobileSyncRuntime: Sendable {
     /// transport can stall that verdict.
     var livenessProbeTimeoutNanoseconds: UInt64 { get }
 
+    /// Relay-tolerant deadline for the same probe on a Tailscale route. A DERP
+    /// round trip can legitimately exceed the low-latency watchdog budget.
+    var tailscaleLivenessProbeTimeoutNanoseconds: UInt64 { get }
+
     /// Hard ceiling on one automatic reconnect attempt (stored-Mac redial)
     /// end to end. An Iroh dial can hang far past any per-transport connect
     /// timeout (relay DNS churn, hole-punch stalls), and an unbounded attempt
@@ -81,6 +85,10 @@ public extension MobileSyncRuntime {
     /// while keeping dead-stream recovery within a few seconds of the silence
     /// threshold instead of the full ``rpcRequestTimeoutNanoseconds``.
     var livenessProbeTimeoutNanoseconds: UInt64 { 3_000_000_000 }
+
+    /// Allows a slow-but-live DERP path to complete one control round trip.
+    /// Repeated failures still bound dead-stream recovery through the watchdog.
+    var tailscaleLivenessProbeTimeoutNanoseconds: UInt64 { 8_000_000_000 }
 
     /// Default reconnect-attempt ceiling: comfortably above a slow relay dial
     /// (transport connects bound themselves near 15s) while turning a hung

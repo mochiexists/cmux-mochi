@@ -545,6 +545,62 @@ import Testing
     )
 }
 
+/// DERP adds enough latency that a live Tailscale control round trip can exceed
+/// the low-latency probe deadline. The route-specific budget must let that
+/// acknowledgement prove liveness without replacing the authenticated client.
+@MainActor
+@Test func watchdogAllowsRelayScaleTailscaleProbeLatency() async throws {
+    let clock = TestClock()
+    let router = LivenessHostRouter()
+    let box = TransportBox()
+    let store = try await makeConnectedStore(
+        router: router,
+        box: box,
+        clock: clock,
+        probeTimeoutNanoseconds: 50_000_000,
+        tailscaleProbeTimeoutNanoseconds: 500_000_000
+    )
+    defer {
+        Task { await router.releaseAllHeld() }
+    }
+
+    #expect(try await pollUntil {
+        await router.count(of: "mobile.events.subscribe") >= 1
+    })
+    let originalClient = try #require(store.remoteClient)
+    let originalGeneration = store.connectionGeneration
+    let hostStatusCount = await router.count(of: "mobile.host.status")
+    store.activeRoute = try CmxAttachRoute(
+        id: "tailscale-relay",
+        kind: .tailscale,
+        endpoint: .hostPort(host: "100.100.100.100", port: 56_584)
+    )
+
+    // Release the live acknowledgement after the ordinary 50ms budget but
+    // comfortably within the scaled 500ms Tailscale budget.
+    await router.delaySubscribeRequest(number: 2)
+    let release = Task {
+        try? await Task.sleep(nanoseconds: 150_000_000)
+        await router.releaseAllHeld()
+    }
+    defer { release.cancel() }
+    store.markMacConnectionReconnecting()
+    clock.advance(by: 10)
+    store.debugRunRenderGridLivenessCheckForTesting()
+
+    #expect(await router.waitForCount(
+        of: "mobile.events.subscribe",
+        atLeast: 2
+    ))
+    #expect(try await pollUntil(attempts: 100) {
+        store.macConnectionStatus == .connected
+    })
+    #expect(store.remoteClient === originalClient)
+    #expect(store.connectionGeneration == originalGeneration)
+    #expect(store.connectionState == .connected)
+    #expect(await router.count(of: "mobile.host.status") == hostStatusCount)
+}
+
 /// A successful probe that REPAIRED a lost registration (the host reports
 /// `already_subscribed: false`) must replay mounted surfaces: render-grid
 /// deltas emitted while the registration was absent were never delivered, so

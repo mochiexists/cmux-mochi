@@ -884,12 +884,14 @@ func makeConnectedStore(
     box: TransportBox,
     clock: TestClock,
     probeTimeoutNanoseconds: UInt64 = 200_000_000,
+    tailscaleProbeTimeoutNanoseconds: UInt64 = 500_000_000,
     inputAckRetryClock: any Clock<Duration> = ContinuousClock()
 ) async throws -> MobileShellComposite {
     let runtime = LivenessTestRuntime(
         transportFactory: LivenessTransportFactory(router: router, box: box),
         now: { clock.now },
-        livenessProbeTimeoutNanoseconds: probeTimeoutNanoseconds
+        livenessProbeTimeoutNanoseconds: probeTimeoutNanoseconds,
+        tailscaleLivenessProbeTimeoutNanoseconds: tailscaleProbeTimeoutNanoseconds
     )
     let store = MobileShellComposite.preview(
         runtime: runtime,
