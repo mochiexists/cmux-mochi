@@ -643,16 +643,30 @@ final class MobileHostService {
     /// The preferred TCP port the listener should try to bind, read from
     /// settings.
     ///
-    /// Falls back to the catalog default (which mirrors
-    /// `CmxMobileDefaults.defaultHostPort`) when unset or outside the valid
-    /// `1...65535` range. The listener still falls back to an OS-assigned
-    /// ephemeral port if this port is unavailable at bind time.
-    nonisolated static func configuredPort(defaults: UserDefaults = .standard) -> Int {
-        let fallback = SettingCatalog().mobile.iOSPairingPort.defaultValue
+    /// Falls back to a deterministic installed-channel port when unset or
+    /// outside the valid `1...65535` range. Stable keeps the protocol default;
+    /// Nightly and development builds use sibling ports so they can run beside
+    /// Stable without weakening the listener's fail-closed contract.
+    nonisolated static func configuredPort(
+        defaults: UserDefaults = .standard,
+        buildFlavor: BuildFlavor = .current
+    ) -> Int {
+        let fallback = defaultPort(buildFlavor: buildFlavor)
         guard let raw = defaults.object(forKey: portDefaultsKey) as? Int else {
             return fallback
         }
         return (1...65535).contains(raw) ? raw : fallback
+    }
+
+    nonisolated private static func defaultPort(buildFlavor: BuildFlavor) -> Int {
+        switch buildFlavor {
+        case .stable:
+            return CmxMobileDefaults.defaultHostPort
+        case .nightly:
+            return CmxMobileDefaults.nightlyHostPort
+        case .dev:
+            return CmxMobileDefaults.developmentHostPort
+        }
     }
 
     /// The port a settings change should reconcile the *running* listener to, or
@@ -663,9 +677,12 @@ final class MobileHostService {
     /// running listener and silently rebind it to the default port. Returns the
     /// catalog default when unset, the override when valid, and `nil` when the
     /// stored value is out of range.
-    nonisolated static func resolvedDesiredPort(defaults: UserDefaults = .standard) -> Int? {
+    nonisolated static func resolvedDesiredPort(
+        defaults: UserDefaults = .standard,
+        buildFlavor: BuildFlavor = .current
+    ) -> Int? {
         guard let raw = defaults.object(forKey: portDefaultsKey) as? Int else {
-            return SettingCatalog().mobile.iOSPairingPort.defaultValue
+            return defaultPort(buildFlavor: buildFlavor)
         }
         return (1...65535).contains(raw) ? raw : nil
     }

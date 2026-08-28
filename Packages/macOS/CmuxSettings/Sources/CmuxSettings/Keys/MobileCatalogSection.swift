@@ -29,12 +29,12 @@ public struct MobileCatalogSection: SettingCatalogSection {
 
     /// TCP port the Mac-side iOS pairing listener prefers to bind.
     ///
-    /// This is a *preference*: if the port is already in use the listener
-    /// falls back to an OS-assigned ephemeral port, and the iOS app is always
-    /// handed the actual bound port (so pairing still works). Configure a fixed
-    /// port when you need predictable firewall rules or to avoid a conflict.
-    /// The default mirrors `CmxMobileDefaults.defaultHostPort`, the protocol
-    /// default mobile clients dial when a pairing payload omits a port.
+    /// An explicit value overrides the installed channel's fixed default.
+    /// Stable uses the protocol default; Nightly and development builds use
+    /// deterministic sibling ports so concurrently installed channels do not
+    /// contend for one listener. The listener fails closed if its selected port
+    /// is unavailable rather than drifting to an address a paired phone has
+    /// never stored.
     public let iOSPairingPort = DefaultsKey<Int>(
         id: "mobile.iOSPairingHost.port",
         defaultValue: 58_465,

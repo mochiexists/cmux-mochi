@@ -12,6 +12,13 @@ public struct CmxMobileDefaults {
     /// "running" at an address no phone has ever been told about.
     public static let defaultHostPort = 58_465
 
+    /// Fixed pairing port for the installed nightly channel.
+    ///
+    /// Stable and Nightly are intentionally installable side by side. Giving
+    /// Nightly its own deterministic port lets both fail-closed listeners run
+    /// concurrently without making either channel drift across relaunches.
+    public static let nightlyHostPort = 58_466
+
     /// Base pairing port for developer builds.
     ///
     /// Fork (cmux Mochi): a dev build and the installed release build routinely
