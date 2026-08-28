@@ -6,6 +6,7 @@ import CmuxMobileTransport
 import CmuxSettings
 import CmuxTerminalCore
 import CryptoKit
+import DeviceLinkKit
 import Foundation
 @preconcurrency import Network
 import OSLog
@@ -1384,6 +1385,13 @@ final class MobileHostService {
                 return result
             },
             onClose: { id in
+                if case let .pairedDevice(fingerprintHex, _) = authorization,
+                   let fingerprint = DeviceFingerprint(hex: fingerprintHex) {
+                    await MobileHostDeviceLink.shared.noteDisconnection(
+                        fingerprint,
+                        connectionID: id
+                    )
+                }
                 await MobileHostService.shared.mobileBrowserStreamCoordinator.connectionClosed(id)
                 MobileHostConnectionRegistry.shared.remove(id: id)
                 await MobileHostService.shared.removeConnection(id: id)
@@ -1406,6 +1414,17 @@ final class MobileHostService {
             await transport.close()
             MobileHostRequestActivity.endConnection()
             return expectedExit
+        }
+        if case let .pairedDevice(fingerprintHex, _) = authorization {
+            guard let fingerprint = DeviceFingerprint(hex: fingerprintHex),
+                  await MobileHostDeviceLink.shared.noteAdmission(
+                      fingerprint,
+                      connectionID: id
+                  ) else {
+                MobileHostConnectionRegistry.shared.remove(id: id)
+                await session.close(reason: "DeviceLink pairing was revoked during admission")
+                return expectedExit
+            }
         }
         return await session.run()
     }
@@ -2467,7 +2486,10 @@ actor MobileHostConnection {
             guard let response = await successResponsePayload(for: request) else {
                 return
             }
-            _ = await sendResponse(response)
+            let didSend = await sendResponse(response)
+            if didSend, request.method == "mobile.pairing.device.revoke_self" {
+                await close(reason: "DeviceLink pairing removed by this device")
+            }
         case let .failure(error):
             guard !isClosed, !Task.isCancelled else {
                 return

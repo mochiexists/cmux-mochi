@@ -73,6 +73,16 @@ final class MobileHostDeviceLink {
     /// race a cold start and be told its perfectly good key is unknown.
     func prepare() async {
         guard !didLoad else { return }
+        await coordinator.setConnectionCloser { connectionIDs in
+            let connections = MobileHostConnectionRegistry.shared.removeConnections(
+                ids: connectionIDs
+            )
+            for connection in connections {
+                Task {
+                    await connection.close(reason: "DeviceLink pairing revoked")
+                }
+            }
+        }
         do {
             let wasRejected = try await coordinator.load()
             if wasRejected {
@@ -183,8 +193,25 @@ final class MobileHostDeviceLink {
     }
 
     /// Marks a device as seen, so a reconnect is visible in `device.list`.
-    func noteAdmission(_ fingerprint: DeviceFingerprint) async {
-        _ = await coordinator.registerAdmission(fingerprint, connectionID: UUID())
+    func noteAdmission(
+        _ fingerprint: DeviceFingerprint,
+        connectionID: UUID
+    ) async -> Bool {
+        await coordinator.registerAdmission(
+            fingerprint,
+            connectionID: connectionID
+        )
+    }
+
+    /// Forgets a closed DeviceLink session from the live-admission index.
+    func noteDisconnection(
+        _ fingerprint: DeviceFingerprint,
+        connectionID: UUID
+    ) async {
+        await coordinator.unregisterAdmission(
+            fingerprint,
+            connectionID: connectionID
+        )
     }
 
     /// Every enrolled device, for `mobile.pairing.device.list`.
@@ -198,6 +225,22 @@ final class MobileHostDeviceLink {
         guard let fingerprint = DeviceFingerprint(hex: fingerprintHex) else { return false }
         await prepare()
         let didRevoke = try await coordinator.revoke(fingerprint)
+        await refreshAdmissionSnapshot()
+        return didRevoke
+    }
+
+    /// Revokes the authenticated caller while allowing its success response to
+    /// flush before that exact connection is closed by the request loop.
+    func revokeSelf(
+        fingerprintHex: String,
+        connectionID: UUID
+    ) async throws -> Bool {
+        guard let fingerprint = DeviceFingerprint(hex: fingerprintHex) else { return false }
+        await prepare()
+        let didRevoke = try await coordinator.revoke(
+            fingerprint,
+            excludingConnectionID: connectionID
+        )
         await refreshAdmissionSnapshot()
         return didRevoke
     }

@@ -793,6 +793,76 @@
         "ja" : { "stringUnit" : { "state" : "translated", "value" : "このコンピュータの登録を解除しますか？" } }
       }
     },
+    "mobile.computers.remove" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Remove Computer" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "コンピュータを削除" } }
+      }
+    },
+    "mobile.computers.remove.confirmMessage" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "This iPhone will need to scan a new QR code to connect again." } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "このiPhoneから再接続するには、新しいQRコードをスキャンする必要があります。" } }
+      }
+    },
+    "mobile.computers.remove.confirmTitle" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Remove this computer?" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "このコンピュータを削除しますか？" } }
+      }
+    },
+    "mobile.computers.remove.failureMessage" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "The computer couldn't be removed. Try again." } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "コンピュータを削除できませんでした。もう一度お試しください。" } }
+      }
+    },
+    "mobile.computers.remove.failureTitle" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Couldn't remove computer" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "コンピュータを削除できませんでした" } }
+      }
+    },
+    "mobile.computers.remove.localOnly" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Remove from This iPhone" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "このiPhoneから削除" } }
+      }
+    },
+    "mobile.computers.remove.offlineMessage" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "The computer may keep this iPhone in its paired-device list until you remove it there. Remove the local pairing anyway?" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "コンピュータ側で削除するまで、このiPhoneがペアリング済みデバイス一覧に残る場合があります。それでもローカルのペアリングを削除しますか？" } }
+      }
+    },
+    "mobile.computers.remove.offlineTitle" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Couldn't reach this computer" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "このコンピュータに接続できませんでした" } }
+      }
+    },
+    "mobile.computers.hidden.footer" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Hidden computers remain paired and are only hidden on this iPhone." } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "非表示のコンピュータはペアリングされたままで、このiPhoneでのみ非表示になります。" } }
+      }
+    },
+    "mobile.disconnected.listFooter" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Tap a computer to reconnect. Swipe left to hide or remove one." } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "コンピュータをタップして再接続します。左にスワイプすると非表示または削除できます。" } }
+      }
+    },
     "mobile.common.edit" : {
       "extractionState" : "manual",
       "localizations" : {

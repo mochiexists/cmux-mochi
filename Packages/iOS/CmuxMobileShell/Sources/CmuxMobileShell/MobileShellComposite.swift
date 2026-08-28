@@ -736,6 +736,10 @@ public final class MobileShellComposite: MobileTerminalOutputSinking {
     /// Optional so tests and non-iOS hosts run without the transport graph; when
     /// `nil`, the Forget action is a no-op and the row stays put.
     let personalIrohForget: (any MobileIrohMacForgetting)?
+    /// Destroys the per-Mac DeviceLink identity after the Mac has revoked it.
+    let deviceLinkCredentialRemover: any MobileDeviceLinkCredentialRemoving
+    /// Sends the authenticated self-revoke request over the selected Mac's live connection.
+    let deviceLinkSelfRevocationSender: any MobileDeviceLinkSelfRevocationSending
     /// Live presence subscription (the `workers/presence` Durable Object edge).
     /// Optional and failure-tolerant like the registry: when `nil` or down, the
     /// device tree simply keeps its registry "last seen" hints.
@@ -1189,7 +1193,7 @@ public final class MobileShellComposite: MobileTerminalOutputSinking {
         if !isSignedIn {
             return .signIn
         }
-        if connectionState != .connected {
+        if connectionState != .connected, !hasKnownPairedMac {
             return .pairing
         }
         return .workspaces
@@ -1331,6 +1335,8 @@ public final class MobileShellComposite: MobileTerminalOutputSinking {
         deviceRegistry: (any DeviceRegistryRefreshing)? = nil,
         personalIrohDiscovery: (any MobileIrohMacDiscovering)? = nil,
         personalIrohForget: (any MobileIrohMacForgetting)? = nil,
+        deviceLinkCredentialRemover: any MobileDeviceLinkCredentialRemoving = MobileDeviceLinkClient.shared,
+        deviceLinkSelfRevocationSender: any MobileDeviceLinkSelfRevocationSending = MobileDeviceLinkSelfRevocationSender(),
         presence: (any PresenceSubscribing)? = nil,
         clientIDRepository: MobileClientIDRepository = MobileClientIDRepository(defaults: .standard),
         identityProvider: (any MobileIdentityProviding)? = nil,
@@ -1377,6 +1383,8 @@ public final class MobileShellComposite: MobileTerminalOutputSinking {
         self.deviceRegistry = deviceRegistry
         self.personalIrohDiscovery = personalIrohDiscovery
         self.personalIrohForget = personalIrohForget
+        self.deviceLinkCredentialRemover = deviceLinkCredentialRemover
+        self.deviceLinkSelfRevocationSender = deviceLinkSelfRevocationSender
         self.presence = presence
         self.identityProvider = identityProvider
         self.teamIDProvider = teamIDProvider
@@ -2259,7 +2267,9 @@ public final class MobileShellComposite: MobileTerminalOutputSinking {
         stackUserID: String?
     ) async -> Bool {
         guard !isReconnectingStoredMac else { return false }
-        if let accountID = stackUserID ?? identityProvider?.currentUserID {
+        if let accountID = reconnectBackoffScopeID(
+            explicitAccountID: stackUserID
+        ) {
             clearTransientAutomaticReconnectBackoff(accountID: accountID)
         }
         isReconnectingStoredMac = true
@@ -2442,7 +2452,12 @@ public final class MobileShellComposite: MobileTerminalOutputSinking {
             return result ? .connected : .superseded
         }
         let isHidden: (MobilePairedMac) -> Bool = { mac in
-            hiddenIDs.contains(mac.macDeviceID) || hiddenIDs.contains(mac.id)
+            hiddenIDs.contains(mac.macDeviceID)
+                || hiddenIDs.contains(mac.id)
+                || hiddenIDs.contains(MobilePairedMac.pairingID(
+                    macDeviceID: mac.macDeviceID,
+                    instanceTag: mac.instanceTag
+                ))
         }
         let activeMac = loadedActiveMac.flatMap { isHidden($0) ? nil : $0 }
         let allMacs = loadedMacs.filter { !isHidden($0) }
@@ -2517,6 +2532,7 @@ public final class MobileShellComposite: MobileTerminalOutputSinking {
 
         var firstCandidateNeedingMacUpdate: MobilePairedMac?
         var attemptedAutomaticIroh = false
+        var attemptedAccountFreeDeviceLink = false
         var lastDialOutcome: StoredMacReconnectOutcome = .failed(.noRoute)
         // Try each candidate until one connects, so a single offline Mac never
         // blocks the others.
@@ -2535,6 +2551,16 @@ public final class MobileShellComposite: MobileTerminalOutputSinking {
                 !irohReconnectIsBlocked || $0.kind != .iroh
             }
             let localHasIroh = localRoutes.contains { $0.kind == .iroh }
+            let hasDeviceLinkCredential = MobileDeviceLinkClient.shared
+                .hasUsableCredential(
+                    forMacDeviceID: mac.macDeviceID,
+                    instanceTag: mac.instanceTag
+                )
+            let isAccountFreeDeviceLink = MobileLocalPairingScope.isLocal(scope.userID)
+                && hasDeviceLinkCredential
+                && localRoutes.first?.kind != .iroh
+            let deviceLinkReconnectIsBlocked = isAccountFreeDeviceLink
+                && automaticIrohReconnectIsBlocked(accountID: scope.userID)
             let localCanConnectSecurely = localHasIroh
                 || localRoutes.contains { $0.kind == .debugLoopback }
                 // Fork (cmux Mochi): this device holds a private key for that Mac
@@ -2544,8 +2570,7 @@ public final class MobileShellComposite: MobileTerminalOutputSinking {
                 // dialed at all: a physical device has no loopback route and no
                 // grandfathered Tailscale grant, so this evaluated false and the
                 // reconnect returned silently, looking like an unreachable Mac.
-                || MobileDeviceLinkClient.shared
-                    .hasUsableCredential(forMacDeviceID: mac.macDeviceID)
+                || hasDeviceLinkCredential
                 || localRoutes.contains { route in
                     Self.legacyTailscaleAuthorizationEvidence(
                         for: route,
@@ -2559,15 +2584,19 @@ public final class MobileShellComposite: MobileTerminalOutputSinking {
             // Raw Tailscale/TCP is bearer-capable only for an exact local route
             // grandfathered during the v7-to-v8 migration. Every fresh, changed,
             // restored, or registry route remains a hint for discovering Iroh.
-            if localCanConnectSecurely {
+            if localCanConnectSecurely, !deviceLinkReconnectIsBlocked {
                 attemptedAutomaticIroh = attemptedAutomaticIroh || localHasIroh
+                attemptedAccountFreeDeviceLink = attemptedAccountFreeDeviceLink
+                    || isAccountFreeDeviceLink
                 lastDialOutcome = await connectStoredMacOutcome(
                     name: mac.displayName ?? mac.macDeviceID,
                     routes: localRoutes,
                     pairedMacDeviceID: mac.macDeviceID,
                     instanceTag: mac.instanceTag,
                     legacyTailscaleRoutes: mac.legacyTailscaleRoutes ?? [],
-                    automaticReconnectAccountID: scope.userID,
+                    automaticReconnectAccountID: isAccountFreeDeviceLink
+                        ? nil
+                        : scope.userID,
                     ifStillCurrent: { [weak self] in
                         self?.storedMacReconnectGeneration == generation
                     }
@@ -2615,6 +2644,11 @@ public final class MobileShellComposite: MobileTerminalOutputSinking {
         }
         isReconnectingStoredMac = false
         didFinishStoredMacReconnectAttempt = true
+        if connectionState == .connected,
+           activeRoute?.kind != .iroh,
+           attemptedAccountFreeDeviceLink {
+            recordDeviceLinkConnectionHealthy(accountID: scope.userID)
+        }
         if connectionState != .connected,
            !connectionRequiresReauth,
            let firstCandidateNeedingMacUpdate {
@@ -2636,10 +2670,20 @@ public final class MobileShellComposite: MobileTerminalOutputSinking {
                 lastDialOutcome = .failed(.unsupportedRoute)
             }
         }
-        if connectionState != .connected,
-           !connectionRequiresReauth,
-           attemptedAutomaticIroh {
-            recordTransientAutomaticReconnectBackoff(accountID: scope.userID)
+        if connectionState != .connected, !connectionRequiresReauth {
+            if attemptedAccountFreeDeviceLink {
+                let failure = if case .failed(let failure) = lastDialOutcome {
+                    failure
+                } else {
+                    DiagnosticFailureKind.unknown
+                }
+                recordDeviceLinkReconnectBackoff(
+                    accountID: scope.userID,
+                    failure: failure
+                )
+            } else if attemptedAutomaticIroh {
+                recordTransientAutomaticReconnectBackoff(accountID: scope.userID)
+            }
         }
         return connectionState == .connected ? .connected : lastDialOutcome
     }
@@ -7749,6 +7793,14 @@ public final class MobileShellComposite: MobileTerminalOutputSinking {
         connectionGeneration = generation
         await releaseConnectionAttemptClientForReplacement()
         guard isConnectCurrent() else { return nil }
+        // Every foreground transport attempt owns an explicit TLS target. Wait
+        // until the superseded attempt has relinquished its client before
+        // changing the synchronous provider's target, then clear/fail closed
+        // for Stack/manual/QR attempts with no mapped credential.
+        MobileDeviceLinkClient.shared.setActiveDialTarget(
+            macDeviceID: requestedMacDeviceID,
+            instanceTag: instanceTagExpectation.deviceLinkInstanceTag
+        )
         diagnosticLog?.record(DiagnosticEvent(.connect))
         cancelRemoteOperationTasks()
         rawTerminalInputBuffer.clear()
@@ -7773,7 +7825,9 @@ public final class MobileShellComposite: MobileTerminalOutputSinking {
                 a: DiagnosticTransportKind.unknown.rawValue,
                 b: DiagnosticFailureKind.unsupportedRoute.rawValue
             ))
-            clearRemoteConnectionContext()
+            clearRemoteConnectionContext(
+                preservingOtherMacWorkspaceState: isReconnectingStoredMac
+            )
             return .noSupportedRoute
         }
         let targetsCurrentLogicalMac =
@@ -7981,14 +8035,18 @@ public final class MobileShellComposite: MobileTerminalOutputSinking {
                     authorizations: userTailscalePairingAuthorizations
                 )
                 : nil
+            let usesDeviceLinkIdentity = MobileDeviceLinkClient.shared
+                .hasUsableCredential(
+                    forMacDeviceID: ticket.macDeviceID,
+                    instanceTag: instanceTagExpectation.deviceLinkInstanceTag
+                )
             let client = MobileCoreRPCClient(
                 runtime: runtime,
                 route: route,
                 ticket: ticket,
                 allowsStackAuthFallback: routeAllowsStackAuthFallbackOverride
                     ?? MobileShellRouteAuthPolicy.routeAllowsStackAuth(route),
-                usesDeviceLinkIdentity: MobileDeviceLinkClient.shared
-                    .hasUsableCredential(forMacDeviceID: ticket.macDeviceID),
+                usesDeviceLinkIdentity: usesDeviceLinkIdentity,
                 legacyTailscaleAuthorizationEvidence: legacyTailscaleAuthorizationEvidence,
                 userTailscalePairingAuthorization: userTailscalePairingAuthorization,
                 connectAttemptRegistry: connectAttemptRegistry,
@@ -8303,6 +8361,19 @@ public final class MobileShellComposite: MobileTerminalOutputSinking {
                     activeRoute = candidateRoute
                     connectionState = .connected
                     markMacConnectionHealthy()
+                    // Only host-port DeviceLink mTLS admission proves that a
+                    // legacy mac-only credential belongs to this concrete app
+                    // instance. Iroh has its own transport identity and must not
+                    // migrate an unrelated DeviceLink key merely because one is
+                    // present in the keychain.
+                    if usesDeviceLinkIdentity,
+                       route.kind != .iroh,
+                       !resolvedForegroundMacID.isEmpty {
+                        MobileDeviceLinkClient.shared.promoteLegacyPairing(
+                            macDeviceID: resolvedForegroundMacID,
+                            instanceTag: resolvedInstanceTag
+                        )
+                    }
                     // Reuse the authenticated status response that bound this
                     // route to its Mac instance. The event listener needs the
                     // same payload for capability negotiation, so asking again
@@ -8618,7 +8689,13 @@ public final class MobileShellComposite: MobileTerminalOutputSinking {
         connectedHostName = ""
     }
 
-    func clearRemoteConnectionContext(preservingOtherMacWorkspaceState: Bool = false) {
+    /// Clears the foreground owner. Cached rows and live secondary owners are
+    /// separate choices: recovery retains the rows for an offline shell but
+    /// must cancel secondary dials so they cannot race the replacement.
+    func clearRemoteConnectionContext(
+        preservingOtherMacWorkspaceState: Bool = false,
+        preservingSecondaryConnections: Bool = true
+    ) {
         connectionGeneration = UUID()
         connectionAttemptGeneration = UUID()
         // Capture the tagged foreground key BEFORE the identity clears below:
@@ -8642,11 +8719,12 @@ public final class MobileShellComposite: MobileTerminalOutputSinking {
             macConnectionRegistry.setFocusedConnection(nil, for: focused.ownerKey)
         }
         foregroundMacDeviceID = nil
-        if !preservingOtherMacWorkspaceState {
-            // Cancel the live secondary subscriptions (slice 3) and keep only the
-            // now-offline foreground Mac's last-known workspaces for the offline
-            // view; the derived list recomputes to just the offline Mac's rows.
+        if !preservingOtherMacWorkspaceState || !preservingSecondaryConnections {
             teardownSecondaryMacSubscriptions()
+        }
+        if !preservingOtherMacWorkspaceState {
+            // Keep only the now-offline foreground Mac's last-known workspaces
+            // for the offline view; the derived list recomputes to just its rows.
             workspacesByMac = workspacesByMac.filter { $0.key == offlineForegroundKey }
         }
         // The retained foreground entry still carries its last-known

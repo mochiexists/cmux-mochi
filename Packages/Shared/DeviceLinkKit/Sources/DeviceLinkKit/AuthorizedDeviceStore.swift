@@ -230,9 +230,17 @@ public actor DeviceLinkCoordinator {
     }
 
     /// Revokes a device and closes everything it currently holds open.
+    /// - Parameters:
+    ///   - fingerprint: The authorized device to revoke.
+    ///   - excludingConnectionID: A connection that must remain open long
+    ///     enough to flush the self-revocation response. The host closes it
+    ///     immediately after the response is sent.
     /// - Returns: `true` when a row was removed.
     @discardableResult
-    public func revoke(_ fingerprint: DeviceFingerprint) async throws -> Bool {
+    public func revoke(
+        _ fingerprint: DeviceFingerprint,
+        excludingConnectionID: UUID? = nil
+    ) async throws -> Bool {
         guard table.devices.contains(where: { $0.fingerprint == fingerprint }) else { return false }
         var proposed = table
         proposed.devices.removeAll { $0.fingerprint == fingerprint }
@@ -240,7 +248,12 @@ public actor DeviceLinkCoordinator {
         table = proposed
 
         if let connections = admitted.removeValue(forKey: fingerprint), !connections.isEmpty {
-            closeConnections?(connections)
+            let connectionsToClose = connections.subtracting(
+                excludingConnectionID.map { [$0] } ?? []
+            )
+            if !connectionsToClose.isEmpty {
+                closeConnections?(connectionsToClose)
+            }
         }
         return true
     }

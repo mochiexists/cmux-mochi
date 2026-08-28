@@ -133,6 +133,7 @@ extension MobileShellComposite {
         // than one paired Mac it guesses wrong.
         MobileDeviceLinkClient.shared.rememberPairing(
             macDeviceID: outcome.macDeviceID,
+            instanceTag: outcome.macInstanceTag,
             pairingID: outcome.pairingID
         )
         logDeviceLink("recording pairing mac=\(outcome.macDeviceID.prefix(12)) tag=\(outcome.macInstanceTag ?? "nil") routes=\(routes.count) store=\(pairedMacStore == nil ? "MISSING" : "present")")
@@ -294,9 +295,6 @@ extension MobileShellComposite {
     }
 
     public nonisolated static func logStoredMacDialStarted(mac: String, endpoints: [String] = []) {
-        // The transport's TLS closure cannot see which Mac this is for, so tell
-        // the client before the dial begins.
-        MobileDeviceLinkClient.shared.setActiveDialTarget(macDeviceID: mac)
         // Name the endpoints. Every other line says *that* a dial happened;
         // none said where to, which made "three attempts, all timed out"
         // impossible to attribute between a wrong address and a refused one.

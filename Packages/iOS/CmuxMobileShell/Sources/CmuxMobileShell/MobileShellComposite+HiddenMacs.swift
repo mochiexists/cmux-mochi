@@ -1,5 +1,6 @@
 import CMUXMobileCore
 import CmuxMobilePairedMac
+import CmuxMobileRPC
 import CmuxMobileShellModel
 import Foundation
 internal import OSLog
@@ -147,6 +148,217 @@ extension MobileShellComposite {
         }
     }
 
+    /// Removes one logical computer through the same authority-specific
+    /// transaction on the Computers, Hidden Computers, and disconnected surfaces.
+    ///
+    /// DeviceLink pairings ask the Mac to revoke the fingerprint proven by the
+    /// live mutual-TLS connection before any iPhone state is destroyed. Existing
+    /// account-owned Iroh rows keep their broker-backed forget transaction.
+    /// Only an unreachable DeviceLink Mac can offer explicit local-only removal.
+    public func removeComputer(
+        representativeID: String,
+        aliasIDs: [String]
+    ) async -> MobileComputerRemovalResult {
+        guard let target = await computerRemovalTarget(
+            representativeID: representativeID,
+            aliasIDs: aliasIDs
+        ) else { return .failed }
+
+        guard deviceLinkCredentialRemover.hasUsableCredential(
+            forMacDeviceID: target.primary.macDeviceID,
+            instanceTag: target.primary.instanceTag
+        ) else {
+            let owningUserID = target.primary.stackUserID ?? target.scope.userID
+            if !MobileLocalPairingScope.isLocal(owningUserID) {
+                return await forgetAccountComputer(target) ? .removed : .failed
+            }
+            return .requiresLocalOnlyConfirmation
+        }
+
+        guard let client = await deviceLinkRemovalClient(for: target.primary) else {
+            return .requiresLocalOnlyConfirmation
+        }
+        do {
+            try await deviceLinkSelfRevocationSender.revokeSelf(using: client)
+        } catch {
+            hiddenMacsLog.error(
+                "DeviceLink self-revoke failed: \(String(describing: error), privacy: .private)"
+            )
+            return .requiresLocalOnlyConfirmation
+        }
+
+        return await removeComputerLocally(target) ? .removed : .failed
+    }
+
+    /// Removes the iPhone-side pairing after the user explicitly accepts that
+    /// an unreachable Mac may retain an inert authorization record.
+    public func removeComputerLocally(
+        representativeID: String,
+        aliasIDs: [String]
+    ) async -> Bool {
+        guard let target = await computerRemovalTarget(
+            representativeID: representativeID,
+            aliasIDs: aliasIDs
+        ) else { return false }
+        return await removeComputerLocally(target)
+    }
+
+    private func computerRemovalTarget(
+        representativeID: String,
+        aliasIDs: [String]
+    ) async -> MobileComputerRemovalTarget? {
+        guard !representativeID.isEmpty,
+              let scope = await currentScopeSnapshot() else { return nil }
+        let representative = MobilePairedMac.pairingIdentity(from: representativeID)
+        let representativePairingID = MobilePairedMac.pairingID(
+            macDeviceID: representative.macDeviceID,
+            instanceTag: representative.instanceTag
+        )
+        let targetPairingIDs: Set<String> = Set(
+            ([representativeID] + aliasIDs).compactMap { rawID -> String? in
+                guard !rawID.isEmpty else { return nil }
+                let identity = MobilePairedMac.pairingIdentity(from: rawID)
+                if let aliasTag = identity.instanceTag,
+                   !macInstanceTagAuthority.sameStoredAuthority(
+                       aliasTag,
+                       representative.instanceTag
+                   ) {
+                    return nil
+                }
+                return MobilePairedMac.pairingID(
+                    macDeviceID: identity.macDeviceID,
+                    instanceTag: identity.instanceTag ?? representative.instanceTag
+                )
+            }
+        )
+        let rows = storedPairedMacsIncludingHidden.filter {
+            targetPairingIDs.contains($0.id)
+        }
+        guard let primary = rows.first(where: { $0.id == representativePairingID }) else {
+            return nil
+        }
+        return MobileComputerRemovalTarget(
+            representativeID: representativeID,
+            primary: primary,
+            rows: rows,
+            scope: scope
+        )
+    }
+
+    private func deviceLinkRemovalClient(
+        for row: MobilePairedMac
+    ) async -> MobileCoreRPCClient? {
+        let targetKey = MacPairingKey(row)
+        if foregroundMacKey == targetKey,
+           connectionState == .connected,
+           let remoteClient {
+            return remoteClient
+        }
+        if let secondary = secondaryMacSubscriptions[targetKey],
+           !secondary.isTransitioningToFocus {
+            return secondary.client
+        }
+        guard await switchToMac(
+            macDeviceID: row.macDeviceID,
+            instanceTag: row.instanceTag
+        ), foregroundMacKey == targetKey else {
+            return nil
+        }
+        return remoteClient
+    }
+
+    private func removeComputerLocally(
+        _ target: MobileComputerRemovalTarget
+    ) async -> Bool {
+        cancelReconnectStateAfterComputerRemoval(scope: target.scope)
+        let targetPairingIDs = target.pairingIDs
+        let targetPhysicalIDs = target.physicalDeviceIDs
+        let remainingPhysicalIDs = Set(storedPairedMacsIncludingHidden.compactMap { row in
+            targetPairingIDs.contains(row.id) ? nil : row.macDeviceID
+        })
+        let fullyRemovedPhysicalIDs = targetPhysicalIDs.subtracting(remainingPhysicalIDs)
+
+        do {
+            try await pairedMacStore?.removeExactScopes(target.rows.map { row in
+                MobilePairedMacExactScope(
+                    macDeviceID: row.macDeviceID,
+                    instanceTag: row.instanceTag,
+                    stackUserID: row.stackUserID,
+                    teamID: row.teamID
+                )
+            })
+        } catch {
+            hiddenMacsLog.error(
+                "remove computer row cleanup failed: \(String(describing: error), privacy: .private)"
+            )
+            return false
+        }
+
+        for row in target.rows {
+            _ = deviceLinkCredentialRemover.forgetPairing(
+                macDeviceID: row.macDeviceID,
+                instanceTag: row.instanceTag
+            )
+        }
+
+        if targetPairingIDs.contains(foregroundMacKey.pairingID) {
+            disconnectLiveConnection(preservingOtherMacWorkspaceState: true)
+        }
+        for pairingID in targetPairingIDs {
+            let ownerKey = MacPairingKey(pairingID: pairingID)
+            if let subscription = secondaryMacSubscriptions[ownerKey] {
+                subscription.cancel()
+                secondaryMacSubscriptions[ownerKey] = nil
+            }
+            workspacesByMac[ownerKey] = nil
+            removeNotificationFeedSnapshot(macDeviceID: pairingID)
+        }
+        for physicalID in fullyRemovedPhysicalIDs {
+            pruneWorkspaceStateForHiddenMac(physicalID)
+            removeNotificationFeedSnapshot(macDeviceID: physicalID)
+        }
+        for row in target.rows {
+            await clearRemovalHiddenMarker(row.id, scope: target.scope)
+        }
+        for physicalID in fullyRemovedPhysicalIDs {
+            await clearRemovalHiddenMarker(physicalID, scope: target.scope)
+        }
+
+        guard await isScopeCurrent(target.scope) else { return true }
+        await loadPairedMacs()
+        await loadRegistryDevices()
+        clearSavedMacHintWhenNoStoredMacsRemainIfNeeded()
+        return true
+    }
+
+    /// Supersedes every reconnect owner before deleting its saved authority.
+    /// Recovery is account-scoped rather than pairing-scoped, so leaving an
+    /// old retry alive can redial a row after its credential and database entry
+    /// have been removed. A later foreground/network event may start fresh for
+    /// any sibling computer that remains.
+    private func cancelReconnectStateAfterComputerRemoval(
+        scope: MobileShellScopeSnapshot
+    ) {
+        pendingInactiveRecoveryTrigger = nil
+        connectionRecoveryOwner.cancel()
+        applyConnectionRecoveryOwnerState()
+        invalidateStoredMacReconnectAttempt()
+        clearAutomaticReconnectBackoff(accountID: scope.userID)
+    }
+
+    private func clearRemovalHiddenMarker(
+        _ pairingID: String,
+        scope: MobileShellScopeSnapshot
+    ) async {
+        await clearHiddenMacDeviceID(pairingID, scopeKey: pairedMacScopeKey(scope))
+        if scope.teamID != nil {
+            await clearHiddenMacDeviceID(
+                pairingID,
+                scopeKey: pairedMacScopeKey(userWideScope(from: scope))
+            )
+        }
+    }
+
     /// Revokes a hidden computer's account bindings, then drops its local row.
     ///
     /// The revoke is the meaningful action: it removes the binding from every
@@ -157,6 +369,57 @@ extension MobileShellComposite {
     /// capability is wired or the revoke fails, so the caller can surface an
     /// error instead of a silent no-op.
     public func forgetHiddenComputer(_ computer: MobileHiddenComputer) async -> Bool {
+        if deviceLinkCredentialRemover.hasUsableCredential(
+            forMacDeviceID: computer.macDeviceID,
+            instanceTag: computer.instanceTag
+        ) {
+            return await removeComputer(
+                representativeID: computer.id,
+                aliasIDs: [computer.id]
+            ) == .removed
+        }
+
+        return await forgetAccountComputer(computer)
+    }
+
+    private func forgetAccountComputer(_ row: MobilePairedMac) async -> Bool {
+        await forgetAccountComputers([MobileHiddenComputer(
+            id: row.id,
+            macDeviceID: row.macDeviceID,
+            instanceTag: row.instanceTag,
+            displayName: row.resolvedName,
+            customColor: row.customColor,
+            customIcon: row.customIcon,
+            stackUserID: row.stackUserID,
+            teamID: row.teamID
+        )])
+    }
+
+    private func forgetAccountComputer(_ computer: MobileHiddenComputer) async -> Bool {
+        await forgetAccountComputers([computer])
+    }
+
+    /// Revokes and deletes every same-instance physical alias represented by
+    /// one visible computer row. Stable and Nightly are separate authorities:
+    /// ``computerRemovalTarget`` excludes aliases with a different tag before
+    /// this transaction is built.
+    private func forgetAccountComputer(_ target: MobileComputerRemovalTarget) async -> Bool {
+        await forgetAccountComputers(target.rows.map { row in
+            MobileHiddenComputer(
+                id: row.id,
+                macDeviceID: row.macDeviceID,
+                instanceTag: row.instanceTag,
+                displayName: row.resolvedName,
+                customColor: row.customColor,
+                customIcon: row.customIcon,
+                stackUserID: row.stackUserID,
+                teamID: row.teamID
+            )
+        })
+    }
+
+    private func forgetAccountComputers(_ computers: [MobileHiddenComputer]) async -> Bool {
+        guard !computers.isEmpty else { return false }
         guard let personalIrohForget else { return false }
         // Capture the scope BEFORE the network revoke so local cleanup targets the
         // account/team that owned the row, not whatever scope is current after the
@@ -172,11 +435,13 @@ extension MobileShellComposite {
             // revoke B's matching device/tag while local cleanup deletes A's row.
             // `computer.stackUserID` is the row's captured owner; fall back to the
             // display scope only for a legacy row that never stored one.
-            try await personalIrohForget.forgetComputer(
-                macDeviceID: computer.macDeviceID,
-                instanceTag: computer.instanceTag,
-                expectedAccountID: computer.stackUserID ?? scope.userID
-            )
+            for computer in computers {
+                try await personalIrohForget.forgetComputer(
+                    macDeviceID: computer.macDeviceID,
+                    instanceTag: computer.instanceTag,
+                    expectedAccountID: computer.stackUserID ?? scope.userID
+                )
+            }
         } catch {
             hiddenMacsLog.error(
                 "forget hidden computer revoke failed: \(String(describing: error), privacy: .private)"
@@ -196,11 +461,16 @@ extension MobileShellComposite {
         // one sequential backup request per row, and a device can carry up to
         // the discovery snapshot's 256 bindings. Rows owned by other accounts
         // keep their bindings (the revoke was account-pinned) and stay.
-        let cleaned = await deleteStoredPairedMacRows(
-            for: computer,
-            pinnedAccountID: computer.stackUserID ?? scope.userID,
-            displayScope: scope
-        )
+        cancelReconnectStateAfterComputerRemoval(scope: scope)
+        var cleaned = true
+        for computer in computers {
+            let didClean = await deleteStoredPairedMacRows(
+                for: computer,
+                pinnedAccountID: computer.stackUserID ?? scope.userID,
+                displayScope: scope
+            )
+            cleaned = cleaned && didClean
+        }
         // ONE refresh for the whole cleanup, and only after COMPLETE success.
         // Refreshing per deleted row re-runs the paired list load (and with it
         // the backup restore fetch) and the registry fetch for every sibling.

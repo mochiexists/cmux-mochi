@@ -170,6 +170,19 @@ final class MobileHostConnectionRegistry: @unchecked Sendable {
         }
     }
 
+    /// Removes the exact admitted connections named by the DeviceLink coordinator.
+    func removeConnections(ids: Set<UUID>) -> [MobileHostConnection] {
+        guard !ids.isEmpty else { return [] }
+        lock.lock()
+        let selected = connections.filter { ids.contains($0.key) }
+        for id in selected.keys { connections[id] = nil }
+        lock.unlock()
+        if !selected.isEmpty {
+            NotificationCenter.default.post(name: .mobileHostStatusDidChange, object: nil)
+        }
+        return selected.values.map(\.connection)
+    }
+
     func removeAllIrohConnections() -> [MobileHostConnection] {
         removeConnections { authorization in
             if case .irohAdmission = authorization {

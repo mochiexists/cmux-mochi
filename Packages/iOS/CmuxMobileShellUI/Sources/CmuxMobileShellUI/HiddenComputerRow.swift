@@ -4,20 +4,20 @@ import CmuxMobileSupport
 import SwiftUI
 
 /// Immutable hidden-computer row with an offline unhide action and a destructive
-/// "Forget" action.
+/// "Remove Computer" action.
 ///
 /// Unhide is the primary, reversible action (it only clears this iPhone's local
 /// hide marker), so it stays as the inline trailing button. Forget is the
-/// destructive one: it revokes the Mac's iroh binding for the whole account, so
-/// it lives behind a swipe/context-menu plus a confirmation dialog, mirroring the
-/// swipe+menu pattern `MacComputerRow` uses for Hide. No first tap commits the
-/// revoke; the dialog's `.destructive` button does.
+/// destructive one: it revokes the pairing authority (authenticated DeviceLink
+/// self-revoke or the existing account-owned Iroh binding), so it lives behind a
+/// swipe/context-menu plus a confirmation dialog. No first tap commits the
+/// removal; the dialog's `.destructive` button does.
 struct HiddenComputerRow: View {
     let computer: MobileHiddenComputer
     let unhide: @MainActor () async -> Void
-    /// Revokes this Mac's binding for the account (via the store, which resolves
-    /// the binding id from a fresh discovery). Presenting any failure feedback is
-    /// the caller's job so the row stays a pure snapshot.
+    /// Runs the same authority-aware removal transaction as visible and
+    /// disconnected rows. Presenting failure feedback is the caller's job so
+    /// the row stays a pure snapshot.
     let forget: @MainActor () async -> Void
 
     @State private var actionTask: Task<Void, Never>?
@@ -63,14 +63,14 @@ struct HiddenComputerRow: View {
         }
         .confirmationDialog(
             L10n.string(
-                "mobile.computers.forget.confirmTitle",
-                defaultValue: "Forget this computer?"
+                "mobile.computers.remove.confirmTitle",
+                defaultValue: "Remove this computer?"
             ),
             isPresented: $showForgetConfirm,
             titleVisibility: .visible
         ) {
             Button(
-                L10n.string("mobile.computers.forget", defaultValue: "Forget"),
+                L10n.string("mobile.computers.remove", defaultValue: "Remove Computer"),
                 role: .destructive,
                 action: performForget
             )
@@ -81,8 +81,8 @@ struct HiddenComputerRow: View {
             ) {}
         } message: {
             Text(L10n.string(
-                "mobile.computers.forget.confirmMessage",
-                defaultValue: "It's removed from all your devices. If it's still online, it reappears the next time it connects."
+                "mobile.computers.remove.confirmMessage",
+                defaultValue: "This iPhone will need to scan a new QR code to connect again."
             ))
         }
         .onDisappear {
@@ -130,7 +130,7 @@ struct HiddenComputerRow: View {
             showForgetConfirm = true
         } label: {
             Label(
-                L10n.string("mobile.computers.forget", defaultValue: "Forget"),
+                L10n.string("mobile.computers.remove", defaultValue: "Remove Computer"),
                 systemImage: "trash"
             )
         }
@@ -144,7 +144,7 @@ struct HiddenComputerRow: View {
             showForgetConfirm = true
         } label: {
             Label(
-                L10n.string("mobile.computers.forget", defaultValue: "Forget"),
+                L10n.string("mobile.computers.remove", defaultValue: "Remove Computer"),
                 systemImage: "trash"
             )
         }
@@ -180,7 +180,7 @@ enum HiddenComputersCopy {
     static var footer: String {
         L10n.string(
             "mobile.computers.hidden.footer",
-            defaultValue: "Hidden computers stay signed in to your account and are only hidden on this iPhone."
+            defaultValue: "Hidden computers remain paired and are only hidden on this iPhone."
         )
     }
 }

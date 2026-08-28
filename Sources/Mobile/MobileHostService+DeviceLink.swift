@@ -119,6 +119,36 @@ extension MobileHostService {
             ))
         }
     }
+
+    /// Revokes only the phone fingerprint proven by this connection's TLS
+    /// certificate. No request parameter can select a sibling device.
+    @MainActor
+    static func deviceLinkSelfRevocationResult(
+        authorization: MobileHostConnectionAuthorizationContext,
+        connectionID: UUID,
+        revoke: @MainActor @Sendable (String, UUID) async throws -> Bool = { fingerprint, connectionID in
+            try await MobileHostDeviceLink.shared.revokeSelf(
+                fingerprintHex: fingerprint,
+                connectionID: connectionID
+            )
+        }
+    ) async -> MobileHostRPCResult {
+        guard case let .pairedDevice(fingerprint, _) = authorization else {
+            return .failure(MobileHostRPCError(
+                code: "unauthorized",
+                message: "Removing a pairing requires a paired DeviceLink connection."
+            ))
+        }
+        do {
+            let revoked = try await revoke(fingerprint, connectionID)
+            return .ok(["revoked": revoked])
+        } catch {
+            return .failure(MobileHostRPCError(
+                code: "internal_error",
+                message: "The pairing could not be removed."
+            ))
+        }
+    }
 }
 
 extension MobileHostService {
@@ -312,9 +342,6 @@ extension MobileHostService {
         }
         let authorization = await MobileHostDeviceLink.shared
             .authorizationContext(forPeer: fingerprint)
-        // Record the admission so `last_seen_at` reflects connections, not just
-        // enrollments -- otherwise it cannot show whether a reconnect landed.
-        await MobileHostDeviceLink.shared.noteAdmission(fingerprint)
         logDeviceLinkHost("admitted \(String(describing: authorization).prefix(60))")
         return (transport, authorization)
     }

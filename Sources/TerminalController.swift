@@ -14066,6 +14066,17 @@ class TerminalController {
             result = v2MobileHostStatus(params: request.params, includePrivateMetadata: false)
         case "mobile.attach_ticket.create":
             result = await v2MobileAttachTicketCreate(params: request.params)
+        case "mobile.pairing.device.revoke_self":
+            guard let executionContext else {
+                return .failure(MobileHostRPCError(
+                    code: "unauthorized",
+                    message: "Removing a pairing requires a paired DeviceLink connection."
+                ))
+            }
+            return await MobileHostService.deviceLinkSelfRevocationResult(
+                authorization: executionContext.authorization,
+                connectionID: executionContext.connectionID
+            )
         case "mobile.workspace.list", "workspace.list":
             result = v2MobileWorkspaceList(params: request.params)
         case "mobile.workspace.changes.summary",

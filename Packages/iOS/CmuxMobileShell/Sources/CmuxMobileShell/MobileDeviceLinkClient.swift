@@ -22,7 +22,11 @@ public final class MobileDeviceLinkClient: @unchecked Sendable {
     // synchronous Network.framework callbacks that cannot await an actor.
     private let lock = NSLock()
     private var cachedIdentities: [String: SecIdentity] = [:]
-    /// macDeviceID -> pairingID, so a dial can find the right key.
+    /// build-scoped Mac key -> pairingID, so Stable/Nightly/tagged siblings
+    /// sharing one physical `macDeviceID` still offer distinct credentials.
+    /// Legacy installs used the raw Mac id as the key; tagged lookups retain a
+    /// read fallback until one authenticated connection promotes the concrete
+    /// app instance.
     private lazy var pairingIDsByMacDeviceID: [String: String] =
         (UserDefaults.standard.dictionary(forKey: Self.pairingIndexDefaultsKey) as? [String: String]) ?? [:]
 
@@ -96,18 +100,26 @@ public final class MobileDeviceLinkClient: @unchecked Sendable {
     ///
     /// Also drops the Mac -> pairing mapping and any dial target pointing at
     /// this pairing. Leaving either behind lets a later dial resolve a mapping
-    /// to an identity that no longer exists, and
-    /// ``currentPairingTLSOptions()`` then falls back to *another* Mac's pin —
-    /// offering the wrong key, which fails as an unreachable Mac.
+    /// to an identity that no longer exists. Explicit targets now fail closed,
+    /// but retaining the stale authority would still make that Mac look paired
+    /// and permanently undialable.
     public func forget(pairingID: String) {
         lock.lock()
         cachedIdentities[pairingID] = nil
         let staleTargets = pairingIDsByMacDeviceID
             .filter { $0.value == pairingID }
             .map(\.key)
-        for macDeviceID in staleTargets {
-            pairingIDsByMacDeviceID[macDeviceID] = nil
-            if activeDialTarget == macDeviceID { activeDialTarget = nil }
+        let activePairingID = activeDialTarget.flatMap {
+            pairingIDLocked(
+                macDeviceID: $0.macDeviceID,
+                instanceTag: $0.instanceTag
+            )
+        }
+        for indexKey in staleTargets {
+            pairingIDsByMacDeviceID[indexKey] = nil
+        }
+        if activePairingID == pairingID {
+            activeDialTarget = nil
         }
         let snapshot = pairingIDsByMacDeviceID
         lock.unlock()
@@ -132,9 +144,15 @@ public final class MobileDeviceLinkClient: @unchecked Sendable {
     ///
     /// - Returns: the pairing that was forgotten, if this device had one.
     @discardableResult
-    public func forgetPairing(macDeviceID: String) -> String? {
+    public func forgetPairing(
+        macDeviceID: String,
+        instanceTag: String? = nil
+    ) -> String? {
         lock.lock()
-        let pairingID = pairingIDsByMacDeviceID[macDeviceID]
+        let pairingID = pairingIDLocked(
+            macDeviceID: macDeviceID,
+            instanceTag: instanceTag
+        )
         lock.unlock()
         guard let pairingID else { return nil }
         forget(pairingID: pairingID)
@@ -148,9 +166,15 @@ public final class MobileDeviceLinkClient: @unchecked Sendable {
     /// bearer-oriented ticket exchange (which has no answer for a pairing whose
     /// credential *is* the device key). `forgetPairing` is the only other way
     /// to resolve a Mac to its pairing, and that one destroys it.
-    public func hasUsableCredential(forMacDeviceID macDeviceID: String) -> Bool {
+    public func hasUsableCredential(
+        forMacDeviceID macDeviceID: String,
+        instanceTag: String? = nil
+    ) -> Bool {
         lock.lock()
-        let pairingID = pairingIDsByMacDeviceID[macDeviceID]
+        let pairingID = pairingIDLocked(
+            macDeviceID: macDeviceID,
+            instanceTag: instanceTag
+        )
         lock.unlock()
         guard let pairingID else { return false }
         return hasUsableCredential(forPairingID: pairingID)
@@ -174,7 +198,7 @@ public final class MobileDeviceLinkClient: @unchecked Sendable {
     /// pin sorts first, and with more than one paired Mac that is the wrong key
     /// most of the time — the dial then dies in the TLS handshake, which is
     /// indistinguishable from the Mac being switched off.
-    private var activeDialTarget: String?
+    private var activeDialTarget: PairingTarget?
 
     /// Remembers which pairing belongs to a Mac, so a later dial can pick its
     /// key. Written at enrollment, where both halves are known.
@@ -182,66 +206,137 @@ public final class MobileDeviceLinkClient: @unchecked Sendable {
     /// Kept next to the pins rather than in the paired-Mac database because the
     /// database has no fingerprint column, and the pin store is already the
     /// authority on which pairings exist.
-    public func rememberPairing(macDeviceID: String, pairingID: String) {
+    public func rememberPairing(
+        macDeviceID: String,
+        instanceTag: String? = nil,
+        pairingID: String
+    ) {
         guard !macDeviceID.isEmpty, !pairingID.isEmpty else { return }
+        let indexKey = Self.pairingIndexKey(
+            macDeviceID: macDeviceID,
+            instanceTag: instanceTag
+        )
         lock.lock()
-        pairingIDsByMacDeviceID[macDeviceID] = pairingID
+        pairingIDsByMacDeviceID[indexKey] = pairingID
+        let snapshot = pairingIDsByMacDeviceID
+        lock.unlock()
+        UserDefaults.standard.set(snapshot, forKey: Self.pairingIndexDefaultsKey)
+    }
+
+    /// Moves an installed mac-only mapping to the concrete app instance after
+    /// a successful authenticated connection proves which row owns it.
+    ///
+    /// Legacy installs could record only the physical Mac id. Keeping that
+    /// fallback after a tagged connection would let Stable and Nightly both
+    /// claim the same private key. Promotion makes the proven tag exact and
+    /// makes every sibling fail closed until it is paired independently.
+    public func promoteLegacyPairing(
+        macDeviceID: String,
+        instanceTag: String?
+    ) {
+        guard let instanceTag = Self.normalizedInstanceTag(instanceTag) else { return }
+        let exactKey = Self.pairingIndexKey(
+            macDeviceID: macDeviceID,
+            instanceTag: instanceTag
+        )
+        lock.lock()
+        guard let legacyPairingID = pairingIDsByMacDeviceID[macDeviceID] else {
+            lock.unlock()
+            return
+        }
+        if pairingIDsByMacDeviceID[exactKey] == nil {
+            pairingIDsByMacDeviceID[exactKey] = legacyPairingID
+        }
+        pairingIDsByMacDeviceID[macDeviceID] = nil
         let snapshot = pairingIDsByMacDeviceID
         lock.unlock()
         UserDefaults.standard.set(snapshot, forKey: Self.pairingIndexDefaultsKey)
     }
 
     /// Declares the Mac the next dial targets.
-    public func setActiveDialTarget(macDeviceID: String?) {
+    public func setActiveDialTarget(
+        macDeviceID: String?,
+        instanceTag: String? = nil
+    ) {
         lock.lock()
-        activeDialTarget = macDeviceID
+        activeDialTarget = macDeviceID.map {
+            PairingTarget(macDeviceID: $0, instanceTag: instanceTag)
+        }
         lock.unlock()
     }
 
     private static let pairingIndexDefaultsKey = "devicelink.pairingIDsByMacDeviceID"
 
+    private struct PairingTarget {
+        let macDeviceID: String
+        let instanceTag: String?
+    }
+
+    private static func pairingIndexKey(
+        macDeviceID: String,
+        instanceTag: String?
+    ) -> String {
+        guard let instanceTag = normalizedInstanceTag(instanceTag) else {
+            return macDeviceID
+        }
+        return "v2|\(macDeviceID.utf8.count)|\(macDeviceID)|\(instanceTag)"
+    }
+
+    private static func normalizedInstanceTag(_ instanceTag: String?) -> String? {
+        guard let normalized = instanceTag?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+              !normalized.isEmpty else { return nil }
+        return normalized
+    }
+
+    /// Exact tagged mapping first, then the legacy physical-Mac key. The
+    /// fallback keeps existing installs reconnectable; new pairings always
+    /// write the tagged key and no longer displace sibling builds.
+    private func pairingIDLocked(
+        macDeviceID: String,
+        instanceTag: String?
+    ) -> String? {
+        let exactKey = Self.pairingIndexKey(
+            macDeviceID: macDeviceID,
+            instanceTag: instanceTag
+        )
+        if let exact = pairingIDsByMacDeviceID[exactKey] {
+            return exact
+        }
+        guard Self.normalizedInstanceTag(instanceTag) != nil else { return nil }
+        return pairingIDsByMacDeviceID[macDeviceID]
+    }
+
     public func currentPairingTLSOptions() -> NWProtocolTLS.Options? {
         // Prefer the pin for the Mac actually being dialed.
         lock.lock()
         let target = activeDialTarget
-        let mapped = target.flatMap { pairingIDsByMacDeviceID[$0] }
-        lock.unlock()
-        if let mapped, let options = tlsOptions(forPairingID: mapped) {
-            MobileDeviceLinkDiagnostics.log("tls options: offering \(mapped.prefix(24)) for target \(target?.prefix(12) ?? "?")")
-            return options
-        }
-        if target != nil, mapped == nil {
-            MobileDeviceLinkDiagnostics.log(
-                "tls options: no pairing recorded for target \(target?.prefix(12) ?? "?") — falling back to first pin"
+        let mapped = target.flatMap {
+            pairingIDLocked(
+                macDeviceID: $0.macDeviceID,
+                instanceTag: $0.instanceTag
             )
         }
-        return firstAvailableTLSOptions()
-    }
-
-    private func firstAvailableTLSOptions() -> NWProtocolTLS.Options? {
-        let pins: [String: DeviceFingerprint]
-        do {
-            pins = try pinStore.pins()
-        } catch {
-            MobileDeviceLinkDiagnostics.log("tls options: pin store unreadable (\(error))")
+        lock.unlock()
+        guard let target else {
+            MobileDeviceLinkDiagnostics.log(
+                "tls options: no active dial target — failing closed"
+            )
             return nil
         }
-        // Which pin was offered matters as much as whether one was found: this
-        // picks the first, so with more than one paired Mac it can present the
-        // wrong key and the dial dies in the TLS handshake — indistinguishable,
-        // from the phone, from an unreachable Mac.
-        for pairingID in pins.keys.sorted() {
-            if let options = tlsOptions(forPairingID: pairingID) {
-                MobileDeviceLinkDiagnostics.log(
-                    "tls options: offering \(pairingID.prefix(24)) of \(pins.count) pin(s)"
-                )
-                return options
-            }
-            MobileDeviceLinkDiagnostics.log("tls options: no identity for \(pairingID.prefix(24))")
+        if let mapped, let options = tlsOptions(forPairingID: mapped) {
+            MobileDeviceLinkDiagnostics.log(
+                "tls options: offering \(mapped.prefix(24)) for target "
+                    + "\(target.macDeviceID.prefix(12)) "
+                    + "tag=\(target.instanceTag ?? "nil")"
+            )
+            return options
         }
-        if pins.isEmpty {
-            MobileDeviceLinkDiagnostics.log("tls options: no pins stored")
-        }
+        MobileDeviceLinkDiagnostics.log(
+            "tls options: no usable pairing recorded for target "
+                + "\(target.macDeviceID.prefix(12)) "
+                + "tag=\(target.instanceTag ?? "nil") — failing closed"
+        )
         return nil
     }
 

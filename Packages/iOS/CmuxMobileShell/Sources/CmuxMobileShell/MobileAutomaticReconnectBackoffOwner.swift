@@ -1,4 +1,5 @@
 import Foundation
+internal import DeviceLinkKit
 
 /// Account-scoped authority for server and transient reconnect delays.
 ///
@@ -9,6 +10,7 @@ struct MobileAutomaticReconnectBackoffOwner {
     private(set) var serverRetryAt: Date?
     private(set) var transientRetryAt: Date?
     private(set) var transientFailureCount = 0
+    private(set) var healthyConnectionStartedAt: Date?
 
     var retryAt: Date? {
         switch (serverRetryAt, transientRetryAt) {
@@ -44,6 +46,42 @@ struct MobileAutomaticReconnectBackoffOwner {
         return retryAt ?? proposedRetryAt
     }
 
+    /// Records an account-free DeviceLink transport failure using the shared
+    /// DeviceLink retry contract. A short-lived replacement does not reset the
+    /// ladder: only a connection that stayed healthy for the policy's interval
+    /// earns a fresh first-attempt delay.
+    mutating func recordDeviceLinkFailure(
+        accountID: String,
+        policy: ReconnectPolicy,
+        now: Date,
+        randomFraction: Double = Double.random(in: 0 ... 1)
+    ) -> Date {
+        prepare(accountID: accountID)
+        if let healthyConnectionStartedAt,
+           now.timeIntervalSince(healthyConnectionStartedAt)
+                >= policy.healthyResetInterval {
+            transientFailureCount = 0
+        }
+        healthyConnectionStartedAt = nil
+        if transientFailureCount < Int.max { transientFailureCount += 1 }
+        let delay = policy.delay(
+            forAttempt: transientFailureCount,
+            randomFraction: randomFraction
+        )
+        let proposedRetryAt = now.addingTimeInterval(delay)
+        transientRetryAt = proposedRetryAt
+        return retryAt ?? proposedRetryAt
+    }
+
+    /// Starts the policy's healthy interval without prematurely resetting the
+    /// failure ladder. If this channel drops again before the interval elapses,
+    /// the next retry continues from the previous attempt count.
+    mutating func recordDeviceLinkHealthy(accountID: String, now: Date) {
+        prepare(accountID: accountID)
+        transientRetryAt = nil
+        healthyConnectionStartedAt = now
+    }
+
     mutating func isBlocked(accountID: String, now: Date) -> Bool {
         guard self.accountID == accountID else { return false }
         if let serverRetryAt, serverRetryAt <= now { self.serverRetryAt = nil }
@@ -62,6 +100,7 @@ struct MobileAutomaticReconnectBackoffOwner {
         serverRetryAt = nil
         transientRetryAt = nil
         transientFailureCount = 0
+        healthyConnectionStartedAt = nil
     }
 
     private mutating func prepare(accountID: String) {

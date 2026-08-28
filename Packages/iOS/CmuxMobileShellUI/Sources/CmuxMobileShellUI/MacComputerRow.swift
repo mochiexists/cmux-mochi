@@ -2,7 +2,51 @@
 import CmuxMobileShellModel
 import CmuxMobileSupport
 import Foundation
+import Observation
 import SwiftUI
+
+/// Small value-semantic gate shared by every computer-row presentation.
+/// Requesting removal can only present confirmation; the destructive mutation
+/// may begin only after that confirmation is accepted.
+struct ComputerRemovalConfirmationState: Equatable {
+    private(set) var isPresented = false
+
+    mutating func request(affordanceAvailable: Bool) {
+        guard affordanceAvailable else { return }
+        isPresented = true
+    }
+
+    mutating func cancel() {
+        isPresented = false
+    }
+
+    mutating func beginConfirmedRemoval(affordanceAvailable: Bool) -> Bool {
+        guard affordanceAvailable, isPresented else { return false }
+        isPresented = false
+        return true
+    }
+}
+
+/// Owns the user-confirmed mutation independently of a particular row's
+/// SwiftUI lifetime. Removing the row is the successful transaction's expected
+/// result, so disappearance must never cancel work between host revocation and
+/// local credential cleanup.
+@MainActor
+@Observable
+final class ComputerRemovalTransaction {
+    private(set) var isRunning = false
+
+    @discardableResult
+    func begin(_ operation: @escaping @MainActor () async -> Void) -> Bool {
+        guard !isRunning else { return false }
+        isRunning = true
+        Task { @MainActor [weak self] in
+            await operation()
+            self?.isRunning = false
+        }
+        return true
+    }
+}
 
 /// A computer (Mac/host) row on the Computers screen: a machine-colored avatar,
 /// the Mac's name, a primary line for the PHONE'S connection state + workspace
@@ -26,6 +70,8 @@ struct MacComputerRow: View {
     /// Hides this computer on the current iPhone. When `nil`, hide affordances
     /// are omitted.
     var hide: ((String) -> Void)? = nil
+    /// Permanently removes this iPhone's pairing with the computer.
+    var remove: (@MainActor (String) async -> Void)? = nil
     var style: Style = .computers
     /// Reconnect action for `.reconnect` rows; tapping the row calls this with
     /// the device id instead of navigating.
@@ -34,15 +80,52 @@ struct MacComputerRow: View {
     /// status dot). Re-entry is guarded by the owning list, not by disabling the
     /// button, so the row does not flash a dimmed state.
     var isConnecting: Bool = false
+    @State private var removalConfirmation = ComputerRemovalConfirmationState()
+    @State private var removalTransaction = ComputerRemovalTransaction()
+
+    var removalAffordanceAvailable: Bool { remove != nil }
 
     var body: some View {
         rowContainer
-        .contextMenu { hideMenuButton }
+        .contextMenu {
+            hideMenuButton
+            removeMenuButton
+        }
         .swipeActions(edge: .trailing, allowsFullSwipe: true) {
             hideSwipeButton
+            removeSwipeButton
         }
         .accessibilityElement(children: .combine)
         .accessibilityIdentifier("MobileComputerRow-\(computer.id)")
+        .confirmationDialog(
+            L10n.string(
+                "mobile.computers.remove.confirmTitle",
+                defaultValue: "Remove this computer?"
+            ),
+            isPresented: Binding(
+                get: { removalConfirmation.isPresented },
+                set: { presented in
+                    if !presented { removalConfirmation.cancel() }
+                }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button(
+                L10n.string("mobile.computers.remove", defaultValue: "Remove Computer"),
+                role: .destructive,
+                action: performRemove
+            )
+            .accessibilityIdentifier("MobileComputerRemoveConfirmButton-\(computer.id)")
+            Button(
+                L10n.string("mobile.common.cancel", defaultValue: "Cancel"),
+                role: .cancel
+            ) {}
+        } message: {
+            Text(L10n.string(
+                "mobile.computers.remove.confirmMessage",
+                defaultValue: "This iPhone will need to scan a new QR code to connect again."
+            ))
+        }
     }
 
     @ViewBuilder
@@ -132,6 +215,54 @@ struct MacComputerRow: View {
             }
             .accessibilityIdentifier("MobileComputerHideMenuButton-\(computer.id)")
         }
+    }
+
+    @ViewBuilder
+    private var removeSwipeButton: some View {
+        if remove != nil {
+            Button {
+                requestRemoval()
+            } label: {
+                Label(
+                    L10n.string("mobile.computers.remove", defaultValue: "Remove Computer"),
+                    systemImage: "trash"
+                )
+            }
+            .tint(.red)
+            .disabled(removalTransaction.isRunning)
+            .accessibilityIdentifier("MobileComputerRemoveSwipeButton-\(computer.id)")
+        }
+    }
+
+    @ViewBuilder
+    private var removeMenuButton: some View {
+        if remove != nil {
+            Button(role: .destructive) {
+                requestRemoval()
+            } label: {
+                Label(
+                    L10n.string("mobile.computers.remove", defaultValue: "Remove Computer"),
+                    systemImage: "trash"
+                )
+            }
+            .disabled(removalTransaction.isRunning)
+            .accessibilityIdentifier("MobileComputerRemoveMenuButton-\(computer.id)")
+        }
+    }
+
+    private func performRemove() {
+        guard !removalTransaction.isRunning,
+              removalConfirmation.beginConfirmedRemoval(
+                  affordanceAvailable: removalAffordanceAvailable
+              ),
+              let remove else { return }
+        removalTransaction.begin {
+            await remove(computer.id)
+        }
+    }
+
+    private func requestRemoval() {
+        removalConfirmation.request(affordanceAvailable: removalAffordanceAvailable)
     }
 
     /// The connection dot: green only when the PHONE is actually connected to this

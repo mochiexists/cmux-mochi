@@ -7,4 +7,14 @@ enum MobileMacInstanceTagExpectation: Equatable, Sendable {
     case preserve(String)
     /// An explicit registry-instance selection must prove this exact tag.
     case require(String)
+
+    /// The build-scoped DeviceLink credential this expectation can select.
+    /// Legacy/adopt rows intentionally return `nil` and use the mac-only index
+    /// fallback until an authenticated handshake persists a concrete tag.
+    var deviceLinkInstanceTag: String? {
+        switch self {
+        case .adopt: nil
+        case .preserve(let tag), .require(let tag): tag
+        }
+    }
 }

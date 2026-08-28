@@ -38,6 +38,9 @@ struct DisconnectedWorkspaceShellView: View {
     /// The display name of the computer whose reconnect just failed, driving
     /// the failure alert. `nil` = no alert.
     @State private var connectFailedComputerName: String?
+    @State private var removalFailureMessage: String?
+    @State private var pendingLocalRemovalID: String?
+    @State private var pendingLocalRemovalAliases: [String] = []
     #endif
 
     var body: some View {
@@ -124,6 +127,50 @@ struct DisconnectedWorkspaceShellView: View {
         } message: {
             Text(connectFailedMessage)
         }
+        .alert(
+            L10n.string(
+                "mobile.computers.remove.failureTitle",
+                defaultValue: "Couldn't remove computer"
+            ),
+            isPresented: Binding(
+                get: { removalFailureMessage != nil },
+                set: { if !$0 { removalFailureMessage = nil } }
+            ),
+            presenting: removalFailureMessage
+        ) { _ in
+            Button(L10n.string("mobile.common.ok", defaultValue: "OK"), role: .cancel) {}
+        } message: { message in
+            Text(message)
+        }
+        .alert(
+            L10n.string(
+                "mobile.computers.remove.offlineTitle",
+                defaultValue: "Couldn't reach this computer"
+            ),
+            isPresented: Binding(
+                get: { pendingLocalRemovalID != nil },
+                set: { if !$0 { clearPendingLocalRemoval() } }
+            )
+        ) {
+            Button(
+                L10n.string(
+                    "mobile.computers.remove.localOnly",
+                    defaultValue: "Remove from This iPhone"
+                ),
+                role: .destructive,
+                action: performPendingLocalRemoval
+            )
+            Button(
+                L10n.string("mobile.common.cancel", defaultValue: "Cancel"),
+                role: .cancel,
+                action: clearPendingLocalRemoval
+            )
+        } message: {
+            Text(L10n.string(
+                "mobile.computers.remove.offlineMessage",
+                defaultValue: "The computer may keep this iPhone in its paired-device list until you remove it there. Remove the local pairing anyway?"
+            ))
+        }
         #endif
     }
 
@@ -155,6 +202,7 @@ struct DisconnectedWorkspaceShellView: View {
                     MacComputerRow(
                         computer: computer,
                         hide: { _ in hideComputer(computer) },
+                        remove: { _ in await removeComputer(computer) },
                         style: .reconnect,
                         connect: { _ in connect(to: computer) },
                         isConnecting: connectingMacID == computer.id
@@ -165,7 +213,7 @@ struct DisconnectedWorkspaceShellView: View {
             } footer: {
                 Text(L10n.string(
                     "mobile.disconnected.listFooter",
-                    defaultValue: "Tap a computer to reconnect. Swipe left to hide one."
+                    defaultValue: "Tap a computer to reconnect. Swipe left to hide or remove one."
                 ))
             }
             Section {
@@ -283,6 +331,48 @@ struct DisconnectedWorkspaceShellView: View {
                 aliasIDs: computer.aliasIDs
             )
         }
+    }
+
+    private func removeComputer(_ computer: MacComputerSnapshot) async {
+        guard let store else { return }
+        let result = await store.removeComputer(
+            representativeID: computer.id,
+            aliasIDs: computer.aliasIDs
+        )
+        switch result {
+        case .removed:
+            break
+        case .requiresLocalOnlyConfirmation:
+            pendingLocalRemovalID = computer.id
+            pendingLocalRemovalAliases = computer.aliasIDs
+        case .failed:
+            removalFailureMessage = L10n.string(
+                "mobile.computers.remove.failureMessage",
+                defaultValue: "The computer couldn't be removed. Try again."
+            )
+        }
+    }
+
+    private func performPendingLocalRemoval() {
+        guard let store, let representativeID = pendingLocalRemovalID else { return }
+        let aliasIDs = pendingLocalRemovalAliases
+        clearPendingLocalRemoval()
+        Task {
+            if !(await store.removeComputerLocally(
+                representativeID: representativeID,
+                aliasIDs: aliasIDs
+            )) {
+                removalFailureMessage = L10n.string(
+                    "mobile.computers.remove.failureMessage",
+                    defaultValue: "The computer couldn't be removed. Try again."
+                )
+            }
+        }
+    }
+
+    private func clearPendingLocalRemoval() {
+        pendingLocalRemovalID = nil
+        pendingLocalRemovalAliases = []
     }
     #else
     /// Saved Macs restored/known on this device (macOS fallback shell).

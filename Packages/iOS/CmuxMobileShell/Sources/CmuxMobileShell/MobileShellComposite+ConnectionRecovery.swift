@@ -1,5 +1,6 @@
 public import CMUXMobileCore
 internal import CmuxMobileDiagnostics
+internal import DeviceLinkKit
 public import CmuxMobilePairedMac
 public import CmuxMobileRPC
 public import CmuxMobileShellModel
@@ -78,7 +79,7 @@ extension MobileShellComposite {
             pendingInactiveRecoveryTrigger = trigger
             return
         }
-        if let accountID = identityProvider?.currentUserID {
+        if let accountID = reconnectBackoffScopeID() {
             switch trigger {
             case .manual, .networkChange, .foreground:
                 clearTransientAutomaticReconnectBackoff(accountID: accountID)
@@ -117,6 +118,36 @@ extension MobileShellComposite {
             return
         }
 
+        // DeviceLink admission succeeded, but this authenticated channel still
+        // ended. Short-lived successful handshakes are transport failures for
+        // reconnect policy purposes; redialing immediately here created the
+        // observed 5–20 second connect/stream-end storm. Park the cached shell
+        // and let the shared 1/2/4/8/16 ladder own the next dial. A foreground
+        // or manual trigger clears the cooldown through `recoverMobileConnection`.
+        if let accountID = activeAccountFreeDeviceLinkScopeID() {
+            if connectionRecoveryOwner.isRedialingOrValidating {
+                let replacementIsInstalled = connectionRecoveryOwner.isValidatingReplacement
+                    || connectionRecoveryOwner.activeAttempt?.sourceConnectionGeneration
+                        != connectionGeneration
+                guard replacementIsInstalled else { return }
+                guard failConnectionRecoveryReplacement(
+                    failure: .connectionClosed
+                ) else { return }
+            }
+            connectionState = .disconnected
+            macConnectionStatus = .unavailable
+            clearRemoteConnectionContext(
+                preservingOtherMacWorkspaceState: true,
+                preservingSecondaryConnections: false
+            )
+            applyConnectionRecoveryOwnerState()
+            recordDeviceLinkReconnectBackoff(
+                accountID: accountID,
+                failure: .connectionClosed
+            )
+            return
+        }
+
         if connectionRecoveryOwner.isRedialingOrValidating {
             let replacementIsInstalled = connectionRecoveryOwner.isValidatingReplacement
                 || connectionRecoveryOwner.activeAttempt?.sourceConnectionGeneration != connectionGeneration
@@ -124,7 +155,10 @@ extension MobileShellComposite {
             guard failConnectionRecoveryReplacement(failure: .connectionClosed) else { return }
             connectionState = .disconnected
             macConnectionStatus = .unavailable
-            clearRemoteConnectionContext()
+            clearRemoteConnectionContext(
+                preservingOtherMacWorkspaceState: true,
+                preservingSecondaryConnections: false
+            )
             applyConnectionRecoveryOwnerState()
             return
         }
@@ -140,6 +174,18 @@ extension MobileShellComposite {
             resyncAfterHealthy: false,
             preclaimedAttempt: superseding
         )
+    }
+
+    private func activeAccountFreeDeviceLinkScopeID() -> String? {
+        guard let accountID = reconnectBackoffScopeID(),
+              MobileLocalPairingScope.isLocal(accountID),
+              activeRoute?.kind != .iroh,
+              let foregroundMacDeviceID,
+              MobileDeviceLinkClient.shared.hasUsableCredential(
+                  forMacDeviceID: foregroundMacDeviceID,
+                  instanceTag: activeMacInstanceTag
+              ) else { return nil }
+        return accountID
     }
 
     /// Replays the most recent recovery trigger that was parked while the
@@ -281,7 +327,10 @@ extension MobileShellComposite {
                     // while the fresh stored-Mac dial starts.
                     self.connectionState = .disconnected
                     self.macConnectionStatus = .unavailable
-                    self.clearRemoteConnectionContext()
+                    self.clearRemoteConnectionContext(
+                        preservingOtherMacWorkspaceState: true,
+                        preservingSecondaryConnections: false
+                    )
                     self.applyConnectionRecoveryOwnerState()
                     await expectedClient.disconnect()
                     guard !Task.isCancelled,
@@ -290,7 +339,10 @@ extension MobileShellComposite {
                 if self.connectionState == .connected {
                     self.connectionState = .disconnected
                     self.macConnectionStatus = .unavailable
-                    self.clearRemoteConnectionContext()
+                    self.clearRemoteConnectionContext(
+                        preservingOtherMacWorkspaceState: true,
+                        preservingSecondaryConnections: false
+                    )
                 }
                 self.applyConnectionRecoveryOwnerState()
 
@@ -637,7 +689,10 @@ extension MobileShellComposite {
         // with no answer for a pairing whose credential IS the device key, so
         // it refuses every route as untrusted and the pairing can never connect.
         let hasDeviceLinkCredential = MobileDeviceLinkClient.shared
-            .hasUsableCredential(forMacDeviceID: pairedMacDeviceID)
+            .hasUsableCredential(
+                forMacDeviceID: pairedMacDeviceID,
+                instanceTag: instanceTagExpectation.deviceLinkInstanceTag
+            )
         let canDialWithStoredAuthority = firstRoute.kind == .iroh
             || firstRoute.kind == .debugLoopback
             || hasAuthorizedLegacyTailscaleRoute
@@ -660,10 +715,8 @@ extension MobileShellComposite {
                     routes: pinnedRoutes,
                     pairedMacDeviceID: pairedMacDeviceID
                 )
-                // Name the Mac before dialing: the transport asks for TLS
-                // options through a closure that knows only "give me an
-                // identity", so without this the DeviceLink client cannot tell
-                // which pairing key to offer and the dial fails closed.
+                // `connect(ticket:)` installs this exact dial target only after
+                // it retires a superseded attempt and confirms this one is current.
                 MobileShellComposite.logStoredMacDialStarted(
                     mac: pairedMacDeviceID,
                     endpoints: pinnedRoutes.compactMap { route in
@@ -700,7 +753,14 @@ extension MobileShellComposite {
                 if !disconnectForAuthorizationFailureIfNeeded(error) {
                     connectionState = .disconnected
                     macConnectionStatus = .unavailable
-                    clearRemoteConnectionContext()
+                    // A failed replacement is an offline interval, not a new
+                    // shell. Keep the last authenticated workspace snapshot so
+                    // a transient DERP/TCP drop does not flash the QR screen or
+                    // erase useful scrollback while policy schedules redial.
+                    clearRemoteConnectionContext(
+                        preservingOtherMacWorkspaceState: true,
+                        preservingSecondaryConnections: false
+                    )
                 }
             }
         } else {
@@ -784,6 +844,60 @@ extension MobileShellComposite {
         scheduleAutomaticReconnectRetry(accountID: accountID, retryAt: retryAt, now: now)
     }
 
+    func recordDeviceLinkReconnectBackoff(
+        accountID: String,
+        failure: DiagnosticFailureKind
+    ) {
+        let outcome: ConnectionAttemptOutcome = switch failure {
+        case .identityMismatch:
+            .serverPinMismatch
+        case .admissionDenied, .authorizationFailed, .credentialUnavailable:
+            .rejectedByPeer
+        default:
+            .unreachable
+        }
+        guard case .retry = ReconnectPolicy.default.decision(
+            after: outcome,
+            attempt: automaticReconnectBackoffOwner.transientFailureCount + 1
+        ) else {
+            clearAutomaticReconnectBackoff(accountID: accountID)
+            return
+        }
+        let now = runtime?.now() ?? Date()
+        let retryAt = automaticReconnectBackoffOwner.recordDeviceLinkFailure(
+            accountID: accountID,
+            policy: .default,
+            now: now
+        )
+        scheduleAutomaticReconnectRetry(accountID: accountID, retryAt: retryAt, now: now)
+    }
+
+    func recordDeviceLinkConnectionHealthy(accountID: String) {
+        automaticReconnectBackoffOwner.recordDeviceLinkHealthy(
+            accountID: accountID,
+            now: runtime?.now() ?? Date()
+        )
+        automaticReconnectRetryTask?.cancel()
+        automaticReconnectRetryTask = nil
+        automaticReconnectRetryAccountID = nil
+        automaticReconnectRetryAt = nil
+    }
+
+    func reconnectBackoffScopeID(explicitAccountID: String? = nil) -> String? {
+        if let accountID = explicitAccountID ?? identityProvider?.currentUserID {
+            return accountID
+        }
+        guard isSignedIn, hasKnownPairedMac else { return nil }
+        return MobileLocalPairingScope.identifier()
+    }
+
+    func reconnectScopeMatches(_ accountID: String) -> Bool {
+        if MobileLocalPairingScope.isLocal(accountID) {
+            return isSignedIn && identityProvider?.currentUserID == nil
+        }
+        return isSignedIn && identityProvider?.currentUserID == accountID
+    }
+
     func clearTransientAutomaticReconnectBackoff(accountID: String) {
         automaticReconnectBackoffOwner.clearTransientCooldown(accountID: accountID)
         let now = runtime?.now() ?? Date()
@@ -828,14 +942,14 @@ extension MobileShellComposite {
             }
             guard let self,
                   !Task.isCancelled,
-                  self.identityProvider?.currentUserID == accountID,
+                  self.reconnectScopeMatches(accountID),
                   self.automaticReconnectBackoffOwner.accountID == accountID,
                   self.automaticReconnectRetryAccountID == accountID,
                   self.automaticReconnectRetryAt == retryAt else { return }
             self.automaticReconnectRetryTask = nil
             self.automaticReconnectRetryAccountID = nil
             self.automaticReconnectRetryAt = nil
-            guard self.isSignedIn, self.connectionState != .connected else { return }
+            guard self.connectionState != .connected else { return }
             let currentNow = self.runtime?.now() ?? Date()
             if self.automaticReconnectBackoffOwner.isBlocked(
                 accountID: accountID,
