@@ -10746,8 +10746,23 @@ public final class MobileShellComposite: MobileTerminalOutputSinking {
         let silent = now.timeIntervalSince(last)
         guard silent >= Self.renderGridLivenessSilenceThreshold else { return }
         guard renderGridLivenessProbeTask == nil else { return }
-        let probeTimeoutNanoseconds = runtime?.livenessProbeTimeoutNanoseconds
+        let ordinaryProbeTimeoutNanoseconds = runtime?.livenessProbeTimeoutNanoseconds
             ?? 3_000_000_000
+        let probeTimeoutNanoseconds: UInt64
+        if activeRoute?.kind == .tailscale {
+            // DERP is a live but high-latency path. The production trace that
+            // exposed this loop ranged up to 3.7s RTT, so the ordinary 3s
+            // deadline could never distinguish it from a dead subscription.
+            // Keep the short deadline for local/Iroh routes, but allow one
+            // relay-scale control round trip before counting a failure.
+            probeTimeoutNanoseconds = max(
+                ordinaryProbeTimeoutNanoseconds,
+                runtime?.tailscaleLivenessProbeTimeoutNanoseconds
+                    ?? 8_000_000_000
+            )
+        } else {
+            probeTimeoutNanoseconds = ordinaryProbeTimeoutNanoseconds
+        }
         let topics = terminalOutputTransport.eventTopics
         let probeID = UUID()
         renderGridLivenessProbeID = probeID
