@@ -236,6 +236,65 @@ import Testing
         #expect(factory.attemptedPorts() == [51000, 51001])
     }
 
+    @Test func automaticReconnectNeverFallsThroughToHiddenPairingIDRow() async throws {
+        let router = LivenessHostRouter()
+        let box = TransportBox()
+        let factory = RouteRecordingTransportFactory(
+            router: router,
+            box: box,
+            failingPorts: [51000]
+        )
+        let (pairedStore, directory) = try makePairedMacStore()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        try await pairedStore.upsert(
+            macDeviceID: "active-mac",
+            displayName: "Active Mac",
+            routes: [try loopbackRoute(id: "active", port: 51000)],
+            instanceTag: "nightly",
+            markActive: true,
+            stackUserID: "user-1",
+            teamID: nil,
+            now: Date(timeIntervalSince1970: 20)
+        )
+        try await pairedStore.upsert(
+            macDeviceID: "hidden-mac",
+            displayName: "Hidden Mac",
+            routes: [try loopbackRoute(id: "hidden", port: 51001)],
+            instanceTag: "default",
+            markActive: false,
+            stackUserID: "user-1",
+            teamID: nil,
+            now: Date(timeIntervalSince1970: 10)
+        )
+        let hiddenStore = InMemoryPairedMacHiddenStore()
+        let store = MobileShellComposite(
+            runtime: LivenessTestRuntime(
+                transportFactory: factory,
+                now: Date.init,
+                supportedRouteKinds: [.debugLoopback]
+            ),
+            isSignedIn: true,
+            pairedMacStore: pairedStore,
+            identityProvider: StaticIdentityProvider(userID: "user-1"),
+            reachability: AlwaysOnlineReachability(),
+            pairingHintDefaults: UserDefaults(
+                suiteName: "hidden-reconnect-\(UUID().uuidString)"
+            )!,
+            hiddenMacStore: hiddenStore
+        )
+        let scope = try #require(await store.currentScopeSnapshot())
+        await hiddenStore.save(
+            [MobilePairedMac.pairingID(
+                macDeviceID: "hidden-mac",
+                instanceTag: "default"
+            )],
+            scope: store.pairedMacScopeKey(scope)
+        )
+
+        #expect(!(await store.reconnectActiveMacIfAvailable(stackUserID: "user-1")))
+        #expect(factory.attemptedPorts() == [51000])
+    }
+
     @Test func connectionPoolRecordsFallbackRouteThatActuallyConnected() async throws {
         let clock = TestClock()
         let router = LivenessHostRouter()

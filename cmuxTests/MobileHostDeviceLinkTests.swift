@@ -1,3 +1,4 @@
+import CMUXMobileCore
 import DeviceLinkKit
 import Foundation
 import Testing
@@ -65,6 +66,89 @@ struct MobileHostDeviceLinkTests {
             enroll == nil,
             "a paired device may retry enrollment after a lost response; TLS fixes the request to its own key"
         )
+    }
+
+    @MainActor
+    @Test func testSelfRevokeDerivesFingerprintFromAuthenticatedContext() async {
+        let recorder = SelfRevokeRecorder()
+        let connectionID = UUID()
+        let authenticatedFingerprint = String(repeating: "d", count: 64)
+
+        let result = await MobileHostService.deviceLinkSelfRevocationResult(
+            authorization: .pairedDevice(
+                fingerprint: authenticatedFingerprint,
+                label: "Tim's iPhone"
+            ),
+            connectionID: connectionID,
+            revoke: { fingerprint, connectionID in
+                recorder.record(fingerprint: fingerprint, connectionID: connectionID)
+                return true
+            }
+        )
+
+        guard case let .ok(payload as [String: Any]) = result else {
+            Issue.record("paired DeviceLink caller should be able to revoke itself")
+            return
+        }
+        #expect(payload["revoked"] as? Bool == true)
+        #expect(recorder.fingerprint == authenticatedFingerprint)
+        #expect(recorder.connectionID == connectionID)
+    }
+
+    @MainActor
+    @Test func testSelfRevokeRejectsNonDeviceLinkAuthorization() async {
+        let recorder = SelfRevokeRecorder()
+        let result = await MobileHostService.deviceLinkSelfRevocationResult(
+            authorization: .stackBearer,
+            connectionID: UUID(),
+            revoke: { fingerprint, connectionID in
+                recorder.record(fingerprint: fingerprint, connectionID: connectionID)
+                return true
+            }
+        )
+
+        guard case let .failure(error) = result else {
+            Issue.record("a bearer caller must not revoke any DeviceLink pairing")
+            return
+        }
+        #expect(error.code == "unauthorized")
+        #expect(recorder.fingerprint == nil)
+    }
+
+    @Test func testSuccessfulSelfRevokeFlushesResponseThenClosesLiveConnection() async throws {
+        let requestPayload = try JSONSerialization.data(withJSONObject: [
+            "id": "remove-1",
+            "method": "mobile.pairing.device.revoke_self",
+            "params": [:],
+        ])
+        let transport = SelfRevokeResponseTransport(
+            firstFrame: try MobileSyncFrameCodec.encodeFrame(requestPayload)
+        )
+        let closeRecorder = SelfRevokeConnectionCloseRecorder()
+        let connectionID = UUID()
+        let connection = MobileHostConnection(
+            id: connectionID,
+            transport: transport,
+            authorizeRequest: { _ in nil },
+            onAuthorizedRequest: { _ in },
+            handleRequest: { request in
+                #expect(request.method == "mobile.pairing.device.revoke_self")
+                return .ok(["revoked": true])
+            },
+            onClose: { id in await closeRecorder.record(id) }
+        )
+
+        let run = Task { await connection.run() }
+        let sent = await transport.waitForSentFrame()
+        _ = await run.value
+
+        var buffer = sent
+        let responses = try MobileSyncFrameCodec.decodeFrames(from: &buffer)
+        let response = try #require(responses.first)
+        let json = try #require(JSONSerialization.jsonObject(with: response) as? [String: Any])
+        #expect(json["id"] as? String == "remove-1")
+        #expect(await transport.closeCount == 1)
+        #expect(await closeRecorder.ids == [connectionID])
     }
 
     @Test func testStackBearerCannotReachEnrollment() async {
@@ -176,5 +260,78 @@ struct MobileHostDeviceLinkTests {
     private enum DispatchGuardError: Error {
         case dispatchNotFound
         case enrollmentHandlerNotFound
+    }
+
+    @MainActor
+    private final class SelfRevokeRecorder {
+        private(set) var fingerprint: String?
+        private(set) var connectionID: UUID?
+
+        func record(fingerprint: String, connectionID: UUID) {
+            self.fingerprint = fingerprint
+            self.connectionID = connectionID
+        }
+    }
+}
+
+private actor SelfRevokeResponseTransport: CmxByteTransport {
+    private var firstFrame: Data?
+    private var receiveWaiter: CheckedContinuation<Data?, Never>?
+    private var sentFrames: [Data] = []
+    private var sentWaiters: [CheckedContinuation<Data, Never>] = []
+    private(set) var closeCount = 0
+
+    init(firstFrame: Data) {
+        self.firstFrame = firstFrame
+    }
+
+    func connect() async throws {}
+
+    func receive() async throws -> Data? {
+        if let firstFrame {
+            self.firstFrame = nil
+            return firstFrame
+        }
+        return await withTaskCancellationHandler {
+            await withCheckedContinuation { continuation in
+                guard !Task.isCancelled else {
+                    continuation.resume(returning: nil)
+                    return
+                }
+                receiveWaiter = continuation
+            }
+        } onCancel: {
+            Task { await self.finishReceive() }
+        }
+    }
+
+    func send(_ data: Data) async throws {
+        sentFrames.append(data)
+        let waiters = sentWaiters
+        sentWaiters.removeAll()
+        for waiter in waiters { waiter.resume(returning: data) }
+    }
+
+    func close() async {
+        closeCount += 1
+        finishReceive()
+    }
+
+    func waitForSentFrame() async -> Data {
+        if let sent = sentFrames.first { return sent }
+        return await withCheckedContinuation { sentWaiters.append($0) }
+    }
+
+    private func finishReceive() {
+        receiveWaiter?.resume(returning: nil)
+        receiveWaiter = nil
+    }
+}
+
+private actor SelfRevokeConnectionCloseRecorder {
+    private(set) var ids: [UUID] = []
+
+    func record(_ id: UUID) {
+        ids.append(id)
     }
 }

@@ -1,4 +1,5 @@
 import Foundation
+import DeviceLinkKit
 import Testing
 @testable import CmuxMobileShell
 
@@ -93,6 +94,48 @@ struct MobileAutomaticReconnectBackoffOwnerTests {
         }
 
         #expect(owner.transientFailureCount == expectedDelays.count)
+    }
+
+    @Test
+    func deviceLinkPolicyResetsOnlyAfterAHealthyInterval() {
+        var owner = MobileAutomaticReconnectBackoffOwner()
+        let policy = ReconnectPolicy(
+            baseDelay: 1,
+            maximumDelay: 16,
+            jitterFraction: 0,
+            healthyResetInterval: 30
+        )
+        let first = owner.recordDeviceLinkFailure(
+            accountID: "local",
+            policy: policy,
+            now: now,
+            randomFraction: 0
+        )
+        owner.recordDeviceLinkHealthy(
+            accountID: "local",
+            now: first
+        )
+        let shortLived = owner.recordDeviceLinkFailure(
+            accountID: "local",
+            policy: policy,
+            now: first.addingTimeInterval(10),
+            randomFraction: 0
+        )
+        owner.recordDeviceLinkHealthy(
+            accountID: "local",
+            now: shortLived
+        )
+        let stable = owner.recordDeviceLinkFailure(
+            accountID: "local",
+            policy: policy,
+            now: shortLived.addingTimeInterval(30),
+            randomFraction: 0
+        )
+
+        #expect(first == now.addingTimeInterval(1))
+        #expect(shortLived == first.addingTimeInterval(12))
+        #expect(stable == shortLived.addingTimeInterval(31))
+        #expect(owner.transientFailureCount == 1)
     }
 
     @Test

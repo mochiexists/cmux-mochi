@@ -1,6 +1,7 @@
 import CMUXMobileCore
 import CmuxMobilePairedMac
 import CmuxMobileRPC
+import DeviceLinkKit
 import Foundation
 import Testing
 @testable import CmuxMobileShell
@@ -34,6 +35,130 @@ extension ReconnectRouteSelectionTests {
         #expect(attemptedKinds.allSatisfy { $0 == .iroh })
     }
 
+    @Test func accountFreeDeviceLinkBacksOffRepeatedShortLivedSessionsWithoutLeavingCachedShell() async throws {
+        let now = Date()
+        let router = LivenessHostRouter()
+        let box = TransportBox()
+        let factory = SequencedKindTransportFactory(
+            router: router,
+            box: box,
+            heldConnectAttempts: []
+        )
+        let (pairedStore, directory) = try makePairedMacStore()
+        let pairingClient = MobileDeviceLinkClient.shared
+        let macDeviceID = "devicelink-reconnect-\(UUID().uuidString)"
+        let instanceTag = "nightly"
+        await router.setHostIdentity(
+            deviceID: macDeviceID,
+            instanceTag: instanceTag
+        )
+        let pinHex = (
+            UUID().uuidString.replacingOccurrences(of: "-", with: "")
+                + UUID().uuidString.replacingOccurrences(of: "-", with: "")
+        ).lowercased()
+        let pin = try #require(DeviceFingerprint(
+            hex: pinHex
+        ))
+        let pairingID = MobileDeviceLinkEnroller.pairingID(for: pin)
+        _ = try pairingClient.prepareIdentity(
+            forPairingID: pairingID,
+            macFingerprint: pin
+        )
+        pairingClient.rememberPairing(
+            macDeviceID: macDeviceID,
+            instanceTag: instanceTag,
+            pairingID: pairingID
+        )
+        defer {
+            pairingClient.forget(pairingID: pairingID)
+            factory.releaseHeldConnects()
+            Task { await router.releaseAllHeld() }
+            try? FileManager.default.removeItem(at: directory)
+        }
+        let localScope = MobileLocalPairingScope.identifier()
+        let route = try tailscale()
+        try await pairedStore.upsert(
+            macDeviceID: macDeviceID,
+            displayName: "DeviceLink Mac",
+            routes: [route],
+            instanceTag: instanceTag,
+            markActive: true,
+            stackUserID: localScope,
+            teamID: nil,
+            now: now
+        )
+        let store = MobileShellComposite(
+            runtime: LivenessTestRuntime(
+                transportFactory: factory,
+                now: { Date() },
+                supportedRouteKinds: [.tailscale]
+            ),
+            isSignedIn: true,
+            pairedMacStore: pairedStore,
+            identityProvider: StaticIdentityProvider(userID: nil),
+            reachability: AlwaysOnlineReachability(),
+            pairingHintDefaults: UserDefaults(
+                suiteName: "devicelink-recovery-owner-\(UUID().uuidString)"
+            )!
+        )
+
+        #expect(await store.reconnectActiveMacIfAvailable(stackUserID: nil))
+        #expect(await router.waitForCount(of: "mobile.events.subscribe", atLeast: 1))
+        #expect(!store.workspaces.isEmpty)
+        let cachedWorkspaceIDs = store.workspaces.map(\.id)
+        let firstClient = try #require(store.remoteClient)
+
+        // Drive the exact callback the terminal stream invokes. Keeping the
+        // policy transition synchronous makes the no-immediate-dial assertion
+        // deterministic even when the full package runs 1,000 tests in parallel.
+        store.recoverDeadConnection(
+            trigger: .eventStreamEnded,
+            expectedClient: firstClient
+        )
+        #expect(store.connectionState == .disconnected)
+        #expect(store.automaticReconnectBackoffOwner.transientFailureCount == 1)
+        #expect(store.phase == .workspaces)
+        #expect(store.workspaces.map(\.id) == cachedWorkspaceIDs)
+        #expect(factory.attemptedKinds().count == 1)
+        let firstRetryAt = try #require(
+            store.automaticReconnectBackoffOwner.retryAt
+        )
+        #expect(firstRetryAt.timeIntervalSince(Date()) > 0)
+
+        // Prove the scheduled timer owns a real redial; merely storing a retry
+        // date is not enough to recover an unattended phone.
+        #expect(try await pollUntil(attempts: 2_000) {
+            guard let replacement = store.remoteClient else { return false }
+            return replacement !== firstClient
+                && store.connectionState == .connected
+                && factory.attemptedKinds().count >= 2
+        })
+        let secondClient = try #require(store.remoteClient)
+        let attemptsBeforeSecondFailure = factory.attemptedKinds().count
+        store.recoverDeadConnection(
+            trigger: .eventStreamEnded,
+            expectedClient: secondClient
+        )
+        #expect(store.connectionState == .disconnected)
+        #expect(store.automaticReconnectBackoffOwner.transientFailureCount == 2)
+        #expect(store.remoteClient == nil)
+        #expect(store.workspaces.map(\.id) == cachedWorkspaceIDs)
+        #expect(factory.attemptedKinds().count == attemptsBeforeSecondFailure)
+        let secondRetryAt = try #require(
+            store.automaticReconnectBackoffOwner.retryAt
+        )
+        #expect(secondRetryAt.timeIntervalSince(Date()) > 1)
+        #expect(secondRetryAt > firstRetryAt)
+        #expect(secondClient !== firstClient)
+        // Foreground is an explicit policy bypass for the second, longer delay.
+        store.recoverMobileConnection(trigger: .foreground)
+        #expect(try await pollUntil(attempts: 2_000) {
+            store.connectionState == .connected
+                && factory.attemptedKinds().count > attemptsBeforeSecondFailure
+        })
+        #expect(factory.attemptedKinds().allSatisfy { $0 == .tailscale })
+    }
+
     @Test func livenessAndForegroundRecoveryCoalesceOnOneIrohReplacement() async throws {
         let fixture = try await makeRecoveryOwnerFixture()
         defer { fixture.release() }
@@ -56,6 +181,41 @@ extension ReconnectRouteSelectionTests {
         }
         #expect(recovered)
         #expect(fixture.factory.attemptedKinds() == [.iroh, .iroh])
+    }
+
+    @Test func irohAdmissionDoesNotPromoteLegacyDeviceLinkCredential() async throws {
+        let macDeviceID = "iroh-does-not-promote-\(UUID().uuidString)"
+        let fixture = try await makeRecoveryOwnerFixture(
+            macDeviceID: macDeviceID,
+            instanceTag: "nightly"
+        )
+        let client = MobileDeviceLinkClient.shared
+        let pinHex = (
+            UUID().uuidString.replacingOccurrences(of: "-", with: "")
+                + UUID().uuidString.replacingOccurrences(of: "-", with: "")
+        ).lowercased()
+        let pin = try #require(DeviceFingerprint(hex: pinHex))
+        let pairingID = MobileDeviceLinkEnroller.pairingID(for: pin)
+        _ = try client.prepareIdentity(
+            forPairingID: pairingID,
+            macFingerprint: pin
+        )
+        client.rememberPairing(macDeviceID: macDeviceID, pairingID: pairingID)
+        defer {
+            client.forget(pairingID: pairingID)
+            fixture.release()
+        }
+
+        #expect(await fixture.store.reconnectActiveMacIfAvailable(
+            stackUserID: "user-1"
+        ))
+
+        // Iroh authenticated this connection, not DeviceLink mTLS. The legacy
+        // key remains unclaimed until a real DeviceLink admission proves a tag.
+        #expect(client.hasUsableCredential(
+            forMacDeviceID: macDeviceID,
+            instanceTag: "stable"
+        ))
     }
 
     @Test func staleRecoveryCleanupCannotClearNewerAttempt() async throws {
@@ -196,6 +356,7 @@ extension ReconnectRouteSelectionTests {
         #expect(await fixture.store.reconnectActiveMacIfAvailable(stackUserID: "user-1"))
         #expect(await fixture.router.waitForCount(of: "mobile.events.subscribe", atLeast: 1))
         let firstClient = try #require(fixture.store.remoteClient)
+        let cachedWorkspaceIDs = fixture.store.workspaces.map(\.id)
         // Keep every post-drop dial failing until the first owner reaches its
         // terminal failed phase. This avoids coupling the assertion to a
         // transport ordinal that unrelated requests on the dying client can
@@ -208,6 +369,7 @@ extension ReconnectRouteSelectionTests {
             fixture.store.connectionState == .disconnected
                 && fixture.store.connectionRecoveryFailed
         })
+        #expect(fixture.store.workspaces.map(\.id) == cachedWorkspaceIDs)
         fixture.factory.setConnectsFailing(false)
         let scope = try #require(
             await fixture.store.currentScopeSnapshot(userID: "user-1")
@@ -488,7 +650,9 @@ extension ReconnectRouteSelectionTests {
 
     private func makeRecoveryOwnerFixture(
         backup: (any PairedMacBackingUp)? = nil,
-        heldConnectAttempts: Set<Int> = []
+        heldConnectAttempts: Set<Int> = [],
+        macDeviceID: String = "test-mac",
+        instanceTag: String? = nil
     ) async throws -> RecoveryOwnerFixture {
         let clock = TestClock()
         let router = LivenessHostRouter()
@@ -500,10 +664,15 @@ extension ReconnectRouteSelectionTests {
         )
         let (inner, directory) = try makePairedMacStore()
         let diagnosticLog = DiagnosticLog(capacity: 128, role: .mobileClient)
+        await router.setHostIdentity(
+            deviceID: macDeviceID,
+            instanceTag: instanceTag ?? "default"
+        )
         try await inner.upsert(
-            macDeviceID: "test-mac",
+            macDeviceID: macDeviceID,
             displayName: "Test Mac",
             routes: [try iroh()],
+            instanceTag: instanceTag,
             markActive: true,
             stackUserID: "user-1",
             teamID: nil,

@@ -269,6 +269,41 @@ struct RevocationTests {
         #expect(closed.withLock { $0 } == [connectionID])
     }
 
+    @Test("self-revoke lets the response connection flush and closes its siblings")
+    func selfRevokeExcludesCurrentConnection() async throws {
+        let coordinator = DeviceLinkCoordinator(store: MemoryStore())
+        try await coordinator.load()
+        let ticket = try await coordinator.issueEnrollmentTicket()
+        let fingerprint = makeFingerprint(0x42)
+        _ = try await coordinator.redeem(
+            ticketSecret: ticket.secret,
+            fingerprint: fingerprint,
+            rawLabel: "iPhone"
+        )
+        let currentConnectionID = UUID()
+        let siblingConnectionID = UUID()
+        #expect(await coordinator.registerAdmission(
+            fingerprint,
+            connectionID: currentConnectionID
+        ))
+        #expect(await coordinator.registerAdmission(
+            fingerprint,
+            connectionID: siblingConnectionID
+        ))
+        let closed = Mutex<Set<UUID>>([])
+        await coordinator.setConnectionCloser { ids in
+            closed.withLock { $0.formUnion(ids) }
+        }
+
+        #expect(try await coordinator.revoke(
+            fingerprint,
+            excludingConnectionID: currentConnectionID
+        ))
+
+        #expect(await coordinator.isAuthorized(fingerprint) == false)
+        #expect(closed.withLock { $0 } == [siblingConnectionID])
+    }
+
     @Test("admission after revocation is refused")
     func admissionAfterRevokeRefused() async throws {
         let store = MemoryStore()

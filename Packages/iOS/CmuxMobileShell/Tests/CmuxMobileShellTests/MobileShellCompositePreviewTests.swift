@@ -153,6 +153,22 @@ import Testing
         #expect(store.connectedHostName == "cmux-macbook")
     }
 
+    @Test func knownPairingKeepsWorkspacePhaseWhileDisconnectedAndEmpty() {
+        let defaults = UserDefaults(
+            suiteName: "known-pairing-empty-shell-\(UUID().uuidString)"
+        )!
+        defaults.set(true, forKey: "cmux.mobile.hasKnownPairedMac")
+        let store = MobileShellComposite(
+            isSignedIn: true,
+            pairingHintDefaults: defaults
+        )
+
+        #expect(store.hasKnownPairedMac)
+        #expect(store.workspaces.isEmpty)
+        #expect(store.connectionState == .disconnected)
+        #expect(store.phase == .workspaces)
+    }
+
     @Test func signOutReturnsToSignInStateWithNoWorkspaces() {
         let store = MobileShellComposite.preview()
         store.signIn()
