@@ -394,11 +394,13 @@ enum AgentResumeCommandBuilder {
     /// The alias form, but only when it resumes the session identically.
     ///
     /// Substitution, never approximation. The alias drops whatever the captured
-    /// command carried, so it may only be used when nothing meaningful would be
-    /// lost: no observed permission mode to replay, no captured environment to
-    /// reproduce (auth/config selection would silently resume against a
-    /// different account), and no surviving arguments once the posture flags the
-    /// alias itself encodes are removed.
+    /// command carried, so it may only be used when nothing session-defining
+    /// would be lost. Authentication/config-selection environment keeps the full
+    /// command. The one ambient exception is Node's network-family attempt
+    /// timeout: it is process tuning rather than session identity, and the full
+    /// value remains in the structured snapshot and verbose fallback command.
+    /// Likewise, an observed Claude mode is safe only when an explicit bypass
+    /// launch flag already wins over it and `ccy` encodes that same posture.
     static func equivalentAliasResumeShellCommand(
         kind: RestorableAgentKind,
         sessionId: String,
@@ -408,8 +410,15 @@ enum AgentResumeCommandBuilder {
         includeWorkingDirectoryPrefix: Bool,
         observedPermissionMode: String?
     ) -> String? {
-        guard observedPermissionMode == nil,
-              launchCommand?.environment?.isEmpty ?? true,
+        guard observedPermissionModeIsEncodedByAlias(
+                  kind: kind,
+                  launchCommand: launchCommand,
+                  observedPermissionMode: observedPermissionMode
+              ),
+              capturedEnvironmentCanUseAlias(
+                  kind: kind,
+                  launchCommand: launchCommand
+              ),
               let argv = resumeArguments(
                   kind: kind,
                   sessionId: sessionId,
@@ -443,6 +452,37 @@ enum AgentResumeCommandBuilder {
             workingDirectory: workingDirectory,
             includeWorkingDirectoryPrefix: includeWorkingDirectoryPrefix
         )
+    }
+
+    private static func observedPermissionModeIsEncodedByAlias(
+        kind: RestorableAgentKind,
+        launchCommand: AgentLaunchCommandSnapshot?,
+        observedPermissionMode: String?
+    ) -> Bool {
+        let mode = observedPermissionMode?.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard mode?.isEmpty == false, mode != "default" else { return true }
+        guard kind == .claude else { return false }
+        return (launchCommand?.arguments ?? []).contains("--dangerously-skip-permissions")
+    }
+
+    private static func capturedEnvironmentCanUseAlias(
+        kind: RestorableAgentKind,
+        launchCommand: AgentLaunchCommandSnapshot?
+    ) -> Bool {
+        let selected = AgentLaunchEnvironmentPolicy().selectedRestoreEnvironment(
+            from: launchCommand?.environment ?? [:],
+            kind: kind.rawValue
+        )
+        guard !selected.isEmpty else { return true }
+        guard selected.count == 1,
+              let nodeOptions = selected["NODE_OPTIONS"] else {
+            return false
+        }
+        let tokens = nodeOptions.split(whereSeparator: \.isWhitespace).map(String.init)
+        guard !tokens.isEmpty else { return false }
+        return tokens.allSatisfy { token in
+            token.hasPrefix("--network-family-autoselection-attempt-timeout=")
+        }
     }
 
     /// Single-quote one token for the alias resume line.

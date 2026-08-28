@@ -74,7 +74,7 @@ final class SessionRestorableAgentSnapshotPermissionModeTests: XCTestCase {
                 permissionMode: "plan"
             ).resumeCommand
         )
-        XCTAssertTrue(command.contains("--dangerously-skip-permissions"), command)
+        XCTAssertTrue(command.hasPrefix("ccy "), command)
         XCTAssertFalse(command.contains("--permission-mode"), command)
     }
 
