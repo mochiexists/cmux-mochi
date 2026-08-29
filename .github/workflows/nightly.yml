@@ -680,6 +680,12 @@ jobs:
               "$APPLE_SIGNING_IDENTITY"
           done
 
+      - name: Verify isolated Release force-quit continuity
+        timeout-minutes: 15
+        run: |
+          ./scripts/test-release-force-quit-session-continuity.sh \
+            "build-universal/Build/Products/Release/cmux Mochi NIGHTLY.app"
+
       - name: Notarize app ticket through final DMG
         env:
           APPLE_ID: ${{ secrets.APPLE_ID }}
