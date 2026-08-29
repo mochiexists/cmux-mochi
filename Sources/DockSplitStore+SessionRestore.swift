@@ -241,7 +241,13 @@ extension DockSplitStore {
             resumeMode: resumeMode
         )
         let restoredScrollback = shouldReplayScrollback ? terminalSnapshot.scrollback : nil
-        let replayFileURL = SessionScrollbackReplayStore.replayFileURL(for: restoredScrollback)
+        let replayBoundaryMarker = restoredScrollback.map { _ in
+            SessionScrollbackReplayStore.makeContinuationBoundaryMarker()
+        }
+        let replayFileURL = SessionScrollbackReplayStore.replayFileURL(
+            for: restoredScrollback,
+            continuationBoundaryMarker: replayBoundaryMarker
+        )
         let replayEnvironment = SessionScrollbackReplayStore.replayEnvironment(forFileURL: replayFileURL)
         let reusableSurfaceId = GhosttyApp.terminalSurfaceRegistry.surface(id: snapshot.id) == nil
             ? snapshot.id
@@ -269,6 +275,10 @@ extension DockSplitStore {
             runtimeSpawnPolicy: .pacedSessionRestore
         )
         terminal.adoptOwnedSessionScrollbackReplayArtifact(replayFileURL)
+        terminal.adoptSessionScrollbackReplayContinuation(
+            baseline: restoredScrollback,
+            boundaryMarker: replayBoundaryMarker
+        )
         terminal.restoreSessionTextBoxDraft(terminalSnapshot.textBoxDraft)
 
         guard attachSessionRestoredPanel(terminal, snapshot: snapshot, inPane: paneId) != nil else {
@@ -298,7 +308,7 @@ extension DockSplitStore {
         }
         let willRunAgentCommand = false
         let willRunAgentInput =
-            (agentLaunch?.initialInput != nil && resumeMode.submitsResumeCommand) ||
+            agentLaunch?.initialInput != nil ||
             (bindingLaunch?.initialInput != nil && resumeBinding?.isAgentHookBinding == true)
         seedSessionRestoredAgentState(
             panelId: terminal.id,

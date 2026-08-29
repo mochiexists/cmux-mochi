@@ -539,6 +539,25 @@ final class SessionPersistenceTests: XCTestCase {
         XCTAssertEqual(contents, "line one\nline two\n")
     }
 
+    func testScrollbackReplayFileAppendsConcealedContinuationBoundary() throws {
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("cmux-scrollback-boundary-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+        let marker = SessionScrollbackReplayStore.makeContinuationBoundaryMarker()
+
+        let fileURL = try XCTUnwrap(SessionScrollbackReplayStore.replayFileURL(
+            for: "restored prompt",
+            continuationBoundaryMarker: marker,
+            tempDirectory: tempDir
+        ))
+        let contents = try String(contentsOf: fileURL, encoding: .utf8)
+
+        XCTAssertTrue(marker.hasPrefix(SessionScrollbackReplayStore.continuationBoundaryPrefix))
+        XCTAssertTrue(contents.hasPrefix("restored prompt\n"))
+        XCTAssertTrue(contents.contains("\u{001B}[8m\(marker)\u{001B}[0m\n"))
+    }
+
     func testScrollbackReplayEnvironmentSkipsWhitespaceOnlyContent() {
         let tempDir = FileManager.default.temporaryDirectory
             .appendingPathComponent("cmux-scrollback-replay-\(UUID().uuidString)", isDirectory: true)
@@ -1390,6 +1409,33 @@ final class SessionPersistenceTests: XCTestCase {
         XCTAssertEqual(resolved, "captured-value")
     }
 
+    func testResolvedSnapshotTerminalScrollbackJoinsContinuationAfterReplayBoundary() {
+        let restored = (1...240)
+            .map { String(format: "RESTORED-%03d", $0) }
+            .joined(separator: "\n") + "\nold prompt"
+        let marker = "CMUX-SESSION-RESTORE-BOUNDARY:TEST"
+        let boundedCapture = "RESTORED-238\nRESTORED-239\nRESTORED-240\n"
+            + "\u{001B}[8m\(marker)\u{001B}[0m\nnew prompt\n"
+            + (1...240)
+                .map { String(format: "NEW-%03d", $0) }
+                .joined(separator: "\n")
+
+        let resolved = Workspace.resolvedSnapshotTerminalScrollback(
+            capturedScrollback: boundedCapture,
+            fallbackScrollback: restored,
+            replayBaselineScrollback: restored,
+            replayBoundaryMarker: marker
+        )
+
+        XCTAssertTrue(resolved?.contains("RESTORED-001") == true)
+        XCTAssertTrue(resolved?.contains("RESTORED-240") == true)
+        XCTAssertTrue(resolved?.contains("NEW-001") == true)
+        XCTAssertTrue(resolved?.contains("NEW-240") == true)
+        XCTAssertEqual(resolved?.components(separatedBy: "RESTORED-238").count, 2)
+        XCTAssertFalse(resolved?.contains(marker) == true)
+        XCTAssertTrue(resolved?.hasPrefix("RESTORED-001") == true)
+    }
+
     func testResolvedSnapshotTerminalScrollbackFallsBackWhenCaptureMissing() {
         let resolved = Workspace.resolvedSnapshotTerminalScrollback(
             capturedScrollback: nil,
@@ -1397,6 +1443,38 @@ final class SessionPersistenceTests: XCTestCase {
         )
 
         XCTAssertEqual(resolved, "fallback-value")
+    }
+
+    func testResolvedSnapshotTerminalScrollbackTreatsEmptyCaptureAsAuthoritativeClear() {
+        let resolved = Workspace.resolvedSnapshotTerminalScrollback(
+            capturedScrollback: "",
+            fallbackScrollback: "fallback-value"
+        )
+
+        XCTAssertNil(resolved)
+    }
+
+    func testResolvedSnapshotTerminalScrollbackFindsBoundaryBeforeCharacterTruncation() {
+        let marker = "CMUX-SESSION-RESTORE-BOUNDARY:TRUNCATION"
+        let baseline = String(repeating: "restored-line\n", count: 20_000)
+        let continuation = String(repeating: "new-line\n", count: 20_000)
+        let captured = String(baseline.suffix(10_000))
+            + "\u{001B}[8m\(marker)\u{001B}[0m\n"
+            + continuation
+
+        let resolved = Workspace.resolvedSnapshotTerminalScrollback(
+            capturedScrollback: captured,
+            fallbackScrollback: baseline,
+            replayBaselineScrollback: baseline,
+            replayBoundaryMarker: marker
+        )
+
+        XCTAssertEqual(
+            resolved,
+            SessionPersistencePolicy.truncatedScrollback(baseline + continuation)
+        )
+        XCTAssertFalse(resolved?.contains(marker) == true)
+        XCTAssertFalse(resolved?.contains("SESSION-RESTORE-BOUNDARY") == true)
     }
 
     func testResolvedSnapshotTerminalScrollbackTruncatesFallback() {
@@ -1585,7 +1663,7 @@ final class SessionPersistenceTests: XCTestCase {
     }
 
     @MainActor
-    func testAgentWithoutResumeCommandRetiresAfterRestoreReturnsToPrompt() throws {
+    func testAgentWithoutResumeCommandInvalidatesOnFirstCommand() throws {
         let source = Workspace()
         let sourcePanelId = try XCTUnwrap(source.focusedPanelId)
         let sourceIndex = try makeRestorableAgentIndex(
@@ -1609,11 +1687,8 @@ final class SessionPersistenceTests: XCTestCase {
         XCTAssertNil(restored.sessionSnapshot(includeScrollback: false).panels.first?.terminal?.agent?.resumeCommand)
 
         restored.updatePanelShellActivityState(panelId: restoredPanelId, state: .commandRunning)
-        XCTAssertNotNil(restored.sessionSnapshot(includeScrollback: false).panels.first?.terminal?.agent)
-
-        restored.updatePanelShellActivityState(panelId: restoredPanelId, state: .promptIdle)
-        let failedRestoreSnapshot = restored.sessionSnapshot(includeScrollback: false)
-        XCTAssertNil(failedRestoreSnapshot.panels.first?.terminal?.agent)
+        let userCommandSnapshot = restored.sessionSnapshot(includeScrollback: false)
+        XCTAssertNil(userCommandSnapshot.panels.first?.terminal?.agent)
     }
 
     @MainActor

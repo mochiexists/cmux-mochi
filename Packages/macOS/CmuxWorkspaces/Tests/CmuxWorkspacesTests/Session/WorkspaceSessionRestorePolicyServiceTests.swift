@@ -335,6 +335,122 @@ struct WorkspaceSessionRestorePolicyServiceTests {
             fallbackScrollback: "fallback",
             allowFallbackScrollback: false
         ) == nil)
+        #expect(service.resolvedSnapshotTerminalScrollback(
+            capturedScrollback: "",
+            fallbackScrollback: "fallback"
+        ) == nil)
+    }
+
+    @Test("scrollback resolution joins continuation after a replay boundary")
+    func scrollbackResolutionJoinsContinuationAfterReplayBoundary() {
+        let service = makeService()
+        let restored = (1...240)
+            .map { String(format: "RESTORED-%03d", $0) }
+            .joined(separator: "\n") + "\nold prompt"
+        let marker = "CMUX-SESSION-RESTORE-BOUNDARY:TEST"
+        let boundedCapture = "RESTORED-238\nRESTORED-239\nRESTORED-240\n"
+            + "\u{001B}[8m\(marker)\u{001B}[0m\nnew prompt\n"
+            + (1...240)
+                .map { String(format: "NEW-%03d", $0) }
+                .joined(separator: "\n")
+
+        let resolved = service.resolvedSnapshotTerminalScrollback(
+            capturedScrollback: boundedCapture,
+            fallbackScrollback: restored,
+            replayBaselineScrollback: restored,
+            replayBoundaryMarker: marker
+        )
+
+        #expect(resolved?.contains("RESTORED-001") == true)
+        #expect(resolved?.contains("RESTORED-240") == true)
+        #expect(resolved?.contains("NEW-001") == true)
+        #expect(resolved?.contains("NEW-240") == true)
+        #expect(resolved?.components(separatedBy: "RESTORED-238").count == 2)
+        #expect(resolved?.contains(marker) == false)
+        #expect(resolved?.hasPrefix("RESTORED-001") == true)
+    }
+
+    @Test("scrollback resolution keeps a live capture authoritative without its replay boundary")
+    func scrollbackResolutionKeepsCaptureAuthoritativeWithoutReplayBoundary() {
+        let service = makeService()
+        let marker = "CMUX-SESSION-RESTORE-BOUNDARY:CLEARED"
+        let restored = (1...80)
+            .map { String(format: "OLD-HISTORY-%03d", $0) }
+            .joined(separator: "\n")
+        let captured = (73...80)
+            .map { String(format: "OLD-HISTORY-%03d", $0) }
+            .joined(separator: "\n") + "\n" + (1...80)
+            .map { String(format: "FRESH-AFTER-CLEAR-%03d", $0) }
+            .joined(separator: "\n")
+
+        #expect(service.resolvedSnapshotTerminalScrollback(
+            capturedScrollback: captured,
+            fallbackScrollback: restored,
+            replayBaselineScrollback: restored,
+            replayBoundaryMarker: marker
+        ) == captured)
+    }
+
+    @Test("scrollback resolution uses the immutable replay baseline across repeated captures")
+    func scrollbackResolutionUsesImmutableReplayBaseline() {
+        let service = makeService()
+        let baseline = "RESTORED-001\nRESTORED-002"
+        let latestFallback = baseline + "\nNEW-001\nNEW-002"
+        let marker = "CMUX-SESSION-RESTORE-BOUNDARY:REPEATED"
+        let captured = "RESTORED-002\n\u{001B}[8m\(marker)\u{001B}[0m\nNEW-001\nNEW-002\nNEW-003"
+
+        #expect(service.resolvedSnapshotTerminalScrollback(
+            capturedScrollback: captured,
+            fallbackScrollback: latestFallback,
+            replayBaselineScrollback: baseline,
+            replayBoundaryMarker: marker
+        ) == baseline + "\nNEW-001\nNEW-002\nNEW-003")
+    }
+
+    @Test("scrollback resolution locates the replay boundary before character truncation")
+    func scrollbackResolutionLocatesReplayBoundaryBeforeCharacterTruncation() {
+        let maximumCharacters = 120
+        let service = makeService(truncateScrollback: { text in
+            guard let text else { return nil }
+            return text.count > maximumCharacters
+                ? String(text.suffix(maximumCharacters))
+                : text
+        })
+        let marker = "CMUX-SESSION-RESTORE-BOUNDARY:TRUNCATION"
+        let baseline = (1...40).map { "RESTORED-\($0)" }.joined(separator: "\n")
+        let continuation = (1...40).map { "CONTINUATION-\($0)" }.joined(separator: "\n")
+        let captured = String(baseline.suffix(80))
+            + "\n\u{001B}[8m\(marker)\u{001B}[0m\n"
+            + continuation
+
+        let resolved = service.resolvedSnapshotTerminalScrollback(
+            capturedScrollback: captured,
+            fallbackScrollback: baseline,
+            replayBaselineScrollback: baseline,
+            replayBoundaryMarker: marker
+        )
+
+        #expect(resolved == String((baseline + "\n" + continuation).suffix(maximumCharacters)))
+        #expect(resolved?.contains(marker) == false)
+        #expect(resolved?.contains("SESSION-RESTORE-BOUNDARY") == false)
+    }
+
+    @Test("scrollback resolution finds a replay boundary wrapped by narrow row capture")
+    func scrollbackResolutionFindsWrappedReplayBoundary() {
+        let service = makeService()
+        let marker = "CMUX-SESSION-RESTORE-BOUNDARY:WRAPPED"
+        let wrappedMarker = "CMUX-SESSION-RESTORE-\nBOUNDARY:WRAPPED"
+        let captured = "old tail\n\u{001B}[8m\(wrappedMarker)\u{001B}[0m\nnew output"
+
+        let resolved = service.resolvedSnapshotTerminalScrollback(
+            capturedScrollback: captured,
+            fallbackScrollback: "old baseline",
+            replayBaselineScrollback: "old baseline",
+            replayBoundaryMarker: marker
+        )
+
+        #expect(resolved == "old baseline\nnew output")
+        #expect(resolved?.contains("BOUNDARY") == false)
     }
 
     @Test("scrollback replay preserves a restorable agent when no resume will run")

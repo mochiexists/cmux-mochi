@@ -29,6 +29,9 @@ public protocol TerminalSurfacePaneHosting: NSView {
     /// Notifies the pane that explicit terminal input is about to be sent.
     func terminalSurfaceDidReceiveExplicitInput()
 
+    /// Notifies the pane before Ghostty queues a history-clearing action.
+    func terminalSurfaceWillClearHistory()
+
     /// Draws or clears the mobile-viewport cap border.
     ///
     /// - Parameters:

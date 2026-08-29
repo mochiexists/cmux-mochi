@@ -38,6 +38,28 @@ extension TerminalSurface {
         paneHost.terminalSurfaceDidReceiveExplicitInput()
     }
 
+    /// Notifies the app-owned pane before a configured `clear_screen` action.
+    @MainActor
+    public func willClearHistory() {
+        paneHost.terminalSurfaceWillClearHistory()
+    }
+
+    /// Inserts a concealed boundary immediately before Ghostty queues an
+    /// asynchronous history clear. Snapshot capture can use its presence to
+    /// reject pre-clear rows that raced the clear operation.
+    @MainActor
+    public func installHistoryClearCaptureBoundary(_ marker: String) {
+        guard !marker.isEmpty,
+              !marker.contains("\n"),
+              !marker.contains("\r"),
+              let surface = liveSurfaceForGhosttyAccess(reason: "historyClearBoundary") else {
+            return
+        }
+        let bytes = Data("\u{001B}[8m\(marker)\u{001B}[0m\n".utf8)
+        writeProcessOutputData(bytes, to: surface)
+        ghostty_surface_refresh(surface)
+    }
+
     /// Closes Find as an explicit user action, cancelling any deferred viewport restoration first.
     @MainActor
     public func closeSearchFromExplicitInput() {

@@ -821,6 +821,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
     var ghosttyGotoSplitDownShortcut: StoredShortcut?
     var ghosttyGotoSplitPreviousShortcut: StoredShortcut?
     var ghosttyGotoSplitNextShortcut: StoredShortcut?
+    var ghosttyClearScreenShortcut: StoredShortcut?
     private var browserAddressBarFocusedPanelId: UUID?
     /// Owns the browser omnibar selection-repeat state machine, extracted into
     /// `CmuxBrowser`. The app delegate is the composition root: it injects
@@ -1551,7 +1552,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         titlebarAccessoryController.start()
         windowDecorationsController.start()
         installMainWindowKeyObserver()
-        refreshGhosttyGotoSplitShortcuts()
+        refreshGhosttyShortcuts()
         installGhosttyConfigObserver()
         installGlobalFontMagnificationObserver()
         installWindowResponderSwizzles()
@@ -13070,7 +13071,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            self?.refreshGhosttyGotoSplitShortcuts()
+            self?.refreshGhosttyShortcuts()
         }
     }
 
@@ -13179,7 +13180,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         refreshWindowTitlesAcrossMainWindows()
     }
 
-    private func refreshGhosttyGotoSplitShortcuts() {
+    private func refreshGhosttyShortcuts() {
         ghosttyGotoSplitLeftShortcut = GhosttyApp.shared.storedShortcut(
             forBindingAction: "goto_split:left"
         )
@@ -13197,6 +13198,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         )
         ghosttyGotoSplitNextShortcut = GhosttyApp.shared.storedShortcut(
             forBindingAction: "goto_split:next"
+        )
+        ghosttyClearScreenShortcut = GhosttyApp.shared.storedShortcut(
+            forBindingAction: "clear_screen"
         )
     }
 

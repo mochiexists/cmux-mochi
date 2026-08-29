@@ -378,6 +378,14 @@ extension GhosttySurfaceScrollView {
         cancelPendingNotificationScrollRestoreForUserInput()
     }
 
+    func setHistoryClearHandler(_ handler: (() -> Void)?) {
+        historyClearHandler = handler
+    }
+
+    func terminalSurfaceWillClearHistory() {
+        historyClearHandler?()
+    }
+
     func restorePendingNotificationScrollPositionAfterScrollbarUpdate() {
         _ = restorePendingNotificationScrollPositionIfReady()
     }

@@ -24,18 +24,25 @@ sanitize_path() {
 
 TAG_ID="$(sanitize_bundle "$TAG")"
 TAG_SLUG="$(sanitize_path "$TAG")"
-BUNDLE_ID="${CMUX_FORK_BUNDLE_ID}.debug.${TAG_ID}"
+BUNDLE_ID="${CMUX_FORCE_QUIT_BUNDLE_ID:-${CMUX_FORK_BUNDLE_ID}.debug.${TAG_ID}}"
 APP_NAME="${CMUX_FORK_APP_NAME} DEV ${TAG_SLUG}"
-EXECUTABLE_NAME="${CMUX_FORK_APP_NAME} DEV"
-APP="$HOME/Library/Developer/Xcode/DerivedData/cmux-${TAG_SLUG}/Build/Products/Debug/${APP_NAME}.app"
+APP="${CMUX_FORCE_QUIT_APP_PATH:-$HOME/Library/Developer/Xcode/DerivedData/cmux-${TAG_SLUG}/Build/Products/Debug/${APP_NAME}.app}"
+EXECUTABLE_NAME="${CMUX_FORCE_QUIT_EXECUTABLE_NAME:-${CMUX_FORK_APP_NAME} DEV}"
 CLI="$APP/Contents/Resources/bin/cmux"
-SOCKET="/tmp/cmux-debug-${TAG_SLUG}.sock"
-DAEMON_SOCKET="$HOME/Library/Application Support/cmux/cmuxd-dev-${TAG_SLUG}.sock"
-LOG="/tmp/cmux-debug-${TAG_SLUG}-force-quit.log"
+SOCKET="${CMUX_FORCE_QUIT_SOCKET_PATH:-/tmp/cmux-debug-${TAG_SLUG}.sock}"
+DAEMON_SOCKET="${CMUX_FORCE_QUIT_DAEMON_SOCKET_PATH:-$HOME/Library/Application Support/cmux/cmuxd-dev-${TAG_SLUG}.sock}"
+LOG="${CMUX_FORCE_QUIT_LOG_PATH:-/tmp/cmux-debug-${TAG_SLUG}-force-quit.log}"
+TEST_CWD="${CMUX_FORCE_QUIT_TEST_CWD:-$ROOT_DIR}"
+SNAPSHOT="$HOME/Library/Application Support/cmux/session-${BUNDLE_ID}.json"
+SNAPSHOT_PREVIOUS="$HOME/Library/Application Support/cmux/session-${BUNDLE_ID}-previous.json"
+REPLAY_BOUNDARY_PREFIX="CMUX-SESSION-RESTORE-BOUNDARY:"
+launched_pid=""
 
 if [[ ! -x "$CLI" ]]; then
-  echo "tagged app is not built: $APP" >&2
-  echo "build it with: CMUX_SKIP_ZIG_BUILD=1 ./scripts/reload.sh --tag $TAG" >&2
+  echo "test app is not built: $APP" >&2
+  if [[ -z "${CMUX_FORCE_QUIT_APP_PATH:-}" ]]; then
+    echo "build it with: CMUX_SKIP_ZIG_BUILD=1 ./scripts/reload.sh --tag $TAG" >&2
+  fi
   exit 1
 fi
 
@@ -55,7 +62,24 @@ restore_pairing_default() {
     defaults write "$BUNDLE_ID" mobile.iOSPairingHost.enabled -bool false >/dev/null
   fi
 }
-trap restore_pairing_default EXIT
+
+test_app_pids() {
+  pgrep -f -x "$APP/Contents/MacOS/$EXECUTABLE_NAME" || true
+}
+
+cleanup_after_exit() {
+  local result=$?
+  restore_pairing_default
+  if (( result != 0 )); then
+    local pid
+    while IFS= read -r pid; do
+      [[ -n "$pid" ]] || continue
+      kill -9 "$pid" 2>/dev/null || true
+    done < <(test_app_pids)
+  fi
+  return "$result"
+}
+trap cleanup_after_exit EXIT
 
 # This is a desktop persistence journey, not a DeviceLink journey. Keeping the
 # dedicated tagged bundle's listener off prevents an unrelated keychain ACL
@@ -64,17 +88,37 @@ defaults write "$BUNDLE_ID" mobile.iOSPairingHost.enabled -bool false
 
 launch_app() {
   rm -f "$SOCKET" "$DAEMON_SOCKET"
-  env \
-    -u CMUX_DISABLE_SESSION_RESTORE \
-    -u CMUX_WORKSPACE_ID \
-    -u CMUX_SURFACE_ID \
-    -u CMUX_TAB_ID \
-    -u CMUX_PANEL_ID \
-    CMUX_SOCKET_MODE=automation \
-    CMUX_SOCKET_PATH="$SOCKET" \
-    CMUXD_UNIX_PATH="$DAEMON_SOCKET" \
-    CMUX_DEBUG_LOG="$LOG" \
-    open -g "$APP"
+  if [[ "${CMUX_FORCE_QUIT_DIRECT_EXEC:-0}" == "1" ]]; then
+    (
+      cd "$TEST_CWD"
+      exec env \
+        -u CMUX_DISABLE_SESSION_RESTORE \
+        -u CMUX_WORKSPACE_ID \
+        -u CMUX_SURFACE_ID \
+        -u CMUX_TAB_ID \
+        -u CMUX_PANEL_ID \
+        CMUX_SOCKET_MODE=automation \
+        CMUX_SOCKET_PATH="$SOCKET" \
+        CMUX_BUNDLE_ID="$BUNDLE_ID" \
+        CMUXD_UNIX_PATH="$DAEMON_SOCKET" \
+        CMUX_DEBUG_LOG="$LOG" \
+        "$APP/Contents/MacOS/$EXECUTABLE_NAME" >"$LOG.launch" 2>&1
+    ) &
+    launched_pid=$!
+  else
+    env \
+      -u CMUX_DISABLE_SESSION_RESTORE \
+      -u CMUX_WORKSPACE_ID \
+      -u CMUX_SURFACE_ID \
+      -u CMUX_TAB_ID \
+      -u CMUX_PANEL_ID \
+      CMUX_SOCKET_MODE=automation \
+      CMUX_SOCKET_PATH="$SOCKET" \
+      CMUX_BUNDLE_ID="$BUNDLE_ID" \
+      CMUXD_UNIX_PATH="$DAEMON_SOCKET" \
+      CMUX_DEBUG_LOG="$LOG" \
+      open -g "$APP"
+  fi
 
   local deadline=$((SECONDS + 25))
   while (( SECONDS < deadline )); do
@@ -83,7 +127,13 @@ launch_app() {
     fi
     sleep 0.2
   done
-  echo "tagged socket did not become ready: $SOCKET" >&2
+  echo "test app socket did not become ready: $SOCKET" >&2
+  if [[ -s "$LOG" ]]; then
+    tail -n 120 "$LOG" >&2
+  fi
+  if [[ -s "$LOG.launch" ]]; then
+    tail -n 120 "$LOG.launch" >&2
+  fi
   exit 1
 }
 
@@ -182,30 +232,142 @@ assert_cycle() {
   done
 }
 
-force_quit() {
-  local pid
-  pid="$(pgrep -f "$APP/Contents/MacOS/$EXECUTABLE_NAME" | head -1)"
-  if [[ -z "$pid" ]]; then
-    echo "tagged app process not found" >&2
+assert_cycle_absent() {
+  local surface="$1"
+  local token="$2"
+  local text
+  text="$(cli read-screen --surface "$surface" --scrollback --lines 700)"
+  if grep -Fq "${token}-" <<<"$text"; then
+    echo "cleared scrollback unexpectedly contains $token" >&2
     exit 1
   fi
-  kill -9 "$pid"
+}
+
+assert_cycle_history_absent() {
+  local surface="$1"
+  local token="$2"
+  local text
+  text="$(cli read-screen --surface "$surface" --scrollback --lines 700)"
+  # Ghostty clear_screen erases history but intentionally retains the current
+  # viewport. Early rows must disappear; the final screenful may remain.
+  if grep -Fq "${token}-001" <<<"$text" || grep -Fq "${token}-120" <<<"$text"; then
+    echo "cleared scrollback unexpectedly contains historical rows from $token" >&2
+    exit 1
+  fi
+}
+
+wait_for_cycle_absent() {
+  local surface="$1"
+  local token="$2"
   local deadline=$((SECONDS + 10))
   while (( SECONDS < deadline )); do
-    if ! kill -0 "$pid" 2>/dev/null; then
+    local text
+    text="$(cli read-screen --surface "$surface" --scrollback --lines 700)"
+    if ! grep -Fq "${token}-" <<<"$text"; then
       return
     fi
-    sleep 0.1
+    sleep 0.2
   done
-  echo "tagged app did not exit after SIGKILL" >&2
+  echo "clear-history did not remove $token from terminal scrollback" >&2
   exit 1
 }
 
-stop_existing_tagged_app() {
+wait_for_cycle_history_absent() {
+  local surface="$1"
+  local token="$2"
+  local deadline=$((SECONDS + 10))
+  while (( SECONDS < deadline )); do
+    local text
+    text="$(cli read-screen --surface "$surface" --scrollback --lines 700)"
+    if ! grep -Fq "${token}-001" <<<"$text" \
+      && ! grep -Fq "${token}-120" <<<"$text"; then
+      return
+    fi
+    sleep 0.2
+  done
+  echo "clear-history did not remove historical rows from $token" >&2
+  exit 1
+}
+
+assert_snapshot_has_no_replay_boundary() {
+  local snapshot
+  for snapshot in "$SNAPSHOT" "$SNAPSHOT_PREVIOUS"; do
+    [[ -f "$snapshot" ]] || continue
+    if LC_ALL=C grep -aFq "$REPLAY_BOUNDARY_PREFIX" "$snapshot"; then
+      echo "session snapshot contains an internal replay boundary: $snapshot" >&2
+      exit 1
+    fi
+  done
+}
+
+assert_snapshot_cycle_absent() {
+  local token="$1"
+  if [[ -f "$SNAPSHOT" ]] && LC_ALL=C grep -aFq "${token}-" "$SNAPSHOT"; then
+    echo "session snapshot resurrected cleared scrollback: $token" >&2
+    exit 1
+  fi
+}
+
+assert_snapshot_cycle_history_absent() {
+  local token="$1"
+  if [[ -f "$SNAPSHOT" ]] \
+    && { LC_ALL=C grep -aFq "${token}-001" "$SNAPSHOT" \
+      || LC_ALL=C grep -aFq "${token}-120" "$SNAPSHOT"; }; then
+    echo "session snapshot resurrected cleared historical rows: $token" >&2
+    exit 1
+  fi
+}
+
+assert_snapshot_cycle_present() {
+  local token="$1"
+  if [[ ! -f "$SNAPSHOT" ]] || ! LC_ALL=C grep -aFq "${token}-240" "$SNAPSHOT"; then
+    echo "session snapshot is missing expected scrollback: $token" >&2
+    exit 1
+  fi
+}
+
+assert_previous_snapshot_cycle_absent() {
+  local token="$1"
+  if [[ -f "$SNAPSHOT_PREVIOUS" ]] \
+    && LC_ALL=C grep -aFq "${token}-" "$SNAPSHOT_PREVIOUS"; then
+    echo "previous session snapshot resurrected cleared scrollback: $token" >&2
+    exit 1
+  fi
+}
+
+assert_previous_snapshot_cycle_history_absent() {
+  local token="$1"
+  if [[ -f "$SNAPSHOT_PREVIOUS" ]] \
+    && { LC_ALL=C grep -aFq "${token}-001" "$SNAPSHOT_PREVIOUS" \
+      || LC_ALL=C grep -aFq "${token}-120" "$SNAPSHOT_PREVIOUS"; }; then
+    echo "previous session snapshot resurrected cleared historical rows: $token" >&2
+    exit 1
+  fi
+}
+
+assert_previous_snapshot_cycle_present() {
+  local token="$1"
+  if [[ ! -f "$SNAPSHOT_PREVIOUS" ]] \
+    || ! LC_ALL=C grep -aFq "${token}-240" "$SNAPSHOT_PREVIOUS"; then
+    echo "previous session snapshot is missing expected scrollback: $token" >&2
+    exit 1
+  fi
+}
+
+force_quit() {
   local pid
-  pid="$(pgrep -f "$APP/Contents/MacOS/$EXECUTABLE_NAME" | head -1 || true)"
-  [[ -n "$pid" ]] || return 0
+  if [[ -n "$launched_pid" ]] && kill -0 "$launched_pid" 2>/dev/null; then
+    pid="$launched_pid"
+  else
+    pid="$(test_app_pids | tail -1)"
+  fi
+  if [[ -z "$pid" ]]; then
+    echo "test app process not found" >&2
+    exit 1
+  fi
   kill -9 "$pid"
+  wait "$pid" 2>/dev/null || true
+  launched_pid=""
   local deadline=$((SECONDS + 10))
   while (( SECONDS < deadline )); do
     if ! kill -0 "$pid" 2>/dev/null; then
@@ -213,22 +375,64 @@ stop_existing_tagged_app() {
     fi
     sleep 0.1
   done
-  echo "existing tagged app did not exit before the journey" >&2
+  echo "test app did not exit after SIGKILL" >&2
   exit 1
+}
+
+stop_existing_test_app() {
+  local pid
+  local pids
+  pids="$(test_app_pids)"
+  [[ -n "$pids" ]] || return 0
+  while IFS= read -r pid; do
+    [[ -n "$pid" ]] || continue
+    kill -9 "$pid" 2>/dev/null || true
+  done <<<"$pids"
+  local deadline=$((SECONDS + 10))
+  while (( SECONDS < deadline )); do
+    if [[ -z "$(test_app_pids)" ]]; then
+      return
+    fi
+    sleep 0.1
+  done
+  echo "existing test app did not exit before the journey" >&2
+  exit 1
+}
+
+reset_test_state() {
+  if [[ "${CMUX_FORCE_QUIT_PRESERVE_EXISTING_STATE:-0}" == "1" ]]; then
+    return
+  fi
+
+  # The journey owns this dedicated bundle ID and socket namespace. Begin from
+  # an empty session so a prior failed run cannot supply panes or foreground
+  # jobs, while preserving state across the force-quits exercised below.
+  rm -f -- \
+    "$SNAPSHOT" \
+    "$SNAPSHOT_PREVIOUS" \
+    "$SOCKET" \
+    "$SOCKET.lock" \
+    "$DAEMON_SOCKET" \
+    "$DAEMON_SOCKET.lock" \
+    "$LOG" \
+    "$LOG.launch"
 }
 
 run_id="$(date -u +%Y%m%dT%H%M%SZ)-$$"
 first="CMUX-FORCE-QUIT-A-${run_id}"
 second="CMUX-FORCE-QUIT-B-${run_id}"
+third="CMUX-FORCE-QUIT-C-${run_id}"
 workspace_name="CMUX-FORCE-QUIT-${run_id}"
 
-stop_existing_tagged_app
+stop_existing_test_app
+reset_test_state
 launch_app
-cli new-workspace --name "$workspace_name" --cwd "$ROOT_DIR" --focus true >/dev/null
+cli new-workspace --name "$workspace_name" --cwd "$TEST_CWD" --focus true >/dev/null
 surface="$(selected_surface)"
 wait_for_surface_readable "$surface"
 seed_cycle "$surface" "$first"
 sleep 10
+assert_snapshot_has_no_replay_boundary
 force_quit
 
 launch_app
@@ -237,6 +441,7 @@ wait_for_surface_readable "$surface"
 assert_cycle "$surface" "$first"
 seed_cycle "$surface" "$second"
 sleep 10
+assert_snapshot_has_no_replay_boundary
 force_quit
 
 launch_app
@@ -245,8 +450,40 @@ wait_for_surface_readable "$surface"
 assert_cycle "$surface" "$first"
 assert_cycle "$surface" "$second"
 
-echo "force-quit session continuity passed twice"
+cli clear-history --surface "$surface" >/dev/null
+wait_for_cycle_absent "$surface" "$first"
+wait_for_cycle_history_absent "$surface" "$second"
+seed_cycle "$surface" "$third"
+assert_cycle_absent "$surface" "$first"
+assert_cycle_history_absent "$surface" "$second"
+sleep 10
+assert_snapshot_has_no_replay_boundary
+assert_snapshot_cycle_absent "$first"
+assert_snapshot_cycle_history_absent "$second"
+assert_snapshot_cycle_present "$third"
+force_quit
+
+launch_app
+surface="$(selected_surface)"
+wait_for_surface_readable "$surface"
+assert_cycle "$surface" "$third"
+assert_cycle_absent "$surface" "$first"
+assert_cycle_history_absent "$surface" "$second"
+assert_snapshot_has_no_replay_boundary
+assert_snapshot_cycle_absent "$first"
+assert_snapshot_cycle_history_absent "$second"
+assert_snapshot_cycle_present "$third"
+assert_previous_snapshot_cycle_absent "$first"
+assert_previous_snapshot_cycle_history_absent "$second"
+assert_previous_snapshot_cycle_present "$third"
+
+echo "force-quit session continuity passed twice and explicit clear stayed cleared"
 echo "tag: $TAG"
 echo "surface: $surface"
 echo "first token: $first"
 echo "second token: $second"
+echo "post-clear token: $third"
+
+if [[ "${CMUX_FORCE_QUIT_STOP_AFTER_SUCCESS:-0}" == "1" ]]; then
+  force_quit
+fi

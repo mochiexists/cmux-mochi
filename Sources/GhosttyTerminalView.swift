@@ -5743,6 +5743,10 @@ class GhosttyNSView: NSView, NSUserInterfaceValidations {
         ensureSurfaceMs = (ProcessInfo.processInfo.systemUptime - ensureSurfaceStart) * 1000.0
 #endif
         let appDelegate = AppDelegate.shared
+        if !event.isARepeat,
+           appDelegate?.ghosttyClearScreenShortcut?.matches(event: event) == true {
+            terminalSurface?.willClearHistory()
+        }
 #if DEBUG
         let rightSidebarShortcutStart = ProcessInfo.processInfo.systemUptime
 #endif
@@ -8285,6 +8289,7 @@ final class GhosttySurfaceScrollView: NSView {
     /// Tracks scrollback review so auto-scroll does not fight the user's position.
     var userScrolledAwayFromBottom = false
     private var pendingExplicitWheelScroll = false
+    var historyClearHandler: (() -> Void)?
     var allowExplicitScrollbarSync = false
     /// Threshold in points from bottom to consider "at bottom" (allows for minor float drift)
     private static let scrollToBottomThreshold: CGFloat = 5.0

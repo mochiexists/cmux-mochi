@@ -11,6 +11,32 @@ import Testing
 @MainActor
 @Suite("Notification scroll restore lifecycle", .serialized)
 struct NotificationScrollRestoreLifecycleTests {
+    @Test func explicitHistoryClearInvalidatesReplayFallbackUntilAuthoritativeCapture() throws {
+        let panel = TerminalPanel(workspaceId: UUID())
+        defer { panel.surface.releaseSurfaceForTesting() }
+
+        panel.adoptSessionScrollbackReplayContinuation(
+            baseline: "restored history",
+            boundaryMarker: "restore boundary"
+        )
+        panel.markSessionScrollbackExplicitlyCleared()
+
+        #expect(panel.sessionScrollbackReplayBaseline == nil)
+        let clearBoundary = try #require(panel.sessionScrollbackReplayBoundaryMarker)
+        #expect(clearBoundary.hasPrefix(SessionScrollbackReplayStore.continuationBoundaryPrefix))
+        #expect(panel.sessionScrollbackFallbackInvalidatedByClear)
+
+        #expect(!panel.acceptSessionScrollbackCapture(
+            "old history\n\u{001B}[8m\(clearBoundary)\u{001B}[0m\n"
+        ))
+        #expect(panel.sessionScrollbackFallbackInvalidatedByClear)
+
+        #expect(panel.acceptSessionScrollbackCapture("fresh after clear"))
+
+        #expect(!panel.sessionScrollbackFallbackInvalidatedByClear)
+        #expect(panel.sessionScrollbackReplayBoundaryMarker == nil)
+    }
+
     @Test func replayCompletionKeepsHistoricalRestoreUntilRowsBecomeAddressable() {
         let boundary = "test-replay-boundary"
         let surfaceView = NotificationLifecycleRecordingSurfaceView(frame: .zero)

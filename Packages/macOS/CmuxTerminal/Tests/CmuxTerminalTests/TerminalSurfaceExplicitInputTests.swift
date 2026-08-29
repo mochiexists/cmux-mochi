@@ -54,6 +54,15 @@ struct TerminalSurfaceExplicitInputTests {
         #expect(fixture.paneHost.explicitInputCount == 1)
     }
 
+    @Test func configuredHistoryClearNotifiesPaneHost() {
+        let fixture = makeFixture()
+        defer { fixture.surface.releaseSurfaceForTesting() }
+
+        fixture.surface.willClearHistory()
+
+        #expect(fixture.paneHost.historyClearCount == 1)
+    }
+
     @Test func closingSearchAsExplicitInputNotifiesBeforeClearingSearchState() {
         let fixture = makeFixture()
         defer { fixture.surface.releaseSurfaceForTesting() }

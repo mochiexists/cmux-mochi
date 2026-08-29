@@ -32,13 +32,124 @@ public struct WorkspaceSessionRestorePolicyService<Binding: WorkspaceSurfaceResu
     public func resolvedSnapshotTerminalScrollback(
         capturedScrollback: String?,
         fallbackScrollback: String?,
+        replayBaselineScrollback: String? = nil,
+        replayBoundaryMarker: String? = nil,
         allowFallbackScrollback: Bool = true
     ) -> String? {
-        if let captured = truncateScrollback(capturedScrollback) {
-            return captured
+        if let capturedScrollback {
+            var resolved = if allowFallbackScrollback,
+                              let replayBaselineScrollback,
+                              let replayBoundaryMarker,
+                              let continuation = scrollbackAfterReplayBoundary(
+                                  captured: capturedScrollback,
+                                  marker: replayBoundaryMarker
+                              ) {
+                joiningScrollback(replayBaselineScrollback, continuation)
+            } else {
+                capturedScrollback
+            }
+            if let replayBoundaryMarker {
+                resolved = removingReplayBoundaryLines(
+                    from: resolved,
+                    marker: replayBoundaryMarker
+                )
+            }
+            return nonEmptyTruncatedScrollback(resolved)
         }
         guard allowFallbackScrollback else { return nil }
-        return truncateScrollback(fallbackScrollback)
+        return nonEmptyTruncatedScrollback(fallbackScrollback)
+    }
+
+    private func nonEmptyTruncatedScrollback(_ text: String?) -> String? {
+        guard let truncated = truncateScrollback(text), !truncated.isEmpty else {
+            return nil
+        }
+        return truncated
+    }
+
+    /// Session replay appends a concealed, per-restore boundary line after the
+    /// durable snapshot. While that boundary remains in Ghostty, everything
+    /// after it is live output and can be joined to the immutable replay
+    /// baseline without guessing from repeated terminal text. If history is
+    /// cleared or the boundary is evicted, it disappears and the live capture
+    /// remains authoritative.
+    private func scrollbackAfterReplayBoundary(captured: String, marker: String) -> String? {
+        guard let markerRange = replayBoundaryRange(in: captured, marker: marker) else {
+            return nil
+        }
+        guard let lineEnd = captured[markerRange.upperBound...].firstIndex(of: "\n") else {
+            return ""
+        }
+        return String(captured[captured.index(after: lineEnd)...])
+    }
+
+    /// Removes the entire terminal line that contains an internal replay marker,
+    /// including its conceal/reset escape sequences. Boundary lookup happens on
+    /// the raw capture before character truncation, so a truncated marker can
+    /// never be persisted and replayed as visible text.
+    private func removingReplayBoundaryLines(from text: String, marker: String) -> String {
+        var sanitized = text
+        while let markerRange = replayBoundaryRange(in: sanitized, marker: marker) {
+            let lineStart = sanitized[..<markerRange.lowerBound].lastIndex(of: "\n")
+                .map { sanitized.index(after: $0) } ?? sanitized.startIndex
+            let lineEnd = sanitized[markerRange.upperBound...].firstIndex(of: "\n")
+                .map { sanitized.index(after: $0) } ?? sanitized.endIndex
+            sanitized.removeSubrange(lineStart..<lineEnd)
+        }
+        return sanitized
+    }
+
+    /// Plain row capture can insert line breaks where a narrow terminal wrapped
+    /// the concealed marker. Match the marker while ignoring only CR/LF inside
+    /// the candidate so wrapped boundaries remain unambiguous and removable.
+    private func replayBoundaryRange(in text: String, marker: String) -> Range<String.Index>? {
+        guard !marker.isEmpty else { return nil }
+        var textIndex = text.startIndex
+        var markerIndex = marker.startIndex
+        var matchStart: String.Index?
+
+        while textIndex < text.endIndex {
+            let textCharacter = text[textIndex]
+            if textCharacter == marker[markerIndex] {
+                if matchStart == nil {
+                    matchStart = textIndex
+                }
+                marker.formIndex(after: &markerIndex)
+                let matchEnd = text.index(after: textIndex)
+                if markerIndex == marker.endIndex, let matchStart {
+                    return matchStart..<matchEnd
+                }
+                text.formIndex(after: &textIndex)
+                continue
+            }
+
+            if matchStart != nil, (textCharacter == "\n" || textCharacter == "\r") {
+                text.formIndex(after: &textIndex)
+                continue
+            }
+
+            matchStart = nil
+            markerIndex = marker.startIndex
+            if textCharacter == marker[markerIndex] {
+                matchStart = textIndex
+                marker.formIndex(after: &markerIndex)
+                let matchEnd = text.index(after: textIndex)
+                if markerIndex == marker.endIndex, let matchStart {
+                    return matchStart..<matchEnd
+                }
+            }
+            text.formIndex(after: &textIndex)
+        }
+        return nil
+    }
+
+    private func joiningScrollback(_ baseline: String, _ continuation: String) -> String {
+        guard !baseline.isEmpty else { return continuation }
+        guard !continuation.isEmpty else { return baseline }
+        if baseline.hasSuffix("\n") || continuation.hasPrefix("\n") {
+            return baseline + continuation
+        }
+        return baseline + "\n" + continuation
     }
 
     /// Returns whether restored scrollback should be replayed for a terminal.

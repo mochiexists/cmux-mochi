@@ -933,11 +933,15 @@ extension Workspace {
     nonisolated static func resolvedSnapshotTerminalScrollback(
         capturedScrollback: String?,
         fallbackScrollback: String?,
+        replayBaselineScrollback: String? = nil,
+        replayBoundaryMarker: String? = nil,
         allowFallbackScrollback: Bool = true
     ) -> String? {
         makeSessionRestorePolicyService().resolvedSnapshotTerminalScrollback(
             capturedScrollback: capturedScrollback,
             fallbackScrollback: fallbackScrollback,
+            replayBaselineScrollback: replayBaselineScrollback,
+            replayBoundaryMarker: replayBoundaryMarker,
             allowFallbackScrollback: allowFallbackScrollback
         )
     }
@@ -1111,8 +1115,14 @@ extension Workspace {
         includeScrollback: Bool,
         allowFallbackScrollback: Bool = true
     ) -> String? {
+        let terminalPanel = panels[panelId] as? TerminalPanel
+        let fallbackWasInvalidated = terminalPanel?.sessionScrollbackFallbackInvalidatedByClear == true
+        let canUseFallback = allowFallbackScrollback && !fallbackWasInvalidated
         if !includeScrollback {
-            return allowFallbackScrollback ? restoredTerminalScrollbackByPanelId[panelId] : nil
+            if fallbackWasInvalidated {
+                restoredTerminalScrollbackByPanelId.removeValue(forKey: panelId)
+            }
+            return canUseFallback ? restoredTerminalScrollbackByPanelId[panelId] : nil
         }
 #if DEBUG
         let debugFallback = debugSessionSnapshotScrollbackFallbackPanelIds.contains(panelId)
@@ -1121,13 +1131,23 @@ extension Workspace {
 #else
         let debugFallback: String? = nil
 #endif
-        let fallback = allowFallbackScrollback
+        let acceptedCapturedScrollback: String? = capturedScrollback.flatMap { captured -> String? in
+            guard terminalPanel?.acceptSessionScrollbackCapture(captured) != false else {
+                return nil
+            }
+            return captured
+        }
+        let fallback = canUseFallback
             ? (debugFallback ?? restoredTerminalScrollbackByPanelId[panelId])
             : nil
+        let replayBaseline = terminalPanel?.sessionScrollbackReplayBaseline
+        let replayBoundaryMarker = terminalPanel?.sessionScrollbackReplayBoundaryMarker
         let resolved = sessionRestorePolicy.resolvedSnapshotTerminalScrollback(
-            capturedScrollback: capturedScrollback,
+            capturedScrollback: acceptedCapturedScrollback,
             fallbackScrollback: fallback,
-            allowFallbackScrollback: allowFallbackScrollback
+            replayBaselineScrollback: replayBaseline,
+            replayBoundaryMarker: replayBoundaryMarker,
+            allowFallbackScrollback: canUseFallback
         )
 #if DEBUG
         if debugFallback != nil {
@@ -1602,7 +1622,7 @@ extension Workspace {
                 restoredPersistentSSHResumeCommand != nil &&
                 resumeBinding?.isAgentHookBinding == true
             let restoredAgentWillRunStartupInput =
-                (restoredAgentResumeLaunch?.initialInput != nil && resumeMode.submitsResumeCommand) ||
+                restoredAgentResumeLaunch?.initialInput != nil ||
                 (restoredBindingLaunch?.initialInput != nil && resumeBinding?.isAgentHookBinding == true)
 #if DEBUG
             if let restorableAgent {
@@ -1628,7 +1648,13 @@ extension Workspace {
 #endif
             let shouldReplayLocalScrollback = restoredRemotePTYAttachCommand == nil && shouldReplayScrollback
             let restoredScrollback = shouldReplayLocalScrollback ? snapshot.terminal?.scrollback : nil
-            let replayFileURL = SessionScrollbackReplayStore.replayFileURL(for: restoredScrollback)
+            let replayBoundaryMarker = restoredScrollback.map { _ in
+                SessionScrollbackReplayStore.makeContinuationBoundaryMarker()
+            }
+            let replayFileURL = SessionScrollbackReplayStore.replayFileURL(
+                for: restoredScrollback,
+                continuationBoundaryMarker: replayBoundaryMarker
+            )
             let replayEnvironment = SessionScrollbackReplayStore.replayEnvironment(forFileURL: replayFileURL)
             // Reuse the persisted surface id so the restored terminal keeps
             // the same identity (the panel/surface id IS the ghostty surface
@@ -1671,6 +1697,10 @@ extension Workspace {
                 return nil
             }
             terminalPanel.adoptOwnedSessionScrollbackReplayArtifact(replayFileURL)
+            terminalPanel.adoptSessionScrollbackReplayContinuation(
+                baseline: restoredScrollback,
+                boundaryMarker: replayBoundaryMarker
+            )
             // Re-bind the resumed agent session from cmux's own authority, keyed
             // on the surface that was actually created. `terminalPanel.id` equals
             // `snapshot.id` on the normal path, but on a surface-id collision

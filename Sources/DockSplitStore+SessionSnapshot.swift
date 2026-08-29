@@ -171,14 +171,27 @@ extension DockSplitStore {
                     lineLimit: SessionPersistencePolicy.maxScrollbackLinesPerTerminal
                 )
                 : nil
+            let fallbackWasInvalidated = terminal.sessionScrollbackFallbackInvalidatedByClear
+            let acceptedCapturedScrollback = capturedScrollback.flatMap { captured in
+                terminal.acceptSessionScrollbackCapture(captured) ? captured : nil
+            }
             let hasRestoredScrollbackFallback = restoredTerminalScrollbackByPanelId[panelId] != nil
+                && !fallbackWasInvalidated
+            let allowFallbackScrollback = (shouldPersistScrollback || hasRestoredScrollbackFallback)
+                && !fallbackWasInvalidated
             let scrollback = policy.resolvedSnapshotTerminalScrollback(
-                capturedScrollback: capturedScrollback,
-                fallbackScrollback: restoredTerminalScrollbackByPanelId[panelId],
-                allowFallbackScrollback: shouldPersistScrollback || hasRestoredScrollbackFallback
+                capturedScrollback: acceptedCapturedScrollback,
+                fallbackScrollback: allowFallbackScrollback
+                    ? restoredTerminalScrollbackByPanelId[panelId]
+                    : nil,
+                replayBaselineScrollback: terminal.sessionScrollbackReplayBaseline,
+                replayBoundaryMarker: terminal.sessionScrollbackReplayBoundaryMarker,
+                allowFallbackScrollback: allowFallbackScrollback
             )
             if let scrollback {
                 restoredTerminalScrollbackByPanelId[panelId] = scrollback
+            } else if capturedScrollback != nil || fallbackWasInvalidated {
+                restoredTerminalScrollbackByPanelId.removeValue(forKey: panelId)
             }
             let sessionFontSize: Float32?
             let sessionFontSizeChangeTokens: [UUID]?

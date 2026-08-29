@@ -1920,6 +1920,7 @@ extension AppSessionSnapshot: SessionSnapshotRepresenting {
 enum SessionScrollbackReplayStore {
     static let environmentKey = "CMUX_RESTORE_SCROLLBACK_FILE"
     static let boundaryPrefix = "/.cmux/session-scrollback-replay/"
+    static let continuationBoundaryPrefix = "CMUX-SESSION-RESTORE-BOUNDARY:"
     private static let directoryName = "cmux-session-scrollback"
     private static let ansiEscape = "\u{001B}"
     private static let ansiReset = "\u{001B}[0m"
@@ -1931,10 +1932,17 @@ enum SessionScrollbackReplayStore {
     }
     nonisolated static func replayFileURL(
         for scrollback: String?,
+        continuationBoundaryMarker: String? = nil,
         tempDirectory: URL = FileManager.default.temporaryDirectory
     ) -> URL? {
         guard let replayText = normalizedScrollback(scrollback) else { return nil }
-        return writeReplayFile(contents: replayText, tempDirectory: tempDirectory)
+        return writeReplayFile(
+            contents: appendingContinuationBoundary(
+                continuationBoundaryMarker,
+                to: replayText
+            ),
+            tempDirectory: tempDirectory
+        )
     }
     nonisolated static func replayEnvironment(forFileURL replayFileURL: URL?) -> [String: String] {
         guard let replayFileURL else { return [:] }
@@ -1945,6 +1953,22 @@ enum SessionScrollbackReplayStore {
     }
     nonisolated static func endBoundaryValue(forReplayFilePath path: String) -> String {
         boundaryPrefix + URL(fileURLWithPath: path).lastPathComponent + "/end"
+    }
+    nonisolated static func makeContinuationBoundaryMarker() -> String {
+        continuationBoundaryPrefix + UUID().uuidString
+    }
+    nonisolated private static func appendingContinuationBoundary(
+        _ marker: String?,
+        to replayText: String
+    ) -> String {
+        guard let marker,
+              marker.hasPrefix(continuationBoundaryPrefix),
+              !marker.contains("\n"),
+              !marker.contains("\r") else {
+            return replayText
+        }
+        let separator = replayText.hasSuffix("\n") ? "" : "\n"
+        return replayText + separator + "\u{001B}[8m" + marker + ansiReset + "\n"
     }
     nonisolated private static func normalizedScrollback(_ scrollback: String?) -> String? {
         guard let scrollback else { return nil }
