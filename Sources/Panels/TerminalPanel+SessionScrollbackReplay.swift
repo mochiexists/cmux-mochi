@@ -28,6 +28,16 @@ extension TerminalPanel {
         surface.installHistoryClearCaptureBoundary(marker)
     }
 
+    /// Reinstalls the same concealed boundary after Ghostty consumes the clear.
+    /// The pre-clear copy rejects stale captures; this post-clear copy guarantees
+    /// a surviving authority marker even when `clear_screen` removes the viewport
+    /// row that held the first copy.
+    func reinforceSessionScrollbackClearBoundary() {
+        guard sessionScrollbackFallbackInvalidatedByClear,
+              let marker = sessionScrollbackReplayBoundaryMarker else { return }
+        surface.installHistoryClearCaptureBoundary(marker)
+    }
+
     /// Accepts only a capture that is known to be on the correct side of an
     /// explicit clear. Captures before the concealed boundary are rejected;
     /// once it appears, the capture is authoritative and snapshot policy strips

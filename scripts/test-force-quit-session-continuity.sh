@@ -215,7 +215,11 @@ seed_cycle() {
   local prompt="${token}-PROMPT"
   local command
   command="i=1; while [ \$i -le 240 ]; do printf '${token}-%03d\\n' \"\$i\"; i=\$((i+1)); done; printf '${prompt}\\n'"
-  cli send --surface "$surface" --enter -- "$command" >/dev/null
+  # This journey owns an isolated terminal and intentionally replaces whatever
+  # transient login-shell startup process the reused CI runner reports. The
+  # foreground-job guard is covered separately; do not let it make this
+  # persistence gate race the runner's shell initialization.
+  cli send --surface "$surface" --enter --force -- "$command" >/dev/null
   wait_for_text "$surface" "${token}-240"
 }
 

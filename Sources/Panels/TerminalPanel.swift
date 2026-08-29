@@ -155,6 +155,9 @@ final class TerminalPanel: Panel, ObservableObject {
         surface.hostedView.setHistoryClearHandler { [weak self] in
             self?.markSessionScrollbackExplicitlyCleared()
         }
+        surface.hostedView.setHistoryDidClearHandler { [weak self] in
+            self?.reinforceSessionScrollbackClearBoundary()
+        }
         // Subscribe to surface's search state changes
         surface.$searchState
             .sink { [weak self] state in
@@ -734,7 +737,11 @@ final class TerminalPanel: Panel, ObservableObject {
         if action == "clear_screen" {
             markSessionScrollbackExplicitlyCleared()
         }
-        return surface.performExplicitInputBindingAction(action)
+        let handled = surface.performExplicitInputBindingAction(action)
+        if action == "clear_screen", handled {
+            reinforceSessionScrollbackClearBoundary()
+        }
+        return handled
     }
 
     @discardableResult

@@ -26,6 +26,10 @@ struct NotificationScrollRestoreLifecycleTests {
         #expect(clearBoundary.hasPrefix(SessionScrollbackReplayStore.continuationBoundaryPrefix))
         #expect(panel.sessionScrollbackFallbackInvalidatedByClear)
 
+        panel.reinforceSessionScrollbackClearBoundary()
+        #expect(panel.sessionScrollbackReplayBoundaryMarker == clearBoundary)
+        #expect(panel.sessionScrollbackFallbackInvalidatedByClear)
+
         #expect(!panel.acceptSessionScrollbackCapture("old history"))
         #expect(panel.sessionScrollbackFallbackInvalidatedByClear)
 

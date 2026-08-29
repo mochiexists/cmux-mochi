@@ -32,6 +32,9 @@ public protocol TerminalSurfacePaneHosting: NSView {
     /// Notifies the pane before Ghostty queues a history-clearing action.
     func terminalSurfaceWillClearHistory()
 
+    /// Notifies the pane after Ghostty has consumed a history-clearing action.
+    func terminalSurfaceDidClearHistory()
+
     /// Draws or clears the mobile-viewport cap border.
     ///
     /// - Parameters:

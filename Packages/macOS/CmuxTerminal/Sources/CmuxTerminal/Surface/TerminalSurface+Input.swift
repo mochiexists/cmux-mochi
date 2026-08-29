@@ -44,6 +44,12 @@ extension TerminalSurface {
         paneHost.terminalSurfaceWillClearHistory()
     }
 
+    /// Notifies the app-owned pane after a configured `clear_screen` action.
+    @MainActor
+    public func didClearHistory() {
+        paneHost.terminalSurfaceDidClearHistory()
+    }
+
     /// Inserts a concealed boundary immediately before Ghostty queues an
     /// asynchronous history clear. Snapshot capture can use its presence to
     /// reject pre-clear rows that raced the clear operation.
