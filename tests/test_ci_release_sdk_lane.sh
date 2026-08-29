@@ -69,6 +69,23 @@ if ! grep -Fq "actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef35013
   exit 1
 fi
 
+release_helper_invocation="$({
+  awk '
+    /\.\/scripts\/install-prebuilt-ghostty-cli-helper\.sh/ {
+      print
+      getline
+      print
+      getline
+      print
+      exit
+    }
+  ' "$RELEASE_FILE"
+} || true)"
+if [[ "$release_helper_invocation" != *'"build-universal/Build/Products/Release/cmux Mochi.app"'* ]]; then
+  echo "FAIL: release.yml must quote the fork app path when installing the Ghostty helper" >&2
+  exit 1
+fi
+
 swift_package_section="$(job_section "$CI_FILE" "swift-package-tests")"
 if [[ "$swift_package_section" != *'runs-on: ${{ vars.MACOS_RUNNER_DUAL_XCODE || '\''blacksmith-6vcpu-macos-15'\'' }}'* ]]; then
   echo "FAIL: CI swift-package-tests must use the dual-Xcode runner lane" >&2
