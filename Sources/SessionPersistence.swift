@@ -64,12 +64,64 @@ enum SessionPersistencePolicy {
 
     static func truncatedScrollback(_ text: String?) -> String? {
         guard let text, !text.isEmpty else { return nil }
-        if text.count <= maxScrollbackCharactersPerTerminal {
-            return text
+        let sanitized = removingInternalScrollbackBoundaryLines(from: text)
+        guard !sanitized.isEmpty else { return nil }
+        if sanitized.count <= maxScrollbackCharactersPerTerminal {
+            return sanitized
         }
-        let initialStart = text.index(text.endIndex, offsetBy: -maxScrollbackCharactersPerTerminal)
-        let safeStart = ansiSafeTruncationStart(in: text, initialStart: initialStart)
-        return String(text[safeStart...])
+        let initialStart = sanitized.index(sanitized.endIndex, offsetBy: -maxScrollbackCharactersPerTerminal)
+        let safeStart = ansiSafeTruncationStart(in: sanitized, initialStart: initialStart)
+        return String(sanitized[safeStart...])
+    }
+
+    /// Internal replay markers can outlive the currently tracked marker when a
+    /// restored viewport is explicitly cleared. Strip every reserved marker line
+    /// at the final persistence seam so no prior generation can reach session JSON.
+    private static func removingInternalScrollbackBoundaryLines(from text: String) -> String {
+        let prefix = SessionScrollbackReplayStore.continuationBoundaryPrefix
+        var sanitized = text
+        while let markerRange = rangeIgnoringLineBreaks(of: prefix, in: sanitized) {
+            let lineStart = sanitized[..<markerRange.lowerBound].lastIndex(of: "\n")
+                .map { sanitized.index(after: $0) } ?? sanitized.startIndex
+            let lineEnd = sanitized[markerRange.upperBound...].firstIndex(of: "\n")
+                .map { sanitized.index(after: $0) } ?? sanitized.endIndex
+            sanitized.removeSubrange(lineStart..<lineEnd)
+        }
+        return sanitized
+    }
+
+    private static func rangeIgnoringLineBreaks(
+        of needle: String,
+        in text: String
+    ) -> Range<String.Index>? {
+        guard !needle.isEmpty else { return nil }
+        var textIndex = text.startIndex
+        var needleIndex = needle.startIndex
+        var matchStart: String.Index?
+
+        while textIndex < text.endIndex {
+            let character = text[textIndex]
+            if character == needle[needleIndex] {
+                if matchStart == nil {
+                    matchStart = textIndex
+                }
+                needle.formIndex(after: &needleIndex)
+                let matchEnd = text.index(after: textIndex)
+                if needleIndex == needle.endIndex, let matchStart {
+                    return matchStart..<matchEnd
+                }
+                text.formIndex(after: &textIndex)
+                continue
+            }
+            if matchStart != nil, (character == "\n" || character == "\r") {
+                text.formIndex(after: &textIndex)
+                continue
+            }
+            matchStart = nil
+            needleIndex = needle.startIndex
+            text.formIndex(after: &textIndex)
+        }
+        return nil
     }
 
     /// If truncation starts in the middle of an ANSI CSI escape sequence, advance to

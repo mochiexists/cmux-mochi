@@ -1445,6 +1445,26 @@ final class SessionPersistenceTests: XCTestCase {
         XCTAssertEqual(resolved, "fallback-value")
     }
 
+    func testTruncatedScrollbackRemovesAllInternalReplayBoundaryGenerations() {
+        let prefix = SessionScrollbackReplayStore.continuationBoundaryPrefix
+        let first = "\(prefix)FIRST"
+        let wrappedPrefix = prefix.index(prefix.startIndex, offsetBy: 18)
+        let second = String(prefix[..<wrappedPrefix])
+            + "\n"
+            + String(prefix[wrappedPrefix...])
+            + "SECOND"
+        let scrollback = "before\n"
+            + "\u{001B}[8m\(first)\u{001B}[0m\n"
+            + "between\n"
+            + "\u{001B}[8m\(second)\u{001B}[0m\n"
+            + "after\n"
+
+        let resolved = SessionPersistencePolicy.truncatedScrollback(scrollback)
+
+        XCTAssertEqual(resolved, "before\nbetween\nafter\n")
+        XCTAssertFalse(resolved?.contains(prefix) == true)
+    }
+
     func testResolvedSnapshotTerminalScrollbackTreatsEmptyCaptureAsAuthoritativeClear() {
         let resolved = Workspace.resolvedSnapshotTerminalScrollback(
             capturedScrollback: "",

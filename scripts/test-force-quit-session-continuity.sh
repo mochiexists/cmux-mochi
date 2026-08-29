@@ -326,6 +326,38 @@ assert_snapshot_cycle_present() {
   fi
 }
 
+wait_for_snapshot_cycle_present() {
+  local token="$1"
+  local deadline=$((SECONDS + 30))
+  while (( SECONDS < deadline )); do
+    if [[ -f "$SNAPSHOT" ]] && LC_ALL=C grep -aFq "${token}-240" "$SNAPSHOT"; then
+      return
+    fi
+    sleep 0.2
+  done
+  assert_snapshot_cycle_present "$token"
+}
+
+wait_for_post_clear_snapshot() {
+  local cleared_token="$1"
+  local cleared_history_token="$2"
+  local present_token="$3"
+  local deadline=$((SECONDS + 30))
+  while (( SECONDS < deadline )); do
+    if [[ -f "$SNAPSHOT" ]] \
+      && ! LC_ALL=C grep -aFq "${cleared_token}-" "$SNAPSHOT" \
+      && ! LC_ALL=C grep -aFq "${cleared_history_token}-001" "$SNAPSHOT" \
+      && ! LC_ALL=C grep -aFq "${cleared_history_token}-120" "$SNAPSHOT" \
+      && LC_ALL=C grep -aFq "${present_token}-240" "$SNAPSHOT"; then
+      return
+    fi
+    sleep 0.2
+  done
+  assert_snapshot_cycle_absent "$cleared_token"
+  assert_snapshot_cycle_history_absent "$cleared_history_token"
+  assert_snapshot_cycle_present "$present_token"
+}
+
 assert_previous_snapshot_cycle_absent() {
   local token="$1"
   if [[ -f "$SNAPSHOT_PREVIOUS" ]] \
@@ -352,6 +384,19 @@ assert_previous_snapshot_cycle_present() {
     echo "previous session snapshot is missing expected scrollback: $token" >&2
     exit 1
   fi
+}
+
+wait_for_previous_snapshot_cycle_present() {
+  local token="$1"
+  local deadline=$((SECONDS + 30))
+  while (( SECONDS < deadline )); do
+    if [[ -f "$SNAPSHOT_PREVIOUS" ]] \
+      && LC_ALL=C grep -aFq "${token}-240" "$SNAPSHOT_PREVIOUS"; then
+      return
+    fi
+    sleep 0.2
+  done
+  assert_previous_snapshot_cycle_present "$token"
 }
 
 force_quit() {
@@ -431,22 +476,24 @@ cli new-workspace --name "$workspace_name" --cwd "$TEST_CWD" --focus true >/dev/
 surface="$(selected_surface)"
 wait_for_surface_readable "$surface"
 seed_cycle "$surface" "$first"
-sleep 10
+wait_for_snapshot_cycle_present "$first"
 assert_snapshot_has_no_replay_boundary
 force_quit
 
 launch_app
 surface="$(selected_surface)"
 wait_for_surface_readable "$surface"
+wait_for_text "$surface" "${first}-240"
 assert_cycle "$surface" "$first"
 seed_cycle "$surface" "$second"
-sleep 10
+wait_for_snapshot_cycle_present "$second"
 assert_snapshot_has_no_replay_boundary
 force_quit
 
 launch_app
 surface="$(selected_surface)"
 wait_for_surface_readable "$surface"
+wait_for_text "$surface" "${second}-240"
 assert_cycle "$surface" "$first"
 assert_cycle "$surface" "$second"
 
@@ -456,7 +503,7 @@ wait_for_cycle_history_absent "$surface" "$second"
 seed_cycle "$surface" "$third"
 assert_cycle_absent "$surface" "$first"
 assert_cycle_history_absent "$surface" "$second"
-sleep 10
+wait_for_post_clear_snapshot "$first" "$second" "$third"
 assert_snapshot_has_no_replay_boundary
 assert_snapshot_cycle_absent "$first"
 assert_snapshot_cycle_history_absent "$second"
@@ -466,6 +513,7 @@ force_quit
 launch_app
 surface="$(selected_surface)"
 wait_for_surface_readable "$surface"
+wait_for_text "$surface" "${third}-240"
 assert_cycle "$surface" "$third"
 assert_cycle_absent "$surface" "$first"
 assert_cycle_history_absent "$surface" "$second"
@@ -473,6 +521,7 @@ assert_snapshot_has_no_replay_boundary
 assert_snapshot_cycle_absent "$first"
 assert_snapshot_cycle_history_absent "$second"
 assert_snapshot_cycle_present "$third"
+wait_for_previous_snapshot_cycle_present "$third"
 assert_previous_snapshot_cycle_absent "$first"
 assert_previous_snapshot_cycle_history_absent "$second"
 assert_previous_snapshot_cycle_present "$third"

@@ -17,6 +17,9 @@ extension TerminalPanel {
 
     /// Prevents a pre-clear persisted fallback from being reused while Ghostty
     /// completes its asynchronous clear and produces a fresh authoritative capture.
+    /// Install the boundary before the action so Ghostty's `clear_screen` retains
+    /// it with the current viewport while erasing older history. Captures after
+    /// the clear can then prove which rows survived the explicit clear.
     func markSessionScrollbackExplicitlyCleared() {
         let marker = SessionScrollbackReplayStore.makeContinuationBoundaryMarker()
         sessionScrollbackReplayBaseline = nil
@@ -26,8 +29,9 @@ extension TerminalPanel {
     }
 
     /// Accepts only a capture that is known to be on the correct side of an
-    /// explicit clear. A capture containing the concealed boundary raced the
-    /// asynchronous clear and must not replace the durable fallback.
+    /// explicit clear. Captures before the concealed boundary are rejected;
+    /// once it appears, the capture is authoritative and snapshot policy strips
+    /// the internal boundary before persistence.
     func acceptSessionScrollbackCapture(_ capturedScrollback: String) -> Bool {
         let containsBoundary: Bool
         if let marker = sessionScrollbackReplayBoundaryMarker {
@@ -40,10 +44,17 @@ extension TerminalPanel {
             containsBoundary = false
         }
 
-        if sessionScrollbackFallbackInvalidatedByClear, containsBoundary {
-            return false
+        if sessionScrollbackFallbackInvalidatedByClear {
+            guard containsBoundary else { return false }
+            sessionScrollbackFallbackInvalidatedByClear = false
+            return true
         }
-        if !containsBoundary {
+        // A restored-scrollback boundary can be retired once Ghostty evicts it:
+        // its baseline has already been joined into the durable snapshot. An
+        // explicit-clear boundary has no baseline, however, and Ghostty exports
+        // can transiently omit it before showing it again. Keep that marker for
+        // this terminal's lifetime so every later capture can sanitize it.
+        if !containsBoundary, sessionScrollbackReplayBaseline != nil {
             clearSessionScrollbackReplayContinuation()
         }
         sessionScrollbackFallbackInvalidatedByClear = false

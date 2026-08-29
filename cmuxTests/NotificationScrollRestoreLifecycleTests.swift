@@ -26,15 +26,23 @@ struct NotificationScrollRestoreLifecycleTests {
         #expect(clearBoundary.hasPrefix(SessionScrollbackReplayStore.continuationBoundaryPrefix))
         #expect(panel.sessionScrollbackFallbackInvalidatedByClear)
 
-        #expect(!panel.acceptSessionScrollbackCapture(
-            "old history\n\u{001B}[8m\(clearBoundary)\u{001B}[0m\n"
-        ))
+        #expect(!panel.acceptSessionScrollbackCapture("old history"))
         #expect(panel.sessionScrollbackFallbackInvalidatedByClear)
 
-        #expect(panel.acceptSessionScrollbackCapture("fresh after clear"))
+        #expect(panel.acceptSessionScrollbackCapture(
+            "fresh after clear\n\u{001B}[8m\(clearBoundary)\u{001B}[0m\n"
+        ))
 
         #expect(!panel.sessionScrollbackFallbackInvalidatedByClear)
-        #expect(panel.sessionScrollbackReplayBoundaryMarker == nil)
+        #expect(panel.sessionScrollbackReplayBoundaryMarker == clearBoundary)
+
+        #expect(panel.acceptSessionScrollbackCapture("later fresh capture"))
+
+        #expect(panel.sessionScrollbackReplayBoundaryMarker == clearBoundary)
+        #expect(panel.acceptSessionScrollbackCapture(
+            "even later\n\u{001B}[8m\(clearBoundary)\u{001B}[0m\n"
+        ))
+        #expect(panel.sessionScrollbackReplayBoundaryMarker == clearBoundary)
     }
 
     @Test func replayCompletionKeepsHistoricalRestoreUntilRowsBecomeAddressable() {
