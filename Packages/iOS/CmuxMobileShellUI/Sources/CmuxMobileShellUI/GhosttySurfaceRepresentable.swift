@@ -182,6 +182,7 @@ struct GhosttySurfaceRepresentable: UIViewRepresentable {
         var onVisibleArtifactCountChanged: @MainActor (_ count: Int) -> Void
         var onArtifactGalleryRefreshSignal: @MainActor (TerminalArtifactGalleryRefreshSignal) -> Void
         private var outputTask: Task<Void, Never>?
+        private var outputRegistration: MobileTerminalOutputRegistration?
         var outputStartContinuation: AsyncStream<Void>.Continuation?
         var preparedViewportReportsByReportID: [UInt64: MobileTerminalViewportPreparation] = [:]
         private var liveFontTask: Task<Void, Never>?
@@ -330,7 +331,21 @@ struct GhosttySurfaceRepresentable: UIViewRepresentable {
                 for await _ in outputStartSignal { break }
                 guard !Task.isCancelled else { return }
                 guard let store else { return }
-                for await chunk in store.terminalOutputStream(surfaceID: surfaceID) {
+                let registration = store.terminalOutputRegistration(
+                    surfaceID: surfaceID
+                )
+                self?.outputRegistration = registration
+                defer {
+                    store.terminalOutputDidUnmount(
+                        surfaceID: surfaceID,
+                        registrationToken: registration.registrationToken
+                    )
+                    if self?.outputRegistration?.registrationToken
+                        == registration.registrationToken {
+                        self?.outputRegistration = nil
+                    }
+                }
+                for await chunk in registration.stream {
                     guard !Task.isCancelled else { return }
                     guard let self else { return }
                     guard let surfaceView else { return }
@@ -483,6 +498,13 @@ struct GhosttySurfaceRepresentable: UIViewRepresentable {
             outputStartContinuation?.finish()
             outputStartContinuation = nil
             preparedViewportReportsByReportID.removeAll()
+            if let outputRegistration, let store {
+                store.terminalOutputDidUnmount(
+                    surfaceID: surfaceID,
+                    registrationToken: outputRegistration.registrationToken
+                )
+            }
+            outputRegistration = nil
             outputTask?.cancel()
             outputTask = nil
             verifiedReplayState.invalidate()

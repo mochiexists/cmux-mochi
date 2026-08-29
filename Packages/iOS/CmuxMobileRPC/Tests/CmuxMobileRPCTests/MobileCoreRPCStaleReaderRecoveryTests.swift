@@ -66,8 +66,52 @@ import Testing
         await client.disconnect()
     }
 
+    @Test func eventOwningClientCannotRedialAfterTransportInvalidation() async throws {
+        let failed = ControllableResponseTransport(
+            closeEndsReceive: true,
+            automaticallyRespondingRequestIDs: ["initial"]
+        )
+        let unexpectedReplacement = ControllableResponseTransport(
+            closeEndsReceive: true
+        )
+        let factory = SequencedTransportFactory([failed, unexpectedReplacement])
+        let client = try makeClient(
+            factory: factory,
+            retiresOnPersistentEventTransportInvalidation: true
+        )
+
+        let eventStream = await client.subscribe(to: ["terminal.render_grid"])
+        defer { withExtendedLifetime(eventStream) {} }
+        #expect(!(await client.session.listeners.isEmpty))
+        _ = try await client.sendRequest(
+            try inputRequest(id: "initial"),
+            timeoutNanoseconds: 500_000_000
+        )
+
+        await failed.finishReceiving()
+        for _ in 0..<200 where !(await client.session.listeners.isEmpty) {
+            await Task.yield()
+        }
+        #expect(await client.session.listeners.isEmpty)
+
+        do {
+            _ = try await client.sendRequest(
+                try inputRequest(id: "after-event-transport-failure"),
+                timeoutNanoseconds: 500_000_000
+            )
+            Issue.record("Expected the retired event-owning client to reject a redial")
+        } catch MobileShellConnectionError.connectionClosed {
+        } catch {
+            Issue.record("Expected connectionClosed, got \(error)")
+        }
+        #expect(factory.createdTransportCount() == 1)
+
+        await client.disconnect()
+    }
+
     private func makeClient(
-        factory: any CmxByteTransportFactory
+        factory: any CmxByteTransportFactory,
+        retiresOnPersistentEventTransportInvalidation: Bool = false
     ) throws -> MobileCoreRPCClient {
         let route = try hostPortRoute(
             kind: .debugLoopback,
@@ -88,7 +132,9 @@ import Testing
             runtime: runtime,
             route: route,
             ticket: ticket,
-            allowsStackAuthFallback: true
+            allowsStackAuthFallback: true,
+            retiresOnPersistentEventTransportInvalidation:
+                retiresOnPersistentEventTransportInvalidation
         )
     }
 

@@ -463,7 +463,10 @@ import Testing
         #expect(aliases["mac-new"] == ["mac-old", "mac-new"])
     }
 
-    @Test func scopedActionsDoNothingWithoutSignedInScope() async throws {
+    @Test func unpairedSignedOutActionsDoNothingWithoutAnyPairingScope() async throws {
+        let suiteName = "unpaired-signed-out-scope-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
         let pairedStore = DelayedTeamPairedMacStore(
             recordsByTeam: [
                 "team-a": [
@@ -482,7 +485,8 @@ import Testing
             isSignedIn: false,
             pairedMacStore: pairedStore,
             identityProvider: StaticIdentityProvider(userID: "user-1"),
-            teamIDProvider: { "team-a" }
+            teamIDProvider: { "team-a" },
+            pairingHintDefaults: defaults
         )
 
         await store.hideMac(macDeviceID: "mac-a")

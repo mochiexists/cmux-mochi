@@ -22,8 +22,12 @@ public actor MobileRPCConnectAttemptRegistry {
     public init() {}
 
     func beginConnect(
-        key: MobileRPCConnectAttemptKey?
+        key: MobileRPCConnectAttemptKey?,
+        admissionIsCurrent: (@Sendable () -> Bool)? = nil
     ) -> MobileRPCConnectAdmission {
+        guard admissionIsCurrent?() ?? true else {
+            return .rejected
+        }
         guard unresolvedPhysicalCleanupCount
                 < Self.maximumGlobalOutstandingAttempts else {
             return .cleanupBlocked

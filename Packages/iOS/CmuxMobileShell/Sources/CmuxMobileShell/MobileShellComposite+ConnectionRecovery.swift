@@ -113,6 +113,15 @@ extension MobileShellComposite {
         expectedClient: MobileCoreRPCClient
     ) {
         guard remoteClient === expectedClient, connectionState == .connected else { return }
+        // The RPC session remains reusable after a transport EOF so request-
+        // level recovery can replace a wedged transport. At this shell boundary,
+        // however, the exact client has been classified as dead and is about to
+        // lose ownership. Retire its synchronous factory gate before any queued
+        // state-sync or notification request can redial it ahead of the owner-
+        // managed replacement.
+        if pairedMacStore != nil {
+            expectedClient.retire()
+        }
         guard foregroundRefreshIsActive else {
             pendingInactiveRecoveryTrigger = trigger
             return

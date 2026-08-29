@@ -1097,7 +1097,7 @@ import Testing
         switch recoveryAdmission {
         case .granted(let recoveryLease):
             await registry.finishConnect(lease: recoveryLease)
-        case .busy, .cleanupBlocked:
+        case .rejected, .busy, .cleanupBlocked:
             Issue.record(
                 "Teardown returned before abandoned reconnect cleanup registration"
             )

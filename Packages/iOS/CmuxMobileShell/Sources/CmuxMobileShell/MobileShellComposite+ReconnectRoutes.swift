@@ -358,6 +358,12 @@ extension MobileShellComposite {
               !connectionRecoveryOwner.isActive else {
             return
         }
+        // A background aggregation flight may have started just before the
+        // foreground owner disconnected. Retire those control candidates now;
+        // the stored-Mac reconnect waits for their transferred drain tasks, so
+        // a probe cannot reserve the foreground route and reject the user-
+        // visible redial as `connectAttemptGated`.
+        teardownSecondaryMacSubscriptions()
         recoverMobileConnection(trigger: .foreground)
     }
 

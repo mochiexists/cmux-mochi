@@ -47,6 +47,31 @@ struct MobileRPCClientLifecycleGateTests {
     }
 
     @Test
+    func retiredGateRejectsBeforeRouteAdmission() {
+        let gate = MobileRPCClientLifecycleGate()
+        gate.retire()
+
+        do {
+            _ = try gate.captureTransportAdmissionPreflight()
+            Issue.record("retired gate should reject the route-admission preflight")
+        } catch MobileShellConnectionError.connectionClosed {
+            // Expected: stale work never reserves the replacement's route.
+        } catch {
+            Issue.record("unexpected error: \(error)")
+        }
+    }
+
+    @Test
+    func retirementInvalidatesCapturedRouteAdmissionPreflight() throws {
+        let gate = MobileRPCClientLifecycleGate()
+        let preflight = try gate.captureTransportAdmissionPreflight()
+
+        gate.retire()
+
+        #expect(!gate.isTransportAdmissionPreflightCurrent(preflight))
+    }
+
+    @Test
     func retirementDuringArtifactOpenClosesTheStaleLane() async throws {
         let gate = MobileRPCClientLifecycleGate()
         let connection = RecordingArtifactLaneConnection()

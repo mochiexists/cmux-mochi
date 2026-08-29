@@ -4,6 +4,49 @@ import Testing
 @testable import CmuxMobileRPC
 
 @Suite(.serialized) struct MobileCoreRPCConnectWaiterTests {
+    @Test func concurrentColdRequestsShareRouteAdmission() async throws {
+        let transport = ReleasableConnectTransport()
+        let route = try hostPortRoute(
+            kind: .debugLoopback,
+            host: "127.0.0.1",
+            port: 59129
+        )
+        let session = MobileCoreRPCSession(
+            connectAttemptKey: MobileRPCConnectAttemptKey(route: route),
+            makeTransport: { transport }
+        )
+        let deadline =
+            DispatchTime.now().uptimeNanoseconds + 60 * 1_000_000_000
+        let requestIDs = (0..<8).map { "cold-route-waiter-\($0)" }
+        let tasks = try requestIDs.map { requestID in
+            let request = try MobileCoreRPCClient.requestData(
+                method: "mobile.host.status",
+                params: [:],
+                id: requestID
+            )
+            return Task {
+                try await session.send(
+                    payload: request,
+                    requestID: requestID,
+                    deadlineUptimeNanoseconds: deadline
+                )
+            }
+        }
+
+        #expect(await transport.waitUntilConnectStarted())
+        await transport.releaseConnect()
+        for task in tasks {
+            _ = try await task.value
+        }
+
+        #expect(
+            try await Set(transport.sentRequests().compactMap(\.id))
+                == Set(requestIDs)
+        )
+        #expect(!(await transport.closed()))
+        await session.tearDown(error: .connectionClosed)
+    }
+
     @Test func successfulConnectNeverPublishesHalfInstalledWriterState() async throws {
         let arrivals = ConnectedCandidateBarrier(expectedCount: 2)
         let transport = ReleasableConnectTransport()

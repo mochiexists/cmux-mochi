@@ -153,13 +153,20 @@ extension MobileShellComposite {
     /// deactivates v2, and invalidates any in-flight fetch so its completion
     /// cannot write into the next account's session.
     func resetStateSyncForAccountBoundary() {
+        invalidateStateSyncForConnectionBoundary()
+        stateSyncMirror.reset()
+    }
+
+    /// Connection-boundary teardown preserves the last mirrored rows for the
+    /// offline UI, but no request owned by the retired client may reopen that
+    /// client's route beneath a replacement connection.
+    func invalidateStateSyncForConnectionBoundary() {
         stateSyncFetchTask?.cancel()
         stateSyncFetchTask = nil
         stateSyncFetchGeneration = UUID()
         stateSyncAuthorityClientID = nil
         stateSyncFetchClientID = nil
         stateSyncFetchFollowUpRequested = false
-        stateSyncMirror.reset()
     }
 
     /// Repairs the mirror with a cursor fetch when the current client is v2.

@@ -13,6 +13,12 @@ let pairedMacStoreLog = Logger(subsystem: "com.cmuxterm.app", category: "PairedM
 /// concurrency checking. Construct it once at the app composition root and
 /// inject it as `any MobilePairedMacStoring`.
 public actor MobilePairedMacStore: MobilePairedMacStoring {
+    /// Errors raised when the store is used outside its open lifecycle.
+    public enum LifecycleError: Error, Equatable, Sendable {
+        /// The SQLite connection has already been closed.
+        case closed
+    }
+
     /// The schema version this build creates and migrates to.
     public static let currentSchemaVersion: Int32 = 9
 
@@ -54,8 +60,19 @@ public actor MobilePairedMacStore: MobilePairedMacStoring {
         try self.init(databaseURL: Self.defaultDatabaseURL())
     }
 
+    /// Close the SQLite connection after all previously submitted store work.
+    ///
+    /// Calling this method more than once is safe. After it returns, every
+    /// persistence operation fails with ``LifecycleError/closed``.
+    public func close() {
+        guard let db else { return }
+        self.db = nil
+        sqlite3_close_v2(db)
+    }
+
     deinit {
         if let db {
+            self.db = nil
             sqlite3_close_v2(db)
         }
     }
@@ -89,6 +106,7 @@ public actor MobilePairedMacStore: MobilePairedMacStoring {
 
     /// Run schema migrations exactly once, on first store access (actor-isolated).
     private func ensureReady() throws {
+        guard db != nil else { throw LifecycleError.closed }
         guard !didMigrate else { return }
         try runMigrations()
         didMigrate = true

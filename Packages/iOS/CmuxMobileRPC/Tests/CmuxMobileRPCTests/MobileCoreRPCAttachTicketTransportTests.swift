@@ -90,6 +90,35 @@ import Testing
         #expect(capture.request()?.authorizationMode == .stackBearer)
     }
 
+    @Test func nonTailscaleTicketCannotAuthorizeAGenericHostRoute() async throws {
+        let route = try CmxAttachRoute(
+            id: "generic-websocket",
+            kind: .websocket,
+            endpoint: .url("wss://example.test/mobile")
+        )
+        let capture = TransportRequestCapture()
+        let transport = QueuedCancellationProbeTransport()
+        let client = makeClient(
+            route: route,
+            ticket: try ticket(authToken: "ticket-secret", route: route),
+            capture: capture,
+            transport: transport
+        )
+
+        do {
+            _ = try await client.sendRequest(
+                try MobileCoreRPCClient.requestData(method: "workspace.list")
+            )
+            Issue.record("Expected the generic route to fail closed")
+        } catch MobileShellConnectionError.insecureManualRoute {
+        } catch {
+            Issue.record("Expected insecureManualRoute, got \(error)")
+        }
+
+        #expect(capture.request() == nil)
+        #expect(try await transport.sentRequests().isEmpty)
+    }
+
     /// The Mac only discloses its identity to a caller that proves ownership, and
     /// the iOS build-compatibility policy fails CLOSED on a missing instance tag.
     /// So the ticket must ride `mobile.host.status` even though status needs no

@@ -514,6 +514,36 @@ import Testing
 }
 
 @MainActor
+@Test func staleOutputUnmountCannotTearDownReplacementMount() async throws {
+    let router = LivenessHostRouter()
+    let box = TransportBox()
+    let clock = TestClock()
+    let store = try await makeConnectedStore(router: router, box: box, clock: clock)
+    let surfaceID = "live-terminal"
+
+    let staleRegistration = store.terminalOutputRegistration(surfaceID: surfaceID)
+    let currentRegistration = store.terminalOutputRegistration(surfaceID: surfaceID)
+
+    store.terminalOutputDidUnmount(
+        surfaceID: surfaceID,
+        registrationToken: staleRegistration.registrationToken
+    )
+
+    #expect(
+        store.terminalOutputRegistrationTokensBySurfaceID[surfaceID]
+            == currentRegistration.registrationToken
+    )
+    #expect(store.terminalByteContinuationsBySurfaceID[surfaceID] != nil)
+
+    store.terminalOutputDidUnmount(
+        surfaceID: surfaceID,
+        registrationToken: currentRegistration.registrationToken
+    )
+    #expect(store.terminalOutputRegistrationTokensBySurfaceID[surfaceID] == nil)
+    #expect(store.terminalByteContinuationsBySurfaceID[surfaceID] == nil)
+}
+
+@MainActor
 @Test func genericReplayRequestAfterRetryExhaustionUsesFreshUnbarrieredReplay() async throws {
     let router = LivenessHostRouter()
     let box = TransportBox()

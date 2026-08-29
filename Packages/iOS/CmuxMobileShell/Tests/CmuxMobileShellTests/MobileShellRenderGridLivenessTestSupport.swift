@@ -31,7 +31,7 @@ actor LivenessHostRouter {
         id: UUID,
         method: String,
         expectedCount: Int,
-        continuation: CheckedContinuation<Void, Never>
+        continuation: CheckedContinuation<Bool, Never>
     )] = []
     private var hostStatusRequestCount = 0
     private var heldHostStatusRequestNumbers: Set<Int> = []
@@ -142,30 +142,11 @@ actor LivenessHostRouter {
         timeoutNanoseconds: UInt64 = 3_000_000_000,
         recordIssueOnTimeout: Bool = true
     ) async -> Bool {
-        let reached = await withTaskGroup(of: Bool.self) { group in
-            group.addTask {
-                await self.waitUntilCountReached(of: method, atLeast: expectedCount)
-                return true
-            }
-            group.addTask {
-                // Test assertion deadline only; request arrival is signaled by record().
-                try? await Task.sleep(nanoseconds: timeoutNanoseconds)
-                return false
-            }
-            let reached = await group.next() ?? false
-            group.cancelAll()
-            return reached
+        if count(of: method) >= expectedCount {
+            return true
         }
-        if !reached, recordIssueOnTimeout {
-            Issue.record("timed out waiting for \(method) count >= \(expectedCount)")
-        }
-        return reached
-    }
-
-    private func waitUntilCountReached(of method: String, atLeast expectedCount: Int) async {
-        guard count(of: method) < expectedCount else { return }
         let waiterID = UUID()
-        await withTaskCancellationHandler {
+        let reached = await withTaskCancellationHandler {
             await withCheckedContinuation { continuation in
                 countWaiters.append((
                     id: waiterID,
@@ -174,10 +155,18 @@ actor LivenessHostRouter {
                     continuation: continuation
                 ))
                 resumeSatisfiedCountWaiters()
+                Task { [weak self] in
+                    try? await Task.sleep(nanoseconds: timeoutNanoseconds)
+                    await self?.timeoutCountWaiter(id: waiterID)
+                }
             }
         } onCancel: {
             Task { await self.cancelCountWaiter(id: waiterID) }
         }
+        if !reached, recordIssueOnTimeout {
+            Issue.record("timed out waiting for \(method) count >= \(expectedCount)")
+        }
+        return reached
     }
 
     private func resumeSatisfiedCountWaiters() {
@@ -185,9 +174,9 @@ actor LivenessHostRouter {
             id: UUID,
             method: String,
             expectedCount: Int,
-            continuation: CheckedContinuation<Void, Never>
+            continuation: CheckedContinuation<Bool, Never>
         )] = []
-        var satisfied: [CheckedContinuation<Void, Never>] = []
+        var satisfied: [CheckedContinuation<Bool, Never>] = []
         for waiter in countWaiters {
             if count(of: waiter.method) >= waiter.expectedCount {
                 satisfied.append(waiter.continuation)
@@ -197,7 +186,7 @@ actor LivenessHostRouter {
         }
         countWaiters = remaining
         for continuation in satisfied {
-            continuation.resume()
+            continuation.resume(returning: true)
         }
     }
 
@@ -206,7 +195,11 @@ actor LivenessHostRouter {
             return
         }
         let waiter = countWaiters.remove(at: index)
-        waiter.continuation.resume()
+        waiter.continuation.resume(returning: false)
+    }
+
+    private func timeoutCountWaiter(id: UUID) {
+        cancelCountWaiter(id: id)
     }
 
     func topics(for method: String) -> [[String]] {
@@ -802,10 +795,17 @@ final class OutputCollector {
     private(set) var lines: [String] = []
     private(set) var viewportPolicies: [MobileTerminalOutputViewportPolicy?] = []
     private var task: Task<Void, Never>?
+    private var registration: MobileTerminalOutputRegistration?
+    private weak var store: MobileShellComposite?
+    private var surfaceID: String?
 
     func mount(store: MobileShellComposite, surfaceID: String) {
+        let registration = store.terminalOutputRegistration(surfaceID: surfaceID)
+        self.registration = registration
+        self.store = store
+        self.surfaceID = surfaceID
         task = Task { @MainActor [weak self] in
-            for await chunk in store.terminalOutputStream(surfaceID: surfaceID) {
+            for await chunk in registration.stream {
                 self?.lines.append(String(decoding: chunk.data, as: UTF8.self))
                 self?.viewportPolicies.append(chunk.viewportPolicy)
                 store.terminalOutputDidProcess(
@@ -817,6 +817,20 @@ final class OutputCollector {
     }
 
     func unmount() {
+        if let registration, let store, let surfaceID {
+            // Production views use the same exact-token explicit teardown.
+            // This keeps a suspended replay response from delaying unmount.
+            store.terminalOutputDidUnmount(
+                surfaceID: surfaceID,
+                registrationToken: registration.registrationToken
+            )
+            task?.cancel()
+            self.registration = nil
+            self.store = nil
+            self.surfaceID = nil
+            task = nil
+            return
+        }
         task?.cancel()
         task = nil
     }
@@ -905,6 +919,11 @@ func makeConnectedStore(
         !store.supportedHostCapabilities.isEmpty
     }
     #expect(capabilitiesResolved, "scripted connect must resolve host capabilities")
+    let subscriptionReady = await router.waitForCount(
+        of: "mobile.events.subscribe",
+        atLeast: 1
+    )
+    #expect(subscriptionReady, "scripted connect must install its event listener")
     return store
 }
 

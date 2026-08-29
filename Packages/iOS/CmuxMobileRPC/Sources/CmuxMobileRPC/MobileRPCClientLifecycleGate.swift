@@ -4,6 +4,10 @@ internal import os
 
 /// Linearizes new transport ownership against synchronous client retirement.
 final class MobileRPCClientLifecycleGate: Sendable {
+    struct TransportAdmissionPreflight: Sendable {
+        fileprivate let revision: UInt64
+    }
+
     struct IndependentEventAdmission: Sendable {
         fileprivate let revision: UInt64
     }
@@ -25,6 +29,27 @@ final class MobileRPCClientLifecycleGate: Sendable {
     // Critical regions only mutate counters/task handles; factories and async
     // transport cleanup always run after admission state has been released.
     private let state = OSAllocatedUnfairLock(initialState: State())
+
+    /// Fail before a retired client reserves a shared physical-route lease.
+    /// `makeTransport` repeats this check while claiming factory admission so
+    /// retirement racing the preflight still fails closed.
+    func captureTransportAdmissionPreflight() throws
+        -> TransportAdmissionPreflight {
+        try state.withLock { state in
+            guard !state.retired else {
+                throw MobileShellConnectionError.connectionClosed
+            }
+            return TransportAdmissionPreflight(revision: state.revision)
+        }
+    }
+
+    func isTransportAdmissionPreflightCurrent(
+        _ preflight: TransportAdmissionPreflight
+    ) -> Bool {
+        state.withLock { state in
+            !state.retired && state.revision == preflight.revision
+        }
+    }
 
     func makeTransport(
         _ make: () throws -> any CmxByteTransport

@@ -28,6 +28,8 @@ APP_PATH=""
 ARTIFACT_DIR=""
 TIMEOUT_SECONDS="150"
 REUSE_INSTALL="0"
+PAIR_STABILITY_SECONDS="${CMUX_DEVICELINK_PAIR_STABILITY_SECONDS:-5}"
+RECONNECT_STABILITY_SECONDS="${CMUX_DEVICELINK_RECONNECT_STABILITY_SECONDS:-15}"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -153,6 +155,56 @@ wait_for_markers() {
   return 1
 }
 
+wait_for_stable_markers() {
+  local destination="$1" forbidden="$2" stable_seconds="$3"
+  shift 3
+  local started now marker missing last_subscribe last_stream_end
+  local candidate_subscribe="" candidate_started="0"
+  started="$(date +%s)"
+  while (( $(date +%s) - started < TIMEOUT_SECONDS )); do
+    if collect_log "$destination"; then
+      if [[ -n "$forbidden" ]] && grep -Eq "$forbidden" "$destination"; then
+        candidate_subscribe=""
+        candidate_started="0"
+        sleep 2
+        continue
+      fi
+      missing="0"
+      for marker in "$@"; do
+        if ! grep -Eq "$marker" "$destination"; then
+          missing="1"
+          break
+        fi
+      done
+      if [[ "$missing" == "0" ]]; then
+        last_subscribe="$(grep -nE 'sync\.subscribe_ok topics=' "$destination" \
+          | tail -1 | cut -d: -f1)"
+        last_stream_end="$(grep -nE 'sync\.stream_ended' "$destination" \
+          | tail -1 | cut -d: -f1 || true)"
+        [[ -n "$last_stream_end" ]] || last_stream_end="0"
+        if (( last_subscribe > last_stream_end )); then
+          now="$(date +%s)"
+          if [[ "$candidate_subscribe" != "$last_subscribe" ]]; then
+            candidate_subscribe="$last_subscribe"
+            candidate_started="$now"
+          elif (( now - candidate_started >= stable_seconds )); then
+            return 0
+          fi
+        else
+          candidate_subscribe=""
+          candidate_started="0"
+        fi
+      fi
+    fi
+    sleep 2
+  done
+  echo "error: timed out waiting for ${stable_seconds}s of stable DeviceLink evidence in $destination" >&2
+  for marker in "$@"; do
+    grep -Eq "$marker" "$destination" 2>/dev/null || echo "  missing: $marker" >&2
+  done
+  return 1
+}
+
 launch_args=(--tag "$TAG" --attach --ensure-mac)
 if [[ "$TARGET" == "simulator" ]]; then
   launch_args+=(--simulator-id "$TARGET_ID" --detach)
@@ -163,7 +215,7 @@ fi
   >"$ARTIFACT_DIR/pair-launch.log" 2>&1
 
 PAIR_LOG="$ARTIFACT_DIR/pairing.cmux-debug.log"
-wait_for_markers "$PAIR_LOG" '' \
+wait_for_stable_markers "$PAIR_LOG" '' "$PAIR_STABILITY_SECONDS" \
   'devicelink .*pairing persisted=true' \
   'devicelink .*post-pairing dial connected=true' \
   'sync\.subscribe_ok topics=[1-9][0-9]*'
@@ -191,10 +243,11 @@ fi
   >"$ARTIFACT_DIR/relaunch.log" 2>&1
 
 RECONNECT_LOG="$ARTIFACT_DIR/reconnect.cmux-debug.log"
-wait_for_markers "$RECONNECT_LOG" 'pairing persisted=true' \
+wait_for_stable_markers "$RECONNECT_LOG" 'pairing persisted=true' "$RECONNECT_STABILITY_SECONDS" \
   'reconnect gate .*stack=false .*pairedDevice=true' \
   'dial decision .*credential=true canConnect=true' \
-  'sync\.subscribe_ok topics=[1-9][0-9]*'
+  'sync\.subscribe_ok topics=[1-9][0-9]*' \
+  'changes\.summary ok requested=[1-9][0-9]*'
 
 if [[ "$TARGET" == "simulator" ]]; then
   xcrun simctl io "$TARGET_ID" screenshot --type=png "$ARTIFACT_DIR/reconnect.png" >/dev/null
@@ -247,6 +300,8 @@ REPORT_PATH="$ARTIFACT_DIR/report.json"
 TARGET="$TARGET" TARGET_ID="$TARGET_ID" TAG="$TAG" BUNDLE_ID="$BUNDLE_ID" \
 GIT_SHA="$GIT_SHA" REUSE_INSTALL="$REUSE_INSTALL" REPORT_PATH="$REPORT_PATH" \
 ONBOARDING_COMPLETE="$ONBOARDING_COMPLETE" \
+PAIR_STABILITY_SECONDS="$PAIR_STABILITY_SECONDS" \
+RECONNECT_STABILITY_SECONDS="$RECONNECT_STABILITY_SECONDS" \
 /usr/bin/python3 - <<'PY'
 import json
 import os
@@ -268,6 +323,7 @@ report = {
         "persisted": True,
         "connected": True,
         "workspace_sync": True,
+        "stable_seconds": int(os.environ["PAIR_STABILITY_SECONDS"]),
     },
     "cold_relaunch": {
         "pairing_url_injected": False,
@@ -275,6 +331,7 @@ report = {
         "paired_identity_adopted": True,
         "reconnected": True,
         "workspace_sync": True,
+        "stable_seconds": int(os.environ["RECONNECT_STABILITY_SECONDS"]),
         "onboarding_complete": (
             True if os.environ["ONBOARDING_COMPLETE"] == "true" else None
         ),

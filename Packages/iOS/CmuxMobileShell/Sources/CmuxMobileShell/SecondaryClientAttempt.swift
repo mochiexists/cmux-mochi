@@ -2,6 +2,8 @@
 /// authority or route edge.
 enum SecondaryClientAttempt {
     case connected(SecondaryClientHandle)
+    /// Foreground reconnect/recovery took ownership before this attempt began.
+    case superseded
     /// The route was authorized and compatible, but the network exchange failed.
     case transientFailure
     /// The saved route, authenticated identity, or host response is incompatible.

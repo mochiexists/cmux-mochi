@@ -7,6 +7,9 @@ actor MobileCoreRPCSession {
     typealias ConnectedCandidateHook = @Sendable (_ candidate: any CmxByteTransport) async -> Void
     typealias TransportConnectObserver = @Sendable (MobileRPCTransportConnectEvent) -> Void
     typealias TearDownRegistrationHook = @Sendable () async -> Void
+    typealias PersistentEventTransportInvalidationHook = @Sendable () -> Void
+    typealias TransportAdmissionPreflight = @Sendable () throws
+        -> (@Sendable () -> Bool)
     enum PendingRequestSettlement {
         case response(Result<Data, MobileShellConnectionError>)
         case cancelled
@@ -78,6 +81,9 @@ actor MobileCoreRPCSession {
     private let diagnosticTransport: DiagnosticTransportKind?
     private let transportConnectObserver: TransportConnectObserver?
     private let tearDownRegistrationHook: TearDownRegistrationHook?
+    private let persistentEventTransportInvalidationHook:
+        PersistentEventTransportInvalidationHook?
+    private let transportAdmissionPreflight: TransportAdmissionPreflight?
     /// Current shell ownership role. Connected transports that support role
     /// rebinding receive updates without replacing their admitted session.
     private var transportSessionPurpose: CmxTransportSessionPurpose?
@@ -91,6 +97,12 @@ actor MobileCoreRPCSession {
     /// budget as an abandoned connect.
     private var installedConnectLease: MobileRPCConnectAttemptLease?
     private var connectionTask: ConnectingTask?
+    /// Covers the actor-reentrant gap between reserving a shared route lease
+    /// and publishing `connectionTask`. Concurrent first requests park here
+    /// instead of asking the registry for the same route and being rejected as
+    /// an unrelated competing owner.
+    private var connectionAdmissionInProgress = false
+    private var connectionAdmissionWaiters: [CheckedContinuation<Void, Never>] = []
     private var installedConnectionID: UUID?
     private var readerTask: Task<Void, Never>?
     var independentEventPreparation: IndependentEventPreparation?
@@ -134,7 +146,10 @@ actor MobileCoreRPCSession {
         diagnosticTransport: DiagnosticTransportKind? = nil,
         transportConnectObserver: TransportConnectObserver? = nil,
         initialTransportSessionPurpose: CmxTransportSessionPurpose? = nil,
-        tearDownRegistrationHook: TearDownRegistrationHook? = nil
+        tearDownRegistrationHook: TearDownRegistrationHook? = nil,
+        persistentEventTransportInvalidationHook:
+            PersistentEventTransportInvalidationHook? = nil,
+        transportAdmissionPreflight: TransportAdmissionPreflight? = nil
     ) {
         self.connectAttemptKey = connectAttemptKey
         self.connectAttemptRegistry = connectAttemptRegistry
@@ -149,6 +164,9 @@ actor MobileCoreRPCSession {
         self.transportConnectObserver = transportConnectObserver
         self.transportSessionPurpose = initialTransportSessionPurpose
         self.tearDownRegistrationHook = tearDownRegistrationHook
+        self.persistentEventTransportInvalidationHook =
+            persistentEventTransportInvalidationHook
+        self.transportAdmissionPreflight = transportAdmissionPreflight
     }
 
     deinit {
@@ -462,6 +480,15 @@ actor MobileCoreRPCSession {
             throw MobileShellConnectionError.connectionClosed
         }
         if let transport { return transport }
+        if connectionAdmissionInProgress {
+            await withCheckedContinuation { continuation in
+                connectionAdmissionWaiters.append(continuation)
+            }
+            if Task.isCancelled { throw CancellationError() }
+            return try await ensureConnected(
+                timeoutNanoseconds: timeoutNanoseconds
+            )
+        }
         // A cancellation-ignoring connect or close still owns this client's
         // production route until cleanup closes it or transfers its late
         // watcher to the shared route registry. Do not let repeated requests
@@ -484,18 +511,37 @@ actor MobileCoreRPCSession {
             cancellationClose = existing.cancellationClose
             connectionTask?.waiters.insert(waiterID)
         } else {
+            // A synchronously retired client must not reserve the route and
+            // force its replacement to observe `connectAttemptGated` before
+            // the stale factory is rejected. The factory gate checks again to
+            // cover retirement racing this preflight.
+            let admissionIsCurrent = try transportAdmissionPreflight?()
+            connectionAdmissionInProgress = true
             switch await connectAttemptRegistry.beginConnect(
-                key: connectAttemptKey
+                key: connectAttemptKey,
+                admissionIsCurrent: admissionIsCurrent
             ) {
             case .granted(let lease):
                 connectLease = lease
+            case .rejected:
+                finishConnectionAdmission()
+                throw MobileShellConnectionError.connectionClosed
             case .busy:
+                finishConnectionAdmission()
                 // A gate refusal is instantaneous and never touched the
                 // network; reporting it as a timeout fabricated sub-30ms
                 // "timedOut" failures that poisoned lastFailureEvent.
                 throw MobileShellConnectionError.connectAttemptGated
             case .cleanupBlocked:
+                finishConnectionAdmission()
                 throw MobileShellConnectionError.routeCleanupBlocked
+            }
+            if isTearingDown {
+                await connectAttemptRegistry.finishConnect(
+                    lease: connectLease
+                )
+                finishConnectionAdmission()
+                throw MobileShellConnectionError.connectionClosed
             }
             let connectAttemptID = Int.random(in: 1...Int.max)
             let connectStartedAt = ContinuousClock.now
@@ -519,6 +565,7 @@ actor MobileCoreRPCSession {
                 ) {
                     await rejected.task.value
                 }
+                finishConnectionAdmission()
                 if Task.isCancelled {
                     throw CancellationError()
                 }
@@ -539,6 +586,7 @@ actor MobileCoreRPCSession {
                 throw error
             } catch {
                 await connectAttemptRegistry.finishConnect(lease: connectLease)
+                finishConnectionAdmission()
                 if error is CancellationError || Task.isCancelled {
                     throw CancellationError()
                 }
@@ -639,6 +687,7 @@ actor MobileCoreRPCSession {
                 waiters: [waiterID],
                 completed: false
             )
+            finishConnectionAdmission()
             Task.detached { [weak self] in
                 _ = await task.result
                 await self?.markConnectingCompleted(id: connectionID)
@@ -854,6 +903,16 @@ actor MobileCoreRPCSession {
                 waiters: current.waiters,
                 completed: true
             )
+        }
+    }
+
+    private func finishConnectionAdmission() {
+        guard connectionAdmissionInProgress else { return }
+        connectionAdmissionInProgress = false
+        let waiters = connectionAdmissionWaiters
+        connectionAdmissionWaiters = []
+        for waiter in waiters {
+            waiter.resume()
         }
     }
 
@@ -1267,6 +1326,13 @@ actor MobileCoreRPCSession {
         error: MobileShellConnectionError
     ) async {
         guard installedConnectionID == connectionID else { return }
+        // A client with persistent event listeners is owned as one shell
+        // connection generation. Close its synchronous factory gate before
+        // finishing those listeners: their owner will replace the client, and
+        // queued side work must not reopen this dead generation in the gap.
+        if !listeners.isEmpty {
+            persistentEventTransportInvalidationHook?()
+        }
         await tearDown(error: error)
     }
 

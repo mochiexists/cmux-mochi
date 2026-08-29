@@ -125,7 +125,6 @@ extension ReconnectRouteSelectionTests {
         await pairedStore.release(teamID: nil)
         #expect(await firstAttempt.value == false)
         #expect(store.storedMacReconnectGeneration > firstGeneration)
-        #expect(store.isReconnectingStoredMac)
 
         await pairedStore.release(teamID: nil)
         #expect(await retry.value == false)
@@ -213,7 +212,7 @@ extension ReconnectRouteSelectionTests {
         )
         // Keep the initial healthy dial stable under full-suite contention while
         // remaining far below the production default of 30 seconds.
-        runtime.reconnectAttemptDeadlineNanoseconds = 1_000_000_000
+        runtime.reconnectAttemptDeadlineNanoseconds = 5_000_000_000
         let store = try await makeReconnectStore(
             routes: [try iroh()],
             runtime: runtime

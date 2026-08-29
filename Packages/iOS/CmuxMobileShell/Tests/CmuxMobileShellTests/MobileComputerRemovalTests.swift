@@ -328,6 +328,8 @@ struct MobileComputerRemovalTests {
                 bundleIdentifier: "com.cmux-mochi.tests.remove.\(label).\(UUID().uuidString)"
             )
         )
+        let defaultsSuiteName = "mobile-computer-removal-\(UUID().uuidString)"
+        let pairingHintDefaults = UserDefaults(suiteName: defaultsSuiteName)!
         let pairedStore: any MobilePairedMacStoring = failRemoval
             ? RemovalFailingStore(inner: store)
             : store
@@ -338,6 +340,7 @@ struct MobileComputerRemovalTests {
             deviceLinkCredentialRemover: credentials,
             deviceLinkSelfRevocationSender: deviceLinkSelfRevocationSender,
             identityProvider: ownerAccountID.map { StaticIdentityProvider(userID: $0) },
+            pairingHintDefaults: pairingHintDefaults,
             hiddenMacStore: InMemoryPairedMacHiddenStore()
         )
         await composite.loadPairedMacs()
@@ -358,6 +361,8 @@ struct MobileComputerRemovalTests {
             store: store,
             credentials: credentials,
             composite: composite,
+            defaultsSuiteName: defaultsSuiteName,
+            pairingHintDefaults: pairingHintDefaults,
             scopeID: scopeID,
             targetMac: targetMac,
             targetID: targetID,
@@ -375,6 +380,8 @@ struct MobileComputerRemovalTests {
         let store: MobilePairedMacStore
         let credentials: MobileDeviceLinkClient
         let composite: MobileShellComposite
+        let defaultsSuiteName: String
+        let pairingHintDefaults: UserDefaults
         let scopeID: String
         let targetMac: String
         let targetID: String
@@ -422,6 +429,7 @@ struct MobileComputerRemovalTests {
             credentials.forgetPairing(macDeviceID: targetMac, instanceTag: "stable")
             credentials.forgetPairing(macDeviceID: otherMac, instanceTag: "nightly")
             credentials.forgetPairing(macDeviceID: aliasMac, instanceTag: "nightly")
+            pairingHintDefaults.removePersistentDomain(forName: defaultsSuiteName)
             try? FileManager.default.removeItem(at: directory)
         }
     }

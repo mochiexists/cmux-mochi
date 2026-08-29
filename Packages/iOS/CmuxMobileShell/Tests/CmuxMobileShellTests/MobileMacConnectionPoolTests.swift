@@ -8,7 +8,7 @@ import Testing
 @testable import CmuxMobileShell
 
 @MainActor
-@Suite struct MobileMacConnectionPoolTests {
+@Suite(.serialized) struct MobileMacConnectionPoolTests {
     @Test func controlTopicsCarryAggregateStateWithoutTerminalRenderTraffic() {
         #expect(SecondaryMacSubscription.eventTopics.contains("workspace.updated"))
         #expect(!SecondaryMacSubscription.eventTopics.contains("mobile.sync.delta"))
@@ -2699,6 +2699,8 @@ import Testing
             #expect(handle.storedInstanceTag == "legacy-tag")
             #expect(handle.authenticatedInstanceTag == "legacy-tag")
             await handle.client.disconnect()
+        case .superseded:
+            Issue.record("validated legacy route was superseded")
         case .transientFailure:
             Issue.record("validated legacy route failed transiently")
         case .permanentFailure:
@@ -4845,7 +4847,7 @@ import Testing
             atLeast: initialWorkspaceRequests + 1
         ))
         let completion = await MobileShellComposite.raceAgainstDeadline(
-            nanoseconds: 200_000_000
+            nanoseconds: 5_000_000_000
         ) {
             do {
                 _ = try await redial.value

@@ -24,6 +24,25 @@ private let mobileShellLog = Logger(
 /// consumer binds to ``MobileShellComposite`` directly.
 public typealias CMUXMobileShellStore = MobileShellComposite
 
+/// One exact mounted terminal-output generation.
+///
+/// The token lets a view synchronously end only the stream it mounted. This is
+/// stronger than relying on `AsyncStream` task cancellation alone: a suspended
+/// replay request can otherwise keep the stream registration alive until the
+/// request settles, leaving the Mac viewport pinned after the view disappears.
+public struct MobileTerminalOutputRegistration: Sendable {
+    public let registrationToken: UUID
+    public let stream: AsyncStream<MobileTerminalOutputChunk>
+
+    public init(
+        registrationToken: UUID,
+        stream: AsyncStream<MobileTerminalOutputChunk>
+    ) {
+        self.registrationToken = registrationToken
+        self.stream = stream
+    }
+}
+
 /// The decomposed home object the iOS shell views bind to.
 ///
 /// Holds the connection lifecycle, network-recovery state machine,
@@ -1156,6 +1175,7 @@ public final class MobileShellComposite: MobileTerminalOutputSinking {
     var terminalColdReplayNeedsBarrierUpgradeSurfaceIDs: Set<String>
     var terminalOutputTransport: TerminalOutputTransport
     var terminalByteContinuationsBySurfaceID: [String: AsyncStream<MobileTerminalOutputChunk>.Continuation]
+    var terminalOutputRegistrationTokensBySurfaceID: [String: UUID]
     var terminalOutputStreamTokensBySurfaceID: [String: UUID]
     var terminalOutputQueuesBySurfaceID: [String: TerminalOutputDeliveryQueue]
     let terminalLaneCoordinator: MobileTerminalLaneCoordinator?
@@ -1486,6 +1506,7 @@ public final class MobileShellComposite: MobileTerminalOutputSinking {
         self.terminalColdReplayNeedsBarrierUpgradeSurfaceIDs = []
         self.terminalOutputTransport = .rawBytes
         self.terminalByteContinuationsBySurfaceID = [:]
+        self.terminalOutputRegistrationTokensBySurfaceID = [:]
         self.terminalOutputStreamTokensBySurfaceID = [:]
         self.terminalOutputQueuesBySurfaceID = [:]
         if let terminalLaneProvider = runtime?.terminalLaneProvider {
@@ -1554,12 +1575,14 @@ public final class MobileShellComposite: MobileTerminalOutputSinking {
 
     public static func preview(
         runtime: (any MobileSyncRuntime)? = nil,
-        terminalInputAckResubscribeClock: any Clock<Duration> = ContinuousClock()
+        terminalInputAckResubscribeClock: any Clock<Duration> = ContinuousClock(),
+        pairingHintDefaults: UserDefaults = .standard
     ) -> CMUXMobileShellStore {
         CMUXMobileShellStore(
             runtime: runtime,
             workspaces: PreviewMobileHost.workspaces,
             deliveredNotificationClearer: NoopDeliveredNotificationClearer(),
+            pairingHintDefaults: pairingHintDefaults,
             terminalInputAckResubscribeClock: terminalInputAckResubscribeClock
         )
     }
@@ -4250,7 +4273,11 @@ public final class MobileShellComposite: MobileTerminalOutputSinking {
     func makeSecondaryClient(
         for mac: MobilePairedMac
     ) async -> SecondaryClientAttempt {
-        guard let runtime else { return .permanentFailure }
+        guard let runtime,
+              !isReconnectingStoredMac,
+              !connectionRecoveryOwner.isRedialingOrValidating else {
+            return .superseded
+        }
         let supportedKinds = runtime.supportedRouteKinds
         let pinnedRoutes = Self.storedReconnectRoutes(
             mac.routes,
@@ -4310,6 +4337,10 @@ public final class MobileShellComposite: MobileTerminalOutputSinking {
             // into a periodic manual-ticket exchange.
             return .permanentFailure
         } else {
+            guard !isReconnectingStoredMac,
+                  !connectionRecoveryOwner.isRedialingOrValidating else {
+                return .superseded
+            }
             guard let (host, port) = Self.firstReconnectHostPortRoute(
                 pinnedRoutes,
                 supportedKinds: supportedKinds,
@@ -4358,7 +4389,8 @@ public final class MobileShellComposite: MobileTerminalOutputSinking {
             stackTokenGate: stackTokenGate,
             stackTokenForceRefreshGate: stackTokenForceRefreshGate,
             transportConnectObserver: transportConnectDiagnosticObserver,
-            sessionPurpose: .backgroundControl
+            sessionPurpose: .backgroundControl,
+            retiresOnPersistentEventTransportInvalidation: true
         )
         var status: MobileHostStatusResponse
         switch await fetchSecondaryHostStatus(on: client) {
@@ -5272,6 +5304,8 @@ public final class MobileShellComposite: MobileTerminalOutputSinking {
         let pairingKey = MacPairingKey(mac)
         guard let pairedMacStore,
               !Task.isCancelled,
+              !isReconnectingStoredMac,
+              !connectionRecoveryOwner.isRedialingOrValidating,
               secondaryMacSubscriptions[pairingKey] == nil,
               secondaryMacDrainReservation(onDeviceOf: pairingKey) == nil else {
             return .superseded
@@ -5280,6 +5314,8 @@ public final class MobileShellComposite: MobileTerminalOutputSinking {
         switch await makeSecondaryClient(for: mac) {
         case let .connected(connectedHandle):
             handle = connectedHandle
+        case .superseded:
+            return .superseded
         case .transientFailure:
             guard await isSecondaryMacStillVisible(
                 macID,
@@ -6386,7 +6422,7 @@ public final class MobileShellComposite: MobileTerminalOutputSinking {
     /// Cancel and disconnect every secondary subscription (sign-out / full reset),
     /// and cancel any in-flight aggregation pass so it cannot resume and re-seed
     /// the torn-down entries for a now-signed-out / switched account.
-    private func teardownSecondaryMacSubscriptions() {
+    func teardownSecondaryMacSubscriptions() {
         secondaryAggregationTask?.cancel()
         secondaryAggregationTask = nil
         secondaryAggregationTaskGeneration = UUID()
@@ -6395,10 +6431,22 @@ public final class MobileShellComposite: MobileTerminalOutputSinking {
         secondaryPresenceAggregationTask = nil
         secondaryPresenceAggregationTaskGeneration = UUID()
         secondaryPresencePendingMacIDs = []
-        for flight in secondaryMacEstablishmentFlights.values {
-            flight.task.cancel()
-        }
+        let establishmentFlights = Array(
+            secondaryMacEstablishmentFlights.values
+        )
         secondaryMacEstablishmentFlights = [:]
+        for flight in establishmentFlights {
+            flight.task.cancel()
+            // The client inside an establishment flight is not published in
+            // `secondaryMacSubscriptions` yet. Keep its cancelled task in the
+            // same teardown ownership set as retired clients so a foreground
+            // reconnect cannot race it for the shared route lease.
+            let disconnectID = UUID()
+            clientDisconnectTasks[disconnectID] = Task { @MainActor [weak self] in
+                _ = await flight.task.value
+                self?.clientDisconnectTasks[disconnectID] = nil
+            }
+        }
         secondaryAggregationAfterPushedRoutesOperationID = UUID()
         secondaryAggregationAfterPushedRoutesTask?.cancel()
         secondaryAggregationAfterPushedRoutesTask = nil
@@ -8052,7 +8100,9 @@ public final class MobileShellComposite: MobileTerminalOutputSinking {
                 connectAttemptRegistry: connectAttemptRegistry,
                 stackTokenGate: stackTokenGate,
                 stackTokenForceRefreshGate: stackTokenForceRefreshGate,
-                transportConnectObserver: transportConnectDiagnosticObserver
+                transportConnectObserver: transportConnectDiagnosticObserver,
+                retiresOnPersistentEventTransportInvalidation:
+                    pairedMacStore != nil
             )
             if let previousAttemptClient =
                 replaceConnectionAttemptClientOwnership(with: client) {
@@ -8704,6 +8754,9 @@ public final class MobileShellComposite: MobileTerminalOutputSinking {
         // filter must keep the exact tagged entry.
         let offlineForegroundKey = foregroundMacKey
         focusedHandoffPreparedGenerations.removeAll()
+        // Close transport admission synchronously before cancelled request
+        // tasks get another executor turn and try to reopen the retired route.
+        remoteClient?.retire()
         cancelRemoteOperationTasks()
         clearActiveConnectionContext()
         macConnectionStatus = .unavailable
@@ -9042,6 +9095,7 @@ public final class MobileShellComposite: MobileTerminalOutputSinking {
         foregroundWorkspaceMutationRefreshTask = nil
         foregroundWorkspaceMutationRefreshPending = false
         foregroundWorkspaceMutationRefreshGeneration = UUID()
+        invalidateStateSyncForConnectionBoundary()
         cancelAllTerminalReplayTasks()
     }
 
@@ -11075,14 +11129,15 @@ public final class MobileShellComposite: MobileTerminalOutputSinking {
         return bytes
     }
 
-    @discardableResult
     private func registerTerminalOutput(
         surfaceID: String,
+        registrationToken: UUID,
         continuation: AsyncStream<MobileTerminalOutputChunk>.Continuation
-    ) -> UUID {
-        let streamToken = UUID()
+    ) {
+        let previousContinuation = terminalByteContinuationsBySurfaceID[surfaceID]
         terminalByteContinuationsBySurfaceID[surfaceID] = continuation
-        terminalOutputStreamTokensBySurfaceID[surfaceID] = streamToken
+        terminalOutputRegistrationTokensBySurfaceID[surfaceID] = registrationToken
+        terminalOutputStreamTokensBySurfaceID[surfaceID] = UUID()
         terminalOutputQueuesBySurfaceID[surfaceID] = TerminalOutputDeliveryQueue()
         deliveredTerminalByteEndSeqBySurfaceID.removeValue(forKey: surfaceID)
         terminalPreBarrierDeliveredEndSeqBySurfaceID.removeValue(forKey: surfaceID)
@@ -11101,18 +11156,25 @@ public final class MobileShellComposite: MobileTerminalOutputSinking {
         #endif
         requestColdAttachTerminalReplay(surfaceID: surfaceID)
         ensureTerminalLane(surfaceID: surfaceID)
-        return streamToken
+        previousContinuation?.finish()
     }
 
-    private func unregisterTerminalOutput(surfaceID: String, streamToken: UUID) {
-        guard terminalOutputStreamTokensBySurfaceID[surfaceID] == streamToken else { return }
+    private func unregisterTerminalOutput(
+        surfaceID: String,
+        registrationToken: UUID
+    ) {
+        guard terminalOutputRegistrationTokensBySurfaceID[surfaceID]
+                == registrationToken else { return }
         terminalLaneOutputReadySurfaceIDs.remove(surfaceID)
         if let terminalLaneCoordinator {
             Task { await terminalLaneCoordinator.deactivate(surfaceID: surfaceID) }
         }
         cancelTerminalReplayInFlight(surfaceID: surfaceID)
         terminalColdReplayNeedsBarrierUpgradeSurfaceIDs.remove(surfaceID)
-        terminalByteContinuationsBySurfaceID.removeValue(forKey: surfaceID)
+        let continuation = terminalByteContinuationsBySurfaceID.removeValue(
+            forKey: surfaceID
+        )
+        terminalOutputRegistrationTokensBySurfaceID.removeValue(forKey: surfaceID)
         terminalOutputStreamTokensBySurfaceID.removeValue(forKey: surfaceID)
         terminalOutputQueuesBySurfaceID.removeValue(forKey: surfaceID)
         terminalReplayBarrierTokensBySurfaceID.removeValue(forKey: surfaceID)
@@ -11155,6 +11217,49 @@ public final class MobileShellComposite: MobileTerminalOutputSinking {
         terminalMirrorHydrationNeededSurfaceIDs.remove(surfaceID)
         // Tell the Mac this device is no longer viewing the surface so it can unpin and clear its border.
         clearTerminalViewport(surfaceID: surfaceID)
+        // Ending the producer makes a suspended consumer finish promptly even
+        // when task cancellation alone does not wake its `for await` loop.
+        continuation?.finish()
+    }
+
+    /// Register one exact mounted output generation.
+    ///
+    /// Call ``terminalOutputDidUnmount(surfaceID:registrationToken:)`` when the view
+    /// goes away. The stream's termination hook remains as a fallback.
+    public func terminalOutputRegistration(
+        surfaceID: String
+    ) -> MobileTerminalOutputRegistration {
+        let registrationToken = UUID()
+        let stream = AsyncStream<MobileTerminalOutputChunk> { continuation in
+            registerTerminalOutput(
+                surfaceID: surfaceID,
+                registrationToken: registrationToken,
+                continuation: continuation
+            )
+            continuation.onTermination = { [weak self] _ in
+                Task { @MainActor in
+                    self?.unregisterTerminalOutput(
+                        surfaceID: surfaceID,
+                        registrationToken: registrationToken
+                    )
+                }
+            }
+        }
+        return MobileTerminalOutputRegistration(
+            registrationToken: registrationToken,
+            stream: stream
+        )
+    }
+
+    /// End only the mounted output generation identified by `registrationToken`.
+    public func terminalOutputDidUnmount(
+        surfaceID: String,
+        registrationToken: UUID
+    ) {
+        unregisterTerminalOutput(
+            surfaceID: surfaceID,
+            registrationToken: registrationToken
+        )
     }
 
     /// The output byte stream for a terminal surface.
@@ -11165,20 +11270,7 @@ public final class MobileShellComposite: MobileTerminalOutputSinking {
     /// - Parameter surfaceID: The terminal surface identifier.
     /// - Returns: An `AsyncStream` of output byte chunks.
     public func terminalOutputStream(surfaceID: String) -> AsyncStream<MobileTerminalOutputChunk> {
-        AsyncStream { continuation in
-            let streamToken = registerTerminalOutput(
-                surfaceID: surfaceID,
-                continuation: continuation
-            )
-            continuation.onTermination = { [weak self] _ in
-                Task { @MainActor in
-                    self?.unregisterTerminalOutput(
-                        surfaceID: surfaceID,
-                        streamToken: streamToken
-                    )
-                }
-            }
-        }
+        terminalOutputRegistration(surfaceID: surfaceID).stream
     }
 
     func shouldDropRenderGridBehindPendingInput(_ renderGrid: MobileTerminalRenderGridFrame, source: String) -> Bool {

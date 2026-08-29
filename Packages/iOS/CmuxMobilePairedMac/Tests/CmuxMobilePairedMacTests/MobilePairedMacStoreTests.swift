@@ -15,6 +15,23 @@ import Testing
         return (store, directory)
     }
 
+    @Test func closeIsIdempotentAndDefinesPostCloseAccess() async throws {
+        let (store, directory) = try makeStore()
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        _ = try await store.loadAll()
+
+        await store.close()
+        await store.close()
+
+        await #expect(throws: MobilePairedMacStore.LifecycleError.closed) {
+            _ = try await store.loadAll()
+        }
+
+        try FileManager.default.removeItem(at: directory)
+        #expect(!FileManager.default.fileExists(atPath: directory.path))
+    }
+
     @Test func persistsActiveMacsScopedByStackUser() async throws {
         let (store, directory) = try makeStore()
         defer { try? FileManager.default.removeItem(at: directory) }

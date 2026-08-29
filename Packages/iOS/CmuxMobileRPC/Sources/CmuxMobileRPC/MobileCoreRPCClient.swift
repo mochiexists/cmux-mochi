@@ -36,6 +36,9 @@ public final class MobileCoreRPCClient: MobileSyncing, Sendable {
     ///     leaving the raw Tailscale route fail-closed.
     ///   - transportConnectObserver: Optional synchronous sink for privacy-safe
     ///     transport dial lifecycle events. The observer must return immediately.
+    ///   - retiresOnPersistentEventTransportInvalidation: Whether an unexpected
+    ///     failure of an event-owning transport permanently retires this client
+    ///     so its external owner can install a fresh connection generation.
     public init(
         runtime: any MobileSyncRuntime,
         route: CmxAttachRoute,
@@ -51,7 +54,8 @@ public final class MobileCoreRPCClient: MobileSyncing, Sendable {
         lateAbandonedConnectCloseTimeoutNanoseconds: UInt64 = 5_000_000_000,
         stackTokenGateResetNanoseconds: UInt64 = 30_000_000_000,
         transportConnectObserver: (@Sendable (MobileRPCTransportConnectEvent) -> Void)? = nil,
-        sessionPurpose: CmxTransportSessionPurpose = .foregroundControl
+        sessionPurpose: CmxTransportSessionPurpose = .foregroundControl,
+        retiresOnPersistentEventTransportInvalidation: Bool = false
     ) {
         self.runtime = runtime
         self.route = route
@@ -87,12 +91,12 @@ public final class MobileCoreRPCClient: MobileSyncing, Sendable {
             authorizationMode = .userAuthorizedTailscalePairing(
                 userTailscalePairingAuthorization
             )
-        } else if ticket.authToken?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false {
-            // Fork (cmux Mochi): a ticket that carries its own token IS the
-            // credential -- the host authorizes on it alone. Without this branch
-            // every ticket route fell through to `.stackBearer`, so a signed-out
-            // phone (the whole point of an accountless attach ticket) demanded a
-            // Stack token it cannot have and failed with `authorizationFailed`.
+        } else if route.kind == .tailscale,
+                  ticket.authToken?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false {
+            // Fork (cmux Mochi): a Tailscale ticket carrying its own token IS
+            // the credential -- the paired host authorizes on it alone. Keep
+            // generic host routes out of this mode so a ticket never relaxes
+            // their Stack-bearer transport policy.
             // `.attachTicket` is consumed by `transportUsesStackBearer`,
             // `canSendStackBearer`, the transport factory and the route proof;
             // this is the only place that produces it.
@@ -128,6 +132,15 @@ public final class MobileCoreRPCClient: MobileSyncing, Sendable {
         } else {
             independentEventFactory = nil
         }
+        let persistentEventTransportInvalidationHook:
+            MobileCoreRPCSession.PersistentEventTransportInvalidationHook?
+        if retiresOnPersistentEventTransportInvalidation {
+            persistentEventTransportInvalidationHook = {
+                lifecycleGate.retire()
+            }
+        } else {
+            persistentEventTransportInvalidationHook = nil
+        }
         self.session = MobileCoreRPCSession(
             connectAttemptKey: MobileRPCConnectAttemptKey(
                 route: route
@@ -143,7 +156,18 @@ public final class MobileCoreRPCClient: MobileSyncing, Sendable {
             makeIndependentEventByteStream: independentEventFactory,
             diagnosticTransport: route.kind.diagnosticTransportKind,
             transportConnectObserver: transportConnectObserver,
-            initialTransportSessionPurpose: sessionPurpose
+            initialTransportSessionPurpose: sessionPurpose,
+            persistentEventTransportInvalidationHook:
+                persistentEventTransportInvalidationHook,
+            transportAdmissionPreflight: {
+                let preflight = try lifecycleGate
+                    .captureTransportAdmissionPreflight()
+                return {
+                    lifecycleGate.isTransportAdmissionPreflightCurrent(
+                        preflight
+                    )
+                }
+            }
         )
     }
 
@@ -495,8 +519,11 @@ public final class MobileCoreRPCClient: MobileSyncing, Sendable {
         guard var request = try JSONSerialization.jsonObject(with: requestData) as? [String: Any] else {
             return AuthenticatedRequestPayload(data: requestData, stackAccessToken: nil)
         }
+        // Authentication is derived from this client's immutable transport and
+        // ticket context. Never preserve a caller-supplied auth dictionary when
+        // rebuilding the request.
+        request.removeValue(forKey: "auth")
         if transportRequest.authorizationMode == .transportAdmission {
-            request.removeValue(forKey: "auth")
             return AuthenticatedRequestPayload(
                 data: try JSONSerialization.data(withJSONObject: request),
                 stackAccessToken: nil
@@ -508,8 +535,11 @@ public final class MobileCoreRPCClient: MobileSyncing, Sendable {
         var requestStackAccessToken: String?
         let attachToken = ticket.authToken?.trimmingCharacters(in: .whitespacesAndNewlines)
         let hasAttachToken = attachToken?.isEmpty == false
+        let attachTicketHostStatus =
+            transportRequest.authorizationMode == .attachTicket
+            && isHostStatusRequest(request)
         if let attachToken,
-           requestNeedsAuth,
+           requestNeedsAuth || attachTicketHostStatus,
            hasAttachToken,
            requestIsCoveredByAttachTicket {
             // Expiry is enforced only here, where the RPC-minted attach token
@@ -517,7 +547,7 @@ public final class MobileCoreRPCClient: MobileSyncing, Sendable {
             // expiry), so they never reach this branch.
             if !ticket.isExpired(at: runtime.now()) {
                 auth["attach_token"] = attachToken
-            } else if !canSendStackBearer {
+            } else if requestNeedsAuth && !canSendStackBearer {
                 throw MobileShellConnectionError.attachTicketExpired
             }
         }
@@ -540,9 +570,7 @@ public final class MobileCoreRPCClient: MobileSyncing, Sendable {
         // (`transportUsesStackBearer` is false for both). Demanding one here
         // rejected the request during preparation, so the connection failed
         // before it was ever dialed and no transport was constructed.
-        let shouldSendStackAuth = requestNeedsAuth
-            && auth["attach_token"] == nil
-            && transportUsesStackBearer
+        let shouldSendStackAuth = requestNeedsAuth && transportUsesStackBearer
         if shouldSendStackAuth {
             guard canSendStackBearer else {
                 throw MobileShellConnectionError.insecureManualRoute

@@ -139,7 +139,10 @@ import Testing
     }
 
     @Test func signInMovesToPairingUntilPreviewCodeConnects() {
-        let store = MobileShellComposite.preview()
+        let suiteName = "preview-pairing-phase-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let store = MobileShellComposite.preview(pairingHintDefaults: defaults)
 
         store.signIn()
         #expect(store.phase == .pairing)
