@@ -399,8 +399,26 @@ struct CMUXMobileRootView: View {
                     showPairingScanner: showPairingScanner,
                     reconnectStoredMac: reconnectStoredMacIfNeeded
                 )
+                .overlay {
+                    if shouldBlockWorkspaceForReconnect {
+                        MobileReconnectProgressView(
+                            macName: store.connectedHostName,
+                            routeKind: store.activeRoute?.kind,
+                            tailnetStatus: tailscaleStatusMonitor?.status
+                        )
+                    }
+                }
             }
         }
+    }
+
+    private var shouldBlockWorkspaceForReconnect: Bool {
+        MobileReconnectPresentation.shouldBlockWorkspaceNavigation(
+            connectionState: store.connectionState,
+            isReconnectingStoredMac: store.isReconnectingStoredMac
+                || store.macConnectionStatus == .reconnecting,
+            isMacSwitchInFlight: store.isMacSwitchInFlight
+        )
     }
 
     private var addDeviceSheetBinding: Binding<Bool> {

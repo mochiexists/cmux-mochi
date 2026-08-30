@@ -24,6 +24,11 @@ public enum MobilePairingFailureCategory: Equatable, Sendable {
     /// cellular). Caught by the reachability preflight before any connect, so it
     /// fails fast instead of waiting out the per-route timeouts.
     case offline
+    /// A Tailscale route was selected but the iPhone cannot currently reach it.
+    /// This commonly means the Tailscale VPN is disconnected on the phone; it
+    /// remains distinct from a fully offline device and from a reachable Mac
+    /// whose cmux listener is stopped.
+    case tailscaleUnavailable(host: String?, port: Int?)
     /// Could not route to a selected legacy host address. Iroh routes carry no
     /// host here because their EndpointID is resolved by the transport layer.
     case hostUnreachable(host: String?, port: Int?)
@@ -111,6 +116,7 @@ extension MobilePairingFailureCategory {
     public var analyticsReason: String {
         switch self {
         case .offline: return "offline"
+        case .tailscaleUnavailable: return "tailscale_unavailable"
         case .hostUnreachable: return "host_unreachable"
         case .listenerNotRunning: return "listener_not_running"
         case .localNetworkBlocked: return "local_network_blocked"
@@ -157,6 +163,11 @@ extension MobilePairingFailureCategory {
             return L10n.string(
                 "mobile.pairing.fail.offline",
                 defaultValue: "This device looks offline. Connect to Wi-Fi or cellular, then try again."
+            )
+        case .tailscaleUnavailable:
+            return L10n.string(
+                "mobile.pairing.tailscaleUnavailable",
+                defaultValue: "Can't reach your Mac over Tailscale."
             )
         case let .hostUnreachable(host, port):
             return Self.hostPortMessage(
@@ -318,6 +329,11 @@ extension MobilePairingFailureCategory {
         switch self {
         case .offline:
             return nil
+        case .tailscaleUnavailable:
+            return L10n.string(
+                "mobile.pairing.guidance.tailscaleUnavailable",
+                defaultValue: "Open Tailscale on this iPhone and confirm it says Connected. Make sure the Mac is online in the same tailnet, then try again."
+            )
         case .hostUnreachable, .dnsFailed, .handshakeTimedOut:
             return L10n.string(
                 "mobile.pairing.guidance.reachability",
@@ -394,6 +410,7 @@ extension MobilePairingFailureCategory {
         let hostPort = route.flatMap(hostPort(for:))
         let host = hostPort?.host
         let port = hostPort?.port
+        let usesTailscale = route?.kind == .tailscale
 
         if let networkError = error as? CmxNetworkByteTransportError {
             switch networkError {
@@ -406,7 +423,9 @@ extension MobilePairingFailureCategory {
                 case .permissionDenied:
                     return .localNetworkBlocked
                 case .hostUnreachable:
-                    return .hostUnreachable(host: host, port: port)
+                    return usesTailscale
+                        ? .tailscaleUnavailable(host: host, port: port)
+                        : .hostUnreachable(host: host, port: port)
                 case .dnsFailed:
                     return .dnsFailed(host: host, port: port)
                 case .timedOut:
@@ -419,7 +438,7 @@ extension MobilePairingFailureCategory {
             case .receiveFailed, .sendFailed:
                 return .connectionDropped(host: host, port: port)
             case .tailscaleAuthorizationUnavailable:
-                return .hostUnreachable(host: host, port: port)
+                return .tailscaleUnavailable(host: host, port: port)
             case .authorizationIntentRequired, .unsupportedAuthorizationMode:
                 return .unsupportedRoute
             case .emptyHost, .invalidPort, .invalidMaximumReceiveLength,

@@ -145,8 +145,11 @@ final class MobilePairingModel {
     }
 
     /// Watches the mobile host's connection status while a code is displayed and
-    /// flips between `.ready` (QR shown, waiting) and `.connected` (a phone has
-    /// attached). Cancelled and superseded on each ``refresh()`` via the generation
+    /// flips `.ready` (QR shown, waiting) to `.connected` once a phone has
+    /// attached. Success stays latched until an explicit refresh or window close;
+    /// enrollment briefly reconnects while it installs the durable device identity,
+    /// and letting that transport churn restore the QR makes a successful scan look
+    /// like it failed. Cancelled and superseded on each ``refresh()`` via the generation
     /// guard, and on ``stopObserving()``.
     private func observeConnections() {
         connectionObservationTask?.cancel()
@@ -197,10 +200,10 @@ final class MobilePairingModel {
     /// Computes the next render state from a connection-count change, relative to
     /// the `baselineConnectionCount` captured when the code was displayed. A
     /// connection *above* the baseline (a phone that attached after the QR was
-    /// shown) flips a displayed ticket from `.ready` to `.connected`; dropping
-    /// back to the baseline flips it back so the QR returns. All other states
-    /// pass through unchanged. Pure, so the transition is unit tested without a
-    /// live host.
+    /// shown) flips a displayed ticket from `.ready` to `.connected`. Once shown,
+    /// success is monotonic for that ticket; only ``refresh()`` may display a QR
+    /// again. All other states pass through unchanged. Pure, so the transition is
+    /// unit tested without a live host.
     static func connectionTransition(
         from current: State,
         activeConnectionCount: Int,
@@ -210,8 +213,6 @@ final class MobilePairingModel {
         switch current {
         case let .ready(ready) where connected:
             return .connected(ready)
-        case let .connected(ready) where !connected:
-            return .ready(ready)
         default:
             return current
         }

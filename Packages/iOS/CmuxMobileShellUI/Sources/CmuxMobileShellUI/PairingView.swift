@@ -33,6 +33,7 @@ struct PairingView: View {
     @State private var port = UITestConfig.addDevicePort ?? "\(CmxMobileDefaults.defaultHostPort)"
     @Environment(AuthCoordinator.self) private var authManager
     @Environment(\.analytics) private var analytics
+    @Environment(\.tailscaleStatusMonitor) private var tailscaleStatusMonitor
     @State private var validationError: String?
     @State private var isPairing = false
     @State private var pairingTaskID: UUID?
@@ -100,6 +101,32 @@ struct PairingView: View {
                     .accessibilityIdentifier("MobileScanQRCodeButton")
                 }
                 #endif
+
+                if PairingNetworkWarning.resolve(
+                    status: tailscaleStatusMonitor?.status
+                ) == .tailscaleDisconnected {
+                    Section {
+                        Label {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(L10n.string(
+                                    "mobile.pairing.tailscaleDisconnected.title",
+                                    defaultValue: "Tailscale isn't connected"
+                                ))
+                                .font(.headline)
+                                Text(L10n.string(
+                                    "mobile.pairing.tailscaleDisconnected.detail",
+                                    defaultValue: "Open Tailscale on this iPhone and connect it before scanning the Mac's QR code."
+                                ))
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                            }
+                        } icon: {
+                            Image(systemName: "network.slash")
+                                .foregroundStyle(.orange)
+                        }
+                    }
+                    .accessibilityIdentifier("MobilePairingTailscaleWarning")
+                }
 
                 #if DEBUG
                 Section {
@@ -286,6 +313,11 @@ struct PairingView: View {
             }
         }
         .accessibilityIdentifier("MobilePairingView")
+        .overlay {
+            if PairingAttemptPresentation.resolve(isPairing: isPairing) == .connecting {
+                pairingProgressView
+            }
+        }
         #if os(iOS)
         .sheet(isPresented: $isShowingScanner) {
             scannerSheet
@@ -318,6 +350,35 @@ struct PairingView: View {
         } label: {
             Text(L10n.string("mobile.common.cancel", defaultValue: "Cancel"))
         }
+    }
+
+    private var pairingProgressView: some View {
+        ZStack {
+            PlatformPalette.systemBackground
+                .ignoresSafeArea()
+
+            VStack(spacing: 16) {
+                ProgressView()
+                    .controlSize(.large)
+
+                Text(L10n.string(
+                    "mobile.pairing.progress.title",
+                    defaultValue: "Pairing with your Mac"
+                ))
+                .font(.title3.weight(.semibold))
+
+                Text(L10n.string(
+                    "mobile.pairing.progress.detail",
+                    defaultValue: "Connecting over Tailscale and saving this iPhone…"
+                ))
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+            }
+            .padding(32)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("MobilePairingProgress")
     }
 
     private func cancelActivePairingTask() {

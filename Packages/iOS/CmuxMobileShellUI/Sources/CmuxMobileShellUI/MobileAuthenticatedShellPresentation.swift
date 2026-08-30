@@ -17,3 +17,16 @@ enum MobileAuthenticatedShellPresentation: Equatable {
         return .workspace
     }
 }
+
+/// Keeps a mounted workspace shell stable while preventing stale chat or
+/// terminal navigation during an active Mac reconnection attempt.
+enum MobileReconnectPresentation {
+    static func shouldBlockWorkspaceNavigation(
+        connectionState: MobileConnectionState,
+        isReconnectingStoredMac: Bool,
+        isMacSwitchInFlight: Bool
+    ) -> Bool {
+        connectionState != .connected
+            && (isReconnectingStoredMac || isMacSwitchInFlight)
+    }
+}

@@ -5747,6 +5747,23 @@
         }
       }
     },
+    "mobile.pairing.guidance.tailscaleUnavailable": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open Tailscale on this iPhone and confirm it says Connected. Make sure the Mac is online in the same tailnet, then try again."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "このiPhoneでTailscaleを開き、「接続済み」と表示されていることを確認してください。Macが同じtailnetでオンラインになっていることを確認して、もう一度お試しください。"
+          }
+        }
+      }
+    },
     "mobile.pairing.guidance.reachability": {
       "extractionState": "manual",
       "localizations": {
@@ -5917,6 +5934,40 @@
         }
       }
     },
+    "mobile.pairing.progress.detail": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connecting over Tailscale and saving this iPhone…"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale経由で接続し、このiPhoneを保存しています…"
+          }
+        }
+      }
+    },
+    "mobile.pairing.progress.title": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pairing with your Mac"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Macとペアリング中"
+          }
+        }
+      }
+    },
     "mobile.pairing.requestTimedOut": {
       "extractionState": "manual",
       "localizations": {
@@ -5947,6 +5998,57 @@
           "stringUnit": {
             "state": "translated",
             "value": "以前の接続クリーンアップが停止したままのため、新しい接続を一時停止しました。"
+          }
+        }
+      }
+    },
+    "mobile.pairing.tailscaleUnavailable": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Can't reach your Mac over Tailscale."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale経由でMacに接続できません。"
+          }
+        }
+      }
+    },
+    "mobile.pairing.tailscaleDisconnected.detail": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open Tailscale on this iPhone and connect it before scanning the Mac's QR code."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "このiPhoneでTailscaleを開いて接続してから、MacのQRコードをスキャンしてください。"
+          }
+        }
+      }
+    },
+    "mobile.pairing.tailscaleDisconnected.title": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale isn't connected"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscaleが接続されていません"
           }
         }
       }
@@ -6561,6 +6663,83 @@
             "value": "再試行"
           }
         }
+      }
+    },
+    "mobile.reconnect.stage.label": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Stage" } },
+        "ja": { "stringUnit": { "state": "translated", "value": "段階" } }
+      }
+    },
+    "mobile.reconnect.stage.routes": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Trying saved connection routes" } },
+        "ja": { "stringUnit": { "state": "translated", "value": "保存済みの接続経路を試しています" } }
+      }
+    },
+    "mobile.reconnect.tailscale.active": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Connected" } },
+        "ja": { "stringUnit": { "state": "translated", "value": "接続済み" } }
+      }
+    },
+    "mobile.reconnect.tailscale.inactive": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Not connected" } },
+        "ja": { "stringUnit": { "state": "translated", "value": "未接続" } }
+      }
+    },
+    "mobile.reconnect.tailscale.unknown": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Checking" } },
+        "ja": { "stringUnit": { "state": "translated", "value": "確認中" } }
+      }
+    },
+    "mobile.reconnect.title.format": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Reconnecting to %@" } },
+        "ja": { "stringUnit": { "state": "translated", "value": "%@に再接続中" } }
+      }
+    },
+    "mobile.reconnect.title.generic": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Reconnecting to your Mac" } },
+        "ja": { "stringUnit": { "state": "translated", "value": "Macに再接続中" } }
+      }
+    },
+    "mobile.reconnect.transport.direct": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Direct" } },
+        "ja": { "stringUnit": { "state": "translated", "value": "直接接続" } }
+      }
+    },
+    "mobile.reconnect.transport.label": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Transport" } },
+        "ja": { "stringUnit": { "state": "translated", "value": "通信方式" } }
+      }
+    },
+    "mobile.reconnect.transport.loopback": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Loopback" } },
+        "ja": { "stringUnit": { "state": "translated", "value": "ループバック" } }
+      }
+    },
+    "mobile.reconnect.transport.selecting": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Selecting route" } },
+        "ja": { "stringUnit": { "state": "translated", "value": "経路を選択中" } }
       }
     },
     "mobile.settings.about": {

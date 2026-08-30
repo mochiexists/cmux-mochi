@@ -20,3 +20,22 @@ enum PairingPresentation: Equatable {
         }
     }
 }
+
+/// Release-visible state for the interval after the scanner has accepted a QR
+/// code and before the Mac has finished authorizing this iPhone.
+enum PairingAttemptPresentation: Equatable {
+    case idle
+    case connecting
+
+    static func resolve(isPairing: Bool) -> Self {
+        isPairing ? .connecting : .idle
+    }
+}
+
+enum PairingNetworkWarning: Equatable {
+    case tailscaleDisconnected
+
+    static func resolve(status: TailnetStatus?) -> Self? {
+        status == .inactiveOrNotInstalled ? .tailscaleDisconnected : nil
+    }
+}
