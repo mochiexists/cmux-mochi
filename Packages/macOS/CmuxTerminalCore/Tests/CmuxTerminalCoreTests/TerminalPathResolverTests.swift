@@ -105,6 +105,17 @@ private func existsIn(_ existingPaths: Set<String>) -> @Sendable (String) -> Boo
         )
     }
 
+    @Test func resolvesRepositoryRelativePathWhenCwdAlreadyIncludesLeadingDirectory() {
+        let cwd = "/Users/dev/project/external/nirvana"
+        let existingFile = "/Users/dev/project/external/nirvana/PHILOSOPHY.md"
+        #expect(
+            TerminalPathResolver(fileExists: existsIn([existingFile])).resolveQuicklookPath(
+                "nirvana/PHILOSOPHY.md",
+                cwd: cwd
+            ) == existingFile
+        )
+    }
+
     @Test func returnsNilForRelativePathThatDoesNotExist() {
         #expect(
             TerminalPathResolver(fileExists: existsIn([])).resolveQuicklookPath(

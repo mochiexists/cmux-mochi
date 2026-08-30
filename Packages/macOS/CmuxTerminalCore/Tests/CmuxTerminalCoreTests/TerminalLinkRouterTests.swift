@@ -50,6 +50,25 @@ private struct StubHostNormalizer: BrowserHostNormalizing {
         #expect(url.path == "/docs")
     }
 
+    @Test func relativeMarkdownPathDoesNotResolveAsEmbeddedBrowser() throws {
+        let target = try #require(
+            router.resolveOpenURLTarget("docs/planning/followup-workpackage-modular-finish-and-skipkit.md")
+        )
+        guard case .external = target else {
+            Issue.record("Expected relative Markdown path not to route to the embedded browser")
+            return
+        }
+    }
+
+    @Test(arguments: ["example.com/docs/README.md", "localhost/docs/README.md"])
+    func markdownPathOnWebHostStillResolvesAsEmbeddedBrowser(_ rawValue: String) throws {
+        let target = try #require(router.resolveOpenURLTarget(rawValue))
+        guard case .embeddedBrowser = target else {
+            Issue.record("Expected Markdown path on a web host to remain browser-routable")
+            return
+        }
+    }
+
     @Test func resolvesFileSchemeAsExternal() throws {
         let target = try #require(router.resolveOpenURLTarget("file:///tmp/cmux.txt"))
         guard case let .external(url) = target else {
