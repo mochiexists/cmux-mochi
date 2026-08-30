@@ -35844,7 +35844,7 @@ export default CMUXSessionRestore;
             ),
             MochiWelcomeCategory(
                 featureIDs: ["mobile.account-free-pairing", "mobile.reconnect-continuity"],
-                text: "Account-free iPhone access — pair by QR over Tailscale; no cmux account or login required"
+                text: "Account-free iPhone access — pair by QR over Tailscale with actionable Tailscale guidance and visible pairing/reconnect progress; no cmux account or login required"
             ),
             MochiWelcomeCategory(
                 featureIDs: ["task.resource-monitor"],
@@ -35873,7 +35873,7 @@ export default CMUXSessionRestore;
                     "navigation.reopen-closed",
                     "navigation.sidebar-spring-load",
                 ],
-                text: "Navigation polish — adaptive right-side pane placement, closed-tab restore, and sidebar spring-load switching"
+                text: "Navigation polish — adaptive right-side pane placement, closed-tab restore, highlighted and immediately drop-ready sidebar targets, plus Shift-select to drag multiple tabs together"
             ),
             MochiWelcomeCategory(
                 featureIDs: ["privacy.frost"],

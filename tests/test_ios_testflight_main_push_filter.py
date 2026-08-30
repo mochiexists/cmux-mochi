@@ -486,22 +486,17 @@ process.stdout.write(JSON.stringify({{
     return json.loads(result.stdout)
 
 
-def test_scheduled_uploads_filter_for_ios_affecting_main_changes() -> None:
+def test_workflow_is_manual_only_with_explicit_release_inputs() -> None:
     text = workflow_text()
     triggers = trigger_block(text)
-    schedule = mapping_block(triggers, "schedule", indent=2)
-    expected_workflow_paths = tuple(
-        path.removesuffix("**") for path in IOS_PATHS
-    )
+    dispatch = mapping_block(triggers, "workflow_dispatch", indent=2)
+    inputs = mapping_block(dispatch, "inputs", indent=4)
 
-    assert mapping_keys(triggers, indent=2) == (
-        "schedule",
-        "workflow_dispatch",
-    )
-    assert sequence_mapping_values(schedule, "cron", indent=4) == IOS_SCHEDULES
-    assert (
-        javascript_string_array(text, "iosRelevantPaths")
-        == expected_workflow_paths
+    assert mapping_keys(triggers, indent=2) == ("workflow_dispatch",)
+    assert mapping_keys(inputs, indent=6) == (
+        "build_number",
+        "marketing_version_override",
+        "force",
     )
 
 
@@ -813,8 +808,9 @@ def test_manual_run_builds_when_upload_history_is_unavailable() -> None:
 
     assert result["outputs"] == {
         "should_build": "true",
+        "should_assign_only": "false",
         "last_uploaded_sha": "",
-        "variant": "internal",
+        "last_uploaded_run_id": "",
     }
 
 
@@ -1040,97 +1036,59 @@ def test_testflight_notes_use_the_same_ios_path_contract() -> None:
     assert notes_paths == expected_notes_paths
 
 
-def test_scheduled_and_manual_runs_use_independent_concurrency_groups() -> None:
+def test_manual_runs_queue_per_ref_without_canceling_uploads() -> None:
     text = workflow_text()
     concurrency = scalar_mapping(
         mapping_block(text, "concurrency", indent=0),
         indent=2,
     )
     group_template = concurrency["group"]
-    run_id_token = "${{ github.run_id }}"
-
     assert concurrency == {
-        "group": "ios-testflight-${{ github.run_id }}",
+        "group": "ios-testflight-${{ github.ref_name }}",
         "cancel-in-progress": "false",
     }
-    assert group_template.count(run_id_token) == 1
-    scheduled_group = group_template.replace(run_id_token, "100")
-    manual_group = group_template.replace(run_id_token, "101")
-    assert scheduled_group == "ios-testflight-100"
-    assert manual_group == "ios-testflight-101"
-    assert scheduled_group != manual_group
+    assert group_template.count("${{ github.ref_name }}") == 1
 
 
-def test_automatic_lane_stays_on_cmux_internal_identity() -> None:
+def test_manual_lane_stays_on_cmux_internal_identity() -> None:
     text = workflow_text()
     upload = mapping_block(text, "upload", indent=2)
     assignment = mapping_block(text, "assign-internal-group", indent=2)
 
-    internal = resolved_metadata_artifact("internal", "")
-    demo = resolved_metadata_artifact("demo", "")
-    external = resolved_metadata_artifact("internal", "1.2.3")
-    assert internal == "ios-testflight-build-metadata"
-    assert demo == "ios-testflight-build-metadata-demo"
-    assert external == "ios-testflight-build-metadata-override"
-
-    assert "python3 ./ios/scripts/resolve_testflight_distribution.py" in upload
-    assert "INPUT_VARIANT: ${{ needs.decide.outputs.variant }}" in upload
+    assert (
+        "if: needs.decide.outputs.should_build == 'true' "
+        "&& github.ref == 'refs/heads/main'"
+        in upload
+    )
     assert (
         "INPUT_MARKETING_VERSION_OVERRIDE: "
         "${{ github.event.inputs.marketing_version_override }}"
         in upload
     )
-    assert "IOS_BETA_BUNDLE_ID: ${{ steps.distribution.outputs.bundle_id }}" in upload
-    assert "UPLOAD_BUNDLE_ID: ${{ steps.distribution.outputs.bundle_id }}" in upload
-    assert "UPLOAD_DISPLAY_NAME: ${{ steps.distribution.outputs.display_name }}" in upload
-    assert "UPLOAD_AUDIENCE: ${{ steps.distribution.outputs.audience }}" in upload
-    assert "UPLOAD_REVIEW_NOTE: ${{ steps.distribution.outputs.review_note }}" in upload
-    assert "name: ${{ steps.distribution.outputs.metadata_artifact }}" in upload
-    assert (
-        'echo "- lane: \\`beta\\` '
-        '(bundle id \\`${UPLOAD_BUNDLE_ID}\\`, ${UPLOAD_AUDIENCE})"'
-        in upload
-    )
-    assert (
-        'echo "- audience: ${UPLOAD_AUDIENCE} (${UPLOAD_DISPLAY_NAME}) '
-        'on the ${UPLOAD_BUNDLE_ID} app; ${UPLOAD_REVIEW_NOTE}"'
-        in upload
-    )
-    assert "ASSIGN_BUNDLE_ID: ${{ needs.upload.outputs.bundle_id }}" in assignment
+    assert "IOS_BETA_BUNDLE_ID: com.cmux-mochi.ios" in upload
+    assert "IOS_BETA_DISPLAY_NAME: cmux INTERNAL" in upload
+    assert "marketing_version_override drives the external TestFlight lane" in upload
+    assert "ARGS=(--lane beta --signing manual)" in upload
+    assert 'ARGS+=(--notes-from-range "$LAST_UPLOADED_SHA")' in upload
+    assert 'ARGS+=(--build-number "$INPUT_BUILD_NUMBER")' in upload
+    assert './ios/scripts/upload-testflight.sh "${ARGS[@]}"' in upload
+    assert "testFlightInternalTestingOnly=YES" in upload
+    assert "IOS_BETA_BUNDLE_ID: dev.cmux.app.beta" not in upload
+    assert "--bundle-id dev.cmux.app.beta" not in upload
+    assert "--bundle-id com.cmux-mochi.ios" in assignment
     assert assignment.count("needs: [decide, upload]") == 1
     assert (
-        "if: github.ref == 'refs/heads/main' "
-        "&& needs.upload.result == 'success' "
-        "&& needs.upload.outputs.assign_internal_group == '1'"
+        "github.ref == 'refs/heads/main'"
         in assignment
     )
 
 
 if __name__ == "__main__":
     test_literal_block_accepts_whitespace_only_lines()
-    test_scheduled_uploads_filter_for_ios_affecting_main_changes()
-    test_internal_schedule_polls_every_twenty_minutes()
-    test_schedule_decision_executes_ios_path_filter()
-    test_truncated_schedule_comparison_fails_open()
-    test_schedule_comparison_failure_fails_open()
-    test_unchanged_scheduled_head_skips_without_comparing()
-    test_schedule_decision_routes_demo_cron_to_demo_history()
-    test_schedule_decision_routes_internal_cron_to_internal_history()
-    test_decision_rejects_unknown_schedule_and_dispatch_variant()
-    test_demo_history_skips_newer_internal_artifact()
-    test_history_lookup_ignores_long_idle_workflow_run_history()
-    test_history_lookup_paginates_artifacts_and_selects_newest()
-    test_scheduled_run_skips_when_upload_history_is_unavailable()
+    test_workflow_is_manual_only_with_explicit_release_inputs()
     test_manual_run_builds_when_upload_history_is_unavailable()
-    test_manual_demo_dispatch_builds_even_when_head_already_uploaded()
-    test_manual_override_artifact_is_excluded_from_canonical_history()
-    test_scheduled_run_waits_for_an_earlier_upload()
-    test_scheduled_run_waits_before_upload_job_exists()
-    test_ordering_retries_transient_api_failures()
-    test_ordering_ignores_later_active_runs()
-    test_ordering_includes_manual_current_and_prior_runs()
     test_mapping_keys_normalizes_quoted_yaml_keys()
     test_testflight_notes_use_the_same_ios_path_contract()
-    test_scheduled_and_manual_runs_use_independent_concurrency_groups()
-    test_automatic_lane_stays_on_cmux_internal_identity()
-    print("all iOS TestFlight scheduling tests passed")
+    test_manual_runs_queue_per_ref_without_canceling_uploads()
+    test_manual_lane_stays_on_cmux_internal_identity()
+    print("all manual-only iOS TestFlight workflow tests passed")

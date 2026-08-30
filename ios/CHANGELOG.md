@@ -44,6 +44,24 @@ for a different version), so bump the beta version with
 
 ---
 
+## [1.0.205] - 2026-08-30
+
+### Internal
+
+- Account-free QR pairing now stays on a clear progress surface instead of flashing connected, returning to the QR, and then settling again.
+- Pairing and reconnect attempts show progress on iPhone, with actionable guidance when Tailscale or the selected route is unavailable.
+- Sidebar drag targets highlight while hovering, and a newly created group accepts workspace drops immediately.
+- Shift-select multiple sidebar tabs and drag the selected set together to an existing workspace or a new group target.
+- Finder actions now consistently use Reveal in Finder.
+- Dogfood focus: pair once with Tailscale unavailable, recover without recreating the pairing, cold-relaunch Mac and iPhone, and verify reconnect progress plus workspace sync. On Mac, exercise Shift-selection, highlighted targets, and drops into a brand-new group.
+
+### External
+
+- Pairing and reconnection now show clear progress and useful guidance when Tailscale is unavailable.
+- Fixed the pairing screen flicker that could briefly return to the QR after connecting.
+- Drag targets now highlight, newly created groups accept drops immediately, and multiple selected sidebar tabs can move together.
+- Finder actions now use consistent wording.
+
 ## [1.0.4] - 2026-07-09
 
 ### Internal
