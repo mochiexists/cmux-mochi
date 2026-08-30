@@ -8,14 +8,21 @@ import Testing
         #expect(PairingAttemptPresentation.resolve(isPairing: false) == .idle)
     }
 
+    @Test func inactiveTailnetProducesPairingWarningBeforeScanning() {
+        #expect(PairingNetworkWarning.resolve(status: .inactiveOrNotInstalled) == .tailscaleDisconnected)
+        #expect(PairingNetworkWarning.resolve(status: .active) == nil)
+        #expect(PairingNetworkWarning.resolve(status: .unknown) == nil)
+        #expect(PairingNetworkWarning.resolve(status: nil) == nil)
+    }
+
     @Test func reconnectBlocksWorkspaceNavigationOnlyWhileAnAttemptIsActive() {
         #expect(MobileReconnectPresentation.shouldBlockWorkspaceNavigation(
-            connectionState: .reconnecting,
+            connectionState: .disconnected,
             isReconnectingStoredMac: true,
             isMacSwitchInFlight: false
         ))
         #expect(MobileReconnectPresentation.shouldBlockWorkspaceNavigation(
-            connectionState: .reconnecting,
+            connectionState: .disconnected,
             isReconnectingStoredMac: false,
             isMacSwitchInFlight: true
         ))
