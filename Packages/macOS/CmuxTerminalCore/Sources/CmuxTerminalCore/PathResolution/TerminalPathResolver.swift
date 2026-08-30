@@ -7,7 +7,8 @@ public import Foundation
 /// from the pure `String` transforms in this domain (shell-token unquoting
 /// and unescaping, trailing-punctuation trimming, visible-line
 /// tokenization); the resolver expands them for `~`, resolves relative
-/// candidates against the surface cwd, standardizes, and probes in order.
+/// candidates against the surface cwd and matching cwd ancestors,
+/// standardizes, and probes in order.
 ///
 /// The resolver is an instantiated value because resolution is pure only up
 /// to the file system: every resolve probes candidates for existence, so the
@@ -31,8 +32,9 @@ public struct TerminalPathResolver: Sendable {
     ///
     /// Candidates are derived from the raw text (as-is, shell-unescaped,
     /// shell-unquoted, and trailing-punctuation-trimmed variants), expanded
-    /// for `~`, resolved against `cwd` when relative, standardized, and probed
-    /// in order. The first existing path wins.
+    /// for `~`, resolved against `cwd` when relative, with a fallback for
+    /// repository-relative paths whose leading directory already appears in
+    /// `cwd`, standardized, and probed in order. The first existing path wins.
     ///
     /// - Parameters:
     ///   - rawText: The raw text under the cursor or selection.
@@ -48,18 +50,18 @@ public struct TerminalPathResolver: Sendable {
             guard !normalizedToken.isEmpty else { continue }
 
             let expandedToken = (normalizedToken as NSString).expandingTildeInPath
-            let candidatePath: String
             if expandedToken.hasPrefix("/") {
-                candidatePath = expandedToken
+                if let resolvedPath = firstExistingPath(in: [expandedToken], seenPaths: &seenPaths) {
+                    return resolvedPath
+                }
             } else {
                 guard let cwd, !cwd.isEmpty else { continue }
-                candidatePath = (cwd as NSString).appendingPathComponent(expandedToken)
-            }
-
-            let standardizedPath = (candidatePath as NSString).standardizingPath
-            guard seenPaths.insert(standardizedPath).inserted else { continue }
-            if fileExists(standardizedPath) {
-                return standardizedPath
+                if let resolvedPath = firstExistingPath(
+                    in: relativeCandidatePaths(for: expandedToken, cwd: cwd),
+                    seenPaths: &seenPaths
+                ) {
+                    return resolvedPath
+                }
             }
         }
 
@@ -104,5 +106,44 @@ public struct TerminalPathResolver: Sendable {
         guard !trimmed.isEmpty else { return nil }
         guard URL(string: trimmed)?.scheme == nil else { return nil }
         return resolveQuicklookPath(trimmed, cwd: cwd)
+    }
+
+    private func firstExistingPath(
+        in candidatePaths: [String],
+        seenPaths: inout Set<String>
+    ) -> String? {
+        for candidatePath in candidatePaths {
+            let standardizedPath = (candidatePath as NSString).standardizingPath
+            guard seenPaths.insert(standardizedPath).inserted else { continue }
+            if fileExists(standardizedPath) {
+                return standardizedPath
+            }
+        }
+        return nil
+    }
+
+    private func relativeCandidatePaths(for token: String, cwd: String) -> [String] {
+        var candidates = [(cwd as NSString).appendingPathComponent(token)]
+        let pathComponents = (token as NSString).pathComponents
+        guard let leadingDirectory = pathComponents.first,
+              leadingDirectory != ".",
+              leadingDirectory != "..",
+              leadingDirectory != "~"
+        else {
+            return candidates
+        }
+
+        var ancestor = (cwd as NSString).standardizingPath
+        while ancestor != "/", !ancestor.isEmpty {
+            if (ancestor as NSString).lastPathComponent == leadingDirectory {
+                let parent = (ancestor as NSString).deletingLastPathComponent
+                candidates.append((parent as NSString).appendingPathComponent(token))
+                break
+            }
+            let parent = (ancestor as NSString).deletingLastPathComponent
+            guard parent != ancestor else { break }
+            ancestor = parent
+        }
+        return candidates
     }
 }

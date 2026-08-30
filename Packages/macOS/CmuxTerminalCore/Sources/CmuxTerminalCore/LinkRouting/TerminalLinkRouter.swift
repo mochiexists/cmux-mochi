@@ -11,9 +11,12 @@ import CMUXDebugLog
 /// the injected ``BrowserHostNormalizing`` accepts their host, externally
 /// otherwise; other schemes open externally; scheme-less text that the
 /// browser can navigate (bare domains, localhost) opens embedded subject to
-/// the same host check; anything else falls back to an external URL when it
-/// parses at all.
+/// the same host check; relative Markdown paths open externally so the app can
+/// resolve them against the terminal cwd; anything else falls back to an
+/// external URL when it parses at all.
 public struct TerminalLinkRouter: Sendable {
+    private static let markdownPathExtensions: Set<String> = ["md", "markdown", "mkd", "mdx"]
+
     private let hostNormalizer: any BrowserHostNormalizing
 
     /// Creates a router that validates web hosts through the browser domain.
@@ -67,6 +70,13 @@ public struct TerminalLinkRouter: Sendable {
             return .external(parsed)
         }
 
+        if isRelativeMarkdownPath(trimmed), let relativeURL = URL(string: trimmed) {
+            #if DEBUG
+            logDebugEvent("link.resolve result=external(relativeMarkdownPath) url=\(relativeURL)")
+            #endif
+            return .external(relativeURL)
+        }
+
         if let webURL = hostNormalizer.navigableWebURL(trimmed) {
             guard hostNormalizer.normalizedHost(webURL.host ?? "") != nil else {
                 #if DEBUG
@@ -90,5 +100,28 @@ public struct TerminalLinkRouter: Sendable {
         logDebugEvent("link.resolve result=external(fallback) url=\(fallback)")
         #endif
         return .external(fallback)
+    }
+
+    private func isRelativeMarkdownPath(_ value: String) -> Bool {
+        let pathWithoutFragment = value.split(separator: "#", maxSplits: 1).first.map(String.init) ?? value
+        let pathWithoutQuery = pathWithoutFragment.split(separator: "?", maxSplits: 1).first.map(String.init)
+            ?? pathWithoutFragment
+        let lowercasedExtension = (pathWithoutQuery as NSString).pathExtension.lowercased()
+        guard Self.markdownPathExtensions.contains(lowercasedExtension) else {
+            return false
+        }
+
+        if pathWithoutQuery.hasPrefix("./") ||
+            pathWithoutQuery.hasPrefix("../") ||
+            pathWithoutQuery.hasPrefix("~/")
+        {
+            return true
+        }
+
+        guard let separator = pathWithoutQuery.firstIndex(of: "/") else { return false }
+        let leadingComponent = pathWithoutQuery[..<separator].lowercased()
+        return leadingComponent != "localhost" &&
+            !leadingComponent.contains(".") &&
+            !leadingComponent.contains(":")
     }
 }
