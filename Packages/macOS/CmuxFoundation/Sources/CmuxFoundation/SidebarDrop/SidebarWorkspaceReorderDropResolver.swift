@@ -138,6 +138,19 @@ public struct SidebarWorkspaceReorderDropResolver: Sendable {
             return nil
         }
         guard candidate.isAmbiguous else { return candidate.groupId }
+        if context.target?.isGroupHeader == true,
+           let group = groupsById[candidate.groupId],
+           request.workspaces.filter({ $0.groupId == candidate.groupId }).allSatisfy({
+               $0.id == group.anchorWorkspaceId
+           }) {
+            // An anchor-only group has no child row whose top edge can express
+            // "insert into this group". Treat the header's bottom half as the
+            // first in-group slot across its full width; the top half remains the
+            // root-level slot before the group. This removes the accidental
+            // requirement to press Cmd-N before the first workspace can be
+            // dragged into a freshly created group.
+            return candidate.groupId
+        }
         // Ambiguous group/root dividers use a coarse hierarchy lane: the left
         // half of the sidebar means root, the right half means the group.
         return request.point.x >= sidebarHorizontalMidpoint(targets: request.targets)

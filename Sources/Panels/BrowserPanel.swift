@@ -4743,7 +4743,7 @@ final class BrowserPanel: Panel, ObservableObject {
         NSWorkspace.shared.open(url)
     }
 
-    /// Reveal a completed download in Finder (Safari/Chrome "Show in Finder").
+    /// Reveal a completed download in Finder.
     func revealDownloadInFinder(_ record: BrowserDownloadRecord) {
         guard let url = record.fileURL, FileManager.default.fileExists(atPath: url.path) else {
             NSSound.beep()

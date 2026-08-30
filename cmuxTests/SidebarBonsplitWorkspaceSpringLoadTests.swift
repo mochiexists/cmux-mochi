@@ -115,7 +115,11 @@ import Testing
         view.springLoadWorkspace = { sprung.record($0) }
 
         let highlighted = Harness.Recorder()
-        view.setExistingWorkspaceDropTarget = { highlighted.record($0) }
+        view.setExistingWorkspaceDropTarget = { workspaceId in
+            if let workspaceId {
+                highlighted.record(workspaceId)
+            }
+        }
 
         return Harness(
             view: view,

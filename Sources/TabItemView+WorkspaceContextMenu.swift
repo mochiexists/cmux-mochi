@@ -296,7 +296,7 @@ extension TabItemView {
             }
             .disabled(workspaceSnapshot.finderDirectoryPath == nil)
 
-            Button(String(localized: "contextMenu.showWorkspaceInFinder", defaultValue: "Show in Finder")) {
+            Button(FileExternalOpenText.revealInFinder) {
                 let url = workspaceSnapshot.finderDirectoryPath
                     .map { URL(fileURLWithPath: $0, isDirectory: true) }
                 workspaceFinderDirectoryOpenRequest = WorkspaceFinderDirectoryOpenRequest(directoryURL: url)

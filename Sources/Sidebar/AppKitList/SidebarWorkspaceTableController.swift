@@ -32,6 +32,7 @@ final class SidebarWorkspaceTableController: NSObject, NSTableViewDataSource, NS
     private var appKitDropIndicator: SidebarDropIndicator?
     private var appKitDropIndicatorScope: SidebarWorkspaceReorderDropIndicatorScope = .raw
     private var appKitDropIndicatorIncludesRowTargets = false
+    private var bonsplitDropTargetWorkspaceId: UUID?
     private weak var unreadSource: SidebarUnreadModel?
     private var unreadSnapshot = SidebarUnreadSnapshot()
     private var unreadObservation: SidebarUnreadObservation?
@@ -1480,6 +1481,7 @@ final class SidebarWorkspaceTableController: NSObject, NSTableViewDataSource, NS
             let paint = painter.paint(forRowWorkspaceId: configuration.workspaceId)
             cell.paintControllerDropIndicator(top: paint.top, bottom: paint.bottom)
         }
+        cell.setBonsplitDropTarget(configuration.workspaceId == bonsplitDropTargetWorkspaceId)
     }
 
     /// Pump-driven height corrections between applies: heightOfRow consults
@@ -1531,6 +1533,7 @@ final class SidebarWorkspaceTableController: NSObject, NSTableViewDataSource, NS
             let paint = painter.paint(forRowWorkspaceId: configuration.workspaceId)
             cell.paintControllerDropIndicator(top: paint.top, bottom: paint.bottom)
         }
+        cell.setBonsplitDropTarget(configuration.workspaceId == bonsplitDropTargetWorkspaceId)
     }
 
     private func configure(cell: SidebarWorkspaceTableCellView, at row: Int) {
@@ -1580,6 +1583,9 @@ final class SidebarWorkspaceTableController: NSObject, NSTableViewDataSource, NS
             actions.setBonsplitDropIndicator(indicator)
             self?.setAppKitDropIndicator(indicator, scope: .raw, includeRowTargets: true)
         }
+        bonsplit.setExistingWorkspaceDropTarget = { [weak self] workspaceId in
+            self?.setBonsplitDropTargetWorkspaceId(workspaceId)
+        }
         bonsplit.performExistingWorkspaceMove = { workspaceId, transfer in
             guard actions.moveBonsplitToExistingWorkspace(workspaceId, transfer) else { return false }
             actions.didMoveBonsplitToWorkspace(workspaceId)
@@ -1601,8 +1607,30 @@ final class SidebarWorkspaceTableController: NSObject, NSTableViewDataSource, NS
         bonsplit.updateAutoscroll = {}
         bonsplit.setWorkspaceDropTargetCollectionActive = { _ in }
         bonsplit.setDropIndicator = { _ in }
+        bonsplit.setExistingWorkspaceDropTarget = { _ in }
         bonsplit.performExistingWorkspaceMove = { _, _ in false }
         bonsplit.performNewWorkspaceMove = { _, _, _ in false }
+    }
+
+    private func setBonsplitDropTargetWorkspaceId(_ workspaceId: UUID?) {
+        guard bonsplitDropTargetWorkspaceId != workspaceId else { return }
+        let previous = bonsplitDropTargetWorkspaceId
+        bonsplitDropTargetWorkspaceId = workspaceId
+        guard let table = containerView?.tableView else { return }
+        let visibleRows = table.rows(in: table.visibleRect)
+        guard visibleRows.location != NSNotFound else { return }
+        for row in visibleRows.location..<NSMaxRange(visibleRows) where rows.indices.contains(row) {
+            let rowWorkspaceId = rows[row].workspaceId
+            guard rowWorkspaceId == previous || rowWorkspaceId == workspaceId else { continue }
+            switch table.view(atColumn: 0, row: row, makeIfNecessary: false) {
+            case let cell as SidebarWorkspaceRowTableCellView:
+                cell.setBonsplitDropTarget(rowWorkspaceId == workspaceId)
+            case let cell as SidebarGroupHeaderTableCellView:
+                cell.setBonsplitDropTarget(rowWorkspaceId == workspaceId)
+            default:
+                break
+            }
+        }
     }
 
     private func updateDropTargets() {

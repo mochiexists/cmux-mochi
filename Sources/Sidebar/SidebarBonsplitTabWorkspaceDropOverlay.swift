@@ -68,13 +68,16 @@ struct SidebarBonsplitTabWorkspaceDropOverlay: NSViewRepresentable {
             }
             switch action {
             case .existingWorkspace(let workspaceId):
+                let tabIds = transfer.orderedTabs.map(\.id)
                 if let source = app.locateBonsplitSurface(tabId: transfer.tab.id),
                    source.workspaceId == workspaceId {
                     return true
                 }
-                return app.canMoveBonsplitTab(tabId: transfer.tab.id, toWorkspace: workspaceId)
+                return app.canMoveBonsplitTabs(tabIds: tabIds, toWorkspace: workspaceId)
             case .newWorkspace:
-                return app.canMoveBonsplitTabToNewWorkspace(tabId: transfer.tab.id)
+                return app.canMoveBonsplitTabsToNewWorkspace(
+                    tabIds: transfer.orderedTabs.map(\.id)
+                )
             }
         }
         nsView.updateAutoscroll = updateAutoscroll
@@ -128,6 +131,10 @@ final class SidebarBonsplitTabWorkspaceDropView: NSView {
     var canPerformAction: (SidebarDropPlanner.WorkspaceDropAction, BonsplitTabDragPayload.Transfer) -> Bool = { _, _ in false }
     var updateAutoscroll: () -> Void = {}
     var springLoadWorkspace: (UUID) -> Void = { _ in }
+    /// Paints the workspace row currently accepting this pane-tab drop. This
+    /// is presentation-only; spring-loading may change the active workspace,
+    /// but the drag target remains separately visible until the drag exits.
+    var setExistingWorkspaceDropTarget: (UUID?) -> Void = { _ in }
     private var lastSprungWorkspaceId: UUID?
     var setWorkspaceDropTargetCollectionActive: (Bool) -> Void = { _ in }
     var setDropIndicator: (SidebarDropIndicator?) -> Void = { _ in }
@@ -150,6 +157,7 @@ final class SidebarBonsplitTabWorkspaceDropView: NSView {
         isRequestingWorkspaceDropTargets = false
         setWorkspaceDropTargetCollectionActive(false)
         setDropIndicator(nil)
+        setExistingWorkspaceDropTarget(nil)
         targetBridge?.clearTargets()
     }
 
@@ -180,6 +188,7 @@ final class SidebarBonsplitTabWorkspaceDropView: NSView {
         guard pendingDrop == nil else {
             completeOrClearPendingDropAfterDragTeardown()
             setDropIndicator(nil)
+            setExistingWorkspaceDropTarget(nil)
             return
         }
         updateWorkspaceDropTargetCollection(sender, isActive: false)
@@ -187,6 +196,7 @@ final class SidebarBonsplitTabWorkspaceDropView: NSView {
         dlog("sidebar.workspaceDropOverlay.exited clear=1")
 #endif
         setDropIndicator(nil)
+        setExistingWorkspaceDropTarget(nil)
     }
 
     override func prepareForDragOperation(_ sender: any NSDraggingInfo) -> Bool {
@@ -208,6 +218,7 @@ final class SidebarBonsplitTabWorkspaceDropView: NSView {
             pendingDrop = nil
             updateWorkspaceDropTargetCollection(sender, isActive: false)
             setDropIndicator(nil)
+            setExistingWorkspaceDropTarget(nil)
 #if DEBUG
             dlog(
                 "sidebar.workspaceDropOverlay.perform moved=\(moved ? 1 : 0) " +
@@ -231,6 +242,7 @@ final class SidebarBonsplitTabWorkspaceDropView: NSView {
 
         updateWorkspaceDropTargetCollection(sender, isActive: false)
         setDropIndicator(nil)
+        setExistingWorkspaceDropTarget(nil)
 #if DEBUG
         dlog(
             "sidebar.workspaceDropOverlay.perform moved=0 reason=notAccepted " +
@@ -251,6 +263,7 @@ final class SidebarBonsplitTabWorkspaceDropView: NSView {
         defer {
             updateWorkspaceDropTargetCollection(nil, isActive: false)
             setDropIndicator(nil)
+            setExistingWorkspaceDropTarget(nil)
         }
 
         guard let action = SidebarDropPlanner().workspaceAction(for: pendingDrop.point, targets: targets),
@@ -300,6 +313,7 @@ final class SidebarBonsplitTabWorkspaceDropView: NSView {
         guard pendingDrop == nil else {
             completeOrClearPendingDropAfterDragTeardown()
             setDropIndicator(nil)
+            setExistingWorkspaceDropTarget(nil)
             return
         }
         updateWorkspaceDropTargetCollection(sender, isActive: false)
@@ -307,6 +321,7 @@ final class SidebarBonsplitTabWorkspaceDropView: NSView {
         dlog("sidebar.workspaceDropOverlay.concluded clear=1")
 #endif
         setDropIndicator(nil)
+        setExistingWorkspaceDropTarget(nil)
     }
 
     private func updateDrag(_ sender: any NSDraggingInfo, phase: String) -> NSDragOperation {
@@ -315,6 +330,7 @@ final class SidebarBonsplitTabWorkspaceDropView: NSView {
            targets.isEmpty,
            BonsplitTabDragPayload.transfer(from: sender.draggingPasteboard) != nil {
             setDropIndicator(nil)
+            setExistingWorkspaceDropTarget(nil)
 #if DEBUG
             dlog("sidebar.workspaceDropOverlay.\(phase) accepted=1 pendingTargets=1")
 #endif
@@ -322,6 +338,7 @@ final class SidebarBonsplitTabWorkspaceDropView: NSView {
         }
         guard acceptedTransfer(sender, action: action) != nil, let action else {
             setDropIndicator(nil)
+            setExistingWorkspaceDropTarget(nil)
 #if DEBUG
             dlog(
                 "sidebar.workspaceDropOverlay.\(phase) accepted=0 clear=1 " +
@@ -335,9 +352,11 @@ final class SidebarBonsplitTabWorkspaceDropView: NSView {
         switch action {
         case .newWorkspace(_, let indicator):
             setDropIndicator(indicator)
+            setExistingWorkspaceDropTarget(nil)
             lastSprungWorkspaceId = nil
         case .existingWorkspace(let workspaceId):
             setDropIndicator(nil)
+            setExistingWorkspaceDropTarget(workspaceId)
             // Spring-load: bring the hovered workspace to the foreground so the
             // session can be dropped into a specific pane of its layout. Only
             // fire when the hovered workspace changes to avoid churn.
@@ -381,6 +400,7 @@ final class SidebarBonsplitTabWorkspaceDropView: NSView {
             self.clearPendingDrop()
             self.setWorkspaceDropTargetCollectionActive(false)
             self.setDropIndicator(nil)
+            self.setExistingWorkspaceDropTarget(nil)
 #if DEBUG
             dlog("sidebar.workspaceDropOverlay.pendingTeardown clear=1")
 #endif
@@ -397,6 +417,7 @@ final class SidebarBonsplitTabWorkspaceDropView: NSView {
         if !shouldRequestTargets {
             pendingDrop = nil
             lastSprungWorkspaceId = nil
+            setExistingWorkspaceDropTarget(nil)
         }
         if shouldRequestTargets, !isRequestingWorkspaceDropTargets {
             workspaceDropTargetRequestId &+= 1

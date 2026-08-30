@@ -33,6 +33,7 @@ final class SidebarGroupHeaderTableCellView: NSTableCellView {
     private var contextMenuVisible = false
     private var contextMenuDidOpen: (() -> Void)?
     private var contextMenuDidClose: (() -> Void)?
+    private var isBonsplitDropTarget = false
 
     override var isFlipped: Bool { true }
 
@@ -112,6 +113,15 @@ final class SidebarGroupHeaderTableCellView: NSTableCellView {
         guard self.model != model else { return }
         self.model = model
         applyModel(model)
+        needsLayout = true
+    }
+
+    func setBonsplitDropTarget(_ isTarget: Bool) {
+        guard isBonsplitDropTarget != isTarget else { return }
+        isBonsplitDropTarget = isTarget
+        if let model {
+            applyModel(model)
+        }
         needsLayout = true
     }
 
@@ -221,6 +231,14 @@ final class SidebarGroupHeaderTableCellView: NSTableCellView {
             ? 6
             : 4
         backgroundView.layer?.backgroundColor = headerBackgroundColor(for: model).cgColor
+        if isBonsplitDropTarget {
+            backgroundView.layer?.backgroundColor = cmuxAccentNSColor()
+                .withAlphaComponent(0.18).cgColor
+            backgroundView.layer?.borderWidth = 2
+            backgroundView.layer?.borderColor = cmuxAccentNSColor().cgColor
+        } else {
+            backgroundView.layer?.borderWidth = 0
+        }
 
         topDropIndicator.layer?.backgroundColor = cmuxAccentNSColor().cgColor
         bottomDropIndicator.layer?.backgroundColor = cmuxAccentNSColor().cgColor

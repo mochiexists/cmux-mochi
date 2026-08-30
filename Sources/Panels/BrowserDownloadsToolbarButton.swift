@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// Safari/Chrome-style downloads button for the browser omnibar. Shows a
-/// popover listing recent downloads with Open / Show in Finder actions.
+/// popover listing recent downloads with Open / Reveal in Finder actions.
 ///
 /// Everything below this view receives immutable value snapshots
 /// (`BrowserDownloadRecord`) plus action closures — no `BrowserPanel` store
@@ -172,8 +172,8 @@ private struct BrowserDownloadRow: View {
                     Image(systemName: "magnifyingglass")
                 }
                 .buttonStyle(.borderless)
-                .help(String(localized: "browser.downloads.showInFinder", defaultValue: "Show in Finder"))
-                .accessibilityLabel(String(localized: "browser.downloads.showInFinder", defaultValue: "Show in Finder"))
+                .help(FileExternalOpenText.revealInFinder)
+                .accessibilityLabel(FileExternalOpenText.revealInFinder)
             }
         }
         .padding(.horizontal, 12)

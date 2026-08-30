@@ -104,7 +104,7 @@ public final class WorkspaceGroupCoordinator<Tab: WorkspaceTabRepresenting> {
         // CLAUDE.md, those entrypoints must not mutate the user's active
         // sidebar selection.
         if collapseSidebarSelection,
-           !host.sidebarSelectedWorkspaceIds.isDisjoint(with: Set(eligibleChildren)) || host.sidebarSelectedWorkspaceIds.count > 1 {
+           host.sidebarSelectedWorkspaceIds != [anchor.id] {
             let hiddenIds = host.sidebarSelectedWorkspaceIds
             host.collapseSidebarSelectionForGroupCreation(
                 hiddenWorkspaceIds: hiddenIds,

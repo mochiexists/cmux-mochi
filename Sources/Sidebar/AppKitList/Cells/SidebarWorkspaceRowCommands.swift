@@ -834,7 +834,7 @@ struct SidebarWorkspaceRowMenuBuilder {
                 WorkspacePathClipboard.copy(finderPath)
             })
             menu.addItem(item(
-                String(localized: "contextMenu.showWorkspaceInFinder", defaultValue: "Show in Finder"),
+                FileExternalOpenText.revealInFinder,
                 enabled: finderPath != nil
             ) {
                 guard let finderPath else { return }

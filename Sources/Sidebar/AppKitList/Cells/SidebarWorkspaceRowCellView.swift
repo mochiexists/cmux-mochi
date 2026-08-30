@@ -69,6 +69,7 @@ final class SidebarWorkspaceRowTableCellView: NSTableCellView {
     var isEditing = false
     private var pumpCancellables: [AnyCancellable] = []
     private var isPresentationActive = true
+    private var isBonsplitDropTarget = false
 
 #if DEBUG
     /// Test seam: observes every full model application (configure, pump,
@@ -298,6 +299,15 @@ final class SidebarWorkspaceRowTableCellView: NSTableCellView {
         needsLayout = true
     }
 
+    func setBonsplitDropTarget(_ isTarget: Bool) {
+        guard isBonsplitDropTarget != isTarget else { return }
+        isBonsplitDropTarget = isTarget
+        if let model {
+            applyModel(model)
+        }
+        needsLayout = true
+    }
+
     override func setFrameSize(_ newSize: NSSize) {
         let changed = newSize != frame.size
         super.setFrameSize(newSize)
@@ -371,6 +381,12 @@ final class SidebarWorkspaceRowTableCellView: NSTableCellView {
             backgroundView.layer?.borderColor = NSColor.labelColor.withAlphaComponent(0.5).cgColor
         } else {
             backgroundView.layer?.borderWidth = 0
+        }
+        if isBonsplitDropTarget {
+            backgroundView.layer?.backgroundColor = cmuxAccentNSColor()
+                .withAlphaComponent(0.18).cgColor
+            backgroundView.layer?.borderWidth = 2
+            backgroundView.layer?.borderColor = cmuxAccentNSColor().cgColor
         }
         let railColor = sidebarWorkspaceRowExplicitRailNSColor(
             activeTabIndicatorStyle: settings.activeTabIndicatorStyle,

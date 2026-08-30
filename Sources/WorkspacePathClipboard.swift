@@ -4,7 +4,7 @@ import Foundation
 /// Single action path behind "Copy Workspace Path", shared by the AppKit sidebar
 /// row menu and the SwiftUI workspace context menu so both surfaces copy the
 /// same thing. The path is the workspace's Finder directory — the same value
-/// "Show in Finder" reveals.
+/// "Reveal in Finder" actions.
 enum WorkspacePathClipboard {
     static let menuTitle = String(
         localized: "contextMenu.copyWorkspacePath",
