@@ -64,6 +64,7 @@ import Testing
         let window: NSWindow
         let pasteboard: NSPasteboard
         let sprung: Recorder
+        let highlighted: Recorder
 
         final class Recorder {
             private(set) var workspaceIds: [UUID] = []
@@ -113,7 +114,16 @@ import Testing
         let sprung = Harness.Recorder()
         view.springLoadWorkspace = { sprung.record($0) }
 
-        return Harness(view: view, window: window, pasteboard: pasteboard, sprung: sprung)
+        let highlighted = Harness.Recorder()
+        view.setExistingWorkspaceDropTarget = { highlighted.record($0) }
+
+        return Harness(
+            view: view,
+            window: window,
+            pasteboard: pasteboard,
+            sprung: sprung,
+            highlighted: highlighted
+        )
     }
 
     private static func target(index: Int) -> SidebarDropPlanner.WorkspaceDropTarget {
@@ -132,6 +142,7 @@ import Testing
         harness.hover(first, entering: true)
 
         #expect(harness.sprung.workspaceIds == [first.workspaceId])
+        #expect(harness.highlighted.workspaceIds == [first.workspaceId])
     }
 
     @Test @MainActor
@@ -159,6 +170,7 @@ import Testing
         harness.hover(second)
 
         #expect(harness.sprung.workspaceIds == [first.workspaceId, second.workspaceId])
+        #expect(harness.highlighted.workspaceIds == [first.workspaceId, second.workspaceId])
     }
 
     @Test @MainActor
@@ -174,5 +186,6 @@ import Testing
             harness.sprung.workspaceIds == [first.workspaceId, first.workspaceId],
             "Stale spring state must not suppress the switch on a fresh drag"
         )
+        #expect(harness.highlighted.workspaceIds == [first.workspaceId, first.workspaceId])
     }
 }
