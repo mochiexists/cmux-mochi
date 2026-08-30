@@ -11,6 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = ROOT / ".github" / "workflows" / "ios-testflight.yml"
 NOTES_GENERATOR = ROOT / "ios" / "scripts" / "generate-testflight-notes.sh"
 DISTRIBUTION_HELPER = ROOT / "ios" / "scripts" / "resolve_testflight_distribution.py"
+UPLOAD_SCRIPT = ROOT / "ios" / "scripts" / "upload-testflight.sh"
 BUN = shutil.which("bun")
 IOS_PATHS = (
     "ios/**",
@@ -1083,6 +1084,14 @@ def test_manual_lane_stays_on_cmux_internal_identity() -> None:
     )
 
 
+def test_upload_script_guards_empty_xcode_auth_array_for_bash32() -> None:
+    text = UPLOAD_SCRIPT.read_text(encoding="utf-8")
+    guarded_expansion = '${XCODE_AUTH_ARGS[@]+"${XCODE_AUTH_ARGS[@]}"}'
+
+    assert text.count(guarded_expansion) == 2
+    assert '"${XCODE_AUTH_ARGS[@]}"' not in text.replace(guarded_expansion, "")
+
+
 if __name__ == "__main__":
     test_literal_block_accepts_whitespace_only_lines()
     test_workflow_is_manual_only_with_explicit_release_inputs()
@@ -1091,4 +1100,5 @@ if __name__ == "__main__":
     test_testflight_notes_use_the_same_ios_path_contract()
     test_manual_runs_queue_per_ref_without_canceling_uploads()
     test_manual_lane_stays_on_cmux_internal_identity()
+    test_upload_script_guards_empty_xcode_auth_array_for_bash32()
     print("all manual-only iOS TestFlight workflow tests passed")
