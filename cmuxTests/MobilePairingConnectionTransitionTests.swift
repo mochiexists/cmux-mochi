@@ -60,15 +60,15 @@ struct MobilePairingConnectionTransitionTests {
         #expect(connected == .connected(ready))
     }
 
-    @Test("Connected flips back to ready when the new connection drops to the baseline")
-    func connectedFlipsBackToReadyWhenConnectionsDrop() {
+    @Test("Connected remains latched when enrollment briefly reconnects")
+    func connectedRemainsLatchedWhenConnectionsDrop() {
         let ready = makeReady()
         let next = MobilePairingModel.connectionTransition(
             from: .connected(ready),
             activeConnectionCount: 1,
             baselineConnectionCount: 1
         )
-        #expect(next == .ready(ready))
+        #expect(next == .connected(ready))
     }
 
     @Test("Connected stays connected while the new phone remains attached")

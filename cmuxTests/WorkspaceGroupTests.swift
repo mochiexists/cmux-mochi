@@ -61,6 +61,7 @@ struct WorkspaceGroupTests {
         #expect(manager.tabs.map(\.id) == [group.anchorWorkspaceId] + originalIds)
         #expect(manager.tabs.filter { $0.groupId == groupId }.map(\.id) == [group.anchorWorkspaceId])
         #expect(manager.selectedTabId == group.anchorWorkspaceId)
+        #expect(manager.sidebarSelectedWorkspaceIds == [group.anchorWorkspaceId])
     }
 
     @Test func createGroupKeepsFirstChildPosition() throws {

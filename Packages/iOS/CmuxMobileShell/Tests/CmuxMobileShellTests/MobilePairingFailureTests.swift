@@ -32,10 +32,9 @@ import Testing
             error: CmxNetworkByteTransportError.connectionFailed("no route", .hostUnreachable),
             route: route
         )
-        #expect(category == .hostUnreachable(host: "100.99.1.2", port: 58_465))
-        #expect(category.analyticsReason == "host_unreachable")
-        #expect(category.message.contains("100.99.1.2"))
-        #expect(category.message.contains("58465"))
+        #expect(category == .tailscaleUnavailable(host: "100.99.1.2", port: 58_465))
+        #expect(category.analyticsReason == "tailscale_unavailable")
+        #expect(category.message.localizedCaseInsensitiveContains("Tailscale"))
         // The dominant no-Tailscale case must give actionable reachability guidance.
         #expect(category.guidance != nil)
     }
@@ -254,6 +253,7 @@ import Testing
         let route = try route()
         let categories: [MobilePairingFailureCategory] = [
             .offline,
+            .tailscaleUnavailable(host: "h", port: 1),
             .hostUnreachable(host: "h", port: 1),
             .listenerNotRunning(host: "h", port: 1),
             .localNetworkBlocked,
