@@ -3705,6 +3705,20 @@ final class BonsplitTabDragPayloadTests: XCTestCase {
         XCTAssertNotNil(BonsplitTabDragPayload.transfer(from: pasteboard))
     }
 
+    func testOrderedBatchPayloadPreservesAllSelectedTabs() throws {
+        let first = UUID()
+        let second = UUID()
+        let pasteboard = try makeBonsplitPayloadPasteboard(
+            kind: nil,
+            orderedTabIds: [first, second]
+        )
+
+        let transfer = try XCTUnwrap(BonsplitTabDragPayload.transfer(from: pasteboard))
+
+        XCTAssertEqual(transfer.tab.id, first)
+        XCTAssertEqual(transfer.orderedTabs.map(\.id), [first, second])
+    }
+
     func testWorkspaceDropRoutingAcceptsTabTransferTypeOnly() {
         XCTAssertTrue(
             BonsplitTabDragPayload.canRouteWorkspaceDrop(
@@ -3726,20 +3740,24 @@ final class BonsplitTabDragPayloadTests: XCTestCase {
 
     private func makeBonsplitPayloadPasteboard(
         kind: String?,
-        includesFilePreviewTransferType: Bool = false
+        includesFilePreviewTransferType: Bool = false,
+        orderedTabIds: [UUID]? = nil
     ) throws -> NSPasteboard {
         let pasteboard = NSPasteboard(name: NSPasteboard.Name("cmux.test.bonsplit.\(UUID().uuidString)"))
         pasteboard.clearContents()
 
-        var tab: [String: Any] = ["id": UUID().uuidString]
+        var tab: [String: Any] = ["id": (orderedTabIds?.first ?? UUID()).uuidString]
         if let kind {
             tab["kind"] = kind
         }
-        let payload: [String: Any] = [
+        var payload: [String: Any] = [
             "tab": tab,
             "sourcePaneId": UUID().uuidString,
             "sourceProcessId": Int(ProcessInfo.processInfo.processIdentifier)
         ]
+        if let orderedTabIds {
+            payload["tabs"] = orderedTabIds.map { ["id": $0.uuidString] }
+        }
         let data = try JSONSerialization.data(withJSONObject: payload)
         pasteboard.setData(data, forType: NSPasteboard.PasteboardType(BonsplitTabDragPayload.typeIdentifier))
         if includesFilePreviewTransferType {

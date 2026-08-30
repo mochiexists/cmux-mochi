@@ -242,6 +242,67 @@ struct AppDelegateMoveTabToNewWorkspaceTests {
     }
 
     @Test
+    func moveBonsplitTabBatchToExistingWorkspaceMovesEverySelectedPanel() throws {
+        let app = AppDelegate()
+        let windowId = UUID()
+        let manager = TabManager()
+        app.registerMainWindowContextForTesting(windowId: windowId, tabManager: manager)
+        defer { app.unregisterMainWindowContextForTesting(windowId: windowId) }
+
+        let source = try XCTUnwrap(manager.selectedWorkspace)
+        let sourcePane = try XCTUnwrap(source.bonsplitController.allPaneIds.first)
+        let firstPanel = try XCTUnwrap(source.newTerminalSurface(inPane: sourcePane, focus: false))
+        let secondPanel = try XCTUnwrap(source.newTerminalSurface(inPane: sourcePane, focus: false))
+        let tabIds = try [firstPanel.id, secondPanel.id].map {
+            try XCTUnwrap(source.surfaceIdFromPanelId($0)?.uuid)
+        }
+        let destination = manager.addWorkspace(title: "Batch destination", select: false)
+
+        #expect(app.moveBonsplitTabs(
+            tabIds: tabIds,
+            toWorkspace: destination.id,
+            focus: false,
+            focusWindow: false
+        ))
+        #expect(destination.panels[firstPanel.id] != nil)
+        #expect(destination.panels[secondPanel.id] != nil)
+        #expect(source.panels[firstPanel.id] == nil)
+        #expect(source.panels[secondPanel.id] == nil)
+    }
+
+    @Test
+    func moveBonsplitTabBatchToNewWorkspaceCreatesOneDestination() throws {
+        let app = AppDelegate()
+        let windowId = UUID()
+        let manager = TabManager()
+        app.registerMainWindowContextForTesting(windowId: windowId, tabManager: manager)
+        defer { app.unregisterMainWindowContextForTesting(windowId: windowId) }
+
+        let source = try XCTUnwrap(manager.selectedWorkspace)
+        let sourcePane = try XCTUnwrap(source.bonsplitController.allPaneIds.first)
+        let firstPanel = try XCTUnwrap(source.newTerminalSurface(inPane: sourcePane, focus: false))
+        let secondPanel = try XCTUnwrap(source.newTerminalSurface(inPane: sourcePane, focus: false))
+        let tabIds = try [firstPanel.id, secondPanel.id].map {
+            try XCTUnwrap(source.surfaceIdFromPanelId($0)?.uuid)
+        }
+        let originalWorkspaceCount = manager.tabs.count
+
+        let result = try XCTUnwrap(app.moveBonsplitTabsToNewWorkspace(
+            tabIds: tabIds,
+            destinationManager: manager,
+            focus: false,
+            focusWindow: false
+        ))
+        let destination = try XCTUnwrap(manager.tabs.first { $0.id == result.destinationWorkspaceId })
+
+        #expect(manager.tabs.count == originalWorkspaceCount + 1)
+        #expect(destination.panels.count == 2)
+        #expect(destination.panels[firstPanel.id] != nil)
+        #expect(destination.panels[secondPanel.id] != nil)
+        #expect(source.panels.count == 1)
+    }
+
+    @Test
     func moveSurfaceToExistingWorkspaceClosesEmptiedSourceWorkspaceAndFocusesDestination() throws {
         let app = AppDelegate()
         let windowId = UUID()
