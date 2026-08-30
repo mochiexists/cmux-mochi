@@ -42,15 +42,17 @@ struct SidebarBonsplitTabNewWorkspaceDropOverlay: NSViewRepresentable {
 
     func updateNSView(_ nsView: SidebarBonsplitTabNewWorkspaceDropView, context: Context) {
         nsView.isValidTransfer = { transfer in
-            return AppDelegate.shared?.canMoveBonsplitTabToNewWorkspace(tabId: transfer.tab.id) ?? false
+            return AppDelegate.shared?.canMoveBonsplitTabsToNewWorkspace(
+                tabIds: transfer.orderedTabs.map(\.id)
+            ) ?? false
         }
         nsView.setDropActive = { isActive in
             dropIndicator = isActive ? SidebarDropIndicator(tabId: nil, edge: .bottom) : nil
         }
         nsView.performMove = { transfer in
             guard let app = AppDelegate.shared,
-                  let result = app.moveBonsplitTabToNewWorkspace(
-                    tabId: transfer.tab.id,
+                  let result = app.moveBonsplitTabsToNewWorkspace(
+                    tabIds: transfer.orderedTabs.map(\.id),
                     destinationManager: tabManager,
                     focus: true,
                     focusWindow: true,

@@ -3,6 +3,7 @@ import Foundation
 
 struct BrowserPaneDragTransfer: Equatable {
     let tabId: UUID
+    let orderedTabIds: [UUID]
     let sourcePaneId: UUID
     let sourceProcessId: Int32
     let kind: String?
@@ -10,12 +11,22 @@ struct BrowserPaneDragTransfer: Equatable {
 
     init(
         tabId: UUID,
+        orderedTabIds: [UUID]? = nil,
         sourcePaneId: UUID,
         sourceProcessId: Int32,
         kind: String? = nil,
         isFilePreviewTransfer: Bool = false
     ) {
         self.tabId = tabId
+        if let orderedTabIds, orderedTabIds.contains(tabId) {
+            self.orderedTabIds = orderedTabIds.reduce(into: [UUID]()) { result, id in
+                if !result.contains(id) {
+                    result.append(id)
+                }
+            }
+        } else {
+            self.orderedTabIds = [tabId]
+        }
         self.sourcePaneId = sourcePaneId
         self.sourceProcessId = sourceProcessId
         self.kind = kind
@@ -58,8 +69,12 @@ struct BrowserPaneDragTransfer: Equatable {
 
         let sourceProcessId = (json["sourceProcessId"] as? NSNumber)?.int32Value ?? -1
         let kind = tab["kind"] as? String
+        let orderedTabIds = (json["tabs"] as? [[String: Any]])?.compactMap { item in
+            (item["id"] as? String).flatMap(UUID.init(uuidString:))
+        }
         return BrowserPaneDragTransfer(
             tabId: tabId,
+            orderedTabIds: orderedTabIds,
             sourcePaneId: sourcePaneId,
             sourceProcessId: sourceProcessId,
             kind: kind,

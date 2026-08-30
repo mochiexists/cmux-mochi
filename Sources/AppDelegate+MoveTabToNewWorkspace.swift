@@ -1,4 +1,5 @@
 import Foundation
+import Bonsplit
 import CmuxSettings
 
 struct SurfaceNewWorkspaceMoveResult {
@@ -10,8 +11,219 @@ struct SurfaceNewWorkspaceMoveResult {
     let paneId: UUID?
 }
 
+struct SurfaceBatchNewWorkspaceMoveResult {
+    let sourceWindowId: UUID
+    let sourceWorkspaceId: UUID
+    let destinationWindowId: UUID?
+    let destinationWorkspaceId: UUID
+    let surfaceIds: [UUID]
+    let paneId: UUID?
+}
+
 @MainActor
 extension AppDelegate {
+    private struct BonsplitBatchSource {
+        let tabId: UUID
+        let panelId: UUID
+        let workspaceId: UUID
+        let paneId: PaneID
+        let index: Int
+        let tabManager: TabManager
+        let windowId: UUID
+    }
+
+    private func bonsplitBatchSources(tabIds: [UUID]) -> [BonsplitBatchSource]? {
+        let uniqueTabIds = tabIds.reduce(into: [UUID]()) { result, tabId in
+            if !result.contains(tabId) {
+                result.append(tabId)
+            }
+        }
+        guard !uniqueTabIds.isEmpty else { return nil }
+
+        var sources: [BonsplitBatchSource] = []
+        for tabId in uniqueTabIds {
+            guard let located = locateBonsplitSurface(tabId: tabId),
+                  let workspace = located.tabManager.tabs.first(where: { $0.id == located.workspaceId }),
+                  workspace.panels[located.panelId] != nil,
+                  let paneId = workspace.paneId(forPanelId: located.panelId),
+                  let index = workspace.indexInPane(forPanelId: located.panelId) else {
+                return nil
+            }
+            sources.append(BonsplitBatchSource(
+                tabId: tabId,
+                panelId: located.panelId,
+                workspaceId: located.workspaceId,
+                paneId: paneId,
+                index: index,
+                tabManager: located.tabManager,
+                windowId: located.windowId
+            ))
+        }
+
+        guard let first = sources.first,
+              sources.allSatisfy({
+                  $0.workspaceId == first.workspaceId
+                      && $0.paneId == first.paneId
+                      && $0.tabManager === first.tabManager
+              }) else {
+            return nil
+        }
+        return sources.sorted { $0.index < $1.index }
+    }
+
+    func canMoveBonsplitTabs(tabIds: [UUID], toWorkspace targetWorkspaceId: UUID) -> Bool {
+        guard let sources = bonsplitBatchSources(tabIds: tabIds),
+              let destinationManager = tabManagerFor(tabId: targetWorkspaceId),
+              destinationManager.tabs.contains(where: { $0.id == targetWorkspaceId }) else {
+            return false
+        }
+        return sources.allSatisfy { canMoveBonsplitTab(tabId: $0.tabId, toWorkspace: targetWorkspaceId) }
+    }
+
+    func canMoveBonsplitTabsToNewWorkspace(tabIds: [UUID]) -> Bool {
+        guard let sources = bonsplitBatchSources(tabIds: tabIds),
+              let first = sources.first,
+              let workspace = first.tabManager.tabs.first(where: { $0.id == first.workspaceId }) else {
+            return false
+        }
+        return workspace.panels.count > sources.count
+    }
+
+    @discardableResult
+    func moveBonsplitTabs(
+        tabIds: [UUID],
+        toWorkspace targetWorkspaceId: UUID,
+        targetPane: PaneID? = nil,
+        targetIndex: Int? = nil,
+        splitTarget: (orientation: SplitOrientation, insertFirst: Bool)? = nil,
+        focus: Bool = true,
+        focusWindow: Bool = true
+    ) -> Bool {
+        guard let sources = bonsplitBatchSources(tabIds: tabIds),
+              let first = sources.first else { return false }
+        if first.workspaceId == targetWorkspaceId,
+           targetPane == nil,
+           splitTarget == nil {
+            return true
+        }
+        guard canMoveBonsplitTabs(
+            tabIds: sources.map(\.tabId),
+            toWorkspace: targetWorkspaceId
+        ) else { return false }
+
+        var moved: [BonsplitBatchSource] = []
+        var resolvedPane = targetPane
+        for (offset, source) in sources.enumerated() {
+            let movedSuccessfully = moveBonsplitTab(
+                tabId: source.tabId,
+                toWorkspace: targetWorkspaceId,
+                targetPane: resolvedPane,
+                targetIndex: targetIndex.map { $0 + offset },
+                splitTarget: offset == 0 ? splitTarget : nil,
+                focus: false,
+                focusWindow: false
+            )
+            guard movedSuccessfully else {
+                rollbackBonsplitBatch(moved.reversed())
+                return false
+            }
+            moved.append(source)
+            if resolvedPane == nil,
+               let destination = workspaceFor(tabId: targetWorkspaceId) {
+                resolvedPane = destination.paneId(forPanelId: source.panelId)
+            }
+        }
+
+        if focus,
+           let destinationManager = tabManagerFor(tabId: targetWorkspaceId) {
+            if focusWindow, let destinationWindowId = windowId(for: destinationManager) {
+                _ = focusMainWindow(windowId: destinationWindowId)
+            }
+            destinationManager.focusTab(
+                targetWorkspaceId,
+                surfaceId: first.panelId,
+                suppressFlash: true
+            )
+        }
+        return true
+    }
+
+    @discardableResult
+    func moveBonsplitTabsToNewWorkspace(
+        tabIds: [UUID],
+        destinationManager: TabManager? = nil,
+        title: String? = nil,
+        focus: Bool = true,
+        focusWindow: Bool = true,
+        placementOverride: WorkspacePlacement? = nil,
+        insertionIndexOverride: Int? = nil
+    ) -> SurfaceBatchNewWorkspaceMoveResult? {
+        guard let sources = bonsplitBatchSources(tabIds: tabIds),
+              let first = sources.first,
+              canMoveBonsplitTabsToNewWorkspace(tabIds: sources.map(\.tabId)),
+              let firstResult = moveBonsplitTabToNewWorkspace(
+                  tabId: first.tabId,
+                  destinationManager: destinationManager,
+                  title: title,
+                  focus: false,
+                  focusWindow: false,
+                  placementOverride: placementOverride,
+                  insertionIndexOverride: insertionIndexOverride
+              ) else {
+            return nil
+        }
+
+        var moved = [first]
+        for source in sources.dropFirst() {
+            guard moveBonsplitTab(
+                tabId: source.tabId,
+                toWorkspace: firstResult.destinationWorkspaceId,
+                targetPane: firstResult.paneId.map(PaneID.init(id:)),
+                focus: false,
+                focusWindow: false
+            ) else {
+                rollbackBonsplitBatch(moved.reversed())
+                return nil
+            }
+            moved.append(source)
+        }
+
+        let targetManager = destinationManager ?? first.tabManager
+        if focus {
+            if focusWindow, let destinationWindowId = windowId(for: targetManager) {
+                _ = focusMainWindow(windowId: destinationWindowId)
+            }
+            targetManager.focusTab(
+                firstResult.destinationWorkspaceId,
+                surfaceId: first.panelId,
+                suppressFlash: true
+            )
+        }
+
+        return SurfaceBatchNewWorkspaceMoveResult(
+            sourceWindowId: first.windowId,
+            sourceWorkspaceId: first.workspaceId,
+            destinationWindowId: windowId(for: targetManager),
+            destinationWorkspaceId: firstResult.destinationWorkspaceId,
+            surfaceIds: sources.map(\.panelId),
+            paneId: firstResult.paneId
+        )
+    }
+
+    private func rollbackBonsplitBatch<S: Sequence>(_ sources: S)
+    where S.Element == BonsplitBatchSource {
+        for source in sources {
+            _ = moveBonsplitTab(
+                tabId: source.tabId,
+                toWorkspace: source.workspaceId,
+                targetPane: source.paneId,
+                targetIndex: source.index,
+                focus: false,
+                focusWindow: false
+            )
+        }
+    }
+
     func canMoveSurfaceToNewWorkspace(panelId: UUID) -> Bool {
         guard let source = locateSurface(surfaceId: panelId),
               let sourceWorkspace = source.tabManager.tabs.first(where: { $0.id == source.workspaceId }),

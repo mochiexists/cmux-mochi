@@ -271,6 +271,22 @@ final class BrowserPaneDropRoutingTests: XCTestCase {
         XCTAssertEqual(transfer?.tabId, tabIds[0])
     }
 
+    func testDecodeTransferPayloadRejectsBatchThatOmitsPrimaryTab() {
+        let primaryTabId = UUID()
+        let payload = try! JSONSerialization.data(
+            withJSONObject: [
+                "tab": ["id": primaryTabId.uuidString],
+                "tabs": [["id": UUID().uuidString]],
+                "sourcePaneId": UUID().uuidString,
+                "sourceProcessId": ProcessInfo.processInfo.processIdentifier,
+            ]
+        )
+
+        let transfer = BrowserPaneDragTransfer.decode(from: payload)
+
+        XCTAssertEqual(transfer?.orderedTabIds, [primaryTabId])
+    }
+
     func testDecodePasteboardUsesDedicatedFilePreviewTransferType() throws {
         let realTabPasteboard = try makeBonsplitPanePayloadPasteboard(
             kind: "filePreview",

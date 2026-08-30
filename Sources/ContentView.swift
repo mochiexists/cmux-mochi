@@ -11708,9 +11708,14 @@ struct VerticalTabsSidebar: View, Equatable {
                        source.workspaceId == workspaceId {
                         return true
                     }
-                    return app.canMoveBonsplitTab(tabId: transfer.tab.id, toWorkspace: workspaceId)
+                    return app.canMoveBonsplitTabs(
+                        tabIds: transfer.orderedTabs.map(\.id),
+                        toWorkspace: workspaceId
+                    )
                 case .newWorkspace:
-                    return app.canMoveBonsplitTabToNewWorkspace(tabId: transfer.tab.id)
+                    return app.canMoveBonsplitTabsToNewWorkspace(
+                        tabIds: transfer.orderedTabs.map(\.id)
+                    )
                 }
             },
             moveBonsplitToExistingWorkspace: { workspaceId, transfer in
@@ -11719,8 +11724,8 @@ struct VerticalTabsSidebar: View, Equatable {
                    source.workspaceId == workspaceId {
                     return true
                 }
-                return app.moveBonsplitTab(
-                    tabId: transfer.tab.id,
+                return app.moveBonsplitTabs(
+                    tabIds: transfer.orderedTabs.map(\.id),
                     toWorkspace: workspaceId,
                     focus: true,
                     focusWindow: true
@@ -11728,8 +11733,8 @@ struct VerticalTabsSidebar: View, Equatable {
             },
             moveBonsplitToNewWorkspace: { insertionIndex, transfer in
                 guard let app = AppDelegate.shared,
-                      let result = app.moveBonsplitTabToNewWorkspace(
-                        tabId: transfer.tab.id,
+                      let result = app.moveBonsplitTabsToNewWorkspace(
+                        tabIds: transfer.orderedTabs.map(\.id),
                         destinationManager: tabManager,
                         focus: true,
                         focusWindow: true,
@@ -13362,8 +13367,8 @@ struct VerticalTabsSidebar: View, Equatable {
                    source.workspaceId == workspaceId {
                     return true
                 }
-                return app.moveBonsplitTab(
-                    tabId: transfer.tab.id,
+                return app.moveBonsplitTabs(
+                    tabIds: transfer.orderedTabs.map(\.id),
                     toWorkspace: workspaceId,
                     focus: true,
                     focusWindow: true
@@ -13371,8 +13376,8 @@ struct VerticalTabsSidebar: View, Equatable {
             },
             moveToNewWorkspace: { insertionIndex, transfer in
                 guard let app = AppDelegate.shared,
-                      let result = app.moveBonsplitTabToNewWorkspace(
-                        tabId: transfer.tab.id,
+                      let result = app.moveBonsplitTabsToNewWorkspace(
+                        tabIds: transfer.orderedTabs.map(\.id),
                         destinationManager: tabManager,
                         focus: true,
                         focusWindow: true,
@@ -14344,8 +14349,8 @@ struct VerticalTabsSidebar: View, Equatable {
             },
             moveBonsplitTabToWorkspace: { transfer, workspaceId in
                 guard let app = AppDelegate.shared else { return false }
-                return app.moveBonsplitTab(
-                    tabId: transfer.tab.id,
+                return app.moveBonsplitTabs(
+                    tabIds: transfer.orderedTabs.map(\.id),
                     toWorkspace: workspaceId,
                     focus: true,
                     focusWindow: true
@@ -16652,11 +16657,13 @@ enum BonsplitTabDragPayload {
         }
 
         let tab: TabInfo
+        let tabs: [TabInfo]?
         let sourcePaneId: UUID
         let sourceProcessId: Int32
 
         private enum CodingKeys: String, CodingKey {
             case tab
+            case tabs
             case sourcePaneId
             case sourceProcessId
         }
@@ -16664,9 +16671,16 @@ enum BonsplitTabDragPayload {
         init(from decoder: Decoder) throws {
             let container = try decoder.container(keyedBy: CodingKeys.self)
             self.tab = try container.decode(TabInfo.self, forKey: .tab)
+            self.tabs = try container.decodeIfPresent([TabInfo].self, forKey: .tabs)
             self.sourcePaneId = try container.decode(UUID.self, forKey: .sourcePaneId)
             // Legacy payloads won't include this field. Treat as foreign process.
             self.sourceProcessId = try container.decodeIfPresent(Int32.self, forKey: .sourceProcessId) ?? -1
+        }
+
+        var orderedTabs: [TabInfo] {
+            guard let tabs, tabs.contains(where: { $0.id == tab.id }) else { return [tab] }
+            var seenIds: Set<UUID> = []
+            return tabs.filter { seenIds.insert($0.id).inserted }
         }
     }
 
