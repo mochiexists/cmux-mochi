@@ -3,6 +3,34 @@
 import Testing
 
 @Suite struct OnboardingConnectionPhaseTests {
+    @Test func scannedPairingAttemptShowsBlockingProgressUntilItResolves() {
+        #expect(PairingAttemptPresentation.resolve(isPairing: true) == .connecting)
+        #expect(PairingAttemptPresentation.resolve(isPairing: false) == .idle)
+    }
+
+    @Test func reconnectBlocksWorkspaceNavigationOnlyWhileAnAttemptIsActive() {
+        #expect(MobileReconnectPresentation.shouldBlockWorkspaceNavigation(
+            connectionState: .reconnecting,
+            isReconnectingStoredMac: true,
+            isMacSwitchInFlight: false
+        ))
+        #expect(MobileReconnectPresentation.shouldBlockWorkspaceNavigation(
+            connectionState: .reconnecting,
+            isReconnectingStoredMac: false,
+            isMacSwitchInFlight: true
+        ))
+        #expect(!MobileReconnectPresentation.shouldBlockWorkspaceNavigation(
+            connectionState: .connected,
+            isReconnectingStoredMac: true,
+            isMacSwitchInFlight: true
+        ))
+        #expect(!MobileReconnectPresentation.shouldBlockWorkspaceNavigation(
+            connectionState: .disconnected,
+            isReconnectingStoredMac: false,
+            isMacSwitchInFlight: false
+        ))
+    }
+
     @Test func discoveryThatHasNotStartedShowsIdle() {
         #expect(OnboardingConnectionPhase(
             isMacReady: false,
