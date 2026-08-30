@@ -2,6 +2,16 @@
 
 All notable changes to cmux are documented here.
 
+## [0.64.206] - 2026-08-31
+
+### Added
+- Move multiple Shift-selected pane tabs together.
+
+### Fixed
+- Open repository-relative Markdown links from terminal output against the correct working directory instead of treating them as web hosts.
+- Restore clear workspace drop targets in the sidebar.
+- Clarify iOS pairing and reconnect progress, and accept empty Xcode authentication arguments.
+
 ## [0.64.22] - 2026-08-03
 
 ### Fixed
