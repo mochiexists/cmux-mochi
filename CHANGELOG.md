@@ -2,6 +2,11 @@
 
 All notable changes to cmux are documented here.
 
+## [0.64.207] - 2026-08-31
+
+### Fixed
+- Keep the blue pane-tab drop indicator and insertion point aligned with the cursor while reordering tabs.
+
 ## [0.64.206] - 2026-08-31
 
 ### Added
