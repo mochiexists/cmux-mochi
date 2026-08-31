@@ -10,12 +10,11 @@ import Testing
         "notification.feed.mark_unread",
         "notification.feed.mark_all_read",
     ])
-    func feedRequestsUseAccountAuthorizationWithoutWorkspaceTicketScope(method: String) async throws {
+    func feedRequestsUseTransportAdmissionOnly(method: String) async throws {
         let route = try hostPortRoute(kind: .debugLoopback, host: "127.0.0.1", port: 58_465)
         let transport = QueuedCancellationProbeTransport()
         let runtime = TestMobileSyncRuntime(
             transportFactory: QueuedCancellationProbeTransportFactory(transport: transport),
-            stackAccessToken: "test-stack-token"
         )
         let ticket = try CmxAttachTicket(
             workspaceID: "workspace-main",
@@ -30,7 +29,6 @@ import Testing
             runtime: runtime,
             route: route,
             ticket: ticket,
-            allowsStackAuthFallback: true
         )
         let params: [String: Any] = ["notification.feed.mark_read", "notification.feed.mark_unread"].contains(method)
             ? ["notification_ids": ["notification"]]
@@ -45,7 +43,7 @@ import Testing
         let frame = try #require(sent.first)
         #expect(frame.method == method)
         #expect(frame.attachToken == nil)
-        #expect(frame.stackAccessToken == "test-stack-token")
-        #expect(frame.hasAuth)
+        #expect(frame.stackAccessToken == nil)
+        #expect(frame.hasAuth == false)
     }
 }

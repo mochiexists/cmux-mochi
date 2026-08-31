@@ -26,7 +26,6 @@ extension MobileShellComposite {
         _ ticket: CmxAttachTicket,
         instanceTagUpdate: PairedMacInstanceTagUpdate = .preserve,
         displayNameOverride: String? = nil,
-        userAuthorizedTailscaleRoutes: [CmxAttachRoute] = [],
         ifStillCurrent: (() -> Bool)? = nil
     ) async -> Bool {
         guard let pairedMacStore,
@@ -163,24 +162,6 @@ extension MobileShellComposite {
                             """
                         )
                         return
-                    }
-                }
-                if !userAuthorizedTailscaleRoutes.isEmpty {
-                    // The user just proved control of this Mac by entering its
-                    // pairing code; record the device-local grant so later
-                    // preference-ordered dials use the evidence path.
-                    do {
-                        try await pairedMacStore.authorizeUserTailscaleRoutes(
-                            macDeviceID: ticket.macDeviceID,
-                            instanceTag: instanceTag,
-                            stackUserID: stackUserID,
-                            teamID: scope?.teamID,
-                            routes: userAuthorizedTailscaleRoutes
-                        )
-                    } catch {
-                        pairedMacPersistenceLog.error(
-                            "user tailscale grant persist failed: \(String(describing: error), privacy: .public)"
-                        )
                     }
                 }
                 await self.clearHiddenMacDeviceID(

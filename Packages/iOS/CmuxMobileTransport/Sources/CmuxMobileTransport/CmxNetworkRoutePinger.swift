@@ -27,14 +27,12 @@ public struct CmxNetworkRoutePinger: CmxRoutePinging {
     ) async -> CmxRoutePingResult {
         let transport: any CmxByteTransport
         do {
-            let request = CmxByteTransportRequest(
-                route: route,
-                expectedPeerDeviceID: nil,
-                authorizationMode: .stackBearer
-            )
             var factory = transportFactory
             factory.connectTimeoutNanoseconds = max(1, timeoutNanoseconds)
-            transport = try factory.makeTransport(for: request)
+            // A reachability probe has no DeviceLink identity context. The
+            // route-only factory therefore rejects Tailscale and permits only
+            // non-authorizing diagnostics such as local loopback.
+            transport = try factory.makeTransport(for: route)
         } catch {
             // Empty host, bad port, unsupported endpoint, or unavailable
             // Raw Tailscale TCP cannot prove peer identity before bearer use.

@@ -175,34 +175,6 @@ final class TerminalOutputCollector {
 }
 
 @MainActor
-@Test func pairingURLUsesCMUXMobileCorePayloadWithoutConcreteTransport() async throws {
-    let payload = try MobileSyncPairingPayload(
-        macDeviceID: "test-mac",
-        macDisplayName: "Test Mac",
-        host: "127.0.0.1",
-        port: 49831,
-        expiresAt: Date().addingTimeInterval(60),
-        transport: .debugLoopback
-    )
-    let store = CMUXMobileShellStore.preview()
-
-    store.signIn()
-    let result = await store.connectPairingURLResult(try payload.encodedURL().absoluteString)
-
-    #expect(result == .needsUserApproval)
-    #expect(store.pairingVersionWarning?.contains("unknown compatibility") == true)
-
-    await store.acceptPairingVersionWarning()
-
-    #expect(store.phase == .workspaces)
-    #expect(store.connectedHostName == "Test Mac")
-    #expect(store.macConnectionStatus == .connected)
-    #expect(store.activeTicket?.macDeviceID == "test-mac")
-    #expect(store.activeRoute?.kind == .debugLoopback)
-    #expect(store.selectedWorkspace?.id.rawValue == "workspace-main")
-}
-
-@MainActor
 @Test func macConnectionStatusMarksUnavailableWhenEventStreamCloses() async throws {
     let route = try hostPortRoute(kind: .debugLoopback, host: "127.0.0.1", port: CmxMobileDefaults.defaultHostPort)
     let ticket = try CmxAttachTicket(
@@ -231,7 +203,7 @@ final class TerminalOutputCollector {
     let store = CMUXMobileShellStore.preview(runtime: runtime)
 
     store.signIn()
-    await store.connectPairingURL(try attachURL(for: ticket).absoluteString)
+    _ = try await store.connect(ticket: ticket)
 
     for _ in 0..<200 {
         if store.macConnectionStatus == .unavailable {
@@ -259,262 +231,6 @@ final class TerminalOutputCollector {
     #expect(store.phase == .pairing)
     #expect(store.connectionState == .disconnected)
     #expect(store.connectionError == nil)
-}
-
-@MainActor
-@Test func expiredPairingURLPayloadIsRejectedBeforePreviewConnection() async throws {
-    let json = """
-    {
-      "version": 1,
-      "mac_device_id": "test-mac",
-      "mac_display_name": "Test Mac",
-      "host": "127.0.0.1",
-      "port": 49831,
-      "expires_at": "1970-01-01T00:00:01Z",
-      "transport": "debug_loopback"
-    }
-    """
-    let url = try #require(URL(string: "cmux-ios://pair?v=1&payload=\(base64URLEncode(Data(json.utf8)))"))
-    let store = CMUXMobileShellStore.preview()
-
-    store.signIn()
-    let didConnect = await store.connectPairingURL(url.absoluteString)
-
-    #expect(!didConnect)
-    #expect(store.phase == .pairing)
-    #expect(store.connectionState == .disconnected)
-    #expect(store.activeTicket == nil)
-    // Assert the category's message rather than a literal so the test tracks
-    // the invalid-code copy instead of breaking each time it is reworded.
-    #expect(store.connectionError == MobilePairingFailureCategory.invalidCode.message)
-}
-
-@MainActor
-@Test func wrappedAttachURLWhitespaceIsAccepted() async throws {
-    let route = try CmxAttachRoute(
-        id: "debug_loopback",
-        kind: .debugLoopback,
-        endpoint: .hostPort(host: "127.0.0.1", port: 56577)
-    )
-    let ticket = try CmxAttachTicket(
-        workspaceID: "live-workspace",
-        terminalID: "live-terminal",
-        macDeviceID: "test-mac",
-        macDisplayName: "Test Mac",
-        routes: [route],
-        expiresAt: Date().addingTimeInterval(60),
-        authToken: "ticket-secret"
-    )
-    let url = try attachURL(for: ticket).absoluteString
-    let wrappedURL = String(url.prefix(72)) + "\n  " + String(url.dropFirst(72))
-    let store = CMUXMobileShellStore.preview()
-
-    store.signIn()
-    await store.connectPairingURL(String(wrappedURL))
-
-    #expect(store.phase == .workspaces)
-    #expect(store.connectionError == nil)
-    #expect(store.connectedHostName == "Test Mac")
-    #expect(store.activeRoute?.kind == .debugLoopback)
-    #expect(store.selectedWorkspace?.id.rawValue == "live-workspace")
-}
-
-@MainActor
-@Test func supersededPairingURLReportsSupersededWithoutClearingNewerConnection() async throws {
-    let route = try CmxAttachRoute(
-        id: "debug_loopback",
-        kind: .debugLoopback,
-        endpoint: .hostPort(host: "127.0.0.1", port: 56577)
-    )
-    let firstTicket = try CmxAttachTicket(
-        workspaceID: "first-workspace",
-        terminalID: "first-terminal",
-        macDeviceID: "first-mac",
-        macDisplayName: "First Mac",
-        routes: [route],
-        expiresAt: Date().addingTimeInterval(60)
-    )
-    let secondTicket = try CmxAttachTicket(
-        workspaceID: "second-workspace",
-        terminalID: "second-terminal",
-        macDeviceID: "second-mac",
-        macDisplayName: "Second Mac",
-        routes: [route],
-        expiresAt: Date().addingTimeInterval(60)
-    )
-    let router = SupersededAttachURLRouter()
-    let runtime = testRuntime(
-        supportedRouteKinds: [.debugLoopback],
-        transportFactory: RequestAwareTransportFactory(router: router)
-    )
-    let store = CMUXMobileShellStore.preview(runtime: runtime)
-    let firstURL = try attachURL(for: firstTicket).absoluteString
-    let secondURL = try attachURL(for: secondTicket).absoluteString
-
-    store.signIn()
-    let firstTask = Task { @MainActor in
-        await store.connectPairingURLResult(firstURL)
-    }
-    await router.waitForFirstWorkspaceListRequest()
-
-    let secondResult = await store.connectPairingURLResult(secondURL)
-    await router.releaseFirstWorkspaceListResponse()
-    let firstResult = await firstTask.value
-
-    #expect(secondResult == .connected)
-    #expect(firstResult == .superseded)
-    #expect(store.connectionState == .connected)
-    #expect(store.connectedHostName == "Second Mac")
-    #expect(store.selectedWorkspace?.id.rawValue == "second-workspace")
-    #expect(store.activeTicket?.macDeviceID == "second-mac")
-}
-
-@MainActor
-@Test func versionWarningDoesNotClearExistingConnectionBeforeApproval() async throws {
-    let route = try CmxAttachRoute(
-        id: "debug_loopback",
-        kind: .debugLoopback,
-        endpoint: .hostPort(host: "127.0.0.1", port: 56577)
-    )
-    let activeTicket = try CmxAttachTicket(
-        workspaceID: "active-workspace",
-        terminalID: "active-terminal",
-        macDeviceID: "active-mac",
-        macDisplayName: "Active Mac",
-        routes: [route],
-        expiresAt: Date().addingTimeInterval(60),
-        authToken: "active-ticket-secret"
-    )
-    let responses = ScriptedTransportResponses([
-        try rpcWorkspaceListFrame(workspaceID: "active-workspace", title: "Active Workspace"),
-    ])
-    let runtime = testRuntime(
-        supportedRouteKinds: [.debugLoopback, .tailscale],
-        transportFactory: ScriptedTransportFactory(responses: responses)
-    )
-    let store = CMUXMobileShellStore(
-        runtime: runtime,
-        workspaces: PreviewMobileHost.workspaces,
-        feedbackStampProvider: {
-            MobileFeedbackStamp(
-                buildType: .dev,
-                appVersion: "0.65.0",
-                appBuild: "10",
-                bundleIdentifier: "dev.cmux.ios.test",
-                osVersion: "iOS test",
-                deviceModel: "test"
-            )
-        }
-    )
-
-    store.signIn()
-    let firstResult = await store.connectPairingURLResult(try attachURL(for: activeTicket).absoluteString)
-
-    #expect(firstResult == .connected)
-    #expect(store.connectionState == .connected)
-    #expect(store.activeTicket?.macDeviceID == "active-mac")
-
-    let warningResult = await store.connectPairingURLResult(
-        "cmux-ios://attach?v=2&pc=2&av=0.65.0&ab=9&r=100.71.210.41:\(CmxMobileDefaults.defaultHostPort)"
-    )
-
-    #expect(warningResult == .needsUserApproval)
-    #expect(store.connectionState == .connected)
-    #expect(store.activeTicket?.macDeviceID == "active-mac")
-    #expect(store.pairingVersionWarning != nil)
-    #expect(try await responses.sentRequests().count == 1)
-
-    store.cancelPairing()
-
-    #expect(store.pairingVersionWarning == nil)
-    #expect(store.connectionState == .connected)
-    #expect(store.activeTicket?.macDeviceID == "active-mac")
-}
-
-@MainActor
-@Test func versionWarningSupersedesOlderPairingAttemptWithoutConnectingIt() async throws {
-    let route = try CmxAttachRoute(
-        id: "debug_loopback",
-        kind: .debugLoopback,
-        endpoint: .hostPort(host: "127.0.0.1", port: 56577)
-    )
-    let slowTicket = try CmxAttachTicket(
-        workspaceID: "first-workspace",
-        terminalID: "first-terminal",
-        macDeviceID: "first-mac",
-        macDisplayName: "First Mac",
-        routes: [route],
-        expiresAt: Date().addingTimeInterval(60)
-    )
-    let router = SupersededAttachURLRouter()
-    let runtime = testRuntime(
-        supportedRouteKinds: [.debugLoopback, .tailscale],
-        transportFactory: RequestAwareTransportFactory(router: router)
-    )
-    let store = CMUXMobileShellStore(
-        runtime: runtime,
-        workspaces: PreviewMobileHost.workspaces,
-        feedbackStampProvider: {
-            MobileFeedbackStamp(
-                buildType: .dev,
-                appVersion: "0.65.0",
-                appBuild: "10",
-                bundleIdentifier: "dev.cmux.ios.test",
-                osVersion: "iOS test",
-                deviceModel: "test"
-            )
-        }
-    )
-
-    store.signIn()
-    let slowURL = try attachURL(for: slowTicket).absoluteString
-    let slowTask = Task { @MainActor in
-        await store.connectPairingURLResult(slowURL)
-    }
-    await router.waitForFirstWorkspaceListRequest()
-
-    let warningResult = await store.connectPairingURLResult(
-        "cmux-ios://attach?v=2&pc=2&av=0.65.0&ab=9&r=100.71.210.41:\(CmxMobileDefaults.defaultHostPort)"
-    )
-    await router.releaseFirstWorkspaceListResponse()
-    let slowResult = await slowTask.value
-
-    #expect(warningResult == .needsUserApproval)
-    #expect(slowResult == .superseded)
-    #expect(store.connectionState == .disconnected)
-    #expect(store.activeTicket == nil)
-    #expect(store.pairingVersionWarning != nil)
-}
-
-@MainActor
-@Test func attachURLWithoutPathStillConnects() async throws {
-    let route = try CmxAttachRoute(
-        id: "loopback",
-        kind: .debugLoopback,
-        endpoint: .hostPort(host: "127.0.0.1", port: 15432)
-    )
-    let ticket = try CmxAttachTicket(
-        workspaceID: "live-workspace",
-        terminalID: "live-terminal",
-        macDeviceID: "test-mac",
-        macDisplayName: "Test Mac",
-        routes: [route],
-        expiresAt: Date(timeIntervalSince1970: 2_000_000_000)
-    )
-    let url = try attachURL(for: ticket)
-    let store = CMUXMobileShellStore.preview()
-
-    #expect(url.host == "attach")
-    #expect(url.path.isEmpty)
-
-    store.signIn()
-    await store.connectPairingURL(url.absoluteString)
-
-    #expect(store.phase == .workspaces)
-    #expect(store.connectionError == nil)
-    let expectedTicket = try ticket.withCurrentMacPairingCompatibilityVersionForTest()
-    #expect(store.activeTicket == expectedTicket)
-    #expect(store.activeRoute == route)
 }
 
 @MainActor
@@ -554,7 +270,7 @@ final class TerminalOutputCollector {
     let store = CMUXMobileShellStore.preview(runtime: runtime)
 
     store.signIn()
-    await store.connectPairingURL(try attachURL(for: ticket).absoluteString)
+    _ = try await store.connect(ticket: ticket)
 
     #expect(store.phase == .workspaces)
     #expect(store.connectionError == nil)
@@ -624,7 +340,7 @@ final class TerminalOutputCollector {
     let store = CMUXMobileShellStore.preview(runtime: runtime)
 
     store.signIn()
-    await store.connectPairingURL(try attachURL(for: ticket).absoluteString)
+    _ = try await store.connect(ticket: ticket)
 
     #expect(store.phase == .workspaces)
     #expect(store.connectionError == nil)
@@ -633,1285 +349,9 @@ final class TerminalOutputCollector {
 }
 
 @MainActor
-@Test func manualHostPairingRejectsTailscaleMagicDNSWithoutSendingAuth() async throws {
-    let responses = ScriptedTransportResponses([])
-    let runtime = testRuntime(
-        supportedRouteKinds: [.tailscale],
-        transportFactory: ScriptedTransportFactory(responses: responses)
-    )
-    let store = CMUXMobileShellStore.preview(runtime: runtime)
-
-    store.signIn()
-    await store.connectManualHost(name: "Work Mac", host: "work-mac.tailnet.ts.net", port: CmxMobileDefaults.defaultHostPort)
-
-    #expect(store.phase == .pairing)
-    #expect(store.connectionState == .disconnected)
-    #expect(store.activeRoute == nil)
-    #expect(try await responses.sentRequests().isEmpty)
-}
-
-@MainActor
-@Test func manualHostPairingRejectsPrivateLANIPWithoutSendingStackToken() async throws {
-    // Plain private-LAN routes are dialed over unencrypted TCP, so
-    // routeAllowsStackAuth excludes them: pairing must fail before any RPC
-    // (and the Stack bearer token) leaves the device.
-    let responses = ScriptedTransportResponses([])
-    let runtime = testRuntime(
-        supportedRouteKinds: [.tailscale],
-        transportFactory: ScriptedTransportFactory(responses: responses),
-        stackAccessToken: "stack-token-for-lan"
-    )
-    let store = CMUXMobileShellStore.preview(runtime: runtime)
-
-    store.signIn()
-    await store.connectManualHost(name: "Studio LAN", host: " 192.168.1.77 ", port: 15432)
-
-    #expect(store.phase == .pairing)
-    #expect(store.connectionState == .disconnected)
-    #expect(store.activeTicket == nil)
-    #expect(store.activeRoute == nil)
-    #expect(store.connectionError == "This pairing route is not allowed. Enter a host and port, or pair with a QR/link from that computer.")
-    #expect(try await responses.sentRequests().isEmpty)
-}
-
-@MainActor
-@Test func manualHostPairingRejectsLocalDNSNameWithoutSendingStackToken() async throws {
-    // `.local`/Bonjour hosts are dialed over unencrypted TCP, so
-    // routeAllowsStackAuth excludes them: pairing must fail before any RPC
-    // (and the Stack bearer token) leaves the device.
-    let responses = ScriptedTransportResponses([])
-    let runtime = testRuntime(
-        supportedRouteKinds: [.tailscale],
-        transportFactory: ScriptedTransportFactory(responses: responses),
-        stackAccessToken: "stack-token-for-local-dns"
-    )
-    let store = CMUXMobileShellStore.preview(runtime: runtime)
-
-    store.signIn()
-    await store.connectManualHost(name: "", host: "devbox.local", port: 61234)
-
-    #expect(store.phase == .pairing)
-    #expect(store.connectionState == .disconnected)
-    #expect(store.activeTicket == nil)
-    #expect(store.activeRoute == nil)
-    #expect(store.connectionError == "This pairing route is not allowed. Enter a host and port, or pair with a QR/link from that computer.")
-    #expect(try await responses.sentRequests().isEmpty)
-}
-
-@MainActor
-@Test func manualHostPairingRejectsTailscaleBeforeLegacyProbeOrFallback() async throws {
-    let responses = ScriptedTransportResponses([])
-    let runtime = testRuntime(
-        supportedRouteKinds: [.tailscale],
-        transportFactory: ScriptedTransportFactory(responses: responses),
-        stackAccessToken: "stack-token-for-fallback"
-    )
-    let store = CMUXMobileShellStore.preview(runtime: runtime)
-
-    store.signIn()
-    await store.connectManualHost(name: "Work Mac", host: "100.71.210.41", port: 15432)
-
-    #expect(store.phase == .pairing)
-    #expect(store.connectionState == .disconnected)
-    #expect(store.activeRoute == nil)
-    #expect(try await responses.sentRequests().isEmpty)
-}
-
-@MainActor
-@Test func manualHostPairingRejectsTailscaleWithFreshPairingGuidance() async throws {
-    let route = try CmxAttachRoute(
-        id: "tailscale",
-        kind: .tailscale,
-        endpoint: .hostPort(host: "work-mac.tailnet.ts.net", port: CmxMobileDefaults.defaultHostPort)
-    )
-    let runtime = testRuntime(
-        supportedRouteKinds: [.tailscale],
-        transportFactory: HangingTransportFactory(),
-        pairingRequestTimeoutNanoseconds: 1_000_000
-    )
-    let store = CMUXMobileShellStore.preview(runtime: runtime)
-
-    store.signIn()
-    await store.connectManualHost(name: "Slow Mac", host: "work-mac.tailnet.ts.net", port: CmxMobileDefaults.defaultHostPort)
-
-    #expect(route.kind == .tailscale)
-    #expect(store.phase == .pairing)
-    #expect(store.connectionState == .disconnected)
-    #expect(store.connectionError == "This pairing route is not allowed. Enter a host and port, or pair with a QR/link from that computer.")
-    #expect(store.connectionErrorGuidance == "Open the pairing window on your Mac and scan a fresh QR or link.")
-}
-
-@MainActor
-@Test func manualHostPairingWhileOfflineFailsFastWithGuidanceAndNoDial() async throws {
-    // Reachability preflight: a phone with no network path must fail the pair
-    // immediately with the offline category and never dial a transport, instead
-    // of letting the connect sit in NWConnection's `.waiting` state and stack
-    // the per-route timeouts into the opaque ~60s wait the reporter saw.
-    let dials = TransportDialRecorder()
-    let runtime = testRuntime(
-        supportedRouteKinds: [.tailscale],
-        transportFactory: RecordingNeverConnectTransportFactory(dials: dials)
-    )
-    let store = CMUXMobileShellStore(
-        runtime: runtime,
-        reachability: OfflineReachability()
-    )
-
-    store.signIn()
-    await store.connectManualHost(name: "Work Mac", host: "work-mac.tailnet.ts.net", port: CmxMobileDefaults.defaultHostPort)
-
-    #expect(store.phase == .pairing)
-    #expect(store.connectionState == .disconnected)
-    // Non-empty, offline-specific headline: the spinner can no longer revert
-    // silently, and the message names the real problem (the phone is offline).
-    #expect(store.connectionError == "This device looks offline. Connect to Wi-Fi or cellular, then try again.")
-    // The offline headline carries the actionable guidance inline (connect to
-    // Wi-Fi or cellular), so no separate guidance line is shown for it.
-    #expect(store.connectionErrorGuidance == nil)
-    // The preflight short-circuited before any transport was created.
-    #expect(dials.count == 0)
-}
-
-@MainActor
-@Test func qrPairingWhileOfflineFailsFastWithoutDial() async throws {
-    let route = try hostPortRoute(kind: .tailscale, host: "work-mac.tailnet.ts.net", port: CmxMobileDefaults.defaultHostPort)
-    let ticket = try CmxAttachTicket(
-        workspaceID: UUID().uuidString,
-        terminalID: nil,
-        macDeviceID: "test-mac",
-        macDisplayName: "Test Mac",
-        routes: [route],
-        expiresAt: Date().addingTimeInterval(60),
-        authToken: "ticket-secret"
-    )
-    let dials = TransportDialRecorder()
-    let runtime = testRuntime(
-        supportedRouteKinds: [.tailscale],
-        transportFactory: RecordingNeverConnectTransportFactory(dials: dials)
-    )
-    let store = CMUXMobileShellStore(
-        runtime: runtime,
-        reachability: OfflineReachability()
-    )
-
-    store.signIn()
-    let result = await store.connectPairingURLResult(try attachURL(for: ticket).absoluteString)
-
-    #expect(result == .failed)
-    #expect(store.connectionState == .disconnected)
-    #expect(store.connectionError == "This device looks offline. Connect to Wi-Fi or cellular, then try again.")
-    #expect(store.connectionErrorGuidance == nil)
-    #expect(dials.count == 0)
-}
-
-@MainActor
-@Test func expiredLegacyTicketWhileOfflineReportsOfflineNotExpired() async throws {
-    // Expiry no longer classifies pairing inputs: a pairing QR never expires
-    // (v2 codes carry no expiry, legacy `e=` values are dropped on decode, and
-    // the host authorizes by Stack account, not ticket age), so a legacy
-    // ticket whose `expiresAt` has passed is still a valid pairing input.
-    // While the device is offline the preflight must say so and fail fast
-    // with no dial — reconnecting and rescanning the same code is expected
-    // to work, so "offline" is the honest, actionable message.
-    let ticketExpiresAt = Date().addingTimeInterval(60)
-    let route = try hostPortRoute(kind: .tailscale, host: "work-mac.tailnet.ts.net", port: CmxMobileDefaults.defaultHostPort)
-    let ticket = try CmxAttachTicket(
-        workspaceID: UUID().uuidString,
-        terminalID: nil,
-        macDeviceID: "test-mac",
-        macDisplayName: "Test Mac",
-        macPairingCompatibilityVersion: CmxMobileDefaults.pairingCompatibilityVersion,
-        routes: [route],
-        expiresAt: ticketExpiresAt,
-        authToken: "ticket-secret"
-    )
-    let dials = TransportDialRecorder()
-    let runtime = testRuntime(
-        supportedRouteKinds: [.tailscale],
-        transportFactory: RecordingNeverConnectTransportFactory(dials: dials),
-        now: { ticketExpiresAt.addingTimeInterval(1) }
-    )
-    let store = CMUXMobileShellStore(
-        runtime: runtime,
-        reachability: OfflineReachability()
-    )
-
-    store.signIn()
-    let result = await store.connectPairingURLResult(try attachURL(for: ticket).absoluteString)
-
-    #expect(result == .failed)
-    #expect(store.connectionState == .disconnected)
-    #expect(store.connectionError == "This device looks offline. Connect to Wi-Fi or cellular, then try again.")
-    #expect(store.connectionErrorGuidance == nil)
-    #expect(dials.count == 0)
-}
-
-@MainActor
-@Test func cancelManualHostPairingDoesNotApplyDelayedTicket() async throws {
-    let route = try hostPortRoute(kind: .debugLoopback, host: "127.0.0.1", port: CmxMobileDefaults.defaultHostPort)
-    let router = DelayedManualAttachTicketRouter(route: route)
-    let runtime = testRuntime(
-        supportedRouteKinds: [.debugLoopback],
-        transportFactory: RequestAwareTransportFactory(router: router)
-    )
-    let store = CMUXMobileShellStore.preview(runtime: runtime)
-
-    store.signIn()
-    let connectTask = Task { @MainActor in
-        await store.connectManualHost(name: "Slow Mac", host: "127.0.0.1", port: CmxMobileDefaults.defaultHostPort)
-    }
-
-    await router.waitForAttachTicketRequest()
-    store.cancelPairing()
-    await router.releaseAttachTicketResponse()
-    await connectTask.value
-
-    let requests = await router.sentRequests()
-    #expect(requests.map(\.method) == ["mobile.attach_ticket.create"])
-    #expect(store.phase == .pairing)
-    #expect(store.connectionState == .disconnected)
-    #expect(store.connectionError == nil)
-    #expect(store.activeTicket == nil)
-    #expect(store.activeRoute == nil)
-}
-
-@MainActor
-@Test func manualHostPairingUsesLoopbackRouteForLocalhost() async throws {
-    let attachRoute = try hostPortRoute(kind: .debugLoopback, host: "127.0.0.1", port: CmxMobileDefaults.defaultHostPort)
-    let responses = ScriptedTransportResponses([
-        try rpcAttachTicketFrame(route: attachRoute, workspaceID: "local-workspace"),
-        try rpcWorkspaceListFrame(workspaceID: "local-workspace", title: "Local Workspace"),
-    ])
-    let runtime = testRuntime(
-        supportedRouteKinds: [.debugLoopback],
-        transportFactory: ScriptedTransportFactory(responses: responses)
-    )
-    let store = CMUXMobileShellStore.preview(runtime: runtime)
-
-    store.signIn()
-    await store.connectManualHost(name: "", host: "127.0.0.1", port: CmxMobileDefaults.defaultHostPort)
-
-    let route = try #require(store.activeRoute)
-    #expect(store.phase == .workspaces)
-    #expect(store.connectedHostName == "127.0.0.1")
-    #expect(route.kind == .debugLoopback)
-    if case let .hostPort(host, port) = route.endpoint {
-        #expect(host == "127.0.0.1")
-        #expect(port == CmxMobileDefaults.defaultHostPort)
-    } else {
-        Issue.record("manual loopback route should use host/port")
-    }
-}
-
-@MainActor
-@Test func manualHostPairingRefreshesPairedMacPresentationImmediately() async throws {
-    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(
-        UUID().uuidString,
-        isDirectory: true
-    )
-    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-    defer { try? FileManager.default.removeItem(at: directory) }
-
-    let pairedMacStore = try MobilePairedMacStore(
-        databaseURL: directory.appendingPathComponent("paired-macs.sqlite3")
-    )
-    let attachRoute = try hostPortRoute(
-        kind: .debugLoopback,
-        host: "127.0.0.1",
-        port: CmxMobileDefaults.defaultHostPort
-    )
-    let responses = ScriptedTransportResponses([
-        try rpcAttachTicketFrame(route: attachRoute, workspaceID: "local-workspace"),
-        try rpcWorkspaceListFrame(workspaceID: "local-workspace", title: "Local Workspace"),
-    ])
-    let runtime = testRuntime(
-        supportedRouteKinds: [.debugLoopback],
-        transportFactory: ScriptedTransportFactory(responses: responses)
-    )
-    let store = CMUXMobileShellStore(
-        runtime: runtime,
-        workspaces: PreviewMobileHost.workspaces,
-        pairedMacStore: pairedMacStore,
-        identityProvider: TestIdentityProvider(
-            currentUserIDValue: "phone-user",
-            currentUserEmailValue: "phone@example.com"
-        )
-    )
-
-    store.signIn()
-    #expect(store.pairedMacs.isEmpty)
-
-    await store.connectManualHost(
-        name: "",
-        host: "127.0.0.1",
-        port: CmxMobileDefaults.defaultHostPort
-    )
-
-    #expect(store.connectionState == .connected)
-    #expect(store.pairedMacs.map(\.macDeviceID) == ["test-mac"])
-}
-
-@MainActor
-@Test func manualHostPairingToLoopbackStillDialsWhileOffline() async throws {
-    // Loopback needs no external network path (simulator/dev pairing to
-    // 127.0.0.1), so the offline reachability preflight must not block it.
-    let attachRoute = try hostPortRoute(kind: .debugLoopback, host: "127.0.0.1", port: CmxMobileDefaults.defaultHostPort)
-    let responses = ScriptedTransportResponses([
-        try rpcAttachTicketFrame(route: attachRoute, workspaceID: "local-workspace"),
-        try rpcWorkspaceListFrame(workspaceID: "local-workspace", title: "Local Workspace"),
-    ])
-    let runtime = testRuntime(
-        supportedRouteKinds: [.debugLoopback],
-        transportFactory: ScriptedTransportFactory(responses: responses)
-    )
-    let store = CMUXMobileShellStore(
-        runtime: runtime,
-        reachability: OfflineReachability()
-    )
-
-    store.signIn()
-    await store.connectManualHost(name: "", host: "127.0.0.1", port: CmxMobileDefaults.defaultHostPort)
-
-    #expect(store.phase == .workspaces)
-    #expect(store.connectionState == .connected)
-    #expect(store.connectionError == nil)
-    #expect(store.activeRoute?.kind == .debugLoopback)
-}
-
-@MainActor
-@Test func debugLoopbackAttachURLRejectsNonLoopbackHostBeforeStackAuth() async throws {
-    let route = try hostPortRoute(kind: .debugLoopback, host: "203.0.113.9", port: CmxMobileDefaults.defaultHostPort)
-    let ticket = try CmxAttachTicket(
-        workspaceID: "local-workspace",
-        terminalID: nil,
-        macDeviceID: "test-mac",
-        macDisplayName: "Test Mac",
-        routes: [route],
-        expiresAt: Date().addingTimeInterval(60)
-    )
-    let responses = ScriptedTransportResponses([])
-    let runtime = testRuntime(
-        supportedRouteKinds: [.debugLoopback],
-        transportFactory: ScriptedTransportFactory(responses: responses)
-    )
-    let store = CMUXMobileShellStore.preview(runtime: runtime)
-
-    store.signIn()
-    await store.connectPairingURL(try attachURL(for: ticket).absoluteString)
-
-    #expect(store.phase == .pairing)
-    #expect(store.connectionState == .disconnected)
-    #expect(store.activeTicket == nil)
-    #expect(store.activeRoute == nil)
-    #expect(store.connectionError == "This pairing route is not allowed. Enter a host and port, or pair with a QR/link from that computer.")
-    #expect(try await responses.sentRequests().isEmpty)
-}
-
-@MainActor
-@Test func unsupportedAttachTicketClearsPreviousRemoteClient() async throws {
-    let supportedRoute = try hostPortRoute(kind: .debugLoopback, host: "127.0.0.1", port: CmxMobileDefaults.defaultHostPort)
-    let supportedTicket = try CmxAttachTicket(
-        workspaceID: "live-workspace",
-        terminalID: "live-terminal",
-        macDeviceID: "test-mac",
-        macDisplayName: "Test Mac",
-        routes: [supportedRoute],
-        expiresAt: Date().addingTimeInterval(60)
-    )
-    let responses = ScriptedTransportResponses([
-        try rpcWorkspaceListFrame(
-            workspaceID: "live-workspace",
-            title: "Live Workspace",
-            terminalID: "live-terminal"
-        ),
-    ])
-    let runtime = testRuntime(
-        supportedRouteKinds: [.debugLoopback],
-        transportFactory: ScriptedTransportFactory(responses: responses)
-    )
-    let store = CMUXMobileShellStore.preview(runtime: runtime)
-
-    store.signIn()
-    await store.connectPairingURL(try attachURL(for: supportedTicket).absoluteString)
-    #expect(store.phase == .workspaces)
-
-    let unsupportedRoute = try CmxAttachRoute(
-        id: "iroh",
-        kind: .iroh,
-        endpoint: .peer(
-            id: String(repeating: "a", count: 64),
-            relayHint: nil,
-            directAddrs: [],
-            relayURL: nil
-        )
-    )
-    let unsupportedTicket = try CmxAttachTicket(
-        workspaceID: "iroh-workspace",
-        terminalID: "iroh-terminal",
-        macDeviceID: "test-mac",
-        macDisplayName: "Test Mac",
-        routes: [unsupportedRoute],
-        expiresAt: Date().addingTimeInterval(60)
-    )
-    await store.connectPairingURL(try attachURL(for: unsupportedTicket).absoluteString)
-
-    #expect(store.connectionState == .disconnected)
-    #expect(store.connectionError == "This pairing code is not supported.")
-
-    store.terminalInputText = "echo should-not-hit-old-host"
-    await store.submitTerminalInput()
-
-    let requests = try await responses.sentRequests()
-    #expect(requests.contains { $0.method == "workspace.list" })
-    #expect(!requests.contains { $0.method == "terminal.input" })
-}
-
-@MainActor
-@Test func manualFallbackTicketListsWorkspacesWithoutSyntheticWorkspaceFilter() async throws {
-    let responses = ScriptedTransportResponses([
-        try rpcErrorFrame(message: "ticket unavailable"),
-        try rpcWorkspaceListFrame(workspaceID: "local-workspace", title: "Local Workspace"),
-    ])
-    let runtime = testRuntime(
-        supportedRouteKinds: [.debugLoopback],
-        transportFactory: ScriptedTransportFactory(responses: responses)
-    )
-    let store = CMUXMobileShellStore.preview(runtime: runtime)
-
-    store.signIn()
-    await store.connectManualHost(name: "", host: "127.0.0.1", port: CmxMobileDefaults.defaultHostPort)
-
-    let requests = try await responses.sentRequests()
-    let workspaceList = try #require(requests.first { $0.method == "workspace.list" })
-    #expect(workspaceList.workspaceID == nil)
-    #expect(store.phase == .workspaces)
-}
-
-@MainActor
-@Test func uuidAttachTicketListsAllWorkspacesFirstWithAttachToken() async throws {
-    let workspaceID = UUID().uuidString
-    let route = try hostPortRoute(kind: .debugLoopback, host: "127.0.0.1", port: CmxMobileDefaults.defaultHostPort)
-    let ticket = try CmxAttachTicket(
-        workspaceID: workspaceID,
-        terminalID: nil,
-        macDeviceID: "test-mac",
-        macDisplayName: "Test Mac",
-        routes: [route],
-        expiresAt: Date().addingTimeInterval(60),
-        authToken: "ticket-secret"
-    )
-    let responses = ScriptedTransportResponses([
-        try rpcWorkspaceListFrame(workspaceID: workspaceID, title: "Scoped Workspace"),
-    ])
-    let runtime = testRuntime(
-        supportedRouteKinds: [.debugLoopback],
-        transportFactory: ScriptedTransportFactory(responses: responses)
-    )
-    let store = CMUXMobileShellStore.preview(runtime: runtime)
-
-    store.signIn()
-    await store.connectPairingURL(try attachURL(for: ticket).absoluteString)
-
-    let requests = try await responses.sentRequests()
-    let workspaceList = try #require(requests.first { $0.method == "workspace.list" })
-    #expect(workspaceList.workspaceID == nil)
-    #expect(workspaceList.attachToken == "ticket-secret")
-    #expect(workspaceList.stackAccessToken == "test-stack-token")
-    #expect(store.selectedWorkspace?.id.rawValue == workspaceID)
-}
-
-@MainActor
-@Test func signedInAttachTicketConnectsWithFullWorkspaceListFirst() async throws {
-    let workspaceID = UUID().uuidString
-    let terminalID = UUID().uuidString
-    let docsWorkspaceID = UUID().uuidString
-    let docsTerminalID = UUID().uuidString
-    let route = try hostPortRoute(kind: .debugLoopback, host: "127.0.0.1", port: CmxMobileDefaults.defaultHostPort)
-    let ticket = try CmxAttachTicket(
-        workspaceID: workspaceID,
-        terminalID: terminalID,
-        macDeviceID: "test-mac",
-        macDisplayName: "Test Mac",
-        routes: [route],
-        expiresAt: Date().addingTimeInterval(60),
-        authToken: "ticket-secret"
-    )
-    let responses = ScriptedTransportResponses([
-        try rpcResultFrame(
-            result: [
-                "workspaces": [
-                    [
-                        "id": workspaceID,
-                        "title": "cmux",
-                        "current_directory": "/Users/test/project",
-                        "is_selected": true,
-                        "terminals": [
-                            [
-                                "id": terminalID,
-                                "title": "Build",
-                                "current_directory": "/Users/test/project",
-                                "is_ready": true,
-                                "is_focused": true,
-                            ],
-                        ],
-                    ],
-                    [
-                        "id": docsWorkspaceID,
-                        "title": "Docs",
-                        "current_directory": "/Users/test/docs",
-                        "is_selected": false,
-                        "terminals": [
-                            [
-                                "id": docsTerminalID,
-                                "title": "Notes",
-                                "current_directory": "/Users/test/docs",
-                                "is_ready": true,
-                                "is_focused": true,
-                            ],
-                        ],
-                    ],
-                ],
-            ]
-        ),
-    ])
-    let runtime = testRuntime(
-        supportedRouteKinds: [.debugLoopback],
-        transportFactory: ScriptedTransportFactory(responses: responses)
-    )
-    let store = CMUXMobileShellStore.preview(runtime: runtime)
-
-    store.signIn()
-    await store.connectPairingURL(try attachURL(for: ticket).absoluteString)
-
-    let workspaceLists = try await waitForWorkspaceListRequestCount(1, responses: responses)
-    #expect(workspaceLists[0].workspaceID == nil)
-    #expect(workspaceLists[0].terminalID == nil)
-    #expect(workspaceLists.allSatisfy { $0.attachToken == "ticket-secret" })
-    #expect(workspaceLists.allSatisfy { $0.stackAccessToken == "test-stack-token" })
-    let workspaceIDs = try await waitForWorkspaceIDs(in: store, matching: [workspaceID, docsWorkspaceID])
-    #expect(workspaceIDs == [workspaceID, docsWorkspaceID])
-    #expect(store.selectedWorkspace?.id.rawValue == workspaceID)
-}
-
-@MainActor
-@Test func signedInLoopbackAttachTicketConnectsWithFullWorkspaceListFirst() async throws {
-    let workspaceID = UUID().uuidString
-    let terminalID = UUID().uuidString
-    let secondWorkspaceID = UUID().uuidString
-    let secondTerminalID = UUID().uuidString
-    let route = try hostPortRoute(kind: .debugLoopback, host: "127.0.0.1", port: CmxMobileDefaults.defaultHostPort)
-    let ticket = try CmxAttachTicket(
-        workspaceID: workspaceID,
-        terminalID: terminalID,
-        macDeviceID: "test-mac",
-        macDisplayName: "Test Mac",
-        routes: [route],
-        expiresAt: Date().addingTimeInterval(60),
-        authToken: "ticket-secret"
-    )
-    let responses = ScriptedTransportResponses([
-        try rpcResultFrame(
-            result: [
-                "workspaces": [
-                    [
-                        "id": workspaceID,
-                        "title": "Main",
-                        "current_directory": "/Users/test/project",
-                        "is_selected": true,
-                        "terminals": [
-                            [
-                                "id": terminalID,
-                                "title": "Build",
-                                "current_directory": "/Users/test/project",
-                                "is_ready": true,
-                                "is_focused": true,
-                            ],
-                        ],
-                    ],
-                    [
-                        "id": secondWorkspaceID,
-                        "title": "Second",
-                        "current_directory": "/Users/test/second",
-                        "is_selected": false,
-                        "terminals": [
-                            [
-                                "id": secondTerminalID,
-                                "title": "Shell",
-                                "current_directory": "/Users/test/second",
-                                "is_ready": true,
-                                "is_focused": true,
-                            ],
-                        ],
-                    ],
-                ],
-            ]
-        ),
-    ])
-    let runtime = testRuntime(
-        supportedRouteKinds: [.debugLoopback],
-        transportFactory: ScriptedTransportFactory(responses: responses)
-    )
-    let store = CMUXMobileShellStore.preview(runtime: runtime)
-
-    store.signIn()
-    await store.connectPairingURL(try attachURL(for: ticket).absoluteString)
-
-    let workspaceLists = try await waitForWorkspaceListRequestCount(1, responses: responses)
-    #expect(workspaceLists[0].workspaceID == nil)
-    #expect(workspaceLists[0].terminalID == nil)
-    #expect(workspaceLists.allSatisfy { $0.attachToken == "ticket-secret" })
-    #expect(workspaceLists.allSatisfy { $0.stackAccessToken == "test-stack-token" })
-    let workspaceIDs = try await waitForWorkspaceIDs(in: store, matching: [workspaceID, secondWorkspaceID])
-    #expect(workspaceIDs == [workspaceID, secondWorkspaceID])
-}
-
-@MainActor
-@Test func signedInAttachTicketFallsBackToScopedWorkspaceWhenFullListFails() async throws {
-    let workspaceID = UUID().uuidString
-    let terminalID = UUID().uuidString
-    let route = try hostPortRoute(kind: .debugLoopback, host: "127.0.0.1", port: CmxMobileDefaults.defaultHostPort)
-    let ticket = try CmxAttachTicket(
-        workspaceID: workspaceID,
-        terminalID: terminalID,
-        macDeviceID: "test-mac",
-        macDisplayName: "Test Mac",
-        routes: [route],
-        expiresAt: Date().addingTimeInterval(60),
-        authToken: "ticket-secret"
-    )
-    let responses = ScriptedTransportResponses([
-        try rpcErrorFrame(message: "Full list not supported"),
-        try rpcWorkspaceListFrame(workspaceID: workspaceID, title: "Scoped Workspace", terminalID: terminalID),
-    ])
-    let runtime = testRuntime(
-        supportedRouteKinds: [.debugLoopback],
-        transportFactory: ScriptedTransportFactory(responses: responses)
-    )
-    let store = CMUXMobileShellStore.preview(runtime: runtime)
-
-    store.signIn()
-    await store.connectPairingURL(try attachURL(for: ticket).absoluteString)
-
-    let workspaceLists = try await waitForWorkspaceListRequestCount(2, responses: responses)
-    #expect(workspaceLists[0].workspaceID == nil)
-    #expect(workspaceLists[0].terminalID == nil)
-    #expect(workspaceLists[1].workspaceID == workspaceID)
-    #expect(workspaceLists[1].terminalID == terminalID)
-    #expect(workspaceLists.allSatisfy { $0.attachToken == "ticket-secret" })
-    #expect(store.workspaces.map(\.id.rawValue) == [workspaceID])
-}
-
-@MainActor
-@Test func terminalScopedAttachTicketWithAttachTokenListsAllWorkspacesFirst() async throws {
-    let workspaceID = UUID().uuidString
-    let terminalID = UUID().uuidString
-    let route = try hostPortRoute(kind: .debugLoopback, host: "127.0.0.1", port: CmxMobileDefaults.defaultHostPort)
-    let ticket = try CmxAttachTicket(
-        workspaceID: workspaceID,
-        terminalID: terminalID,
-        macDeviceID: "test-mac",
-        macDisplayName: "Test Mac",
-        routes: [route],
-        expiresAt: Date().addingTimeInterval(60),
-        authToken: "ticket-secret"
-    )
-    let responses = ScriptedTransportResponses([
-        try rpcWorkspaceListFrame(workspaceID: workspaceID, title: "Scoped Workspace", terminalID: terminalID),
-    ])
-    let runtime = testRuntime(
-        supportedRouteKinds: [.debugLoopback],
-        transportFactory: ScriptedTransportFactory(responses: responses)
-    )
-    let store = CMUXMobileShellStore.preview(runtime: runtime)
-
-    store.signIn()
-    await store.connectPairingURL(try attachURL(for: ticket).absoluteString)
-
-    let requests = try await responses.sentRequests()
-    let workspaceList = try #require(requests.first { $0.method == "workspace.list" })
-    #expect(workspaceList.workspaceID == nil)
-    #expect(workspaceList.terminalID == nil)
-    #expect(workspaceList.attachToken == "ticket-secret")
-    #expect(workspaceList.stackAccessToken == "test-stack-token")
-    #expect(store.selectedWorkspace?.terminals.first?.id.rawValue == terminalID)
-}
-
-@MainActor
-@Test func attachTicketFallsBackToNextRouteWhenPreferredRouteFails() async throws {
-    let workspaceID = UUID().uuidString
-    let preferredRoute = try CmxAttachRoute(
-        id: "magicdns",
-        kind: .debugLoopback,
-        endpoint: .hostPort(host: "127.0.0.2", port: CmxMobileDefaults.defaultHostPort),
-        priority: 10
-    )
-    let fallbackRoute = try CmxAttachRoute(
-        id: "numeric",
-        kind: .debugLoopback,
-        endpoint: .hostPort(host: "127.0.0.1", port: CmxMobileDefaults.defaultHostPort),
-        priority: 20
-    )
-    let ticket = try CmxAttachTicket(
-        workspaceID: workspaceID,
-        terminalID: nil,
-        macDeviceID: "test-mac",
-        macDisplayName: "Test Mac",
-        routes: [fallbackRoute, preferredRoute],
-        expiresAt: Date().addingTimeInterval(60),
-        authToken: "ticket-secret"
-    )
-    let responses = ScriptedTransportResponses([
-        try rpcWorkspaceListFrame(workspaceID: workspaceID, title: "Fallback Workspace"),
-        try rpcHostStatusFrame(renderGrid: false),
-    ])
-    let attempts = RouteAttemptRecorder()
-    let runtime = testRuntime(
-        supportedRouteKinds: [.debugLoopback],
-        transportFactory: FailingRouteTransportFactory(
-            failingRouteID: preferredRoute.id,
-            responses: responses,
-            attempts: attempts
-        )
-    )
-    let store = CMUXMobileShellStore.preview(runtime: runtime)
-
-    store.signIn()
-    await store.connectPairingURL(try attachURL(for: ticket).absoluteString)
-
-    #expect(await attempts.routeIDs() == [preferredRoute.id, preferredRoute.id, fallbackRoute.id])
-    #expect(store.connectionState == .connected)
-    #expect(store.activeRoute?.id == fallbackRoute.id)
-    #expect(store.selectedWorkspace?.id.rawValue == workspaceID)
-}
-
-@MainActor
-@Test func failedAttachTicketDoesNotPersistActivePairedMac() async throws {
-    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
-    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-    defer { try? FileManager.default.removeItem(at: directory) }
-    let pairedMacStore = try MobilePairedMacStore(databaseURL: directory.appendingPathComponent("paired-macs.sqlite3"))
-    let route = try hostPortRoute(
-        kind: .tailscale,
-        host: "100.71.210.41",
-        port: CmxMobileDefaults.defaultHostPort
-    )
-    let ticket = try CmxAttachTicket(
-        workspaceID: UUID().uuidString,
-        terminalID: nil,
-        macDeviceID: "offline-mac",
-        macDisplayName: "Offline Mac",
-        routes: [route],
-        expiresAt: Date().addingTimeInterval(60),
-        authToken: "ticket-secret"
-    )
-    let responses = ScriptedTransportResponses([])
-    let attempts = RouteAttemptRecorder()
-    let runtime = testRuntime(
-        supportedRouteKinds: [.tailscale],
-        transportFactory: FailingRouteTransportFactory(
-            failingRouteID: route.id,
-            responses: responses,
-            attempts: attempts
-        )
-    )
-    let store = CMUXMobileShellStore(
-        runtime: runtime,
-        workspaces: PreviewMobileHost.workspaces,
-        pairedMacStore: pairedMacStore
-    )
-
-    store.signIn()
-    await store.connectPairingURL(try attachURL(for: ticket).absoluteString)
-
-    #expect(store.connectionState == .disconnected)
-    #expect(try await pairedMacStore.activeMac() == nil)
-    #expect(try await pairedMacStore.loadAll().isEmpty)
-}
-
-@MainActor
-@Test func expiredNetworkAttachTicketFromPairLinkDoesNotFallbackToStackAuth() async throws {
-    let ticketExpiresAt = Date().addingTimeInterval(60)
-    let route = try hostPortRoute(kind: .tailscale, host: "attacker.example", port: CmxMobileDefaults.defaultHostPort)
-    let ticket = try CmxAttachTicket(
-        workspaceID: "expired-workspace",
-        terminalID: nil,
-        macDeviceID: "test-mac",
-        macDisplayName: "Test Mac",
-        routes: [route],
-        expiresAt: ticketExpiresAt,
-        authToken: "expired-ticket-secret"
-    )
-    let responses = ScriptedTransportResponses([
-        try rpcWorkspaceListFrame(workspaceID: "expired-workspace", title: "Expired Workspace"),
-    ])
-    let runtime = testRuntime(
-        supportedRouteKinds: [.tailscale],
-        transportFactory: ScriptedTransportFactory(responses: responses),
-        stackAccessToken: "stack-token-after-ticket-expiry",
-        now: { ticketExpiresAt.addingTimeInterval(1) }
-    )
-    let store = CMUXMobileShellStore.preview(runtime: runtime)
-
-    store.signIn()
-    await store.connectPairingURL(try attachURL(for: ticket).absoluteString)
-
-    #expect(try await responses.sentRequests().isEmpty)
-    #expect(store.connectionState == .disconnected)
-    #expect(store.connectionError != nil)
-}
-
-@MainActor
-@Test func legacyCompactTailscalePairingCodeFailsClosedWithoutAuth() async throws {
-    let mintedAt = Date()
-    let route = try hostPortRoute(
-        kind: .tailscale,
-        host: "100.71.210.41",
-        port: CmxMobileDefaults.defaultHostPort
-    )
-    let ticket = try CmxAttachTicket(
-        workspaceID: "qr-workspace",
-        terminalID: nil,
-        macDeviceID: "qr-mac",
-        macDisplayName: "QR Mac",
-        macPairingCompatibilityVersion: CmxMobileDefaults.pairingCompatibilityVersion,
-        routes: [route],
-        expiresAt: mintedAt.addingTimeInterval(600),
-        authToken: "minted-but-never-in-the-qr"
-    )
-    // Encode exactly what the Mac's pairing window renders: the compact QR
-    // grammar, which drops the token, the display name, and the expiry.
-    let payload = try CmxAttachTicketCompactCoder().encode(
-        ticket,
-        routeDisclosureMode: .legacyPrivateNetworkCompatibility
-    )
-    let url = "cmux-ios://attach?v=\(ticket.version)&payload=\(base64URLEncode(payload))"
-    let responses = ScriptedTransportResponses([
-        try rpcWorkspaceListFrame(workspaceID: "qr-workspace", title: "QR Workspace"),
-    ])
-    let runtime = testRuntime(
-        supportedRouteKinds: [.tailscale],
-        transportFactory: ScriptedTransportFactory(responses: responses),
-        stackAccessToken: "stack-token-outlives-the-qr",
-        now: { mintedAt.addingTimeInterval(660) }
-    )
-    let store = CMUXMobileShellStore.preview(runtime: runtime)
-
-    store.signIn()
-    await store.connectPairingURL(url)
-
-    #expect(store.phase == .pairing)
-    #expect(store.connectionState == .disconnected)
-    #expect(store.connectionError != nil)
-    #expect(store.connectedHostName.isEmpty)
-    #expect(try await responses.sentRequests().isEmpty)
-}
-
-@MainActor
-@Test func minimalTailscalePairingCodeFailsClosedWithoutAdoptingIdentity() async throws {
-    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
-    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-    defer { try? FileManager.default.removeItem(at: directory) }
-    let pairedMacStore = try MobilePairedMacStore(databaseURL: directory.appendingPathComponent("paired-macs.sqlite3"))
-    let responses = ScriptedTransportResponses([
-        try rpcWorkspaceListFrame(workspaceID: "qr-workspace", title: "QR Workspace"),
-        try rpcHostStatusFrame(
-            renderGrid: true,
-            macDeviceID: "status-reported-mac",
-            macDisplayName: "Status Mac"
-        ),
-        try rpcResultFrame(result: ["stream_id": "events"]),
-    ])
-    let runtime = testRuntime(
-        supportedRouteKinds: [.tailscale],
-        transportFactory: ScriptedTransportFactory(responses: responses),
-        supportsServerPushEvents: true
-    )
-    let store = CMUXMobileShellStore(
-        runtime: runtime,
-        workspaces: PreviewMobileHost.workspaces,
-        pairedMacStore: pairedMacStore
-    )
-
-    store.signIn()
-    await store.connectPairingURL("cmux-ios://attach?v=2&pc=1&r=100.71.210.41:\(CmxMobileDefaults.defaultHostPort)")
-
-    #expect(store.connectionState == .disconnected)
-    #expect(store.activeTicket == nil)
-    #expect(try await pairedMacStore.activeMac() == nil)
-    #expect(try await responses.sentRequests().isEmpty)
-    #expect(!store.hasKnownPairedMac)
-}
-
-@MainActor
-@Test func minimalPairingCodeRequiresMatchingEmailBeforeDialing() async throws {
-    let responses = ScriptedTransportResponses([
-        try rpcWorkspaceListFrame(workspaceID: "qr-workspace", title: "QR Workspace"),
-    ])
-    let runtime = testRuntime(
-        supportedRouteKinds: [.tailscale],
-        transportFactory: ScriptedTransportFactory(responses: responses)
-    )
-    let analytics = RecordingAnalytics()
-    let store = CMUXMobileShellStore(
-        runtime: runtime,
-        workspaces: PreviewMobileHost.workspaces,
-        identityProvider: TestIdentityProvider(
-            currentUserIDValue: "phone-user",
-            currentUserEmailValue: "phone@example.com"
-        ),
-        analytics: analytics
-    )
-
-    store.signIn()
-    let result = await store.connectPairingURLResult(
-        "cmux-ios://attach?v=2&ub=mac-user&pc=1&r=100.71.210.41:\(CmxMobileDefaults.defaultHostPort)"
-    )
-
-    #expect(result == .failed)
-    #expect(store.connectionState == .disconnected)
-    #expect(store.connectionError?.contains("same email") == true)
-    #expect(store.connectionError?.contains("mac@example.com") == false)
-    #expect(store.connectionError?.contains("phone@example.com") == false)
-    #expect(analytics.eventCount(named: "ios_pairing_started") == 1)
-    #expect(analytics.eventCount(named: "ios_pairing_failed") == 1)
-    #expect(try await responses.sentRequests().isEmpty)
-}
-
-@MainActor
-@Test func minimalTailscalePairingCodeFailsClosedWithUnknownPhoneEmail() async throws {
-    let responses = ScriptedTransportResponses([
-        try rpcWorkspaceListFrame(workspaceID: "qr-workspace", title: "QR Workspace"),
-    ])
-    let runtime = testRuntime(
-        supportedRouteKinds: [.tailscale],
-        transportFactory: ScriptedTransportFactory(responses: responses)
-    )
-    let store = CMUXMobileShellStore(
-        runtime: runtime,
-        workspaces: PreviewMobileHost.workspaces,
-        identityProvider: TestIdentityProvider(
-            currentUserIDValue: nil,
-            currentUserEmailValue: nil
-        )
-    )
-
-    store.signIn()
-    let result = await store.connectPairingURLResult(
-        "cmux-ios://attach?v=2&ub=mac-user&pc=1&r=100.71.210.41:\(CmxMobileDefaults.defaultHostPort)"
-    )
-
-    #expect(result == .failed)
-    #expect(store.connectionState == .disconnected)
-    #expect(store.connectedHostName.isEmpty)
-    #expect(try await responses.sentRequests().isEmpty)
-}
-
-@MainActor
-@Test func minimalPairingCodeCompatibilityMismatchWarnsAndContinuesAfterAcceptance() async throws {
-    let responses = ScriptedTransportResponses([
-        try rpcWorkspaceListFrame(workspaceID: "qr-workspace", title: "QR Workspace"),
-        try rpcHostStatusFrame(
-            renderGrid: false,
-            macDeviceID: "status-reported-mac",
-            macDisplayName: "Status Mac"
-        ),
-    ])
-    let runtime = testRuntime(
-        supportedRouteKinds: [.tailscale],
-        transportFactory: ScriptedTransportFactory(responses: responses),
-        supportsServerPushEvents: false
-    )
-    let analytics = RecordingAnalytics()
-    let store = CMUXMobileShellStore(
-        runtime: runtime,
-        workspaces: PreviewMobileHost.workspaces,
-        identityProvider: TestIdentityProvider(
-            currentUserIDValue: "phone-user",
-            currentUserEmailValue: "user@example.com"
-        ),
-        analytics: analytics,
-        feedbackStampProvider: {
-            MobileFeedbackStamp(
-                buildType: .dev,
-                appVersion: "0.65.0",
-                appBuild: "10",
-                bundleIdentifier: "dev.cmux.ios.test",
-                osVersion: "iOS test",
-                deviceModel: "test"
-            )
-        }
-    )
-
-    store.signIn()
-    let result = await store.connectPairingURLResult(
-        "cmux-ios://attach?v=2&ub=phone-user&pc=2&av=0.65.0&ab=9&r=100.71.210.41:\(CmxMobileDefaults.defaultHostPort)"
-    )
-
-    #expect(result == .needsUserApproval)
-    #expect(store.connectionState == .disconnected)
-    #expect(store.pairingVersionWarning?.contains("0.65.0 (10)") == true)
-    #expect(store.pairingVersionWarning?.contains("0.65.0 (9)") == true)
-    #expect(analytics.eventCount(named: "ios_pairing_started") == 0)
-    #expect(try await responses.sentRequests().isEmpty)
-
-    await store.acceptPairingVersionWarning()
-
-    #expect(store.pairingVersionWarning == nil)
-    #expect(store.connectionState == .disconnected)
-    #expect(analytics.eventCount(named: "ios_pairing_started") == 1)
-    #expect(analytics.eventCount(named: "ios_pairing_failed") == 1)
-    #expect(analytics.eventCount(named: "ios_pairing_succeeded") == 0)
-    #expect(try await responses.sentRequests().isEmpty)
-}
-
-@MainActor
-@Test func minimalPairingCodeMissingCompatibilityWarnsBeforeDialing() async throws {
-    let responses = ScriptedTransportResponses([
-        try rpcWorkspaceListFrame(workspaceID: "qr-workspace", title: "QR Workspace"),
-    ])
-    let runtime = testRuntime(
-        supportedRouteKinds: [.tailscale],
-        transportFactory: ScriptedTransportFactory(responses: responses),
-        supportsServerPushEvents: false
-    )
-    let store = CMUXMobileShellStore(
-        runtime: runtime,
-        workspaces: PreviewMobileHost.workspaces,
-        identityProvider: TestIdentityProvider(
-            currentUserIDValue: "phone-user",
-            currentUserEmailValue: "user@example.com"
-        ),
-        feedbackStampProvider: {
-            MobileFeedbackStamp(
-                buildType: .dev,
-                appVersion: "1.0.0",
-                appBuild: "10",
-                bundleIdentifier: "dev.cmux.ios.test",
-                osVersion: "iOS test",
-                deviceModel: "test"
-            )
-        }
-    )
-
-    store.signIn()
-    let result = await store.connectPairingURLResult(
-        "cmux-ios://attach?v=2&ub=phone-user&r=100.71.210.41:\(CmxMobileDefaults.defaultHostPort)"
-    )
-
-    #expect(result == .needsUserApproval)
-    #expect(store.connectionState == .disconnected)
-    #expect(store.pairingVersionWarning?.contains("unknown compatibility") == true)
-    #expect(try await responses.sentRequests().isEmpty)
-}
-
-@MainActor
-@Test func minimalPairingCodeAppVersionMismatchDoesNotWarnWhenCompatibilityMatches() async throws {
-    let responses = ScriptedTransportResponses([
-        try rpcWorkspaceListFrame(workspaceID: "qr-workspace", title: "QR Workspace"),
-        try rpcHostStatusFrame(
-            renderGrid: false,
-            macDeviceID: "status-reported-mac",
-            macDisplayName: "Status Mac"
-        ),
-    ])
-    let runtime = testRuntime(
-        supportedRouteKinds: [.tailscale],
-        transportFactory: ScriptedTransportFactory(responses: responses),
-        supportsServerPushEvents: false
-    )
-    let store = CMUXMobileShellStore(
-        runtime: runtime,
-        workspaces: PreviewMobileHost.workspaces,
-        identityProvider: TestIdentityProvider(
-            currentUserIDValue: "phone-user",
-            currentUserEmailValue: "user@example.com"
-        ),
-        feedbackStampProvider: {
-            MobileFeedbackStamp(
-                buildType: .dev,
-                appVersion: "1.0.0",
-                appBuild: "10",
-                bundleIdentifier: "dev.cmux.ios.test",
-                osVersion: "iOS test",
-                deviceModel: "test"
-            )
-        }
-    )
-
-    store.signIn()
-    let result = await store.connectPairingURLResult(
-        "cmux-ios://attach?v=2&ub=phone-user&pc=1&av=0.65.0&ab=95&r=100.71.210.41:\(CmxMobileDefaults.defaultHostPort)"
-    )
-
-    #expect(result == .failed)
-    #expect(store.pairingVersionWarning == nil)
-    #expect(store.connectionState == .disconnected)
-    #expect(try await responses.sentRequests().isEmpty)
-}
-
-@MainActor
-@Test func minimalTailscalePairingCodeDoesNotPersistPairedMac() async throws {
-    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
-    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-    defer { try? FileManager.default.removeItem(at: directory) }
-    let pairedMacStore = try MobilePairedMacStore(databaseURL: directory.appendingPathComponent("paired-macs.sqlite3"))
-    let responses = ScriptedTransportResponses([
-        try rpcWorkspaceListFrame(workspaceID: "qr-workspace", title: "QR Workspace"),
-        try rpcHostStatusFrame(
-            renderGrid: false,
-            macDeviceID: "status-reported-mac",
-            macDisplayName: "Status Mac"
-        ),
-    ])
-    let runtime = testRuntime(
-        supportedRouteKinds: [.tailscale],
-        transportFactory: ScriptedTransportFactory(responses: responses),
-        supportsServerPushEvents: false
-    )
-    let store = CMUXMobileShellStore(
-        runtime: runtime,
-        workspaces: PreviewMobileHost.workspaces,
-        pairedMacStore: pairedMacStore
-    )
-
-    store.signIn()
-    await store.connectPairingURL("cmux-ios://attach?v=2&pc=1&r=100.71.210.41:\(CmxMobileDefaults.defaultHostPort)")
-
-    #expect(store.connectionState == .disconnected)
-    #expect(store.activeTicket == nil)
-    #expect(try await pairedMacStore.activeMac() == nil)
-    #expect(try await responses.sentRequests().isEmpty)
-    #expect(!store.hasKnownPairedMac)
-}
-
-@MainActor
-@Test func scannedLoopbackPairingCodeIsRejectedWithGuidance() async throws {
-    // "QR shouldn't work for localhost": a scanned/pasted v2 code whose
-    // routes point at the phone itself fails closed with copy that names the
-    // actual fix (Iroh), instead of dialing 127.0.0.1 and burning the
-    // whole request timeout before a generic connect error.
-    let store = CMUXMobileShellStore.preview()
-
-    store.signIn()
-    let result = await store.connectPairingURLResult("cmux-ios://attach?v=2&r=127.0.0.1:\(CmxMobileDefaults.defaultHostPort)")
-
-    #expect(result == .failed)
-    #expect(store.connectionState == .disconnected)
-    #expect(store.activeTicket == nil)
-    #expect(store.connectionError?.contains("Iroh") == true)
-    // The loopback failure must name the fix (Iroh), not fall through to
-    // the generic invalid-code copy.
-    #expect(store.connectionError != MobilePairingFailureCategory.invalidCode.message)
-}
-
-@MainActor
-@Test func pairLinkWithoutAttachTokenRejectsArbitraryHostBeforeSendingAuth() async throws {
-    let route = try hostPortRoute(kind: .tailscale, host: "attacker.example", port: CmxMobileDefaults.defaultHostPort)
-    let ticket = try CmxAttachTicket(
-        workspaceID: UUID().uuidString,
-        terminalID: nil,
-        macDeviceID: "untrusted-mac",
-        macDisplayName: "Untrusted Mac",
-        routes: [route],
-        expiresAt: Date().addingTimeInterval(60)
-    )
-    let responses = ScriptedTransportResponses([
-        try rpcWorkspaceListFrame(workspaceID: ticket.workspaceID, title: "Untrusted Workspace"),
-    ])
-    let runtime = testRuntime(
-        supportedRouteKinds: [.tailscale],
-        transportFactory: ScriptedTransportFactory(responses: responses),
-        stackAccessToken: "do-not-send"
-    )
-    let store = CMUXMobileShellStore.preview(runtime: runtime)
-
-    store.signIn()
-    await store.connectPairingURL(try attachURL(for: ticket).absoluteString)
-
-    let requests = try await responses.sentRequests()
-    #expect(requests.isEmpty)
-    #expect(store.connectionState == .disconnected)
-    #expect(store.connectionError != nil)
-}
-
-@MainActor
-@Test func manualHostPairingRejectsTailscaleIPWithoutSendingStackToken() async throws {
-    let responses = ScriptedTransportResponses([])
-    let runtime = testRuntime(
-        supportedRouteKinds: [.tailscale],
-        transportFactory: ScriptedTransportFactory(responses: responses),
-        stackAccessToken: "stack-token-for-tailscale-ip"
-    )
-    let store = CMUXMobileShellStore.preview(runtime: runtime)
-
-    store.signIn()
-    await store.connectManualHost(name: "Work Mac", host: "100.71.210.41", port: CmxMobileDefaults.defaultHostPort)
-
-    #expect(store.phase == .pairing)
-    #expect(store.connectionState == .disconnected)
-    #expect(store.activeTicket == nil)
-    #expect(store.activeRoute == nil)
-    #expect(store.connectionError == "This pairing route is not allowed. Enter a host and port, or pair with a QR/link from that computer.")
-    #expect(try await responses.sentRequests().isEmpty)
-}
-
-@MainActor
-@Test func manualHostPairingRejectsDefaultPortLANHostWithoutSendingStackToken() async throws {
-    // Same encrypted-routes-only contract as the explicit-port LAN test, on
-    // the default host port: no RPC (and no Stack bearer token) may leave the
-    // device for a plain-TCP private-LAN route.
-    let responses = ScriptedTransportResponses([])
-    let runtime = testRuntime(
-        supportedRouteKinds: [.tailscale],
-        transportFactory: ScriptedTransportFactory(responses: responses),
-        stackAccessToken: "stack-token-for-default-lan"
-    )
-    let store = CMUXMobileShellStore.preview(runtime: runtime)
-
-    store.signIn()
-    await store.connectManualHost(name: "Work Mac", host: "192.168.1.77", port: CmxMobileDefaults.defaultHostPort)
-
-    #expect(store.phase == .pairing)
-    #expect(store.connectionState == .disconnected)
-    #expect(store.activeTicket == nil)
-    #expect(store.activeRoute == nil)
-    #expect(store.connectionError == "This pairing route is not allowed. Enter a host and port, or pair with a QR/link from that computer.")
-    #expect(try await responses.sentRequests().isEmpty)
-}
-
-@MainActor
-@Test func manualHostPairingRejectsInvalidHost() async {
-    let store = CMUXMobileShellStore.preview()
-
-    store.signIn()
-    await store.connectManualHost(name: "Bad Host", host: "dev box.local", port: CmxMobileDefaults.defaultHostPort)
-
-    #expect(store.phase == .pairing)
-    #expect(store.connectionState == .disconnected)
-    #expect(store.activeTicket == nil)
-    #expect(store.activeRoute == nil)
-    #expect(store.connectionError == "Enter a host or IP address, without spaces or URL paths.")
-}
-
-@MainActor
-@Test func manualHostPairingRejectsInvalidPort() async {
-    let store = CMUXMobileShellStore.preview()
-
-    store.signIn()
-    await store.connectManualHost(name: "Bad Port", host: "devbox.local", port: 70_000)
-
-    #expect(store.phase == .pairing)
-    #expect(store.connectionState == .disconnected)
-    #expect(store.activeTicket == nil)
-    #expect(store.activeRoute == nil)
-    #expect(store.connectionError == "Enter a port from 1 to 65535.")
-}
-
-@MainActor
 @Test func terminalSurfaceNotReadyReplacesPlaceholderWithoutPairingError() async throws {
     let route = try hostPortRoute(kind: .debugLoopback, host: "127.0.0.1", port: CmxMobileDefaults.defaultHostPort)
     let responses = ScriptedTransportResponses([
-        try rpcAttachTicketFrame(route: route, workspaceID: "local-workspace"),
         try rpcResultFrame(
             result: [
                 "workspaces": [
@@ -1941,7 +381,13 @@ final class TerminalOutputCollector {
     let store = CMUXMobileShellStore.preview(runtime: runtime)
 
     store.signIn()
-    await store.connectManualHost(name: "", host: "127.0.0.1", port: CmxMobileDefaults.defaultHostPort)
+    _ = try await store.connect(ticket: CmxAttachTicket(
+        workspaceID: "local-workspace",
+        terminalID: "local-terminal",
+        macDeviceID: "test-mac",
+        macDisplayName: "Test Mac",
+        routes: [route]
+    ))
 
     #expect(store.connectionError == nil)
     #expect(store.selectedWorkspace?.id.rawValue == "local-workspace")
@@ -1952,7 +398,6 @@ final class TerminalOutputCollector {
 @Test func workspaceListPrefersReadyTerminalBeforeSnapshotRefresh() async throws {
     let route = try hostPortRoute(kind: .debugLoopback, host: "127.0.0.1", port: CmxMobileDefaults.defaultHostPort)
     let responses = ScriptedTransportResponses([
-        try rpcAttachTicketFrame(route: route, workspaceID: "local-workspace"),
         try rpcResultFrame(
             result: [
                 "workspaces": [
@@ -1989,7 +434,13 @@ final class TerminalOutputCollector {
     let store = CMUXMobileShellStore.preview(runtime: runtime)
 
     store.signIn()
-    await store.connectManualHost(name: "", host: "127.0.0.1", port: CmxMobileDefaults.defaultHostPort)
+    _ = try await store.connect(ticket: CmxAttachTicket(
+        workspaceID: "local-workspace",
+        terminalID: "ready-terminal",
+        macDeviceID: "test-mac",
+        macDisplayName: "Test Mac",
+        routes: [route]
+    ))
 
     #expect(store.connectionError == nil)
     #expect(store.selectedWorkspace?.id.rawValue == "local-workspace")
@@ -2000,7 +451,6 @@ final class TerminalOutputCollector {
 @Test func notReadySelectedTerminalDoesNotFallbackToReadyTerminalInAnotherWorkspace() async throws {
     let route = try hostPortRoute(kind: .debugLoopback, host: "127.0.0.1", port: CmxMobileDefaults.defaultHostPort)
     let responses = ScriptedTransportResponses([
-        try rpcAttachTicketFrame(route: route, workspaceID: "stale-workspace"),
         try rpcResultFrame(
             result: [
                 "workspaces": [
@@ -2046,7 +496,13 @@ final class TerminalOutputCollector {
     let store = CMUXMobileShellStore.preview(runtime: runtime)
 
     store.signIn()
-    await store.connectManualHost(name: "", host: "127.0.0.1", port: CmxMobileDefaults.defaultHostPort)
+    _ = try await store.connect(ticket: CmxAttachTicket(
+        workspaceID: "stale-workspace",
+        terminalID: "stale-terminal",
+        macDeviceID: "test-mac",
+        macDisplayName: "Test Mac",
+        routes: [route]
+    ))
 
     #expect(store.connectionError == nil)
     #expect(store.selectedWorkspace?.id.rawValue == "stale-workspace")
@@ -2090,7 +546,7 @@ final class TerminalOutputCollector {
     let store = CMUXMobileShellStore.preview(runtime: runtime)
 
     store.signIn()
-    await store.connectPairingURL(try attachURL(for: ticket).absoluteString)
+    _ = try await store.connect(ticket: ticket)
     store.createWorkspace()
 
     for _ in 0..<200 where store.selectedWorkspace?.id.rawValue != "workspace-3" {
@@ -2100,47 +556,6 @@ final class TerminalOutputCollector {
     #expect(store.selectedWorkspace?.id.rawValue == "workspace-3")
     #expect(store.selectedTerminalID?.rawValue == "workspace-3-terminal-1")
     #expect(store.workspaces.map(\.id.rawValue) == ["workspace-main", "workspace-3"])
-}
-
-@MainActor
-@Test func remoteCreateWorkspaceUsesAttachTicketAuth() async throws {
-    let route = try CmxAttachRoute(
-        id: "debug_loopback",
-        kind: .debugLoopback,
-        endpoint: .hostPort(host: "127.0.0.1", port: 56584)
-    )
-    let ticket = try CmxAttachTicket(
-        workspaceID: "workspace-main",
-        terminalID: "terminal-build",
-        macDeviceID: "test-mac",
-        macDisplayName: "Test Mac",
-        routes: [route],
-        expiresAt: Date(timeIntervalSince1970: 2_000_000_000),
-        authToken: "ticket-secret"
-    )
-    let router = RemoteCreateWorkspaceRouter()
-    let runtime = testRuntime(
-        supportedRouteKinds: [.debugLoopback],
-        transportFactory: RequestAwareTransportFactory(router: router),
-        stackAccessToken: "test-stack-token"
-    )
-    let store = CMUXMobileShellStore.preview(runtime: runtime)
-
-    store.signIn()
-    await store.connectPairingURL(try attachURL(for: ticket).absoluteString)
-    store.createWorkspace()
-
-    for _ in 0..<200 where store.selectedWorkspace?.id.rawValue != "workspace-3" {
-        try await Task.sleep(nanoseconds: 10_000_000)
-    }
-
-    let requests = await router.sentRequests()
-    let createRequest = try #require(requests.first { $0.method == "workspace.create" })
-    #expect(createRequest.attachToken == "ticket-secret")
-    #expect(createRequest.stackAccessToken == "test-stack-token")
-    #expect(store.connectionError == nil)
-    #expect(store.workspaces.map(\.id.rawValue) == ["workspace-main", "workspace-3"])
-    #expect(store.selectedWorkspace?.id.rawValue == "workspace-3")
 }
 
 @MainActor
@@ -2180,7 +595,7 @@ final class TerminalOutputCollector {
     let store = CMUXMobileShellStore.preview(runtime: runtime)
 
     store.signIn()
-    await store.connectPairingURL(try attachURL(for: ticket).absoluteString)
+    _ = try await store.connect(ticket: ticket)
     #expect(store.workspaces.map(\.id.rawValue) == ["workspace-main", "workspace-docs"])
 
     store.createTerminal()
@@ -2218,7 +633,7 @@ final class TerminalOutputCollector {
     let store = CMUXMobileShellStore.preview(runtime: runtime)
 
     store.signIn()
-    await store.connectPairingURL(try attachURL(for: ticket).absoluteString)
+    _ = try await store.connect(ticket: ticket)
     store.createTerminal()
 
     await router.waitForTerminalCreateRequest()
@@ -2289,7 +704,7 @@ struct TerminalStreamTests {
         viewportSize: MobileTerminalViewportSize(columns: 52, rows: 24)
     )
     store.signIn()
-    await store.connectPairingURL(try attachURL(for: ticket).absoluteString)
+    _ = try await store.connect(ticket: ticket)
     store.terminalInputText = "echo hi"
     await store.submitTerminalInput()
 
@@ -2332,7 +747,7 @@ struct TerminalStreamTests {
     let store = CMUXMobileShellStore.preview(runtime: runtime)
 
     store.signIn()
-    await store.connectPairingURL(try attachURL(for: ticket).absoluteString)
+    _ = try await store.connect(ticket: ticket)
     await store.submitTerminalRawInput("\u{1B}[A")
 
     let inputRequest = try #require(await responses.sentRequests().first { $0.method == "terminal.input" })
@@ -2364,7 +779,7 @@ struct TerminalStreamTests {
     let collector = TerminalOutputCollector()
 
     store.signIn()
-    await store.connectPairingURL(try attachURL(for: ticket).absoluteString)
+    _ = try await store.connect(ticket: ticket)
     collector.mount(store: store, surfaceID: "live-terminal")
     let oldGridText = try terminalRenderGridReplacementText(seq: 4, text: "old")
     let currentGridText = try terminalRenderGridReplacementText(seq: 12, text: "current")
@@ -2425,7 +840,7 @@ struct TerminalStreamTests {
     let collector = TerminalOutputCollector()
 
     store.signIn()
-    await store.connectPairingURL(try attachURL(for: ticket).absoluteString)
+    _ = try await store.connect(ticket: ticket)
     _ = try await waitForRequestCount("mobile.events.subscribe", count: 1, router: router)
     collector.mount(store: store, surfaceID: "live-terminal")
     _ = try await waitForRequestCount("mobile.terminal.replay", count: 1, router: router)
@@ -2477,7 +892,7 @@ struct TerminalStreamTests {
     let collector = TerminalOutputCollector()
 
     store.signIn()
-    await store.connectPairingURL(try attachURL(for: ticket).absoluteString)
+    _ = try await store.connect(ticket: ticket)
 
     let subscribeRequests = try await waitForRequestCount("mobile.events.subscribe", count: 1, router: router)
     #expect(subscribeRequests.first?.topics == ["workspace.updated", "terminal.render_grid", "terminal.set_font", "notification.dismissed", "notification.badge"])
@@ -2521,7 +936,7 @@ struct TerminalStreamTests {
     let collector = TerminalOutputCollector()
 
     store.signIn()
-    await store.connectPairingURL(try attachURL(for: ticket).absoluteString)
+    _ = try await store.connect(ticket: ticket)
     _ = try await waitForRequestCount("mobile.events.subscribe", count: 1, router: router)
 
     collector.mount(store: store, surfaceID: "live-terminal")
@@ -2564,7 +979,7 @@ struct TerminalStreamTests {
     let collector = TerminalOutputCollector()
 
     store.signIn()
-    await store.connectPairingURL(try attachURL(for: ticket).absoluteString)
+    _ = try await store.connect(ticket: ticket)
     let effectiveGrid = await store.updateTerminalViewport(
         surfaceID: "live-terminal",
         columns: 52,
@@ -2608,7 +1023,7 @@ struct TerminalStreamTests {
     let store = CMUXMobileShellStore.preview(runtime: runtime)
 
     store.signIn()
-    await store.connectPairingURL(try attachURL(for: ticket).absoluteString)
+    _ = try await store.connect(ticket: ticket)
     _ = try await waitForWorkspaceIDs(in: store, matching: ["before-workspace"])
 
     // A pull re-fetches `mobile.workspace.list` and only resolves once the
@@ -2657,7 +1072,7 @@ struct TerminalStreamTests {
     let store = CMUXMobileShellStore.preview(runtime: runtime)
 
     store.signIn()
-    await store.connectPairingURL(try attachURL(for: ticket).absoluteString)
+    _ = try await store.connect(ticket: ticket)
     _ = try await waitForWorkspaceIDs(in: store, matching: ["before-workspace"])
 
     // Two overlapping pulls (the second starts while the first is still in flight)

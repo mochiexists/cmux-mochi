@@ -169,7 +169,6 @@ import Testing
             runtime: runtime,
             route: route,
             ticket: ticket,
-            allowsStackAuthFallback: true
         )
         let short = try MobileCoreRPCClient.requestData(
             method: "terminal.input",

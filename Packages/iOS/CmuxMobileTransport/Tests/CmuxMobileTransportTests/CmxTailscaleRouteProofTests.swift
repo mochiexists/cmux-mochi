@@ -5,36 +5,6 @@ import Testing
 private let tailscaleInterface = CmxNetworkInterfaceIdentity(name: "utun4", index: 22)
 
 @Suite struct CmxTailscaleRouteProofTests {
-    @Test func rejectsGenericBearerAndMismatchedLegacyEvidence() throws {
-        let genericBearer = try tailscaleRequest(
-            host: "100.71.210.41",
-            authorizationMode: .stackBearer
-        )
-        let mismatchedEvidence = try CmxLegacyTailscaleAuthorizationEvidence(
-            macDeviceID: "mac-2",
-            host: "100.71.210.41",
-            port: 58_465
-        )
-        let mismatch = try tailscaleRequest(
-            host: "100.71.210.41",
-            authorizationMode: .legacyTailscaleBearer(mismatchedEvidence)
-        )
-        let snapshot = authoritySnapshot(generation: 1)
-
-        #expect(throws: CmxTailscaleRouteProofError.unsupportedAuthorizationMode) {
-            _ = try CmxTailscaleRouteProofValidator().prepare(
-                request: genericBearer,
-                snapshot: snapshot
-            )
-        }
-        #expect(throws: CmxTailscaleRouteProofError.authorizationEvidenceMismatch) {
-            _ = try CmxTailscaleRouteProofValidator().prepare(
-                request: mismatch,
-                snapshot: snapshot
-            )
-        }
-    }
-
     @Test func rejectsWhenNoUnambiguousLiveTailscaleInterfaceExists() throws {
         let request = try tailscaleRequest(host: "100.71.210.41")
         let noTailscale = CmxTailscaleAuthoritySnapshot(
@@ -162,17 +132,9 @@ private let tailscaleInterface = CmxNetworkInterfaceIdentity(name: "utun4", inde
 }
 
 private func tailscaleRequest(
-    host: String,
-    authorizationMode: CmxTransportAuthorizationMode? = nil
+    host: String
 ) throws -> CmxByteTransportRequest {
     let port = 58_465
-    let mode = try authorizationMode ?? .legacyTailscaleBearer(
-        CmxLegacyTailscaleAuthorizationEvidence(
-            macDeviceID: "mac-1",
-            host: host,
-            port: port
-        )
-    )
     return CmxByteTransportRequest(
         route: try CmxAttachRoute(
             id: "tailscale",
@@ -180,7 +142,7 @@ private func tailscaleRequest(
             endpoint: .hostPort(host: host, port: port)
         ),
         expectedPeerDeviceID: "mac-1",
-        authorizationMode: mode
+        authorizationMode: .transportAdmission
     )
 }
 

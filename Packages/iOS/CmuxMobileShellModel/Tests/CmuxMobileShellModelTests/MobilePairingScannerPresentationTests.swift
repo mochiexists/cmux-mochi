@@ -8,22 +8,19 @@ import Testing
             didScanCode: false,
             isPairing: false,
             error: nil,
-            guidance: nil,
-            versionWarning: nil
+            guidance: nil
         ) == .scanning)
         #expect(MobilePairingScannerPresentation.resolve(
             didScanCode: true,
             isPairing: true,
             error: nil,
-            guidance: nil,
-            versionWarning: nil
+            guidance: nil
         ) == .connecting)
         #expect(MobilePairingScannerPresentation.resolve(
             didScanCode: true,
             isPairing: false,
             error: "Could not reach your Mac.",
-            guidance: "Keep cmux open and scan a fresh QR code.",
-            versionWarning: nil
+            guidance: "Keep cmux open and scan a fresh QR code."
         ) == .failed(
             message: "Could not reach your Mac.",
             guidance: "Keep cmux open and scan a fresh QR code."
@@ -35,18 +32,7 @@ import Testing
             didScanCode: true,
             isPairing: true,
             error: "The previous attempt failed.",
-            guidance: nil,
-            versionWarning: nil
+            guidance: nil
         ) == .connecting)
-    }
-
-    @Test func compatibilityWarningBecomesAnExplicitDecision() {
-        #expect(MobilePairingScannerPresentation.resolve(
-            didScanCode: true,
-            isPairing: false,
-            error: nil,
-            guidance: nil,
-            versionWarning: "This Mac is newer than this iPhone app."
-        ) == .versionWarning(message: "This Mac is newer than this iPhone app."))
     }
 }

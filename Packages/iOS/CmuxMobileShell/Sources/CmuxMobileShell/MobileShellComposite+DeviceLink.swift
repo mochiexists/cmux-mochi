@@ -67,7 +67,6 @@ extension MobileShellComposite {
         _ = beginPairingValidationAttempt()
         connectionAttemptGeneration = UUID()
         clearPairingError()
-        clearPairingVersionWarning()
 
         logDeviceLink("enrolling against \(payload.routes.joined(separator: ","))")
         let enroller = MobileDeviceLinkEnroller(deviceLabel: Self.deviceLinkDeviceLabel)
@@ -249,14 +248,13 @@ extension MobileShellComposite {
         authenticated: Bool,
         stackAuthenticated: Bool,
         hasPairedDevice: Bool,
-        attachTicket: Bool,
         restoring: Bool,
         connected: Bool
     ) {
         logDeviceLink(
             "reconnect gate uiTestURL=\(uiTestURL) authenticated=\(authenticated) "
                 + "stack=\(stackAuthenticated) pairedDevice=\(hasPairedDevice) "
-                + "attachTicket=\(attachTicket) restoring=\(restoring) connected=\(connected)"
+                + "restoring=\(restoring) connected=\(connected)"
         )
     }
 }

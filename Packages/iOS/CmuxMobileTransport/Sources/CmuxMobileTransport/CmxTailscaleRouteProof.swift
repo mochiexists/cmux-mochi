@@ -150,39 +150,9 @@ struct CmxTailscaleRouteProofValidator {
         guard case let .hostPort(host, port) = request.route.endpoint else {
             throw CmxTailscaleRouteProofError.unsupportedEndpoint
         }
-        switch request.authorizationMode {
-        case let .legacyTailscaleBearer(evidence):
-            guard evidence.authorizes(
-                macDeviceID: request.expectedPeerDeviceID,
-                host: host,
-                port: port
-            ) else {
-                throw CmxTailscaleRouteProofError.authorizationEvidenceMismatch
-            }
-        case let .userAuthorizedTailscalePairing(authorization):
-            // A user-entered code authorizes only its exact destination; any
-            // device identity it claims is self-reported and grants nothing.
-            guard authorization.authorizes(host: host, port: port) else {
-                throw CmxTailscaleRouteProofError.authorizationEvidenceMismatch
-            }
-        case .attachTicket:
-            // Fork (cmux Mochi): the ticket authorizes the dial itself, and the
-            // checks below still pin the destination to a real Tailscale peer
-            // address reachable over a single Tailscale interface.
-            break
-        case .transportAdmission:
-            // Fork (cmux Mochi): a DeviceLink dial is mutually authenticated by
-            // this device's key against the Mac's pinned fingerprint, so it
-            // authorizes itself exactly as the ticket above does. The checks
-            // below still pin the destination to a real Tailscale peer.
-            //
-            // This is the gate that made a paired *phone* unable to reconnect
-            // while the simulator worked: the simulator dials loopback, which
-            // never reaches this proof.
-            break
-        case .stackBearer:
-            throw CmxTailscaleRouteProofError.unsupportedAuthorizationMode
-        }
+        // The transport factory has already required an exact DeviceLink TLS
+        // identity. The proof below is solely about keeping the socket on the
+        // real Tailscale interface and pinned peer address.
         guard let peerAddress = CmxTailscaleIPAddress(host) else {
             throw CmxTailscaleRouteProofError.nonNumericPeer
         }

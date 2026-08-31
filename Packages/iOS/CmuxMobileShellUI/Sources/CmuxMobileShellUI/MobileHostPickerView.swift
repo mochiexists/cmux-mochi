@@ -67,39 +67,12 @@ struct MobileHostPickerView: View {
                     isPairing: isPairing,
                     connectionError: store.connectionError,
                     connectionErrorGuidance: store.connectionErrorGuidance,
-                    versionWarning: store.pairingVersionWarning,
                     onCancel: cancelScannerPairing,
                     onRetry: cancelScannerPairing,
-                    onAcceptVersionWarning: acceptScannerVersionWarning
                 ) { code in
                     connectScannerCode(code)
                 }
             }
-        }
-        .alert(
-            L10n.string("mobile.pairing.versionWarningTitle", defaultValue: "Compatibility mismatch"),
-            isPresented: Binding(
-                get: { !showingScanner && store.pairingVersionWarning != nil },
-                set: { _ in }
-            )
-        ) {
-            Button(L10n.string("mobile.common.cancel", defaultValue: "Cancel"), role: .cancel) {
-                store.cancelPairing()
-            }
-            Button(
-                L10n.string("mobile.pairing.versionWarningContinue", defaultValue: "Continue anyway"),
-                role: .destructive
-            ) {
-                Task {
-                    let result = await store.acceptPairingVersionWarning()
-                    if result != .needsUserApproval {
-                        await store.loadPairedMacs()
-                        dismiss()
-                    }
-                }
-            }
-        } message: {
-            Text(store.pairingVersionWarning ?? "")
         }
         .accessibilityIdentifier("MobileHostPicker")
     }
@@ -108,19 +81,7 @@ struct MobileHostPickerView: View {
         didStartScannerPairing = true
         isPairing = true
         Task {
-            let result = await store.connectPairingURLResult(
-                code,
-                userEnteredPairingCode: true
-            )
-            isPairing = false
-            await finishScannerPairing(result)
-        }
-    }
-
-    private func acceptScannerVersionWarning() {
-        isPairing = true
-        Task {
-            let result = await store.acceptPairingVersionWarning()
+            let result = await store.connectPairingURLResult(code)
             isPairing = false
             await finishScannerPairing(result)
         }

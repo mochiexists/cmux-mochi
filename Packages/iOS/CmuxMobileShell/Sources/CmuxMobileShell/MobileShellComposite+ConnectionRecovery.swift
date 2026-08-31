@@ -513,16 +513,13 @@ extension MobileShellComposite {
 
     /// Reconnects an already-paired Mac through its full route set.
     ///
-    /// This path is used only when the set contains an authenticated Iroh peer
-    /// route or an exact locally grandfathered Tailscale route. Iroh pins the
-    /// pairing and removes raw fallbacks; the Tailscale exception is bound to
-    /// the previously paired device, address, and port. The synthetic ticket
-    /// names the already-paired device and never creates a new pairing.
+    /// The synthetic ticket names the already-paired device and never creates a
+    /// new pairing. Network routes are admitted only by the exact DeviceLink
+    /// identity for that device and app instance.
     func connectStoredMacRoutes(
         name: String,
         routes: [CmxAttachRoute],
         pairedMacDeviceID: String,
-        legacyTailscaleRoutes: [CmxAttachRoute] = [],
         ifStillCurrent: (() -> Bool)? = nil
     ) async {
         let ticket: CmxAttachTicket
@@ -534,7 +531,6 @@ extension MobileShellComposite {
             )
             _ = try await connect(
                 ticket: ticket,
-                legacyTailscaleRoutes: legacyTailscaleRoutes,
                 pairedMacDeviceID: pairedMacDeviceID,
                 ifStillCurrent: ifStillCurrent
             )
@@ -551,15 +547,13 @@ extension MobileShellComposite {
     }
 
     /// Connects an existing pairing through its strongest supported transport.
-    /// A supported Iroh identity pins the attempt to Iroh. Raw Tailscale/custom
-    /// host routes remain available only for legacy pairings without Iroh.
+    /// A supported Iroh identity pins the attempt to Iroh. Network routes use
+    /// the exact DeviceLink credential for the stored Mac and app instance.
     @discardableResult
     func connectStoredMac(
         name: String,
         routes: [CmxAttachRoute],
         pairedMacDeviceID: String,
-        legacyTailscaleRoutes: [CmxAttachRoute] = [],
-        recordsPairingAttempt: Bool = false,
         ifStillCurrent: (() -> Bool)? = nil
     ) async -> Bool {
         (await connectStoredMacOutcome(
@@ -567,31 +561,8 @@ extension MobileShellComposite {
             routes: routes,
             pairedMacDeviceID: pairedMacDeviceID,
             instanceTag: nil,
-            legacyTailscaleRoutes: legacyTailscaleRoutes,
-            recordsPairingAttempt: recordsPairingAttempt,
             ifStillCurrent: ifStillCurrent
         )).didConnect
-    }
-
-    func connectStoredMacHost(
-        name: String,
-        host: String,
-        port: Int,
-        pairedMacDeviceID: String,
-        instanceTag: String? = nil,
-        ifStillCurrent: (() -> Bool)? = nil
-    ) async {
-        await connectManualHost(
-            name: name,
-            host: host,
-            port: port,
-            pairedMacDeviceID: pairedMacDeviceID,
-            instanceTagExpectation: macInstanceTagAuthority.expectation(
-                storedInstanceTag: instanceTag
-            ),
-            recordsPairingAttempt: false,
-            ifStillCurrent: ifStillCurrent
-        )
     }
 
     /// Reconnects a stored Mac through its Iroh-pinned route set while also
@@ -602,9 +573,7 @@ extension MobileShellComposite {
         routes: [CmxAttachRoute],
         pairedMacDeviceID: String,
         instanceTag: String?,
-        legacyTailscaleRoutes: [CmxAttachRoute] = [],
         automaticReconnectAccountID: String? = nil,
-        recordsPairingAttempt: Bool = false,
         ifStillCurrent: (() -> Bool)? = nil
     ) async -> Bool {
         (await connectStoredMacOutcome(
@@ -612,9 +581,7 @@ extension MobileShellComposite {
             routes: routes,
             pairedMacDeviceID: pairedMacDeviceID,
             instanceTag: instanceTag,
-            legacyTailscaleRoutes: legacyTailscaleRoutes,
             automaticReconnectAccountID: automaticReconnectAccountID,
-            recordsPairingAttempt: recordsPairingAttempt,
             ifStillCurrent: ifStillCurrent
         )).didConnect
     }
@@ -624,9 +591,7 @@ extension MobileShellComposite {
         routes: [CmxAttachRoute],
         pairedMacDeviceID: String,
         instanceTag: String?,
-        legacyTailscaleRoutes: [CmxAttachRoute] = [],
         automaticReconnectAccountID: String? = nil,
-        recordsPairingAttempt: Bool = false,
         ifStillCurrent: (() -> Bool)? = nil
     ) async -> StoredMacReconnectOutcome {
         await connectStoredMacOutcome(
@@ -636,9 +601,7 @@ extension MobileShellComposite {
             instanceTagExpectation: macInstanceTagAuthority.expectation(
                 storedInstanceTag: instanceTag
             ),
-            legacyTailscaleRoutes: legacyTailscaleRoutes,
             automaticReconnectAccountID: automaticReconnectAccountID,
-            recordsPairingAttempt: recordsPairingAttempt,
             ifStillCurrent: ifStillCurrent
         )
     }
@@ -651,9 +614,7 @@ extension MobileShellComposite {
         routes: [CmxAttachRoute],
         pairedMacDeviceID: String,
         instanceTagExpectation: MobileMacInstanceTagExpectation,
-        legacyTailscaleRoutes: [CmxAttachRoute] = [],
         automaticReconnectAccountID: String? = nil,
-        recordsPairingAttempt: Bool = false,
         ifStillCurrent: (() -> Bool)? = nil
     ) async -> StoredMacReconnectOutcome {
         guard ifStillCurrent?() ?? true else { return .superseded }
@@ -661,15 +622,9 @@ extension MobileShellComposite {
         let pinnedRoutes = Self.storedReconnectRoutes(
             routes,
             supportedKinds: supportedKinds,
-            preferNonLoopback: Self.prefersNonLoopbackRoutes,
-            tailscalePreference: connectionMethodStore?.method == .tailscale
-                ? Self.TailscaleRoutePreference(
-                    macDeviceID: pairedMacDeviceID,
-                    grantRoutes: legacyTailscaleRoutes
-                )
-                : nil
+            preferNonLoopback: Self.prefersNonLoopbackRoutes
         )
-        guard let firstRoute = pinnedRoutes.first else {
+        guard !pinnedRoutes.isEmpty else {
             // Routes are filtered and reordered before a dial; a stored Mac
             // whose rows all get dropped here is indistinguishable from one
             // that was never saved, and on a physical device the surviving set
@@ -684,28 +639,13 @@ extension MobileShellComposite {
 
         var outcome: StoredMacReconnectOutcome = .failed(.unknown)
 
-        let hasAuthorizedLegacyTailscaleRoute = pinnedRoutes.contains { route in
-            Self.legacyTailscaleAuthorizationEvidence(
-                for: route,
-                macDeviceID: pairedMacDeviceID,
-                persistedRoutes: legacyTailscaleRoutes
-            ) != nil
-        }
-        // Fork (cmux Mochi): a Mac this device holds a DeviceLink key and pin
-        // for is dialed directly, with that identity, over mutual TLS. The
-        // manual-host branch below exists to decide whether a route may carry
-        // the Stack bearer and to fetch an attach ticket for it — a question
-        // with no answer for a pairing whose credential IS the device key, so
-        // it refuses every route as untrusted and the pairing can never connect.
+        // A Mac this device holds a DeviceLink key and pin for is dialed
+        // directly with that exact identity over mutual TLS.
         let hasDeviceLinkCredential = MobileDeviceLinkClient.shared
             .hasUsableCredential(
                 forMacDeviceID: pairedMacDeviceID,
                 instanceTag: instanceTagExpectation.deviceLinkInstanceTag
             )
-        let canDialWithStoredAuthority = firstRoute.kind == .iroh
-            || firstRoute.kind == .debugLoopback
-            || hasAuthorizedLegacyTailscaleRoute
-            || hasDeviceLinkCredential
         MobileShellComposite.logStoredMacDialDecision(
             mac: pairedMacDeviceID,
             routeKinds: pinnedRoutes.map { route in
@@ -715,102 +655,67 @@ extension MobileShellComposite {
                 return "\(route.kind.rawValue)@\(host):\(port)"
             },
             hasDeviceLinkCredential: hasDeviceLinkCredential,
-            canConnect: canDialWithStoredAuthority
+            canConnect: true
         )
-        if canDialWithStoredAuthority {
-            do {
-                let ticket = try Self.storedMacTicket(
-                    name: name,
-                    routes: pinnedRoutes,
-                    pairedMacDeviceID: pairedMacDeviceID
-                )
-                // `connect(ticket:)` installs this exact dial target only after
-                // it retires a superseded attempt and confirms this one is current.
-                MobileShellComposite.logStoredMacDialStarted(
-                    mac: pairedMacDeviceID,
-                    endpoints: pinnedRoutes.compactMap { route in
-                        guard case let .hostPort(host, port) = route.endpoint else { return nil }
-                        return "\(host):\(port)"
-                    }
-                )
-                let noThrowFailure = try await connect(
-                    ticket: ticket,
-                    legacyTailscaleRoutes: legacyTailscaleRoutes,
-                    pairedMacDeviceID: pairedMacDeviceID,
-                    instanceTagExpectation: instanceTagExpectation,
-                    ifStillCurrent: ifStillCurrent
-                )
-                guard ifStillCurrent?() ?? true else { return .superseded }
-                MobileShellComposite.logStoredMacDialFinished(
-                    outcome: "direct failure=\(noThrowFailure.map(String.init(describing:)) ?? "none") state=\(connectionState)"
-                )
-                if noThrowFailure == .noSupportedRoute {
-                    outcome = .failed(.unsupportedRoute)
-                }
-            } catch {
-                guard ifStillCurrent?() ?? true else { return .superseded }
-                MobileShellComposite.logStoredMacDialFinished(
-                    outcome: "direct threw \(String(describing: error))"
-                )
-                outcome = .failed(Self.diagnosticFailureKind(for: error))
-                if let automaticReconnectAccountID {
-                    recordAutomaticReconnectBackoff(
-                        error: error,
-                        accountID: automaticReconnectAccountID
-                    )
-                }
-                if !disconnectForAuthorizationFailureIfNeeded(error) {
-                    connectionState = .disconnected
-                    macConnectionStatus = .unavailable
-                    // A failed replacement is an offline interval, not a new
-                    // shell. Keep the last authenticated workspace snapshot so
-                    // a transient DERP/TCP drop does not flash the QR screen or
-                    // erase useful scrollback while policy schedules redial.
-                    clearRemoteConnectionContext(
-                        preservingOtherMacWorkspaceState: true,
-                        preservingSecondaryConnections: false
-                    )
-                }
-            }
-        } else {
-            let candidates = Self.reconnectHostPortRoutes(
-                pinnedRoutes,
-                supportedKinds: supportedKinds,
-                preferNonLoopback: Self.prefersNonLoopbackRoutes
+        do {
+            let ticket = try Self.storedMacTicket(
+                name: name,
+                routes: pinnedRoutes,
+                pairedMacDeviceID: pairedMacDeviceID
             )
-            // The candidate list, not the stored list. Routes are filtered and
-            // reordered between the two, and a candidate silently dropped here
-            // is invisible in every other log line.
-            MobileShellComposite.logStoredMacDialCandidates(
-                candidates.map { "\($0.host):\($0.port)" }
-            )
-            // Name the Mac before dialing. The transport asks for TLS options
-            // through a closure that knows only "give me an identity", so
-            // without this the DeviceLink client cannot tell which pairing key
-            // to offer and the handshake fails immediately — indistinguishable
-            // from the Mac being switched off.
+            // `connect(ticket:)` installs this exact dial target only after it
+            // retires a superseded attempt and confirms this one is current.
+            // The injected transport factory owns admission; the shell never
+            // substitutes a bearer or reaches into a concrete credential store.
             MobileShellComposite.logStoredMacDialStarted(
                 mac: pairedMacDeviceID,
-                endpoints: candidates.map { "\($0.host):\($0.port)" }
-            )
-            for route in candidates {
-                guard ifStillCurrent?() ?? true else { return .superseded }
-                await connectManualHost(
-                    name: name,
-                    host: route.host,
-                    port: route.port,
-                    pairedMacDeviceID: pairedMacDeviceID,
-                    instanceTagExpectation: instanceTagExpectation,
-                    recordsPairingAttempt: recordsPairingAttempt,
-                    ifStillCurrent: ifStillCurrent
-                )
-                if connectionState == .connected,
-                   remoteClient != nil,
-                   foregroundMacDeviceID == pairedMacDeviceID {
-                    break
+                endpoints: pinnedRoutes.compactMap { route in
+                    guard case let .hostPort(host, port) = route.endpoint else { return nil }
+                    return "\(host):\(port)"
                 }
-                MobileShellComposite.logStoredMacDialFinished(
-                    outcome: "\(route.host):\(route.port) state=\(connectionState)"
+            )
+            let noThrowFailure = try await connect(
+                ticket: ticket,
+                pairedMacDeviceID: pairedMacDeviceID,
+                instanceTagExpectation: instanceTagExpectation,
+                ifStillCurrent: ifStillCurrent
+            )
+            guard ifStillCurrent?() ?? true else { return .superseded }
+            MobileShellComposite.logStoredMacDialFinished(
+                outcome: "direct failure=\(noThrowFailure.map { String(describing: $0) } ?? "none") state=\(connectionState)"
+            )
+            if noThrowFailure == .noSupportedRoute {
+                outcome = .failed(.unsupportedRoute)
+            }
+        } catch {
+            guard ifStillCurrent?() ?? true else { return .superseded }
+            MobileShellComposite.logStoredMacDialFinished(
+                outcome: "direct threw \(String(describing: error))"
+            )
+            outcome = .failed(Self.diagnosticFailureKind(for: error))
+            if let automaticReconnectAccountID {
+                recordAutomaticReconnectBackoff(
+                    error: error,
+                    accountID: automaticReconnectAccountID
+                )
+            }
+            // `connect(ticket:)` stages a different Mac without disturbing the
+            // live foreground. A rejected candidate must not convert that
+            // healthy foreground into an offline interval while route refresh
+            // tries the next authenticated transport.
+            if hasActiveMacConnection {
+                // The target-specific failure is returned in `outcome`; keep
+                // the foreground's connection state and ownership untouched.
+            } else if !disconnectForAuthorizationFailureIfNeeded(error) {
+                connectionState = .disconnected
+                macConnectionStatus = .unavailable
+                // A failed replacement is an offline interval, not a new
+                // shell. Keep the last authenticated workspace snapshot so
+                // a transient DERP/TCP drop does not flash the QR screen or
+                // erase useful scrollback while policy schedules redial.
+                clearRemoteConnectionContext(
+                    preservingOtherMacWorkspaceState: true,
+                    preservingSecondaryConnections: false
                 )
             }
         }
@@ -979,17 +884,10 @@ extension MobileShellComposite {
     /// device) using that instance's advertised routes.
     ///
     /// This is the device tree's tap-to-open for a tag that is not the currently
-    /// connected one: it routes through the same destructive ``connectManualHost``
-    /// path the multi-Mac switcher uses, then persists the device as the active
-    /// paired Mac on success (so a later relaunch reconnects to it) and refreshes
-    /// the paired-Mac list. A no-op when the instance advertises no reachable
-    /// route. Failure surfaces through ``connectionError`` like any other connect.
-    ///
-    /// Like ``switchToMac(macDeviceID:)``, the connect is destructive (it replaces
-    /// the live client), so tapping a stale/offline tag while connected would drop
-    /// a healthy session. To avoid stranding the user, on a failed connect the
-    /// previously-active Mac is reconnected, so a bad target leaves the user where
-    /// they were rather than disconnected.
+    /// connected one. It stages the exact Mac-and-instance DeviceLink request
+    /// through the stored-route path, promotes it only after authentication and
+    /// host-status verification, then refreshes the paired-Mac list. A rejected
+    /// candidate leaves the healthy foreground connection untouched.
     /// - Parameters:
     ///   - device: The registry device the instance belongs to.
     ///   - instance: The tag/app-instance to connect to.
@@ -1024,8 +922,7 @@ extension MobileShellComposite {
             name: device.displayName ?? device.deviceId,
             routes: candidateRoutes,
             pairedMacDeviceID: device.deviceId,
-            instanceTagExpectation: .require(instance.tag),
-            recordsPairingAttempt: true
+            instanceTagExpectation: .require(instance.tag)
         )).didConnect
         guard connectedRoute else {
             if previousActive != nil, connectionState != .connected {

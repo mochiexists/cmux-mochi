@@ -29,9 +29,6 @@ extension MobileShellComposite {
         pinnedContext context: WorkspaceCreatePinnedContext,
         willStartCreate: (@MainActor () -> Void)? = nil
     ) async -> Result<Void, MobileWorkspaceMutationFailure> {
-        guard groupID == nil || allowsMacScopedWorkspaceMutations(targetClient: context.client) else {
-            return .failure(.authorizationFailed(hostDisplayName: context.hostDisplayName))
-        }
         if let createWorkspaceTask {
             guard spec == nil, createWorkspaceTaskSpec == nil, createWorkspaceTaskGroupID == groupID else {
                 return .failure(.busy(hostDisplayName: context.hostDisplayName))
@@ -70,9 +67,6 @@ extension MobileShellComposite {
             return .failure(.notConnected(hostDisplayName: connectedHostName))
         }
         let client = context.client
-        guard groupID == nil || allowsMacScopedWorkspaceMutations(targetClient: client) else {
-            return .failure(.authorizationFailed(hostDisplayName: context.hostDisplayName))
-        }
         do {
             var params: [String: Any] = [:]
             if let groupID {

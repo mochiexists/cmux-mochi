@@ -328,9 +328,10 @@ import Testing
             expiresAt: clock.now.addingTimeInterval(3600)
         )
 
-        let result = await store.connectPairingURLResult(try attachURL(for: ticket))
+        let result = try await store.connect(ticket: ticket)
 
-        #expect(result == .connected)
+        #expect(result == nil)
+        #expect(store.connectionState == .connected)
         #expect(store.activeRoute?.id == "good")
         #expect(store.pooledRouteForTesting(macDeviceID: "test-mac")?.id == "good")
     }
@@ -419,7 +420,6 @@ import Testing
             runtime: runtime,
             route: liveRoute,
             ticket: liveTicket,
-            allowsStackAuthFallback: true
         )
         let store = MobileShellComposite(
             runtime: runtime,
@@ -536,7 +536,6 @@ import Testing
             runtime: runtime,
             route: routeA,
             ticket: ticketA,
-            allowsStackAuthFallback: true
         )
         let store = MobileShellComposite(
             runtime: runtime,
@@ -606,49 +605,11 @@ import Testing
         return store
     }
 
-    @Test func tailscalePreferencePromotesGrantedRouteAheadOfIrohPin() throws {
-        let tailscale = try tailscale()
-        let routes = MobileShellComposite.storedReconnectRoutes(
-            [tailscale, try iroh()],
-            supportedKinds: [.iroh, .tailscale],
-            preferNonLoopback: true,
-            tailscalePreference: MobileShellComposite.TailscaleRoutePreference(
-                macDeviceID: "test-mac",
-                grantRoutes: [tailscale]
-            )
-        )
-
-        // The granted Tailscale destination dials first; Iroh stays as the
-        // fallback instead of being exclusive.
-        #expect(routes.map(\.kind) == [.tailscale, .iroh])
-    }
-
-    @Test func tailscalePreferenceWithoutGrantKeepsIrohExclusivePin() throws {
-        // A preference flip alone grants nothing: without a device-local grant
-        // the Iroh pin still drops every raw host/port fallback.
+    @Test func reconnectRouteSelectionKeepsIrohExclusiveWithoutBearerOverrides() throws {
         let routes = MobileShellComposite.storedReconnectRoutes(
             [try tailscale(), try iroh()],
             supportedKinds: [.iroh, .tailscale],
-            preferNonLoopback: true,
-            tailscalePreference: MobileShellComposite.TailscaleRoutePreference(
-                macDeviceID: "test-mac",
-                grantRoutes: []
-            )
-        )
-
-        #expect(routes.map(\.kind) == [.iroh])
-    }
-
-    @Test func tailscalePreferenceIgnoresGrantForDifferentDestination() throws {
-        let otherDestination = try tailscale(50907)
-        let routes = MobileShellComposite.storedReconnectRoutes(
-            [try tailscale(), try iroh()],
-            supportedKinds: [.iroh, .tailscale],
-            preferNonLoopback: true,
-            tailscalePreference: MobileShellComposite.TailscaleRoutePreference(
-                macDeviceID: "test-mac",
-                grantRoutes: [otherDestination]
-            )
+            preferNonLoopback: true
         )
 
         #expect(routes.map(\.kind) == [.iroh])
