@@ -365,6 +365,52 @@ private func legacyTailscaleRequest() throws -> CmxByteTransportRequest {
     #expect(resolutionCount.withLock { $0 } == 1)
 }
 
+/// Concurrent foreground and background dials must never consult mutable
+/// process-wide target state. Each resolver invocation receives the immutable
+/// Mac identity carried by the transport request that owns the dial.
+@available(macOS 15, *)
+@Test func resolvesDeviceLinkTLSOptionsForEachExactMacInstance() throws {
+    let resolvedTargets = Mutex<[(String?, String?)]>([])
+    let factory = CmxNetworkByteTransportFactory(
+        supportedKinds: [.debugLoopback],
+        deviceLinkTLSOptions: { request in
+            resolvedTargets.withLock { targets in
+                targets.append((
+                    request.expectedPeerDeviceID,
+                    request.expectedPeerInstanceTag
+                ))
+            }
+            return NWProtocolTLS.Options()
+        }
+    )
+    let route = try CmxAttachRoute(
+        id: "loopback",
+        kind: .debugLoopback,
+        endpoint: .hostPort(host: "127.0.0.1", port: 49_831)
+    )
+
+    for (macDeviceID, instanceTag) in [
+        ("mac-stable", "stable"),
+        ("mac-nightly", "nightly"),
+    ] {
+        _ = try factory.makeTransport(
+            for: CmxByteTransportRequest(
+                route: route,
+                expectedPeerDeviceID: macDeviceID,
+                expectedPeerInstanceTag: instanceTag,
+                authorizationMode: .transportAdmission
+            )
+        )
+    }
+
+    let targets = resolvedTargets.withLock { $0 }
+    #expect(targets.count == 2)
+    #expect(targets[0].0 == "mac-stable")
+    #expect(targets[0].1 == "stable")
+    #expect(targets[1].0 == "mac-nightly")
+    #expect(targets[1].1 == "nightly")
+}
+
 // MARK: - MagicDNS route resolution
 
 private func magicDNSRequest(host: String) throws -> CmxByteTransportRequest {
