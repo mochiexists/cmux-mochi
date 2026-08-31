@@ -19,4 +19,21 @@ struct MobileDeviceLinkPairingEntryTests {
         #expect(store.activeRoute == nil)
         #expect(store.connectionError == MobilePairingFailureCategory.invalidCode.message)
     }
+
+    @Test("pairing persistence preserves LAN and Tailscale route kinds")
+    func pairingPersistenceClassifiesDeviceLinkRoutes() throws {
+        let local = try #require(MobileShellComposite.deviceLinkRoute(
+            from: "192.168.1.20:58465",
+            priority: 0
+        ))
+        let tailscale = try #require(MobileShellComposite.deviceLinkRoute(
+            from: "100.71.210.41:58465",
+            priority: 1
+        ))
+
+        #expect(local.kind == .localNetwork)
+        #expect(local.priority == 0)
+        #expect(tailscale.kind == .tailscale)
+        #expect(tailscale.priority == 1)
+    }
 }
