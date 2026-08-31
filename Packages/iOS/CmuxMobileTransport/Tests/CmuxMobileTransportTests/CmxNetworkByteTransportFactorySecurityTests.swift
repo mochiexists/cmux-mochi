@@ -1,5 +1,6 @@
 import CMUXMobileCore
 import Network
+import Synchronization
 import Testing
 @testable import CmuxMobileTransport
 
@@ -327,6 +328,41 @@ private func legacyTailscaleRequest() throws -> CmxByteTransportRequest {
             )
         }
     }
+}
+
+/// A transport request owns one immutable admission decision. Reading the
+/// credential source again after the fail-closed guard could turn a previously
+/// authorized request into a plaintext transport when credentials are removed
+/// or another connection changes the selected identity between reads.
+@available(macOS 15, *)
+@Test func resolvesDeviceLinkTLSOptionsOncePerRequest() throws {
+    // The synchronous `@Sendable` resolver needs a tiny thread-safe counter;
+    // it does not protect production or ongoing domain state.
+    let resolutionCount = Mutex(0)
+    let factory = CmxNetworkByteTransportFactory(
+        supportedKinds: [.debugLoopback],
+        deviceLinkTLSOptions: {
+            resolutionCount.withLock { count in
+                count += 1
+                return count == 1 ? NWProtocolTLS.Options() : nil
+            }
+        }
+    )
+    let route = try CmxAttachRoute(
+        id: "loopback",
+        kind: .debugLoopback,
+        endpoint: .hostPort(host: "127.0.0.1", port: 49_831)
+    )
+
+    _ = try factory.makeTransport(
+        for: CmxByteTransportRequest(
+            route: route,
+            expectedPeerDeviceID: "mac-1",
+            authorizationMode: .transportAdmission
+        )
+    )
+
+    #expect(resolutionCount.withLock { $0 } == 1)
 }
 
 // MARK: - MagicDNS route resolution
