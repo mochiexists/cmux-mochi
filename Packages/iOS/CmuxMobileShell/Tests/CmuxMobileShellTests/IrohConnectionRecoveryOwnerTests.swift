@@ -8,6 +8,71 @@ import Testing
 
 @MainActor
 extension ReconnectRouteSelectionTests {
+    @Test func secondaryDeviceLinkClientUsesTransportAdmission() async throws {
+        let macDeviceID = "secondary-devicelink-\(UUID().uuidString)"
+        let instanceTag = "nightly"
+        let pairingClient = MobileDeviceLinkClient.shared
+        let pinHex = (
+            UUID().uuidString.replacingOccurrences(of: "-", with: "")
+                + UUID().uuidString.replacingOccurrences(of: "-", with: "")
+        ).lowercased()
+        let pin = try #require(DeviceFingerprint(hex: pinHex))
+        let pairingID = MobileDeviceLinkEnroller.pairingID(for: pin)
+        _ = try pairingClient.prepareIdentity(
+            forPairingID: pairingID,
+            macFingerprint: pin
+        )
+        pairingClient.rememberPairing(
+            macDeviceID: macDeviceID,
+            instanceTag: instanceTag,
+            pairingID: pairingID
+        )
+        defer { pairingClient.forget(pairingID: pairingID) }
+
+        let route = try tailscale()
+        let router = LivenessHostRouter()
+        await router.setHostIdentity(
+            deviceID: macDeviceID,
+            instanceTag: instanceTag
+        )
+        let factory = KindRecordingTransportFactory(
+            router: router,
+            box: TransportBox()
+        )
+        let shell = MobileShellComposite(
+            runtime: LivenessTestRuntime(
+                transportFactory: factory,
+                now: { Date() },
+                supportedRouteKinds: [.tailscale]
+            ),
+            isSignedIn: true
+        )
+        let mac = MobilePairedMac(
+            macDeviceID: macDeviceID,
+            displayName: "Secondary Mac",
+            routes: [route],
+            createdAt: .distantPast,
+            lastSeenAt: Date(),
+            isActive: false,
+            stackUserID: MobileLocalPairingScope.identifier(),
+            teamID: nil,
+            instanceTag: instanceTag
+        )
+
+        switch await shell.makeSecondaryClient(for: mac) {
+        case let .connected(handle):
+            #expect(handle.authenticatedInstanceTag == instanceTag)
+            await handle.client.disconnect()
+        case .superseded:
+            Issue.record("secondary DeviceLink connection was superseded")
+        case .transientFailure:
+            Issue.record("secondary DeviceLink connection failed transiently")
+        case .permanentFailure:
+            Issue.record("secondary DeviceLink connection lacked transport admission")
+        }
+        #expect(factory.attemptedAuthorizationModes() == [.transportAdmission])
+    }
+
     @Test func establishedIrohSessionRedialsOnceAfterTransportDies() async throws {
         let fixture = try await makeRecoveryOwnerFixture()
         defer { fixture.release() }
