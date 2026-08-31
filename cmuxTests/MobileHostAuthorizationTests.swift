@@ -169,6 +169,27 @@ struct MobileHostAuthorizationTests {
             #expect(Bool(false), "Expected MagicDNS Tailscale route")
         }
     }
+    @Test func testMobileRouteResolverPublishesPrivateLANBeforeTailscaleFallback() throws {
+        let resolver = MobileRouteResolver()
+        let snapshot = resolver.routes(
+            port: 61_234,
+            localNetworkHosts: ["192.168.1.20", "10.0.0.8", "100.71.210.41", "203.0.113.10"],
+            tailscaleHosts: ["100.71.210.41", "work-mac.tailnet.ts.net"]
+        )
+
+        let networkRoutes = snapshot.routes.filter { $0.kind != .debugLoopback }
+        #expect(networkRoutes.map(\.kind) == [
+            .localNetwork,
+            .localNetwork,
+            .tailscale,
+            .tailscale,
+        ])
+        #expect(networkRoutes.map(\.priority) == [5, 6, 10, 100])
+        #expect(networkRoutes.compactMap { route -> String? in
+            guard case let .hostPort(host, _) = route.endpoint else { return nil }
+            return host
+        } == ["192.168.1.20", "10.0.0.8", "100.71.210.41", "work-mac.tailnet.ts.net"])
+    }
     @Test func testMobileRouteResolverImmediateSnapshotUsesNumericTailscaleFallbackWithoutDNS() throws {
         let resolver = MobileRouteResolver()
         let snapshot = resolver.routes(

@@ -30,6 +30,15 @@ import Testing
         )
     }
 
+    func localNetwork(_ port: Int = 50905) throws -> CmxAttachRoute {
+        try CmxAttachRoute(
+            id: "local-network",
+            kind: .localNetwork,
+            endpoint: .hostPort(host: "192.168.1.20", port: port),
+            priority: 5
+        )
+    }
+
     func iroh(priority: Int = -10_000) throws -> CmxAttachRoute {
         try CmxAttachRoute(
             id: "iroh-personal",
@@ -234,6 +243,34 @@ import Testing
         // A trusted stored loopback route is dialed directly, so recovery
         // falls through to the good route without a redundant attach probe.
         #expect(factory.attemptedPorts() == [51000, 51001])
+    }
+
+    @Test func reconnectFallsThroughFailedLANToTailscaleInOneAttempt() async throws {
+        let clock = TestClock()
+        let router = LivenessHostRouter()
+        let factory = RouteRecordingTransportFactory(
+            router: router,
+            box: TransportBox(),
+            failingPorts: [51_000]
+        )
+        let store = try await makeReconnectStore(
+            routes: [
+                try localNetwork(51_000),
+                try tailscale(51_001),
+            ],
+            runtime: LivenessTestRuntime(
+                transportFactory: factory,
+                now: { clock.now },
+                supportedRouteKinds: [.localNetwork, .tailscale]
+            )
+        )
+
+        let connected = await store.reconnectActiveMacIfAvailable(stackUserID: "user-1")
+
+        #expect(connected)
+        #expect(store.connectionState == .connected)
+        #expect(factory.attemptedPorts() == [51_000, 51_001])
+        #expect(store.activeRoute?.kind == .tailscale)
     }
 
     @Test func automaticReconnectNeverFallsThroughToHiddenPairingIDRow() async throws {

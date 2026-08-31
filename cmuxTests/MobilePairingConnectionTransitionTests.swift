@@ -14,6 +14,7 @@ struct MobilePairingConnectionTransitionTests {
     private func makeReady() -> MobilePairingModel.Ready {
         MobilePairingModel.Ready(
             attachURL: "cmux-ios://pair?v=3&r=100.64.0.1:7777",
+            localNetworkLines: [],
             tailscaleLines: ["100.64.0.1:7777"]
         )
     }
@@ -101,6 +102,23 @@ struct MobilePairingConnectionTransitionTests {
         let plan = try #require(MobilePairingModel.PairingRoutePlan.make(routes: routes))
 
         #expect(plan.tailscaleLines == ["100.64.0.1:7777"])
+    }
+
+    @Test("A mixed DeviceLink route set prefers local network and retains Tailscale fallback")
+    func mixedDeviceLinkRoutesPreferLocalNetwork() throws {
+        let local = try CmxAttachRoute(
+            id: "local-network",
+            kind: .localNetwork,
+            endpoint: .hostPort(host: "192.168.1.20", port: 7777),
+            priority: 5
+        )
+        let plan = try #require(MobilePairingModel.PairingRoutePlan.make(
+            routes: [tailscaleRoute(), local]
+        ))
+
+        #expect(plan.localNetworkLines == ["192.168.1.20:7777"])
+        #expect(plan.tailscaleLines == ["100.64.0.1:7777"])
+        #expect(plan.deviceLinkLines == ["192.168.1.20:7777", "100.64.0.1:7777"])
     }
 
     @Test("A Tailscale route produces the DeviceLink route plan")

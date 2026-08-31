@@ -13,7 +13,7 @@ import Testing
 /// weakening anything for a build that holds no pairing.
 @Test func acceptsTransportAdmissionWhenADeviceLinkIdentityExists() throws {
     let factory = CmxNetworkByteTransportFactory(
-        supportedKinds: [.debugLoopback, .tailscale],
+        supportedKinds: [.debugLoopback, .localNetwork, .tailscale],
         deviceLinkTLSOptions: { _ in NWProtocolTLS.Options() }
     )
 
@@ -25,6 +25,19 @@ import Testing
     _ = try factory.makeTransport(
         for: CmxByteTransportRequest(
             route: tailscale,
+            expectedPeerDeviceID: "mac-1",
+            authorizationMode: .transportAdmission
+        )
+    )
+
+    let localNetwork = try CmxAttachRoute(
+        id: "local-network",
+        kind: .localNetwork,
+        endpoint: .hostPort(host: "192.168.1.20", port: 49831)
+    )
+    _ = try factory.makeTransport(
+        for: CmxByteTransportRequest(
+            route: localNetwork,
             expectedPeerDeviceID: "mac-1",
             authorizationMode: .transportAdmission
         )
@@ -48,12 +61,13 @@ import Testing
 /// same request must be refused rather than falling back to plaintext.
 @Test func refusesTransportAdmissionWithoutADeviceLinkIdentity() throws {
     let factory = CmxNetworkByteTransportFactory(
-        supportedKinds: [.debugLoopback, .tailscale],
+        supportedKinds: [.debugLoopback, .localNetwork, .tailscale],
         deviceLinkTLSOptions: { _ in nil }
     )
 
     for (id, kind, host) in [
         ("tailscale", CmxAttachTransportKind.tailscale, "100.64.1.2"),
+        ("local-network", CmxAttachTransportKind.localNetwork, "192.168.1.20"),
         ("loopback", CmxAttachTransportKind.debugLoopback, "127.0.0.1"),
     ] {
         let route = try CmxAttachRoute(
