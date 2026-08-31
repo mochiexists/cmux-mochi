@@ -73,6 +73,7 @@ actor CmxPreparingTailscaleByteTransport: CmxByteTransport {
                 priority: request.route.priority
             ),
             expectedPeerDeviceID: request.expectedPeerDeviceID,
+            expectedPeerInstanceTag: request.expectedPeerInstanceTag,
             authorizationMode: request.authorizationMode,
             sessionPurpose: request.sessionPurpose
         )

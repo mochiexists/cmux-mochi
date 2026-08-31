@@ -98,28 +98,16 @@ public final class MobileDeviceLinkClient: @unchecked Sendable {
     /// Forgets a Mac: its pin, this device's key for it, and the keychain items
     /// backing that key. A forgotten pairing leaves nothing behind to reuse.
     ///
-    /// Also drops the Mac -> pairing mapping and any dial target pointing at
-    /// this pairing. Leaving either behind lets a later dial resolve a mapping
-    /// to an identity that no longer exists. Explicit targets now fail closed,
-    /// but retaining the stale authority would still make that Mac look paired
-    /// and permanently undialable.
+    /// Also drops every Mac -> pairing mapping for this identity. Retaining a
+    /// stale mapping would make that Mac look paired and permanently undialable.
     public func forget(pairingID: String) {
         lock.lock()
         cachedIdentities[pairingID] = nil
         let staleTargets = pairingIDsByMacDeviceID
             .filter { $0.value == pairingID }
             .map(\.key)
-        let activePairingID = activeDialTarget.flatMap {
-            pairingIDLocked(
-                macDeviceID: $0.macDeviceID,
-                instanceTag: $0.instanceTag
-            )
-        }
         for indexKey in staleTargets {
             pairingIDsByMacDeviceID[indexKey] = nil
-        }
-        if activePairingID == pairingID {
-            activeDialTarget = nil
         }
         let snapshot = pairingIDsByMacDeviceID
         lock.unlock()
@@ -190,16 +178,6 @@ public final class MobileDeviceLinkClient: @unchecked Sendable {
         !((try? pinStore.pins()) ?? [:]).isEmpty
     }
 
-    /// Which Mac the next dial is for, keyed by its device id.
-    ///
-    /// The transport asks for TLS options through a closure that knows only
-    /// "give me an identity", so the caller that *does* know which Mac it is
-    /// dialing records it here first. Without this the client offers whichever
-    /// pin sorts first, and with more than one paired Mac that is the wrong key
-    /// most of the time — the dial then dies in the TLS handshake, which is
-    /// indistinguishable from the Mac being switched off.
-    private var activeDialTarget: PairingTarget?
-
     /// Remembers which pairing belongs to a Mac, so a later dial can pick its
     /// key. Written at enrollment, where both halves are known.
     ///
@@ -253,24 +231,7 @@ public final class MobileDeviceLinkClient: @unchecked Sendable {
         UserDefaults.standard.set(snapshot, forKey: Self.pairingIndexDefaultsKey)
     }
 
-    /// Declares the Mac the next dial targets.
-    public func setActiveDialTarget(
-        macDeviceID: String?,
-        instanceTag: String? = nil
-    ) {
-        lock.lock()
-        activeDialTarget = macDeviceID.map {
-            PairingTarget(macDeviceID: $0, instanceTag: instanceTag)
-        }
-        lock.unlock()
-    }
-
     private static let pairingIndexDefaultsKey = "devicelink.pairingIDsByMacDeviceID"
-
-    private struct PairingTarget {
-        let macDeviceID: String
-        let instanceTag: String?
-    }
 
     private static func pairingIndexKey(
         macDeviceID: String,
@@ -307,35 +268,39 @@ public final class MobileDeviceLinkClient: @unchecked Sendable {
         return pairingIDsByMacDeviceID[macDeviceID]
     }
 
-    public func currentPairingTLSOptions() -> NWProtocolTLS.Options? {
-        // Prefer the pin for the Mac actually being dialed.
-        lock.lock()
-        let target = activeDialTarget
-        let mapped = target.flatMap {
-            pairingIDLocked(
-                macDeviceID: $0.macDeviceID,
-                instanceTag: $0.instanceTag
-            )
-        }
-        lock.unlock()
-        guard let target else {
+    /// Resolves TLS options for one immutable transport request target.
+    ///
+    /// Both the physical Mac id and build-scoped instance tag travel with the
+    /// request, so simultaneous Stable, Nightly, foreground, and background
+    /// dials cannot overwrite each other's credential selection.
+    public func pairingTLSOptions(
+        forMacDeviceID macDeviceID: String?,
+        instanceTag: String?
+    ) -> NWProtocolTLS.Options? {
+        guard let macDeviceID else {
             MobileDeviceLinkDiagnostics.log(
-                "tls options: no active dial target — failing closed"
+                "tls options: request has no peer device id — failing closed"
             )
             return nil
         }
+        lock.lock()
+        let mapped = pairingIDLocked(
+            macDeviceID: macDeviceID,
+            instanceTag: instanceTag
+        )
+        lock.unlock()
         if let mapped, let options = tlsOptions(forPairingID: mapped) {
             MobileDeviceLinkDiagnostics.log(
                 "tls options: offering \(mapped.prefix(24)) for target "
-                    + "\(target.macDeviceID.prefix(12)) "
-                    + "tag=\(target.instanceTag ?? "nil")"
+                    + "\(macDeviceID.prefix(12)) "
+                    + "tag=\(instanceTag ?? "nil")"
             )
             return options
         }
         MobileDeviceLinkDiagnostics.log(
             "tls options: no usable pairing recorded for target "
-                + "\(target.macDeviceID.prefix(12)) "
-                + "tag=\(target.instanceTag ?? "nil") — failing closed"
+                + "\(macDeviceID.prefix(12)) "
+                + "tag=\(instanceTag ?? "nil") — failing closed"
         )
         return nil
     }

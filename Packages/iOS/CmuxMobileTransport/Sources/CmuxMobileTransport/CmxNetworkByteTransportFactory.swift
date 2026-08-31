@@ -16,7 +16,8 @@ public struct CmxNetworkByteTransportFactory: CmxRouteAwareByteTransportFactory 
     /// upstream's own authorization modes; an attach-ticket dial requires them,
     /// because the fork's pairing host is TLS-only and a plaintext dial could
     /// only reach something that is not our Mac.
-    public var deviceLinkTLSOptions: (@Sendable () -> NWProtocolTLS.Options?)?
+    public var deviceLinkTLSOptions:
+        (@Sendable (CmxByteTransportRequest) -> NWProtocolTLS.Options?)?
 
     public init(
         supportedKinds: [CmxAttachTransportKind] = [.tailscale, .debugLoopback],
@@ -24,7 +25,8 @@ public struct CmxNetworkByteTransportFactory: CmxRouteAwareByteTransportFactory 
         connectTimeoutNanoseconds: UInt64 = CmxNetworkByteTransport.defaultConnectTimeoutNanoseconds,
         // Fork (cmux Mochi): supplied at construction so a factory is never
         // briefly live without the TLS options its tailnet dials require.
-        deviceLinkTLSOptions: (@Sendable () -> NWProtocolTLS.Options?)? = nil
+        deviceLinkTLSOptions:
+            (@Sendable (CmxByteTransportRequest) -> NWProtocolTLS.Options?)? = nil
     ) {
         self.supportedKinds = supportedKinds
         self.maximumReceiveLength = maximumReceiveLength
@@ -101,7 +103,7 @@ public struct CmxNetworkByteTransportFactory: CmxRouteAwareByteTransportFactory 
                 // Fork (cmux Mochi): the ticket IS the credential, and the Mac
                 // additionally refuses any non-tailnet connection, so no
                 // separate route grant is required here.
-                guard let resolvedTLSOptions = deviceLinkTLSOptions?() else {
+                guard let resolvedTLSOptions = deviceLinkTLSOptions?(request) else {
                     // Fail closed: the fork's pairing host is mutual-TLS only.
                     throw CmxNetworkByteTransportError.tailscaleAuthorizationUnavailable
                 }
@@ -112,7 +114,7 @@ public struct CmxNetworkByteTransportFactory: CmxRouteAwareByteTransportFactory 
                 // Mac's pinned fingerprint. That is strictly stronger evidence
                 // than the bearer grants above, so it needs no separate route
                 // authorization. Fail closed when there is no identity to offer.
-                guard let resolvedTLSOptions = deviceLinkTLSOptions?() else {
+                guard let resolvedTLSOptions = deviceLinkTLSOptions?(request) else {
                     throw CmxNetworkByteTransportError.tailscaleAuthorizationUnavailable
                 }
                 tlsOptions = resolvedTLSOptions
@@ -141,7 +143,7 @@ public struct CmxNetworkByteTransportFactory: CmxRouteAwareByteTransportFactory 
                 // simulator pairing fail with `unsupportedAuthorizationMode`.
                 // Fail closed on TLS: the fork's listener applies
                 // `deviceLinkListenerParameters` at every site, loopback included.
-                guard let resolvedTLSOptions = deviceLinkTLSOptions?() else {
+                guard let resolvedTLSOptions = deviceLinkTLSOptions?(request) else {
                     throw CmxNetworkByteTransportError.tailscaleAuthorizationUnavailable
                 }
                 tlsOptions = resolvedTLSOptions
@@ -150,7 +152,7 @@ public struct CmxNetworkByteTransportFactory: CmxRouteAwareByteTransportFactory 
                 // admits itself over mutual TLS. This is the route a paired
                 // simulator reconnects over, since it shares the Mac's network
                 // stack and cannot dial the Mac's own tailnet address.
-                guard let resolvedTLSOptions = deviceLinkTLSOptions?() else {
+                guard let resolvedTLSOptions = deviceLinkTLSOptions?(request) else {
                     throw CmxNetworkByteTransportError.tailscaleAuthorizationUnavailable
                 }
                 tlsOptions = resolvedTLSOptions

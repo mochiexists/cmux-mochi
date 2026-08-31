@@ -45,6 +45,7 @@ public final class MobileCoreRPCClient: MobileSyncing, Sendable {
         ticket: CmxAttachTicket,
         allowsStackAuthFallback: Bool = false,
         usesDeviceLinkIdentity: Bool = false,
+        expectedPeerInstanceTag: String? = nil,
         legacyTailscaleAuthorizationEvidence: CmxLegacyTailscaleAuthorizationEvidence? = nil,
         userTailscalePairingAuthorization: CmxUserTailscalePairingAuthorization? = nil,
         connectAttemptRegistry: MobileRPCConnectAttemptRegistry = MobileRPCConnectAttemptRegistry(),
@@ -107,6 +108,7 @@ public final class MobileCoreRPCClient: MobileSyncing, Sendable {
         let transportRequest = CmxByteTransportRequest(
             route: route,
             expectedPeerDeviceID: ticket.macDeviceID,
+            expectedPeerInstanceTag: expectedPeerInstanceTag,
             authorizationMode: authorizationMode,
             sessionPurpose: sessionPurpose
         )

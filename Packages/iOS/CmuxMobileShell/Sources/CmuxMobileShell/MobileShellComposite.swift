@@ -4287,10 +4287,15 @@ public final class MobileShellComposite: MobileTerminalOutputSinking {
         guard let firstRoute = pinnedRoutes.first else {
             return .permanentFailure
         }
+        let usesDeviceLinkIdentity = MobileDeviceLinkClient.shared
+            .hasUsableCredential(
+                forMacDeviceID: mac.macDeviceID,
+                instanceTag: mac.instanceTag
+            )
         let ticket: CmxAttachTicket
         let route: CmxAttachRoute
         let legacyTailscaleAuthorizationEvidence: CmxLegacyTailscaleAuthorizationEvidence?
-        if firstRoute.kind == .iroh {
+        if firstRoute.kind == .iroh || usesDeviceLinkIdentity {
             do {
                 ticket = try Self.storedMacTicket(
                     name: mac.displayName ?? mac.macDeviceID,
@@ -4384,6 +4389,8 @@ public final class MobileShellComposite: MobileTerminalOutputSinking {
             route: route,
             ticket: ticket,
             allowsStackAuthFallback: MobileShellRouteAuthPolicy.routeAllowsStackAuth(route),
+            usesDeviceLinkIdentity: usesDeviceLinkIdentity,
+            expectedPeerInstanceTag: mac.instanceTag,
             legacyTailscaleAuthorizationEvidence: legacyTailscaleAuthorizationEvidence,
             connectAttemptRegistry: connectAttemptRegistry,
             stackTokenGate: stackTokenGate,
@@ -7841,14 +7848,6 @@ public final class MobileShellComposite: MobileTerminalOutputSinking {
         connectionGeneration = generation
         await releaseConnectionAttemptClientForReplacement()
         guard isConnectCurrent() else { return nil }
-        // Every foreground transport attempt owns an explicit TLS target. Wait
-        // until the superseded attempt has relinquished its client before
-        // changing the synchronous provider's target, then clear/fail closed
-        // for Stack/manual/QR attempts with no mapped credential.
-        MobileDeviceLinkClient.shared.setActiveDialTarget(
-            macDeviceID: requestedMacDeviceID,
-            instanceTag: instanceTagExpectation.deviceLinkInstanceTag
-        )
         diagnosticLog?.record(DiagnosticEvent(.connect))
         cancelRemoteOperationTasks()
         rawTerminalInputBuffer.clear()
@@ -8095,6 +8094,8 @@ public final class MobileShellComposite: MobileTerminalOutputSinking {
                 allowsStackAuthFallback: routeAllowsStackAuthFallbackOverride
                     ?? MobileShellRouteAuthPolicy.routeAllowsStackAuth(route),
                 usesDeviceLinkIdentity: usesDeviceLinkIdentity,
+                expectedPeerInstanceTag:
+                    instanceTagExpectation.deviceLinkInstanceTag,
                 legacyTailscaleAuthorizationEvidence: legacyTailscaleAuthorizationEvidence,
                 userTailscalePairingAuthorization: userTailscalePairingAuthorization,
                 connectAttemptRegistry: connectAttemptRegistry,

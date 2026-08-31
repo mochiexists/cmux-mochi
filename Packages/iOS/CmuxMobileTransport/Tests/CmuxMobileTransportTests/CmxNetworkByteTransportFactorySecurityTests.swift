@@ -271,7 +271,7 @@ private func legacyTailscaleRequest() throws -> CmxByteTransportRequest {
 @Test func acceptsTransportAdmissionWhenADeviceLinkIdentityExists() throws {
     let factory = CmxNetworkByteTransportFactory(
         supportedKinds: [.debugLoopback, .tailscale],
-        deviceLinkTLSOptions: { NWProtocolTLS.Options() }
+        deviceLinkTLSOptions: { _ in NWProtocolTLS.Options() }
     )
 
     let tailscale = try CmxAttachRoute(
@@ -306,7 +306,7 @@ private func legacyTailscaleRequest() throws -> CmxByteTransportRequest {
 @Test func refusesTransportAdmissionWithoutADeviceLinkIdentity() throws {
     let factory = CmxNetworkByteTransportFactory(
         supportedKinds: [.debugLoopback, .tailscale],
-        deviceLinkTLSOptions: { nil }
+        deviceLinkTLSOptions: { _ in nil }
     )
 
     for (id, kind, host) in [
@@ -341,7 +341,7 @@ private func legacyTailscaleRequest() throws -> CmxByteTransportRequest {
     let resolutionCount = Mutex(0)
     let factory = CmxNetworkByteTransportFactory(
         supportedKinds: [.debugLoopback],
-        deviceLinkTLSOptions: {
+        deviceLinkTLSOptions: { _ in
             resolutionCount.withLock { count in
                 count += 1
                 return count == 1 ? NWProtocolTLS.Options() : nil
