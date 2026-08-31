@@ -79,6 +79,7 @@ public struct CmxNetworkByteTransportFactory: CmxRouteAwareByteTransportFactory 
         }
         switch route.kind {
         case .tailscale:
+            let tlsOptions: NWProtocolTLS.Options?
             switch request.authorizationMode {
             case let .legacyTailscaleBearer(evidence):
                 guard evidence.authorizes(
@@ -88,29 +89,33 @@ public struct CmxNetworkByteTransportFactory: CmxRouteAwareByteTransportFactory 
                 ) else {
                     throw CmxNetworkByteTransportError.tailscaleAuthorizationUnavailable
                 }
+                tlsOptions = nil
             case let .userAuthorizedTailscalePairing(authorization):
                 // Anchored on the exact user-entered destination; any claimed
                 // device identity is self-reported and grants nothing extra.
                 guard authorization.authorizes(host: host, port: port) else {
                     throw CmxNetworkByteTransportError.tailscaleAuthorizationUnavailable
                 }
+                tlsOptions = nil
             case .attachTicket:
                 // Fork (cmux Mochi): the ticket IS the credential, and the Mac
                 // additionally refuses any non-tailnet connection, so no
                 // separate route grant is required here.
-                guard deviceLinkTLSOptions?() != nil else {
+                guard let resolvedTLSOptions = deviceLinkTLSOptions?() else {
                     // Fail closed: the fork's pairing host is mutual-TLS only.
                     throw CmxNetworkByteTransportError.tailscaleAuthorizationUnavailable
                 }
+                tlsOptions = resolvedTLSOptions
             case .transportAdmission:
                 // Fork (cmux Mochi): a DeviceLink pairing admits itself through
                 // the mutual-TLS handshake -- this device's key against the
                 // Mac's pinned fingerprint. That is strictly stronger evidence
                 // than the bearer grants above, so it needs no separate route
                 // authorization. Fail closed when there is no identity to offer.
-                guard deviceLinkTLSOptions?() != nil else {
+                guard let resolvedTLSOptions = deviceLinkTLSOptions?() else {
                     throw CmxNetworkByteTransportError.tailscaleAuthorizationUnavailable
                 }
+                tlsOptions = resolvedTLSOptions
             case .stackBearer:
                 // A generic Stack bearer never opts into the legacy risk.
                 throw CmxNetworkByteTransportError.tailscaleAuthorizationUnavailable
@@ -120,12 +125,13 @@ public struct CmxNetworkByteTransportFactory: CmxRouteAwareByteTransportFactory 
                 tailscaleRouteAuthority: tailscaleRouteAuthority,
                 maximumReceiveLength: maximumReceiveLength,
                 connectTimeoutNanoseconds: connectTimeoutNanoseconds,
-                tlsOptions: deviceLinkTLSOptions?()
+                tlsOptions: tlsOptions
             )
         case .debugLoopback:
+            let tlsOptions: NWProtocolTLS.Options?
             switch request.authorizationMode {
             case .stackBearer:
-                break
+                tlsOptions = nil
             case .attachTicket:
                 // Fork (cmux Mochi): the ticket IS the credential, and this is
                 // the route a simulator attaches over (see
@@ -135,17 +141,19 @@ public struct CmxNetworkByteTransportFactory: CmxRouteAwareByteTransportFactory 
                 // simulator pairing fail with `unsupportedAuthorizationMode`.
                 // Fail closed on TLS: the fork's listener applies
                 // `deviceLinkListenerParameters` at every site, loopback included.
-                guard deviceLinkTLSOptions?() != nil else {
+                guard let resolvedTLSOptions = deviceLinkTLSOptions?() else {
                     throw CmxNetworkByteTransportError.tailscaleAuthorizationUnavailable
                 }
+                tlsOptions = resolvedTLSOptions
             case .transportAdmission:
                 // Same reasoning as the tailscale branch: a DeviceLink pairing
                 // admits itself over mutual TLS. This is the route a paired
                 // simulator reconnects over, since it shares the Mac's network
                 // stack and cannot dial the Mac's own tailnet address.
-                guard deviceLinkTLSOptions?() != nil else {
+                guard let resolvedTLSOptions = deviceLinkTLSOptions?() else {
                     throw CmxNetworkByteTransportError.tailscaleAuthorizationUnavailable
                 }
+                tlsOptions = resolvedTLSOptions
             case .legacyTailscaleBearer, .userAuthorizedTailscalePairing:
                 throw CmxNetworkByteTransportError.unsupportedAuthorizationMode(
                     request.authorizationMode
@@ -159,7 +167,7 @@ public struct CmxNetworkByteTransportFactory: CmxRouteAwareByteTransportFactory 
                 port: port,
                 maximumReceiveLength: maximumReceiveLength,
                 connectTimeoutNanoseconds: connectTimeoutNanoseconds,
-                tlsOptions: deviceLinkTLSOptions?()
+                tlsOptions: tlsOptions
             )
         case .iroh, .websocket:
             throw CmxNetworkByteTransportError.unsupportedRouteKind(route.kind)
