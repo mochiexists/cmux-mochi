@@ -1,4 +1,5 @@
 import CMUXMobileCore
+import CmuxIrohTransport
 import DeviceLinkKit
 import Foundation
 import Testing
@@ -13,7 +14,7 @@ import Testing
 /// These are the properties that stop being obvious the moment someone adds a
 /// verb to the wrong switch, which is exactly how a management interface leaks
 /// onto the network.
-@Suite("DeviceLink host boundaries")
+@Suite("DeviceLink host boundaries", .serialized)
 struct MobileHostDeviceLinkTests {
     // MARK: - authorization contexts
 
@@ -23,8 +24,7 @@ struct MobileHostDeviceLinkTests {
 
         let enroll = await MobileHostService.connectionAuthorizationError(
             for: makeRequest(method: "mobile.pairing.device.enroll"),
-            authorization: authorization,
-            stackAuthorization: { _ in nil }
+            authorization: authorization
         )
         #expect(enroll == nil, "an enrolling device must be able to complete enrollment")
 
@@ -36,8 +36,7 @@ struct MobileHostDeviceLinkTests {
         ] {
             let result = await MobileHostService.connectionAuthorizationError(
                 for: makeRequest(method: method),
-                authorization: authorization,
-                stackAuthorization: { _ in nil }
+                authorization: authorization
             )
             guard case .failure = result else {
                 Issue.record("unenrolled device was allowed to call \(method)")
@@ -52,15 +51,13 @@ struct MobileHostDeviceLinkTests {
 
         let input = await MobileHostService.connectionAuthorizationError(
             for: makeRequest(method: "mobile.terminal.input"),
-            authorization: authorization,
-            stackAuthorization: { _ in nil }
+            authorization: authorization
         )
         #expect(input == nil, "a paired device must be able to drive its Mac")
 
         let enroll = await MobileHostService.connectionAuthorizationError(
             for: makeRequest(method: "mobile.pairing.device.enroll"),
-            authorization: authorization,
-            stackAuthorization: { _ in nil }
+            authorization: authorization
         )
         #expect(
             enroll == nil,
@@ -96,10 +93,10 @@ struct MobileHostDeviceLinkTests {
     }
 
     @MainActor
-    @Test func testSelfRevokeRejectsNonDeviceLinkAuthorization() async {
+    @Test func selfRevokeRejectsEnrollmentCandidate() async {
         let recorder = SelfRevokeRecorder()
         let result = await MobileHostService.deviceLinkSelfRevocationResult(
-            authorization: .stackBearer,
+            authorization: .enrollmentCandidate(fingerprint: String(repeating: "e", count: 64)),
             connectionID: UUID(),
             revoke: { fingerprint, connectionID in
                 recorder.record(fingerprint: fingerprint, connectionID: connectionID)
@@ -108,7 +105,7 @@ struct MobileHostDeviceLinkTests {
         )
 
         guard case let .failure(error) = result else {
-            Issue.record("a bearer caller must not revoke any DeviceLink pairing")
+            Issue.record("an enrollment candidate must not revoke any DeviceLink pairing")
             return
         }
         #expect(error.code == "unauthorized")
@@ -151,10 +148,10 @@ struct MobileHostDeviceLinkTests {
         #expect(await closeRecorder.ids == [connectionID])
     }
 
-    @Test func testStackBearerCannotReachEnrollment() async {
+    @Test func irohAdmissionCannotReachDeviceLinkEnrollment() async throws {
         let result = await MobileHostService.deviceLinkEnrollmentResult(
             for: makeRequest(method: "mobile.pairing.device.enroll", params: ["ticket": "whatever"]),
-            authorization: .stackBearer
+            authorization: try irohAdmissionContext()
         )
         guard case let .failure(error) = result else {
             Issue.record("enrollment must require a DeviceLink connection")
@@ -182,13 +179,17 @@ struct MobileHostDeviceLinkTests {
     /// A paired phone that could enumerate and revoke its siblings would turn
     /// one compromised device into control over every device — the property
     /// per-device revocation exists to prevent.
-    @Test func testDeviceManagementVerbsAreNotOnTheNetworkDispatch() throws {
-        let source = try networkDispatchSource()
+    @MainActor
+    @Test func testDeviceManagementVerbsAreNotOnTheNetworkDispatch() async {
         for verb in ["mobile.pairing.device.list", "mobile.pairing.device.revoke"] {
-            #expect(
-                !source.contains("case \"\(verb)\""),
-                "\(verb) must stay on the local control socket, never mobileHostHandleRPC"
+            let result = await TerminalController.shared.mobileHostHandleRPC(
+                makeRequest(method: verb)
             )
+            guard case let .failure(error) = result else {
+                Issue.record("\(verb) must stay on the local control socket")
+                continue
+            }
+            #expect(error.code == "method_not_found")
         }
     }
 
@@ -200,23 +201,24 @@ struct MobileHostDeviceLinkTests {
     }
 
     @Test func testEnrollmentResponseCarriesMacIdentityWithoutSecondCandidateRPC() throws {
-        let source = try deviceLinkHostSource()
-        guard let methodStart = source.range(of: "deviceLinkEnrollmentResult("),
-              let nextExtension = source.range(
-                  of: "extension MobileHostService {",
-                  range: methodStart.upperBound ..< source.endIndex
-              )
-        else {
-            throw DispatchGuardError.enrollmentHandlerNotFound
-        }
-        let handler = source[methodStart.lowerBound ..< nextExtension.lowerBound]
+        let fingerprint = try #require(DeviceFingerprint(hex: String(repeating: "f", count: 64)))
+        let now = Date()
+        let device = AuthorizedDevice(
+            fingerprint: fingerprint,
+            label: "Test iPhone",
+            createdAt: now,
+            lastSeenAt: now
+        )
+        let response = MobileHostService.deviceLinkEnrollmentResponse(
+            device: device,
+            wasAlreadyEnrolled: false
+        )
 
-        for key in ["mac_device_id", "mac_instance_tag", "mac_display_name"] {
-            #expect(
-                handler.contains("\"\(key)\""),
-                "enrollment must return \(key); the candidate connection cannot make a second status RPC"
-            )
-        }
+        #expect(response["mac_device_id"] as? String == MobileHostIdentity.deviceID())
+        #expect(response["mac_instance_tag"] as? String == MobileHostIdentity.instanceTag())
+        #expect(response["mac_display_name"] as? String == MobileHostIdentity.instanceDisplayName())
+        #expect(response["device_label"] as? String == "Test iPhone")
+        #expect(response["fingerprint"] as? String == fingerprint.hex)
     }
 
     // MARK: - helpers
@@ -228,38 +230,18 @@ struct MobileHostDeviceLinkTests {
         MobileHostRPCRequest(id: "1", method: method, params: params, auth: nil)
     }
 
-    /// Reads the network RPC dispatch so the assertion is about the shipping
-    /// switch rather than a copy of it that could drift.
-    private func networkDispatchSource() throws -> String {
-        let thisFile = URL(fileURLWithPath: #filePath)
-        let repositoryRoot = thisFile.deletingLastPathComponent().deletingLastPathComponent()
-        let controller = repositoryRoot
-            .appendingPathComponent("Sources")
-            .appendingPathComponent("TerminalController.swift")
-        let source = try String(contentsOf: controller, encoding: .utf8)
-        guard let range = source.range(of: "func mobileHostHandleRPC") else {
-            throw DispatchGuardError.dispatchNotFound
-        }
-        return String(source[range.lowerBound...])
-    }
-
-    private func deviceLinkHostSource() throws -> String {
-        let thisFile = URL(fileURLWithPath: #filePath)
-        let repositoryRoot = thisFile.deletingLastPathComponent().deletingLastPathComponent()
-        return try String(
-            contentsOf: repositoryRoot
-                .appendingPathComponent("Sources")
-                .appendingPathComponent("Mobile")
-                .appendingPathComponent("MobileHostService+DeviceLink.swift"),
-            encoding: .utf8
+    private func irohAdmissionContext() throws -> MobileHostConnectionAuthorizationContext {
+        let endpointID = try CmxIrohPeerIdentity(
+            endpointID: String(repeating: "a", count: 64)
         )
-    }
-
-    /// Raised when the dispatch this guard inspects has been renamed. Failing
-    /// loudly beats a guard that silently stops guarding.
-    private enum DispatchGuardError: Error {
-        case dispatchNotFound
-        case enrollmentHandlerNotFound
+        return .irohAdmission(CmxIrohAdmittedPeer(peer: CmxIrohGrantPeer(
+            bindingID: "123e4567-e89b-42d3-a456-426614174001",
+            deviceID: "123e4567-e89b-42d3-a456-426614174002",
+            tag: "ios-test",
+            platform: .ios,
+            endpointID: endpointID,
+            identityGeneration: 1
+        )))
     }
 
     @MainActor
@@ -279,6 +261,7 @@ private actor SelfRevokeResponseTransport: CmxByteTransport {
     private var receiveWaiter: CheckedContinuation<Data?, Never>?
     private var sentFrames: [Data] = []
     private var sentWaiters: [CheckedContinuation<Data, Never>] = []
+    private var isClosed = false
     private(set) var closeCount = 0
 
     init(firstFrame: Data) {
@@ -291,6 +274,9 @@ private actor SelfRevokeResponseTransport: CmxByteTransport {
         if let firstFrame {
             self.firstFrame = nil
             return firstFrame
+        }
+        if isClosed {
+            return nil
         }
         return await withTaskCancellationHandler {
             await withCheckedContinuation { continuation in
@@ -314,6 +300,7 @@ private actor SelfRevokeResponseTransport: CmxByteTransport {
 
     func close() async {
         closeCount += 1
+        isClosed = true
         finishReceive()
     }
 

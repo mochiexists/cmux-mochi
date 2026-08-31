@@ -1008,10 +1008,9 @@ extension MobileShellComposite {
     }
 
     /// - Parameter pairedMacDeviceID: the REAL paired-Mac device id when the caller
-    ///   knows it (switch/reconnect/device-row paths). A manual host whose Mac lacks
-    ///   `mobile.attach_ticket.create` connects via a synthetic `manual-…` ticket;
-    ///   passing the real id keys the foreground aggregate state under it instead of
-    ///   the synthetic id. `nil` for a genuinely manual/unknown host.
+    ///   knows it (switch/reconnect/device-row paths). Passing the real id keys
+    ///   foreground aggregate state under it instead of any compatibility id.
+    ///   `nil` only when the host identity is genuinely unknown.
 
     /// Races `operation` against a wall-clock deadline. Returns the
     /// operation's value, or `nil` when the deadline expires first.

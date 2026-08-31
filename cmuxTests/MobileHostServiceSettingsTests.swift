@@ -351,24 +351,4 @@ struct MobileHostTransportRouteCompositionTests {
     }
 }
 
-@Suite(.serialized)
-@MainActor
-struct MobileHostMacScopedMutationAuthorizationTests {
-    @Test func ignoresUnknownAttachTokenForBroadWorkspaceRequests() async {
-        let service = MobileHostService.shared
-        service.debugConfigureAcceptedStackAuthTokenForTesting("cmux-dev-token")
-        defer { service.debugConfigureAcceptedStackAuthTokenForTesting(nil) }
-        for method in ["workspace.list", "workspace.create"] {
-            let request = MobileHostRPCRequest(
-                id: method,
-                method: method,
-                params: [:],
-                auth: MobileHostRPCAuth(attachToken: "stale-ticket", stackAccessToken: "cmux-dev-token")
-            )
-            let result = await service.debugAuthorizationError(for: request)
-            #expect(result == nil)
-        }
-    }
-
-}
 #endif

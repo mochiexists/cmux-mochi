@@ -2209,13 +2209,12 @@ final class cmuxUITests: XCTestCase {
     @MainActor
     func testTaskComposerCreatesAndSelectsConnectedWorkspace() async throws {
         let server = try MobileSyncMockHostServer(
-            supportsManualAttachTicket: true,
             workspaceCreateSelectsCreatedWorkspace: false
         )
         let port = try await server.start()
         defer { server.stop() }
 
-        let app = try launchConnectedAppViaManualPairing(port: port)
+        let app = try launchConnectedApp(port: port)
         defer { app.terminate() }
 
         let backButton = app.buttons["MobileWorkspaceBackButton"]
@@ -4161,57 +4160,6 @@ final class cmuxUITests: XCTestCase {
             assertTerminalRow(0, label: "$ cmux ios status", in: app)
             assertTerminalRow(1, label: "Mobile Core: connected", in: app)
         }
-        return app
-    }
-
-    @MainActor
-    private func launchConnectedAppViaManualPairing(port: UInt16) throws -> XCUIApplication {
-        let portText = String(port)
-        guard let finalPortDigit = portText.last else {
-            throw URLError(.badURL)
-        }
-        let app = launchApp(mockData: true, environment: [
-            "CMUX_UITEST_ADD_DEVICE_PORT": String(portText.dropLast()),
-            "CMUX_UITEST_SCANNER_PREVIEW": "1",
-        ], launchArguments: [
-            "-cmux.mobile.taskComposerEnabled", "YES",
-        ])
-        let scannerCancel = app.buttons["MobileScannerCancelButton"]
-        XCTAssertTrue(scannerCancel.waitForExistence(timeout: 8))
-        scannerCancel.tap()
-        let pairingForm = app.otherElements["MobileAddDeviceForm"]
-        XCTAssertTrue(pairingForm.waitForExistence(timeout: 8))
-
-        let hostField = app.textFields["MobileAddDeviceHostField"]
-        XCTAssertTrue(hostField.waitForExistence(timeout: 4))
-        hostField.tap()
-        hostField.typeText("127.0.0.1")
-
-        let portField = app.textFields["MobileAddDevicePortField"]
-        XCTAssertTrue(portField.waitForExistence(timeout: 4))
-        portField.tap()
-        portField.typeText(String(finalPortDigit))
-        XCTAssertEqual(hostField.value as? String, "127.0.0.1")
-        XCTAssertEqual(portField.value as? String, portText)
-
-        let pairButton = app.buttons["MobilePairButton"]
-        let pairReady = XCTNSPredicateExpectation(
-            predicate: NSPredicate(format: "enabled == true"),
-            object: pairButton
-        )
-        XCTAssertEqual(XCTWaiter.wait(for: [pairReady], timeout: 4), .completed)
-        XCTAssertTrue(pairButton.isHittable)
-        pairButton.tap()
-
-        XCTAssertTrue(
-            pairingForm.waitForNonExistence(timeout: 20),
-            "Successful manual loopback pairing must dismiss the Add Computer sheet"
-        )
-
-        waitForWorkspaceShell(in: app)
-        try openSelectedWorkspaceIfNeeded(app)
-        assertTerminalRow(0, label: "$ cmux ios status", in: app)
-        assertTerminalRow(1, label: "Mobile Core: connected", in: app)
         return app
     }
 
@@ -6660,7 +6608,6 @@ private final class MobileSyncMockHostServer: @unchecked Sendable {
     private let listener: NWListener
     private let queue = DispatchQueue(label: "dev.cmux.ios-ui-tests.mobile-sync-server")
     private let createdWorkspaceTerminalDelay: TimeInterval?
-    private let supportsManualAttachTicket: Bool
     private let workspaceCreateSelectsCreatedWorkspace: Bool
     private let macInstanceTag: String
     private var readyContinuation: CheckedContinuation<UInt16, Error>?
@@ -6724,13 +6671,11 @@ private final class MobileSyncMockHostServer: @unchecked Sendable {
         defaultTerminalLines: [String]? = nil,
         additionalMainTerminalCount: Int = 0,
         createdWorkspaceTerminalDelay: TimeInterval? = nil,
-        supportsManualAttachTicket: Bool = false,
         workspaceCreateSelectsCreatedWorkspace: Bool = true,
         macInstanceTag: String = mockHostInstanceTag()
     ) throws {
         listener = try NWListener(using: .tcp, on: .any)
         self.createdWorkspaceTerminalDelay = createdWorkspaceTerminalDelay
-        self.supportsManualAttachTicket = supportsManualAttachTicket
         self.workspaceCreateSelectsCreatedWorkspace = workspaceCreateSelectsCreatedWorkspace
         self.macInstanceTag = macInstanceTag
         appendMainTerminals(count: additionalMainTerminalCount)
@@ -6997,23 +6942,9 @@ private final class MobileSyncMockHostServer: @unchecked Sendable {
 
         let id = request["id"] as? String ?? ""
         let params = request["params"] as? [String: Any] ?? [:]
-        if method == "mobile.attach_ticket.create", !supportsManualAttachTicket {
-            let envelope: [String: Any] = [
-                "id": id,
-                "ok": false,
-                "error": [
-                    "code": "method_not_found",
-                    "message": "Unknown method",
-                ],
-            ]
-            let responsePayload = try JSONSerialization.data(withJSONObject: envelope)
-            return Self.frame(responsePayload)
-        }
         let result: [String: Any]
 
         switch method {
-        case "mobile.attach_ticket.create":
-            result = try manualAttachTicketResult()
         case "mobile.workspace.list", "workspace.list":
             result = workspaceListResult()
         case "workspace.create":
@@ -7072,30 +7003,6 @@ private final class MobileSyncMockHostServer: @unchecked Sendable {
             "terminal_fidelity": "render_grid",
             "capabilities": capabilities,
         ]
-    }
-
-    private func manualAttachTicketResult() throws -> [String: Any] {
-        guard let port = listener.port?.rawValue else {
-            throw serverError("Listener has no port.")
-        }
-        let route = try CmxAttachRoute(
-            id: "debug_loopback",
-            kind: .debugLoopback,
-            endpoint: .hostPort(host: "127.0.0.1", port: Int(port))
-        )
-        let ticket = try CmxAttachTicket(
-            workspaceID: "",
-            terminalID: nil,
-            macDeviceID: "ui-test-mac",
-            macDisplayName: "UI Test Mac",
-            macPairingCompatibilityVersion: CmxMobileDefaults.pairingCompatibilityVersion,
-            routes: [route],
-            expiresAt: Date(timeIntervalSinceNow: 60 * 60),
-            authToken: "ui-test-ticket"
-        )
-        let encoder = JSONEncoder()
-        encoder.dateEncodingStrategy = .iso8601
-        return ["ticket": try JSONSerialization.jsonObject(with: encoder.encode(ticket))]
     }
 
     private func createWorkspaceResult(params: [String: Any]) -> [String: Any] {

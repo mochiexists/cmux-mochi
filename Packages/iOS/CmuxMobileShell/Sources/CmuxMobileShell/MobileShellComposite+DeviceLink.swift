@@ -83,10 +83,8 @@ extension MobileShellComposite {
             }
             // Enrollment runs on its own short-lived transport and closes it, so
             // a completed pairing leaves no channel to use. Dial through the
-            // stored-Mac reconnect path rather than `connect(ticket:)`: the
-            // ticket carries no bearer (the device key is the credential), and
-            // the ticket path treats a tokenless route as a manual host and
-            // tries to exchange for one. Reconnect is the path built to offer a
+            // stored-Mac reconnect path rather than `connect(ticket:)`.
+            // Reconnect is the path built to select the request-scoped
             // DeviceLink identity for a Mac this device has already stored.
             let didConnect = await reconnectActiveMacIfAvailable(
                 stackUserID: identityProvider?.currentUserID

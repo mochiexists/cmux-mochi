@@ -1574,69 +1574,6 @@ private struct RequestAwareTransportFactory: CmxByteTransportFactory {
     }
 }
 
-private actor DelayedManualAttachTicketRouter: RequestAwareTransportRouter {
-    private let route: CmxAttachRoute
-    private var attachTicketRequested = false
-    private var attachTicketReleased = false
-    private var attachTicketRequestWaiters: [CheckedContinuation<Void, Never>] = []
-    private var attachTicketReleaseContinuation: CheckedContinuation<Void, Never>?
-    private var requests: [RecordedRPCRequest] = []
-
-    init(route: CmxAttachRoute) {
-        self.route = route
-    }
-
-    func record(_ request: RecordedRPCRequest) {
-        requests.append(request)
-    }
-
-    func sentRequests() -> [RecordedRPCRequest] {
-        requests
-    }
-
-    func waitForAttachTicketRequest() async {
-        guard !attachTicketRequested else { return }
-        await withCheckedContinuation { continuation in
-            attachTicketRequestWaiters.append(continuation)
-        }
-    }
-
-    func releaseAttachTicketResponse() {
-        attachTicketReleased = true
-        attachTicketReleaseContinuation?.resume()
-        attachTicketReleaseContinuation = nil
-    }
-
-    func response(for request: RecordedRPCRequest) async throws -> Data? {
-        switch request.method {
-        case "mobile.attach_ticket.create":
-            markAttachTicketRequested()
-            await waitForAttachTicketRelease()
-            return try rpcAttachTicketFrame(route: route, workspaceID: "delayed-workspace")
-        case "workspace.list":
-            return try rpcWorkspaceListFrame(workspaceID: "delayed-workspace", title: "Delayed Workspace")
-        default:
-            return try rpcErrorFrame(message: "Unexpected method \(request.method ?? "nil")")
-        }
-    }
-
-    private func markAttachTicketRequested() {
-        attachTicketRequested = true
-        let waiters = attachTicketRequestWaiters
-        attachTicketRequestWaiters = []
-        for waiter in waiters {
-            waiter.resume()
-        }
-    }
-
-    private func waitForAttachTicketRelease() async {
-        guard !attachTicketReleased else { return }
-        await withCheckedContinuation { continuation in
-            attachTicketReleaseContinuation = continuation
-        }
-    }
-}
-
 private actor SupersededAttachURLRouter: RequestAwareTransportRouter {
     private var workspaceListRequestCount = 0
     private var firstWorkspaceListRequested = false

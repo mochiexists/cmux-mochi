@@ -50,7 +50,7 @@ extension MobileHostService {
             // key, which is already enrolled. Report success rather than an
             // error the client would have to special-case.
             fingerprintHex = fingerprint
-        case .stackBearer, .irohAdmission:
+        case .irohAdmission:
             return .failure(MobileHostRPCError(
                 code: "unauthorized",
                 message: "Device enrollment requires a DeviceLink connection."
@@ -80,21 +80,10 @@ extension MobileHostService {
                 fingerprint: fingerprint,
                 label: label
             )
-            var response: [String: Any] = [
-                "enrolled": true,
-                "already_enrolled": outcome.wasAlreadyEnrolled,
-                "device_label": outcome.device.label,
-                "fingerprint": outcome.device.fingerprint.hex,
-                // Return identity with enrollment because this connection's
-                // authorization context remains an enrollment candidate until
-                // it closes. A second status RPC would correctly be rejected.
-                "mac_device_id": MobileHostIdentity.deviceID(),
-                "mac_instance_tag": MobileHostIdentity.instanceTag()
-            ]
-            if let displayName = MobileHostIdentity.instanceDisplayName() {
-                response["mac_display_name"] = displayName
-            }
-            return .ok(response)
+            return .ok(deviceLinkEnrollmentResponse(
+                device: outcome.device,
+                wasAlreadyEnrolled: outcome.wasAlreadyEnrolled
+            ))
         } catch EnrollmentError.ticketUnusable {
             // One error for absent, spent, and expired: a caller probing for
             // ticket existence learns nothing it did not already know.
@@ -118,6 +107,26 @@ extension MobileHostService {
                 message: "Pairing could not be saved."
             ))
         }
+    }
+
+    /// The candidate connection cannot make a second authenticated status RPC,
+    /// so successful enrollment must return the Mac identity in this response.
+    nonisolated static func deviceLinkEnrollmentResponse(
+        device: AuthorizedDevice,
+        wasAlreadyEnrolled: Bool
+    ) -> [String: Any] {
+        var response: [String: Any] = [
+            "enrolled": true,
+            "already_enrolled": wasAlreadyEnrolled,
+            "device_label": device.label,
+            "fingerprint": device.fingerprint.hex,
+            "mac_device_id": MobileHostIdentity.deviceID(),
+            "mac_instance_tag": MobileHostIdentity.instanceTag()
+        ]
+        if let displayName = MobileHostIdentity.instanceDisplayName() {
+            response["mac_display_name"] = displayName
+        }
+        return response
     }
 
     /// Revokes only the phone fingerprint proven by this connection's TLS

@@ -1382,10 +1382,6 @@ class TerminalController {
                 let outcome = try await BrowserImportAutomation.importCookies(params: request.params)
                 return outcome.socketPayload
             }
-        case "mobile.attach_ticket.create":
-            return v2AsyncResultCall(id: request.id, timeoutSeconds: 30) {
-                await self.v2MobileAttachTicketCreate(params: request.params)
-            }
         case "mobile.pairing.code.create":
             return v2AsyncResultCall(id: request.id, timeoutSeconds: 30) {
                 await self.v2MobilePairingCodeCreate(params: request.params)
@@ -2317,8 +2313,7 @@ class TerminalController {
         // mobileHostHandleRPC).
 
         // system.identify (forwards to the still-shared v2Identify), system.tree,
-        // auth.login, and the DEBUG-only mobile.dev_stack_auth.configure handled
-        // by ControlCommandCoordinator.
+        // auth.login handled by ControlCommandCoordinator.
 
         // Windows (`window.*`) are handled above by ControlCommandCoordinator.
 
@@ -2478,7 +2473,6 @@ class TerminalController {
             "system.top",
             "system.memory",
             "mobile.host.status",
-            "mobile.attach_ticket.create",
             "mobile.pairing.code.create",
             "mobile.terminal.set_font",
             "mobile.workspace.list",
@@ -14064,8 +14058,6 @@ class TerminalController {
         switch request.method {
         case "mobile.host.status":
             result = v2MobileHostStatus(params: request.params, includePrivateMetadata: false)
-        case "mobile.attach_ticket.create":
-            result = await v2MobileAttachTicketCreate(params: request.params)
         case "mobile.pairing.device.revoke_self":
             guard let executionContext else {
                 return .failure(MobileHostRPCError(

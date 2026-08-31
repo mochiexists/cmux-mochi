@@ -2652,12 +2652,11 @@ public final class MobileShellComposite: MobileTerminalOutputSinking {
     /// `nil` when not connected. Used by the device tree to mark which device row
     /// is live.
     ///
-    /// Prefers the active attach ticket's real `macDeviceID`. A manual (`manual-…`)
-    /// ticket has no real device id (the host lacks `mobile.attach_ticket.create`,
-    /// so the connect synthesizes a manual ticket even on success); in that case,
-    /// fall back to the live foreground id stamped by switch/reconnect paths before
-    /// using the persisted active row. This keeps the connected device — and its
-    /// live workspaces — visible even while the active-row write is still settling.
+    /// Prefers the active connection descriptor's real `macDeviceID`. For a
+    /// compatibility descriptor without one, falls back to the live foreground
+    /// id stamped by switch/reconnect paths before using the persisted active row.
+    /// This keeps the connected device — and its live workspaces — visible even
+    /// while the active-row write is still settling.
     /// Yields `nil` only when there is genuinely no real device id to correlate.
     public var connectedMacDeviceID: String? {
         guard connectionState == .connected else { return nil }
@@ -6083,9 +6082,8 @@ public final class MobileShellComposite: MobileTerminalOutputSinking {
         let key = foregroundMacKey
         let stamped = newWorkspaces.map { workspace -> MobileWorkspacePreview in
             // These are the FOREGROUND Mac's workspaces, so stamp them ALL with the
-            // resolved foreground id — overriding any synthetic `manual-<host>:<port>`
-            // id the active ticket carried for a Mac without
-            // `mobile.attach_ticket.create`. Restamping only nil ids left those rows
+            // resolved foreground id — overriding any synthetic compatibility id
+            // the active descriptor carried. Restamping only nil ids left those rows
             // owned by the synthetic id while the aggregate key was the real Mac id,
             // so the same machine looked like a different Mac (wrong counts /
             // customizations, and `openWorkspace` trying to switch to a nonexistent

@@ -283,48 +283,9 @@ final class MobileHostService {
         return payload
     }
 
-    /// The `mobile.host.status` reply for a network caller.
-    ///
-    /// Status is the one unauthenticated verb (a phone probes reachability
-    /// before it has anything to present), so a tokenless request gets the
-    /// cached identity-free payload without touching the main actor or the
-    /// Stack verifier — the DoS posture of the public probe is unchanged, and
-    /// an arbitrary process that can reach the port receives no private route
-    /// hints or account identity. A request that does present the owner's
-    /// same-account Stack token (the iOS client attaches it to status
-    /// whenever it has one) is verified and answered with the Mac's identity,
-    /// which is what a freshly QR-paired phone needs to key its paired-Mac
-    /// record. A token that fails verification degrades to the identity-free
-    /// payload rather than an error: reachability stays observable, and the
-    /// authorized verbs that follow surface the auth failure properly.
-    /// Verification goes through the same gate as the authorized verbs
-    /// (``verifiedStackCaller(for:)``), so a DEBUG dev-token client that can
-    /// list workspaces also sees identity.
-    ///
-    /// Because status is unauthenticated, the network verifications a
-    /// token-bearing status request can trigger are bounded: an
-    /// already-verified token answers from the verifier's cache, and
-    /// cache-miss lookups are capped by
-    /// ``MobileHostStatusVerificationLimiter`` (over the cap the reply
-    /// degrades to identity-free and the phone's identity-recovery retry
-    /// picks it up later). A flood of unique garbage tokens therefore cannot
-    /// queue unbounded Stack lookups behind this verb.
-    nonisolated static func networkStatusResult(for request: MobileHostRPCRequest) async -> MobileHostRPCResult {
-        let trimmedToken = request.auth?.stackAccessToken?.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard trimmedToken?.isEmpty == false else {
-            return MobileHostPublicStatusCache.result(includeIdentity: false)
-        }
-        let verified = await MobileHostService.shared.verifiedStackCaller(for: request)
-        if !verified {
-            mobileHostLog.error("mobile host status identity withheld: stack verification failed")
-        }
-        return MobileHostPublicStatusCache.result(includeIdentity: verified)
-    }
-
     private let callbackQueue = DispatchQueue(label: "dev.cmux.mobile.host-listener")
     // internal (not private): read by the fork's DeviceLink extension.
     let routeResolver = MobileRouteResolver()
-    private let ticketStore = MobileAttachTicketStore()
     private var listener: NWListener?
     // internal (not private): read by the fork's DeviceLink extension.
     var listenerGeneration = UUID()
@@ -350,9 +311,6 @@ final class MobileHostService {
     private var readinessWaiters: [CheckedContinuation<MobileHostServiceStatus, Never>] = []
     private var readinessTimeoutTask: Task<Void, Never>?
     let mobileBrowserStreamCoordinator = MobileBrowserStreamCoordinator()
-    #if DEBUG
-    private var debugAcceptedStackAuthToken: String?
-    #endif
 
     private init() {}
 
@@ -906,9 +864,6 @@ final class MobileHostService {
         for connection in activeConnections.values {
             Task { await connection.close(reason: "pairing port changed") }
         }
-        for connection in MobileHostConnectionRegistry.shared.removeStackBearerConnections() {
-            Task { await connection.close(reason: "pairing port changed") }
-        }
         activeConnections.removeAll()
 
         listener = candidate
@@ -1096,9 +1051,6 @@ final class MobileHostService {
         listenerPort = nil
         appliedPreferredPort = nil
         for connection in activeConnections.values {
-            Task { await connection.close(reason: reason) }
-        }
-        for connection in MobileHostConnectionRegistry.shared.removeStackBearerConnections() {
             Task { await connection.close(reason: reason) }
         }
         activeConnections.removeAll()
@@ -1319,10 +1271,7 @@ final class MobileHostService {
             authorizeRequest: { request in
                 await Self.connectionAuthorizationError(
                     for: request,
-                    authorization: authorization,
-                    stackAuthorization: { request in
-                        await MobileHostService.shared.authorizationError(for: request)
-                    }
+                    authorization: authorization
                 )
             },
             onAuthorizedRequest: { request in
@@ -1337,12 +1286,8 @@ final class MobileHostService {
             handleRequest: { request in
                 if request.method == "mobile.host.status" {
                     return await Self.connectionStatusResult(
-                        for: request,
                         authorization: authorization,
-                        supportsArtifactLane: artifactTransfers != nil,
-                        stackStatus: { request in
-                            await MobileHostService.networkStatusResult(for: request)
-                        }
+                        supportsArtifactLane: artifactTransfers != nil
                     )
                 }
                 // Enrollment must be answered here rather than in the generic
@@ -1370,7 +1315,7 @@ final class MobileHostService {
                     #endif
                     return enrollment
                 }
-                let result = await TerminalController.shared.mobileHostHandleRPC(
+                return await TerminalController.shared.mobileHostHandleRPC(
                     request,
                     executionContext: MobileHostRPCExecutionContext(
                         connectionID: id,
@@ -1378,11 +1323,6 @@ final class MobileHostService {
                         artifactTransfers: artifactTransfers
                     )
                 )
-                await MobileHostService.shared.recordCreatedResourcesIfNeeded(
-                    request: request,
-                    result: result
-                )
-                return result
             },
             onClose: { id in
                 if case let .pairedDevice(fingerprintHex, _) = authorization,
@@ -1431,13 +1371,9 @@ final class MobileHostService {
 
     nonisolated static func connectionAuthorizationError(
         for request: MobileHostRPCRequest,
-        authorization: MobileHostConnectionAuthorizationContext,
-        stackAuthorization: @escaping @Sendable (MobileHostRPCRequest) async -> MobileHostRPCResult?
+        authorization: MobileHostConnectionAuthorizationContext
     ) async -> MobileHostRPCResult? {
         switch authorization {
-        case .stackBearer:
-            guard requiresAuthorization(method: request.method) else { return nil }
-            return await stackAuthorization(request)
         case .irohAdmission:
             return nil
         case .pairedDevice:
@@ -1467,14 +1403,10 @@ final class MobileHostService {
     }
 
     nonisolated static func connectionStatusResult(
-        for request: MobileHostRPCRequest,
         authorization: MobileHostConnectionAuthorizationContext,
-        supportsArtifactLane: Bool = false,
-        stackStatus: @escaping @Sendable (MobileHostRPCRequest) async -> MobileHostRPCResult
+        supportsArtifactLane: Bool = false
     ) async -> MobileHostRPCResult {
         switch authorization {
-        case .stackBearer:
-            return await stackStatus(request)
         case .irohAdmission:
             return MobileHostPublicStatusCache.result(
                 includeIdentity: true,
@@ -1495,68 +1427,6 @@ final class MobileHostService {
 
     private func canAcceptConnection(generation: UUID) -> Bool {
         listener != nil && generation == listenerGeneration
-    }
-
-    func createAttachTicket(
-        workspaceID: String,
-        terminalID: String?,
-        ttl: TimeInterval,
-        routeID: String? = nil,
-        routeKind: String? = nil,
-        routeDisclosureMode: CmxPairingRouteDisclosureMode = .legacyPrivateNetworkCompatibility,
-        target: MobileAttachTarget? = nil
-    ) async throws -> [String: Any] {
-        let routes = MobileHostPublicStatusCache.snapshot()
-        let filteredRoutes = try Self.filteredRoutes(
-            routes,
-            routeID: routeID,
-            routeKind: routeKind
-        )
-        let selectedRoutes = try target.selectRoutes(from: filteredRoutes)
-        let ticket = try ticketStore.createTicket(
-            workspaceID: workspaceID,
-            terminalID: terminalID,
-            routes: selectedRoutes,
-            ttl: ttl,
-            macUserEmail: await currentAuthenticatedLocalUserEmail(),
-            macUserID: await currentAuthenticatedLocalUserID(),
-            macPairingCompatibilityVersion: CmxMobileDefaults.pairingCompatibilityVersion,
-            macAppVersion: MobileHostBuildIdentity.current().appVersion,
-            macAppBuild: MobileHostBuildIdentity.current().appBuild
-        )
-        return try ticketStore.payload(
-            for: ticket,
-            routeDisclosureMode: routeDisclosureMode,
-            target: target
-        )
-    }
-
-    private static func filteredRoutes(
-        _ routes: [CmxAttachRoute],
-        routeID: String?,
-        routeKind: String?
-    ) throws -> [CmxAttachRoute] {
-        let normalizedRouteID = routeID?.trimmingCharacters(in: .whitespacesAndNewlines)
-        let normalizedRouteKind = routeKind?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        let hasRouteID = normalizedRouteID?.isEmpty == false
-        let hasRouteKind = normalizedRouteKind?.isEmpty == false
-        guard hasRouteID || hasRouteKind else {
-            return routes
-        }
-
-        let filtered = routes.filter { route in
-            if hasRouteID, route.id != normalizedRouteID {
-                return false
-            }
-            if hasRouteKind, route.kind.rawValue != normalizedRouteKind {
-                return false
-            }
-            return true
-        }
-        guard !filtered.isEmpty else {
-            throw MobileAttachTicketStoreError.routeUnavailable
-        }
-        return filtered
     }
 
     /// Whether an incoming connection's remote peer is on the loopback interface.
@@ -1629,177 +1499,6 @@ final class MobileHostService {
     private nonisolated static func clientID(from params: [String: Any]) -> String? {
         let trimmed = (params["client_id"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed?.isEmpty == false ? trimmed : nil
-    }
-
-    func debugAuthorizationError(for request: MobileHostRPCRequest) async -> MobileHostRPCResult? {
-        await authorizationError(for: request)
-    }
-
-    /// Whether `request`'s Stack token passes the DEBUG dev-token policy.
-    /// Always `false` in release builds. Shared by the authorization gate and
-    /// the status identity gate so a dev-token client is treated identically
-    /// on both.
-    private func devStackTokenAuthorized(_ request: MobileHostRPCRequest) -> Bool {
-        #if DEBUG
-        if let stackAccessToken = request.auth?.stackAccessToken {
-            return MobileHostDevStackAuthPolicy.authorize(
-                providedToken: stackAccessToken,
-                acceptedToken: debugAcceptedStackAuthToken
-            )
-        }
-        #endif
-        return false
-    }
-
-    /// Whether `request` presents credentials that pass the same Stack gate
-    /// as the authorized verbs (including the DEBUG dev-token policy),
-    /// independent of whether the method itself requires authorization. The
-    /// status path uses this to decide if the caller may see the Mac's
-    /// identity.
-    ///
-    /// Unlike ``authorizationError(for:)`` (whose verbs are authorized, so a
-    /// caller burning a network verification is at least failing auth), this
-    /// gate is reachable from the UNAUTHENTICATED status verb. It therefore
-    /// answers from the verifier's cache when it can, and caps concurrent
-    /// cache-miss network lookups: saturated means "withhold identity now",
-    /// never an unbounded queue of attacker-minted token verifications. The
-    /// legitimate client recovers via its identity-recovery retry once its
-    /// token is cache-verified by the authorized verbs that follow connect.
-    func verifiedStackCaller(for request: MobileHostRPCRequest) async -> Bool {
-        if devStackTokenAuthorized(request) {
-            return true
-        }
-        if let cachedVerdict = await MobileHostStackAuthVerifier.shared.cachedVerdict(auth: request.auth) {
-            return cachedVerdict
-        }
-        guard await MobileHostStatusVerificationLimiter.shared.acquire() else {
-            mobileHostLog.error("mobile host status identity withheld: verification limiter saturated")
-            return false
-        }
-        let verified: Bool
-        do {
-            try await Self.verifyStackAuthOffMainActor(auth: request.auth)
-            verified = true
-        } catch {
-            verified = false
-        }
-        // Non-throwing actor call: runs even if this task was cancelled
-        // mid-verification, so a slot can never leak.
-        await MobileHostStatusVerificationLimiter.shared.release()
-        return verified
-    }
-
-    private func authorizationError(for request: MobileHostRPCRequest) async -> MobileHostRPCResult? {
-        guard Self.requiresAuthorization(method: request.method) else {
-            return nil
-        }
-        // Stack auth is the SOLE authorization gate for the mobile data plane.
-        // The attach ticket is route-discovery and workspace-selection only; it
-        // never authorizes on its own. Every operation must present the Mac
-        // owner's same-account Stack access token. Consequences: a leaked or
-        // photographed QR is useless without the owner's signed-in account, and
-        // pairing is bound to "who is signed in on this Mac" rather than a stored
-        // ticket, so it survives Mac restarts and ticket expiry.
-        if devStackTokenAuthorized(request) {
-            return ticketAuthorizationResultIfNeeded(for: request)
-        }
-        do {
-            try await Self.verifyStackAuthOffMainActor(auth: request.auth)
-            return ticketAuthorizationResultIfNeeded(for: request)
-        } catch MobileHostAuthorizationError.accountMismatch {
-            // The presented Stack token is valid but belongs to a different
-            // account than the one signed in on this Mac. Surface a distinct code
-            // so the client can drive a re-authentication flow into the right
-            // account rather than showing a generic failure.
-            mobileHostLog.error("mobile host authorization rejected: account mismatch method=\(request.method, privacy: .public)")
-            return .failure(MobileHostRPCError(
-                code: "account_mismatch",
-                message: "Sign in with the account that owns this Mac to continue."
-            ))
-        } catch {
-            mobileHostLog.error("mobile host authorization failed method=\(request.method, privacy: .public) error=\(String(describing: error), privacy: .public)")
-            return .failure(MobileHostRPCError(
-                code: "unauthorized",
-                message: "Mobile sync authorization failed."
-            ))
-        }
-    }
-
-    /// The lifetime of the credential behind an attach token, if it has one.
-    ///
-    /// Returns `nil` for a request with no attach token — a paired device or an
-    /// iroh peer holds a credential that does not expire — so a subscription it
-    /// creates is never dropped for age.
-    func credentialExpiry(forAttachToken token: String?) -> Date? {
-        guard let token = token?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !token.isEmpty else { return nil }
-        return ticketStore.validAuthorization(authToken: token)?.ticket.expiresAt
-    }
-
-    private func ticketAuthorizationResultIfNeeded(for request: MobileHostRPCRequest) -> MobileHostRPCResult? {
-        // The Stack same-account gate already authorized this request; an
-        // attach ticket only narrows scope while it is current (a workspace-
-        // pinned ticket must not mutate Mac-wide state). A missing, unknown,
-        // or expired token therefore leaves the account gate as the sole
-        // authority — Mac-scoped mutations included — so paired phones keep
-        // move/group affordances after the pairing ticket's TTL elapses.
-        // Advertised to clients as `workspace.mutations.account_auth.v1`.
-        guard let attachToken = request.auth?.attachToken?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !attachToken.isEmpty,
-              let authorization = ticketStore.validAuthorization(authToken: attachToken) else {
-            return nil
-        }
-        if let error = Self.ticketAuthorizationError(authorization: authorization, request: request) { return .failure(error) }
-        return nil
-    }
-
-    private nonisolated static func verifyStackAuthOffMainActor(auth: MobileHostRPCAuth?) async throws {
-        try await Task.detached(priority: .utility) {
-            try await MobileHostStackAuthVerifier.shared.verify(auth: auth)
-        }.value
-    }
-
-    private func recordCreatedResourcesIfNeeded(
-        request: MobileHostRPCRequest,
-        result: MobileHostRPCResult
-    ) {
-        guard let attachToken = request.auth?.attachToken else { return }
-        guard case let .ok(payload) = result,
-              let object = payload as? [String: Any] else { return }
-
-        switch request.method {
-        case "workspace.create":
-            ticketStore.recordCreatedResources(
-                authToken: attachToken,
-                workspaceID: object["created_workspace_id"] as? String,
-                terminalID: nil
-            )
-        case "mobile.terminal.create", "terminal.create":
-            ticketStore.recordCreatedResources(
-                authToken: attachToken,
-                workspaceID: nil,
-                terminalID: object["created_terminal_id"] as? String
-            )
-        default:
-            break
-        }
-    }
-
-    nonisolated private static func requiresAuthorization(method: String) -> Bool {
-        switch method {
-        // Only the unauthenticated host probe is exempt. `mobile.attach_ticket.create`
-        // mints a bearer credential, so it MUST be authorized: a network caller has no
-        // attach token yet, so it is routed through the same-account Stack Auth token
-        // (the iOS client always sends it for this method). Leaving it exempt would let
-        // any process that can speak the wire protocol self-issue a working ticket and
-        // take over the terminal. The on-Mac QR pairing mints tickets through the local
-        // automation socket (`TerminalController`), not this network path, so it is
-        // unaffected.
-        case "mobile.host.status":
-            return false
-        default:
-            return true
-        }
     }
 
     private func handleListenerState(_ state: NWListener.State, generation: UUID) {
@@ -1994,14 +1693,6 @@ extension MobileHostService {
         listenerUsesEphemeralFallback
     }
 
-    func debugConfigureAcceptedStackAuthTokenForTesting(_ token: String?) {
-        debugAcceptedStackAuthToken = MobileHostDevStackAuthPolicy.normalizedToken(token)
-    }
-
-    func debugAcceptedStackAuthTokenForTesting() -> String? {
-        debugAcceptedStackAuthToken
-    }
-
     nonisolated static func debugHasEventSubscribersForTesting(topic: String) -> Bool {
         MobileHostEventSubscriptionTracker.hasSubscribers(topic: topic)
     }
@@ -2025,13 +1716,6 @@ actor MobileHostConnection {
     private struct EventSubscription: Sendable {
         let topics: Set<String>
         let transport: MobileHostEventTransport
-        /// When the credential that authorized this subscription lapses.
-        ///
-        /// `nil` for credentials that do not expire — a paired device, an iroh
-        /// peer, or a Stack session — which is why binding this cannot revoke a
-        /// pairing early: only a subscription that named a finite lifetime can
-        /// ever be dropped for reaching it.
-        let credentialExpiresAt: Date?
     }
 
     private struct ResponseTask: Sendable {
@@ -2065,7 +1749,6 @@ actor MobileHostConnection {
     private var receiveBuffer = Data()
     private var firstFrameTimeoutTask: Task<Void, Never>?
     private var idleTimeoutTask: Task<Void, Never>?
-    private var subscriptionExpiryTask: Task<Void, Never>?
     private var responseTasks: [UUID: ResponseTask] = [:]
     /// PTY-writing requests are ordered PER SURFACE: ordering is only a
     /// property of one terminal, and a connection-wide FIFO would let one
@@ -2585,13 +2268,7 @@ actor MobileHostConnection {
             subscribe(
                 streamID: streamID,
                 topics: topics,
-                transport: selectedTransport,
-                // Bind the authorizing credential's lifetime. Without this the
-                // subscription outlives the ticket that created it: delivery
-                // never makes a request, so per-request validation never sees it.
-                credentialExpiresAt: await MobileHostService.shared.credentialExpiry(
-                    forAttachToken: request.auth?.attachToken
-                )
+                transport: selectedTransport
             )
             if topics.contains("terminal.render_grid") {
                 // Anchor negotiation: "screen" clients own their local
@@ -2644,14 +2321,12 @@ actor MobileHostConnection {
     func subscribe(
         streamID: String,
         topics: Set<String>,
-        transport: MobileHostEventTransport = .control,
-        credentialExpiresAt: Date? = nil
+        transport: MobileHostEventTransport = .control
     ) {
         let previousTopics = subscriptions[streamID]?.topics
         subscriptions[streamID] = EventSubscription(
             topics: topics,
-            transport: transport,
-            credentialExpiresAt: credentialExpiresAt
+            transport: transport
         )
         eventQueue.updateSubscribedTopics(currentSubscribedTopics())
         MobileHostEventSubscriptionTracker.replace(
@@ -2660,54 +2335,6 @@ actor MobileHostConnection {
         )
         idleTimeoutTask?.cancel()
         idleTimeoutTask = nil
-        scheduleSubscriptionExpiry(at: credentialExpiresAt)
-    }
-
-    /// Wakes once at `date` to drop whatever has lapsed by then.
-    ///
-    /// Enforcing expiry here rather than in the delivery path keeps the hot
-    /// fan-out untouched: a dropped subscription simply stops contributing
-    /// topics, and the existing queue admission already ignores topics nobody
-    /// subscribes to.
-    private func scheduleSubscriptionExpiry(at date: Date?) {
-        guard let date else { return }
-        let delay = date.timeIntervalSinceNow
-        subscriptionExpiryTask?.cancel()
-        subscriptionExpiryTask = Task { [weak self] in
-            if delay > 0 {
-                try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
-            }
-            guard !Task.isCancelled else { return }
-            await self?.dropSubscriptionsWithExpiredTickets()
-        }
-    }
-
-    /// Drops subscriptions whose authorizing ticket has lapsed.
-    ///
-    /// Upstream binds no credential lifetime to a subscription, so one created
-    /// with a ten-minute attach ticket keeps streaming for as long as the
-    /// connection lives: per-request validation cannot see it, because delivery
-    /// never makes a request. A subscription must not outlive the credential
-    /// that authorized it.
-    @discardableResult
-    func dropSubscriptionsWithExpiredTickets(now: Date = Date()) -> Int {
-        let expired = MobileHostSubscriptionExpiryPolicy.expiredStreamIDs(
-            expiries: subscriptions.mapValues(\.credentialExpiresAt),
-            now: now
-        )
-        guard !expired.isEmpty else { return 0 }
-        for streamID in expired {
-            guard let subscription = subscriptions.removeValue(forKey: streamID) else { continue }
-            MobileHostEventSubscriptionTracker.replace(
-                previousTopics: subscription.topics,
-                nextTopics: []
-            )
-        }
-        eventQueue.updateSubscribedTopics(currentSubscribedTopics())
-        #if DEBUG
-        cmuxDebugLog("mobile.subscription.expired count=\(expired.count)")
-        #endif
-        return expired.count
     }
 
     /// Remove a subscription by id. Returns true if it existed.
@@ -2961,11 +2588,7 @@ actor MobileHostConnection {
         where subscription.transport == .irohServerEvents {
             subscriptions[streamID] = EventSubscription(
                 topics: subscription.topics,
-                transport: .control,
-                // Carry the credential lifetime across the lane change: a
-                // downgrade must not launder a subscription into one that
-                // never expires.
-                credentialExpiresAt: subscription.credentialExpiresAt
+                transport: .control
             )
         }
     }

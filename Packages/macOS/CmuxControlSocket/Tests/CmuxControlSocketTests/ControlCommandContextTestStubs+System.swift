@@ -48,6 +48,5 @@ extension ControlSystemContext {
         .err(code: "unavailable", message: "AppDelegate not available", data: nil)
     }
     #if DEBUG
-    func controlMobileDevStackAuthSetToken(_ token: String?) {}
     #endif
 }

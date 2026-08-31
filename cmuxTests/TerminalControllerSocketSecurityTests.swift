@@ -909,7 +909,6 @@ final class TerminalControllerSocketSecurityTests {
                 "system.ping",
                 "system.capabilities",
                 "mobile.host.status",
-                "mobile.attach_ticket.create",
                 "mobile.workspace.list",
                 "workspace.list",
                 "workspace.create",
