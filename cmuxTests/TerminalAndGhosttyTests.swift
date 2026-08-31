@@ -1379,8 +1379,7 @@ final class TerminalOffscreenStartupTests: XCTestCase {
                     "workspace_id": workspace.id.uuidString,
                     "surface_id": panel.id.uuidString,
                     "text": "echo dropped\r",
-                ],
-                auth: nil
+                ]
             )
         )
 
@@ -1396,8 +1395,7 @@ final class TerminalOffscreenStartupTests: XCTestCase {
             MobileHostRPCRequest(
                 id: "status",
                 method: "mobile.host.status",
-                params: [:],
-                auth: nil
+                params: [:]
             )
         )
 
@@ -1444,8 +1442,7 @@ final class TerminalOffscreenStartupTests: XCTestCase {
                 MobileHostRPCRequest(
                     id: request.method,
                     method: request.method,
-                    params: request.params,
-                    auth: nil
+                    params: request.params
                 )
             )
 
@@ -1473,8 +1470,7 @@ final class TerminalOffscreenStartupTests: XCTestCase {
             MobileHostRPCRequest(
                 id: "workspace-list-missing-workspace",
                 method: "workspace.list",
-                params: ["workspace_id": missingWorkspaceID.uuidString],
-                auth: nil
+                params: ["workspace_id": missingWorkspaceID.uuidString]
             )
         )
         guard case let .failure(missingWorkspaceError) = missingWorkspaceResponse else {
@@ -1490,8 +1486,7 @@ final class TerminalOffscreenStartupTests: XCTestCase {
                 params: [
                     "workspace_id": workspace.id.uuidString,
                     "surface_id": missingTerminalID.uuidString,
-                ],
-                auth: nil
+                ]
             )
         )
         guard case let .failure(missingTerminalError) = missingTerminalResponse else {
@@ -1514,8 +1509,7 @@ final class TerminalOffscreenStartupTests: XCTestCase {
             MobileHostRPCRequest(
                 id: "terminal-create",
                 method: "terminal.create",
-                params: ["workspace_id": workspace.id.uuidString],
-                auth: nil
+                params: ["workspace_id": workspace.id.uuidString]
             )
         )
 
@@ -1558,8 +1552,7 @@ final class TerminalOffscreenStartupTests: XCTestCase {
             MobileHostRPCRequest(
                 id: "workspace-create",
                 method: "workspace.create",
-                params: ["title": "Created From iOS"],
-                auth: nil
+                params: ["title": "Created From iOS"]
             )
         )
 
@@ -1603,8 +1596,7 @@ final class TerminalOffscreenStartupTests: XCTestCase {
             MobileHostRPCRequest(
                 id: "terminal-create",
                 method: "terminal.create",
-                params: ["workspace_id": mobileWorkspace.id.uuidString],
-                auth: nil
+                params: ["workspace_id": mobileWorkspace.id.uuidString]
             )
         )
 
@@ -1634,8 +1626,7 @@ final class TerminalOffscreenStartupTests: XCTestCase {
                 MobileHostRPCRequest(
                     id: "status",
                     method: "mobile.host.status",
-                    params: [:],
-                    auth: nil
+                    params: [:]
                 )
             )
             if case let .ok(rawPayload) = response,

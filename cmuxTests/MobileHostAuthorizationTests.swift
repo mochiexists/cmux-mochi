@@ -123,15 +123,16 @@ struct MobileHostAuthorizationTests {
             return #expect(Bool(false), "Invalid auth shape should be rejected")
         }
         #expect(error.code == "invalid_request")
-        #expect(error.message == "auth must be an object")
+        #expect(error.message == "auth is not supported; authenticate with the transport")
     }
-    @Test func testMobileHostRPCIgnoresRefreshTokenOnlyAuth() {
-        let data = Data(#"{"id":"refresh-only","method":"workspace.list","auth":{"stack_refresh_token":"secret"}}"#.utf8)
+    @Test func testMobileHostRPCRejectsLegacyBearerAuth() {
+        let data = Data(#"{"id":"legacy-auth","method":"workspace.list","auth":{"attach_token":"secret","stack_access_token":"secret"}}"#.utf8)
         let result = MobileHostRPCEnvelope.decodeRequest(data)
-        guard case let .success(request) = result else {
-            return #expect(Bool(false), "Refresh-token-only auth should decode as an unauthenticated request")
+        guard case let .failure(error) = result else {
+            return #expect(Bool(false), "Legacy bearer auth should be rejected")
         }
-        #expect(request.auth == nil)
+        #expect(error.code == "invalid_request")
+        #expect(error.message == "auth is not supported; authenticate with the transport")
     }
     @Test func testMobileRouteResolverPrioritizesNumericTailscaleAddressesBeforeMagicDNS() throws {
         let resolver = MobileRouteResolver()

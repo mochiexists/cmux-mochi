@@ -865,6 +865,7 @@ final class MobileHostService {
             Task { await connection.close(reason: "pairing port changed") }
         }
         activeConnections.removeAll()
+        closeRegisteredDeviceLinkConnections(reason: "pairing port changed")
 
         listener = candidate
         listenerGeneration = generation
@@ -1054,7 +1055,14 @@ final class MobileHostService {
             Task { await connection.close(reason: reason) }
         }
         activeConnections.removeAll()
+        closeRegisteredDeviceLinkConnections(reason: reason)
         MobileHostPublicStatusCache.update(routes: [])
+    }
+
+    private func closeRegisteredDeviceLinkConnections(reason: String) {
+        for connection in MobileHostConnectionRegistry.shared.removeAllDeviceLinkConnections() {
+            Task { await connection.close(reason: reason) }
+        }
     }
 
     func statusSnapshot() -> MobileHostServiceStatus {

@@ -313,8 +313,7 @@ import Testing
             MobileHostRPCRequest(
                 id: "mobile-task-valid-directory",
                 method: "workspace.create",
-                params: ["working_directory": directory.path],
-                auth: nil
+                params: ["working_directory": directory.path]
             )
         )
 
@@ -342,8 +341,7 @@ import Testing
                 MobileHostRPCRequest(
                     id: "mobile-task-invalid-directory",
                     method: "workspace.create",
-                    params: ["working_directory": invalidPath],
-                    auth: nil
+                    params: ["working_directory": invalidPath]
                 )
             )
             guard case let .failure(error) = result else {

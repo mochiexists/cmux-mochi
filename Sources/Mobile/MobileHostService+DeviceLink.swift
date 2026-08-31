@@ -318,11 +318,10 @@ extension MobileHostService {
         _ connection: NWConnection
     ) async -> (transport: CmxNetworkByteTransport, authorization: MobileHostConnectionAuthorizationContext)? {
         #if !DEBUG
-        // Tickets authorize on their own, so the tailnet is the outer security
-        // boundary -- enforce it rather than merely advertising tailnet routes.
-        // The listener binds all interfaces, so without this a LAN peer holding
-        // a leaked bearer could drive terminal input from hotel wifi. DEBUG
-        // keeps every interface so the Simulator and LAN dogfood still work.
+        // Mutual TLS authenticates the peer, while the tailnet is the outer
+        // reachability boundary -- enforce it rather than merely advertising
+        // tailnet routes. DEBUG keeps every interface so the Simulator and LAN
+        // dogfood still work.
         if !Self.isTailnetConnection(connection) {
             deviceLinkHostLog.error("mobile host rejected non-tailnet connection in release build")
             connection.cancel()

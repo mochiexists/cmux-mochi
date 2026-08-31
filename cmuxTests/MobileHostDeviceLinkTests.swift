@@ -227,7 +227,7 @@ struct MobileHostDeviceLinkTests {
         method: String,
         params: [String: Any] = [:]
     ) -> MobileHostRPCRequest {
-        MobileHostRPCRequest(id: "1", method: method, params: params, auth: nil)
+        MobileHostRPCRequest(id: "1", method: method, params: params)
     }
 
     private func irohAdmissionContext() throws -> MobileHostConnectionAuthorizationContext {

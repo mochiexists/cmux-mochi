@@ -18,8 +18,7 @@ import Testing
                 "path": "relative",
                 "offset": 0,
                 "limit": 50,
-            ],
-            auth: nil
+            ]
         )
         let result = await TerminalController.shared.mobileHostHandleRPC(request)
         guard case let .failure(error) = result else {

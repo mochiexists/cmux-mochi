@@ -62,8 +62,7 @@ extension MobileHostAuthorizationTests {
         let request = MobileHostRPCRequest(
             id: "workspace-list",
             method: "workspace.list",
-            params: [:],
-            auth: nil
+            params: [:]
         )
         let admitted = await MobileHostService.connectionAuthorizationError(
             for: request,

@@ -174,6 +174,19 @@ final class MobileHostConnectionRegistry: @unchecked Sendable {
         }
     }
 
+    /// Removes connections owned by the DeviceLink listener while preserving
+    /// independent transports such as Iroh.
+    func removeAllDeviceLinkConnections() -> [MobileHostConnection] {
+        removeConnections { authorization in
+            switch authorization {
+            case .pairedDevice, .enrollmentCandidate:
+                return true
+            case .irohAdmission:
+                return false
+            }
+        }
+    }
+
     /// Retires reconnect overlap only after the replacement has processed an
     /// authorized request. An older connection can never evict a newer one,
     /// even if its delayed request finishes after the replacement arrived.

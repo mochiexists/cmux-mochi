@@ -15,8 +15,7 @@ import Testing
         let request = MobileHostRPCRequest(
             id: "directory-search",
             method: "mobile.directory.search",
-            params: ["query": ""],
-            auth: nil
+            params: ["query": ""]
         )
 
         let result = await TerminalController.shared.mobileHostHandleRPC(request)
