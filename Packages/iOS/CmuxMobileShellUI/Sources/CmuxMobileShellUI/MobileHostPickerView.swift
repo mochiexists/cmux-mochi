@@ -2,6 +2,7 @@
 import CMUXMobileCore
 import CmuxMobilePairedMac
 import CmuxMobileShell
+import CmuxMobileShellModel
 import CmuxMobileSupport
 import SwiftUI
 
@@ -14,6 +15,8 @@ struct MobileHostPickerView: View {
     @Bindable var store: CMUXMobileShellStore
     @Environment(\.dismiss) private var dismiss
     @State private var showingScanner = false
+    @State private var isPairing = false
+    @State private var didStartScannerPairing = false
 
     var body: some View {
         NavigationStack {
@@ -37,6 +40,7 @@ struct MobileHostPickerView: View {
 
                 Section {
                     Button {
+                        didStartScannerPairing = false
                         showingScanner = true
                     } label: {
                         Label(
@@ -59,25 +63,23 @@ struct MobileHostPickerView: View {
             }
             .task { await store.loadPairedMacs() }
             .sheet(isPresented: $showingScanner) {
-                MobilePairingScannerSheet { code in
-                    showingScanner = false
-                    Task {
-                        let result = await store.connectPairingURLResult(
-                            code,
-                            userEnteredPairingCode: true
-                        )
-                        if result != .needsUserApproval {
-                            await store.loadPairedMacs()
-                            dismiss()
-                        }
-                    }
+                MobilePairingScannerSheet(
+                    isPairing: isPairing,
+                    connectionError: store.connectionError,
+                    connectionErrorGuidance: store.connectionErrorGuidance,
+                    versionWarning: store.pairingVersionWarning,
+                    onCancel: cancelScannerPairing,
+                    onRetry: cancelScannerPairing,
+                    onAcceptVersionWarning: acceptScannerVersionWarning
+                ) { code in
+                    connectScannerCode(code)
                 }
             }
         }
         .alert(
             L10n.string("mobile.pairing.versionWarningTitle", defaultValue: "Compatibility mismatch"),
             isPresented: Binding(
-                get: { store.pairingVersionWarning != nil },
+                get: { !showingScanner && store.pairingVersionWarning != nil },
                 set: { _ in }
             )
         ) {
@@ -100,6 +102,42 @@ struct MobileHostPickerView: View {
             Text(store.pairingVersionWarning ?? "")
         }
         .accessibilityIdentifier("MobileHostPicker")
+    }
+
+    private func connectScannerCode(_ code: String) {
+        didStartScannerPairing = true
+        isPairing = true
+        Task {
+            let result = await store.connectPairingURLResult(
+                code,
+                userEnteredPairingCode: true
+            )
+            isPairing = false
+            await finishScannerPairing(result)
+        }
+    }
+
+    private func acceptScannerVersionWarning() {
+        isPairing = true
+        Task {
+            let result = await store.acceptPairingVersionWarning()
+            isPairing = false
+            await finishScannerPairing(result)
+        }
+    }
+
+    private func cancelScannerPairing() {
+        guard didStartScannerPairing else { return }
+        store.cancelPairing()
+        isPairing = false
+        didStartScannerPairing = false
+    }
+
+    private func finishScannerPairing(_ result: MobilePairingURLConnectionResult) async {
+        guard result == .connected else { return }
+        await store.loadPairedMacs()
+        showingScanner = false
+        dismiss()
     }
 
     @ViewBuilder

@@ -36,6 +36,7 @@ struct PairingView: View {
     @Environment(\.tailscaleStatusMonitor) private var tailscaleStatusMonitor
     @State private var validationError: String?
     @State private var isPairing = false
+    @State private var didStartScannerPairing = false
     @State private var pairingTaskID: UUID?
     @State private var pairingTask: Task<Void, Never>?
     @FocusState private var focusedField: AddDeviceField?
@@ -392,11 +393,21 @@ struct PairingView: View {
     private var scannerSheet: some View {
         MobilePairingScannerSheet(
             previewEnabled: scannerPreviewEnabled,
+            isPairing: isPairing,
+            connectionError: connectionError,
+            connectionErrorGuidance: connectionErrorGuidance,
+            versionWarning: versionWarning,
             onCancel: scannerCancelAction,
-            onEnterManually: scannerManualEntryAction
+            onEnterManually: scannerManualEntryAction,
+            onRetry: retryScannerPairing,
+            onAcceptVersionWarning: {
+                startPairingTask {
+                    await acceptVersionWarning()
+                }
+            }
         ) { scannedCode in
+            didStartScannerPairing = true
             pairingCode = scannedCode
-            isShowingScanner = false
             startPairingTask {
                 await connectPairingCode()
             }
@@ -407,10 +418,16 @@ struct PairingView: View {
         guard initialPresentation.showsScanner else { return nil }
         #if DEBUG
         if initialPresentation == .scanner(entry: .settingsReplay) {
-            return { isShowingScanner = false }
+            return {
+                cancelScannerPairingIfNeeded()
+                isShowingScanner = false
+            }
         }
         #endif
-        return { cancelDirectScanner() }
+        return {
+            cancelScannerPairingIfNeeded()
+            cancelDirectScanner()
+        }
     }
 
     private var scannerManualEntryAction: (() -> Void)? {
@@ -428,6 +445,17 @@ struct PairingView: View {
         #else
         return false
         #endif
+    }
+
+    private func retryScannerPairing() {
+        cancelScannerPairingIfNeeded()
+    }
+
+    private func cancelScannerPairingIfNeeded() {
+        guard didStartScannerPairing else { return }
+        cancelActivePairingTask()
+        cancelPairing()
+        didStartScannerPairing = false
     }
     #endif
 

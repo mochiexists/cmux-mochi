@@ -5628,6 +5628,23 @@
         }
       }
     },
+    "mobile.pairing.failed.title": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pairing Failed"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ペアリングに失敗しました"
+          }
+        }
+      }
+    },
     "mobile.pairing.guidance.authEnvironment": {
       "extractionState": "manual",
       "localizations": {
@@ -5951,6 +5968,23 @@
         }
       }
     },
+    "mobile.pairing.progress.scannerDetail": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connecting securely, verifying the pairing code, and saving this iPhone…"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "安全に接続し、ペアリングコードを確認して、このiPhoneを保存しています…"
+          }
+        }
+      }
+    },
     "mobile.pairing.progress.title": {
       "extractionState": "manual",
       "localizations": {
@@ -6117,6 +6151,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "QR コードをスキャン"
+          }
+        }
+      }
+    },
+    "mobile.pairing.scanAgain": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Scan Again"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "もう一度スキャン"
           }
         }
       }
