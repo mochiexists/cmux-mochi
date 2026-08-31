@@ -3,6 +3,58 @@ public import Foundation
 public import Network
 internal import Security
 
+protocol MobileDeviceIdentityStoring: Sendable {
+    func identity(forPairingID pairingID: String) throws -> DeviceIdentityMaterial?
+    func save(_ material: DeviceIdentityMaterial, forPairingID pairingID: String) throws
+    func remove(pairingID: String) throws
+}
+
+protocol MobileServerPinStoring: Sendable {
+    func pins() throws -> [String: DeviceFingerprint]
+    func setPin(_ fingerprint: DeviceFingerprint, forPairingID pairingID: String) throws
+    func removePin(forPairingID pairingID: String) throws
+}
+
+private struct MobileKeychainIdentityStore: MobileDeviceIdentityStoring {
+    private let store: DeviceLinkKit.KeychainDeviceIdentityStore
+
+    init(scope: KeychainScope) {
+        store = DeviceLinkKit.KeychainDeviceIdentityStore(scope: scope)
+    }
+
+    func identity(forPairingID pairingID: String) throws -> DeviceIdentityMaterial? {
+        try store.identity(forPairingID: pairingID)
+    }
+
+    func save(_ material: DeviceIdentityMaterial, forPairingID pairingID: String) throws {
+        try store.save(material, forPairingID: pairingID)
+    }
+
+    func remove(pairingID: String) throws {
+        try store.remove(pairingID: pairingID)
+    }
+}
+
+private struct MobileKeychainPinStore: MobileServerPinStoring {
+    private let store: KeychainServerPinStore
+
+    init(scope: KeychainScope) {
+        store = KeychainServerPinStore(scope: scope)
+    }
+
+    func pins() throws -> [String: DeviceFingerprint] {
+        try store.pins()
+    }
+
+    func setPin(_ fingerprint: DeviceFingerprint, forPairingID pairingID: String) throws {
+        try store.setPin(fingerprint, forPairingID: pairingID)
+    }
+
+    func removePin(forPairingID pairingID: String) throws {
+        try store.removePin(forPairingID: pairingID)
+    }
+}
+
 /// The phone's half of DeviceLink: one key pair per paired Mac, the pin for
 /// each Mac, and the TLS options that bind them together.
 ///
@@ -16,8 +68,9 @@ public final class MobileDeviceLinkClient: @unchecked Sendable {
     // callbacks, so the credential and active-dial state must share one owner.
     public static let shared = MobileDeviceLinkClient()
 
-    private let identityStore: DeviceLinkKit.KeychainDeviceIdentityStore
-    private let pinStore: KeychainServerPinStore
+    private let identityStore: any MobileDeviceIdentityStoring
+    private let pinStore: any MobileServerPinStoring
+    private let pairingIndexDefaults: UserDefaults
     // lint:allow lock — protects the small cache/dial-target snapshot used by
     // synchronous Network.framework callbacks that cannot await an actor.
     private let lock = NSLock()
@@ -28,7 +81,7 @@ public final class MobileDeviceLinkClient: @unchecked Sendable {
     /// read fallback until one authenticated connection promotes the concrete
     /// app instance.
     private lazy var pairingIDsByMacDeviceID: [String: String] =
-        (UserDefaults.standard.dictionary(forKey: Self.pairingIndexDefaultsKey) as? [String: String]) ?? [:]
+        (pairingIndexDefaults.dictionary(forKey: Self.pairingIndexDefaultsKey) as? [String: String]) ?? [:]
 
     private static var keychainScope: KeychainScope {
         KeychainScope(bundleIdentifier: Bundle.main.bundleIdentifier ?? "com.cmux-mochi.ios")
@@ -44,11 +97,24 @@ public final class MobileDeviceLinkClient: @unchecked Sendable {
         }
     }()
 
-    public init(scope: KeychainScope? = nil) {
-        _ = Self.installVerificationObserver
+    public convenience init(scope: KeychainScope? = nil) {
         let resolved = scope ?? Self.keychainScope
-        identityStore = DeviceLinkKit.KeychainDeviceIdentityStore(scope: resolved)
-        pinStore = KeychainServerPinStore(scope: resolved)
+        self.init(
+            identityStore: MobileKeychainIdentityStore(scope: resolved),
+            pinStore: MobileKeychainPinStore(scope: resolved),
+            pairingIndexDefaults: .standard
+        )
+    }
+
+    init(
+        identityStore: any MobileDeviceIdentityStoring,
+        pinStore: any MobileServerPinStoring,
+        pairingIndexDefaults: UserDefaults
+    ) {
+        _ = Self.installVerificationObserver
+        self.identityStore = identityStore
+        self.pinStore = pinStore
+        self.pairingIndexDefaults = pairingIndexDefaults
     }
 
     // MARK: - pairing state
@@ -112,7 +178,7 @@ public final class MobileDeviceLinkClient: @unchecked Sendable {
         let snapshot = pairingIDsByMacDeviceID
         lock.unlock()
         if !staleTargets.isEmpty {
-            UserDefaults.standard.set(snapshot, forKey: Self.pairingIndexDefaultsKey)
+            pairingIndexDefaults.set(snapshot, forKey: Self.pairingIndexDefaultsKey)
         }
         if let material = try? identityStore.identity(forPairingID: pairingID) {
             SecIdentityFactory.removeIdentity(for: material)
@@ -198,7 +264,7 @@ public final class MobileDeviceLinkClient: @unchecked Sendable {
         pairingIDsByMacDeviceID[indexKey] = pairingID
         let snapshot = pairingIDsByMacDeviceID
         lock.unlock()
-        UserDefaults.standard.set(snapshot, forKey: Self.pairingIndexDefaultsKey)
+        pairingIndexDefaults.set(snapshot, forKey: Self.pairingIndexDefaultsKey)
     }
 
     /// Moves an installed mac-only mapping to the concrete app instance after
@@ -228,7 +294,7 @@ public final class MobileDeviceLinkClient: @unchecked Sendable {
         pairingIDsByMacDeviceID[macDeviceID] = nil
         let snapshot = pairingIDsByMacDeviceID
         lock.unlock()
-        UserDefaults.standard.set(snapshot, forKey: Self.pairingIndexDefaultsKey)
+        pairingIndexDefaults.set(snapshot, forKey: Self.pairingIndexDefaultsKey)
     }
 
     private static let pairingIndexDefaultsKey = "devicelink.pairingIDsByMacDeviceID"
@@ -246,7 +312,7 @@ public final class MobileDeviceLinkClient: @unchecked Sendable {
     private static func normalizedInstanceTag(_ instanceTag: String?) -> String? {
         guard let normalized = instanceTag?
             .trimmingCharacters(in: .whitespacesAndNewlines),
-              !normalized.isEmpty else { return nil }
+            !normalized.isEmpty else { return nil }
         return normalized
     }
 
