@@ -70,18 +70,6 @@ final class TerminalOutputCollector {
     #expect(!AuthLaunchOptions.shouldStartAutoLogin(hasCredentials: false, hasStoredTokens: false))
 }
 
-#if DEBUG
-@Test func mobileDevStackAuthTokenProviderUsesExplicitEnvironmentOnly() {
-    #expect(MobileShellDevStackAuthTokenProvider.token(environment: [:]) == nil)
-    #expect(MobileShellDevStackAuthTokenProvider.token(environment: [
-        MobileShellDevStackAuthTokenProvider.environmentKey: "   "
-    ]) == nil)
-    #expect(MobileShellDevStackAuthTokenProvider.token(environment: [
-        MobileShellDevStackAuthTokenProvider.environmentKey: " cmux-dev-token "
-    ]) == "cmux-dev-token")
-}
-#endif
-
 // Auth error mapping + cached-session recovery are now owned and tested by
 // CmuxAuthRuntime (AuthErrorMapperTests). The display-safe error and
 // cached-session-validation assertions moved there with the AuthCoordinator
@@ -90,19 +78,11 @@ final class TerminalOutputCollector {
 @Test func mobileRuntimeDefaultsToThirtySecondRPCTimeout() {
     let runtime = CMUXMobileRuntime(
         supportedRouteKinds: [.debugLoopback],
-        transportFactory: ScriptedTransportFactory(responses: ScriptedTransportResponses([])),
-        stackAccessTokenProvider: { "test-stack-token" }
+        transportFactory: ScriptedTransportFactory(responses: ScriptedTransportResponses([]))
     )
 
     #expect(runtime.rpcRequestTimeoutNanoseconds == 30 * 1_000_000_000)
     #expect(runtime.pairingRequestTimeoutNanoseconds == 8 * 1_000_000_000)
-}
-
-@Test func mobileRuntimeMapsTimedOutStackTokenToRequestTimeout() {
-    guard case .requestTimedOut = CMUXMobileRuntime.connectionError(forStackAuthError: AuthError.timedOut) else {
-        Issue.record("expected timed-out Stack token acquisition to stay retryable")
-        return
-    }
 }
 
 @MainActor
@@ -1087,8 +1067,6 @@ struct TerminalStreamTests {
     #expect(refreshRequests.count == 1)
 }
 
-private struct MissingTestStackAccessToken: Error {}
-
 private struct TestIdentityProvider: MobileIdentityProviding {
     let currentUserIDValue: String?
     let currentUserEmailValue: String?
@@ -1123,7 +1101,6 @@ private final class RecordingAnalytics: AnalyticsEmitting, @unchecked Sendable {
 private func testRuntime(
     supportedRouteKinds: [CmxAttachTransportKind] = [.tailscale, .debugLoopback, .websocket],
     transportFactory: any CmxByteTransportFactory,
-    stackAccessToken: String? = "test-stack-token",
     rpcRequestTimeoutNanoseconds: UInt64 = CMUXMobileRuntime.defaultRPCRequestTimeoutNanoseconds,
     pairingRequestTimeoutNanoseconds: UInt64 = CMUXMobileRuntime.defaultPairingRequestTimeoutNanoseconds,
     now: @escaping @Sendable () -> Date = Date.init,
@@ -1135,13 +1112,6 @@ private func testRuntime(
     CMUXMobileRuntime(
         supportedRouteKinds: supportedRouteKinds,
         transportFactory: transportFactory,
-        stackAccessTokenProvider: {
-            guard let stackAccessToken else {
-                throw MissingTestStackAccessToken()
-            }
-            return stackAccessToken
-        },
-        stackAccessTokenForStatusProvider: { stackAccessToken },
         rpcRequestTimeoutNanoseconds: rpcRequestTimeoutNanoseconds,
         pairingRequestTimeoutNanoseconds: pairingRequestTimeoutNanoseconds,
         now: now,
@@ -2083,7 +2053,6 @@ private actor ScriptedTransportResponses {
         try sentPayloads.map { payload in
             let request = try #require(JSONSerialization.jsonObject(with: payload) as? [String: Any])
             let params = request["params"] as? [String: Any] ?? [:]
-            let auth = request["auth"] as? [String: Any]
             return RecordedRPCRequest(
                 id: request["id"] as? String,
                 method: request["method"] as? String,
@@ -2096,10 +2065,7 @@ private actor ScriptedTransportResponses {
                 maxScrollbackRows: params["max_scrollback_rows"] as? Int,
                 clientID: params["client_id"] as? String,
                 text: params["text"] as? String,
-                topics: params["topics"] as? [String],
-                hasAuth: auth != nil,
-                attachToken: auth?["attach_token"] as? String,
-                stackAccessToken: auth?["stack_access_token"] as? String
+                topics: params["topics"] as? [String]
             )
         }
     }
@@ -2116,15 +2082,11 @@ private struct RecordedRPCRequest: Sendable {
     var clientID: String?
     var text: String?
     var topics: [String]?
-    var hasAuth: Bool
-    var attachToken: String?
-    var stackAccessToken: String?
 }
 
 private func recordedRPCRequest(from payload: Data) throws -> RecordedRPCRequest {
     let request = try #require(JSONSerialization.jsonObject(with: payload) as? [String: Any])
     let params = request["params"] as? [String: Any] ?? [:]
-    let auth = request["auth"] as? [String: Any]
     return RecordedRPCRequest(
         id: request["id"] as? String,
         method: request["method"] as? String,
@@ -2135,10 +2097,7 @@ private func recordedRPCRequest(from payload: Data) throws -> RecordedRPCRequest
         maxScrollbackRows: params["max_scrollback_rows"] as? Int,
         clientID: params["client_id"] as? String,
         text: params["text"] as? String,
-        topics: params["topics"] as? [String],
-        hasAuth: auth != nil,
-        attachToken: auth?["attach_token"] as? String,
-        stackAccessToken: auth?["stack_access_token"] as? String
+        topics: params["topics"] as? [String]
     )
 }
 
