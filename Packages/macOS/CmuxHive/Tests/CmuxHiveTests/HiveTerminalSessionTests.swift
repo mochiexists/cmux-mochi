@@ -12,19 +12,19 @@ struct HiveTerminalSessionTests {
         let shell = HiveTerminalShellStub()
         let session = HiveTerminalSession(surfaceID: "surface-a", shell: shell)
         let received = OutputRecorder()
-        session.attach { data in
-            received.append(data)
-        }
-
         let token = UUID()
-        shell.outputContinuation.yield(
-            MobileTerminalOutputChunk(
-                data: Data("hello".utf8),
-                streamToken: token
+        await withCheckedContinuation { (outputDelivered: CheckedContinuation<Void, Never>) in
+            session.attach { data in
+                received.append(data)
+                outputDelivered.resume()
+            }
+            shell.outputContinuation.yield(
+                MobileTerminalOutputChunk(
+                    data: Data("hello".utf8),
+                    streamToken: token
+                )
             )
-        )
-        await Task.yield()
-        await Task.yield()
+        }
         session.send(Data("ls\n".utf8))
 
         #expect(received.data == Data("hello".utf8))
