@@ -105,7 +105,7 @@ public final class HiveWorkspaceCoordinator {
             refreshWorkspaceSnapshot()
             phase = .connected
         } else {
-            phase = .failed(
+            phase = .pairedOffline(
                 message: shell.connectionError ?? String(
                     localized: "hive.error.offline",
                     defaultValue: "The remote Mac is offline."

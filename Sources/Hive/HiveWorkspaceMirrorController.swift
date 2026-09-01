@@ -63,10 +63,15 @@ final class HiveWorkspaceMirrorController {
 
         private func applyViewport(columns: Int, rows: Int) {
             guard columns > 1, rows > 1,
+                  let panel,
                   let preparation = session.prepareViewport(
                     columns: columns,
                     rows: rows
                   ) else { return }
+            // Pin the local renderer before the host captures its replacement
+            // replay. Otherwise a grow can replay into the old grid and leave
+            // the newly assigned cells empty until incidental remote output.
+            _ = panel.surface.setAssignedGrid(columns: columns, rows: rows)
             if session.phase == .idle {
                 inputForwarder.setConnectionActive(true)
                 session.attach(
@@ -79,12 +84,17 @@ final class HiveWorkspaceMirrorController {
                 )
             }
             Task { @MainActor [weak self, weak panel] in
-                guard let effectiveGrid = await self?.session.updatePreparedViewport(preparation)
+                guard let self,
+                      let panel,
+                      let effectiveGrid = await self.session.updatePreparedViewport(preparation)
                 else { return }
-                panel?.surface.setAssignedGrid(
+                let grew = panel.surface.setAssignedGrid(
                     columns: effectiveGrid.columns,
                     rows: effectiveGrid.rows
                 )
+                if grew {
+                    self.session.refreshVisibleScreen()
+                }
             }
         }
     }
@@ -113,7 +123,7 @@ final class HiveWorkspaceMirrorController {
         weak var tabManager: TabManager?
         let workspaceID: UUID
         var bindingsByPanelID: [UUID: TerminalBinding]
-        let panelIDByRemoteSurfaceID: [String: UUID]
+        var panelIDByRemoteSurfaceID: [String: UUID]
         var lifetimeTask: Task<Void, Never>?
 
         init(
@@ -144,6 +154,13 @@ final class HiveWorkspaceMirrorController {
             }
             for panelID in closedPanelIDs {
                 bindingsByPanelID.removeValue(forKey: panelID)?.detach()
+                panelIDByRemoteSurfaceID = panelIDByRemoteSurfaceID.filter {
+                    $0.value != panelID
+                }
+            }
+            guard !bindingsByPanelID.isEmpty else {
+                tabManager?.closeWorkspace(workspace, recordHistory: false)
+                return false
             }
             bindingsByPanelID.values.forEach { $0.reconnectIfNeeded() }
             return true
@@ -166,7 +183,7 @@ final class HiveWorkspaceMirrorController {
         coordinator: HiveWorkspaceCoordinator,
         in tabManager: TabManager
     ) {
-        pruneClosedMirrors()
+        reconcileMirrors()
         let key = MirrorKey(
             tabManagerID: ObjectIdentifier(tabManager),
             macDeviceID: remoteWorkspace.macDeviceID
@@ -177,8 +194,23 @@ final class HiveWorkspaceMirrorController {
         if let existing = mirrors[key],
            let workspace = tabManager.workspacesById[existing.workspaceID] {
             tabManager.selectWorkspace(workspace)
-            if let panelID = existing.panelIDByRemoteSurfaceID[selectedTerminal.id.rawValue] {
+            if let panelID = existing.panelIDByRemoteSurfaceID[selectedTerminal.id.rawValue],
+               workspace.panels[panelID] != nil {
                 workspace.focusPanel(panelID)
+                return
+            }
+            let remotePaneID = remoteWorkspace.terminals.firstIndex {
+                $0.id == selectedTerminal.id
+            } ?? existing.panelIDByRemoteSurfaceID.count
+            if let mounted = mount(
+                terminal: selectedTerminal,
+                remotePaneID: remotePaneID,
+                coordinator: coordinator,
+                in: workspace
+            ) {
+                existing.bindingsByPanelID[mounted.panel.id] = mounted.binding
+                existing.panelIDByRemoteSurfaceID[selectedTerminal.id.rawValue] = mounted.panel.id
+                workspace.focusPanel(mounted.panel.id)
             }
             return
         }
@@ -207,25 +239,16 @@ final class HiveWorkspaceMirrorController {
         var selectedPanel: TerminalPanel?
 
         for (index, terminal) in remoteWorkspace.terminals.enumerated() {
-            guard let session = coordinator.makeTerminalSession(
-                surfaceID: terminal.id.rawValue
+            guard let mounted = mount(
+                terminal: terminal,
+                remotePaneID: index,
+                coordinator: coordinator,
+                in: workspace
             ) else { continue }
-            let inputRelay = InputRelay()
-            guard let panel = workspace.addRemoteTmuxDisplayPane(
-                remotePaneId: index,
-                title: terminal.name,
-                focus: false,
-                onInput: { input in
-                    inputRelay.send(input)
-                }
-            ) else { continue }
-            let binding = TerminalBinding(session: session, panel: panel)
-            inputRelay.forward(to: binding)
-            binding.start()
-            bindingsByPanelID[panel.id] = binding
-            panelIDByRemoteSurfaceID[terminal.id.rawValue] = panel.id
+            bindingsByPanelID[mounted.panel.id] = mounted.binding
+            panelIDByRemoteSurfaceID[terminal.id.rawValue] = mounted.panel.id
             if terminal.id == selectedTerminal.id {
-                selectedPanel = panel
+                selectedPanel = mounted.panel
             }
         }
 
@@ -252,21 +275,49 @@ final class HiveWorkspaceMirrorController {
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(1))
                 guard let self, let record else { return }
-                guard !record.reconcilePanels() else {
-                    continue
-                }
-                record.detach()
-                self.mirrors.removeValue(forKey: key)
-                return
+                guard self.reconcileMirror(record, for: key) else { return }
             }
         }
     }
 
-    private func pruneClosedMirrors() {
-        for (key, record) in mirrors
-        where record.tabManager?.workspacesById[record.workspaceID] == nil {
+    private func mount(
+        terminal: MobileTerminalPreview,
+        remotePaneID: Int,
+        coordinator: HiveWorkspaceCoordinator,
+        in workspace: Workspace
+    ) -> (panel: TerminalPanel, binding: TerminalBinding)? {
+        guard let session = coordinator.makeTerminalSession(
+            surfaceID: terminal.id.rawValue
+        ) else { return nil }
+        let inputRelay = InputRelay()
+        guard let panel = workspace.addRemoteTmuxDisplayPane(
+            remotePaneId: remotePaneID,
+            title: terminal.name,
+            focus: false,
+            onInput: { input in
+                inputRelay.send(input)
+            }
+        ) else { return nil }
+        let binding = TerminalBinding(session: session, panel: panel)
+        inputRelay.forward(to: binding)
+        binding.start()
+        return (panel, binding)
+    }
+
+    @discardableResult
+    private func reconcileMirror(_ record: MirrorRecord, for key: MirrorKey) -> Bool {
+        guard mirrors[key] === record else { return false }
+        guard record.reconcilePanels() else {
             record.detach()
             mirrors.removeValue(forKey: key)
+            return false
+        }
+        return true
+    }
+
+    func reconcileMirrors() {
+        for (key, record) in Array(mirrors) {
+            _ = reconcileMirror(record, for: key)
         }
     }
 }

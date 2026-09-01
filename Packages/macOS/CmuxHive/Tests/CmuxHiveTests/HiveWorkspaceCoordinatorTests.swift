@@ -63,6 +63,25 @@ struct HiveWorkspaceCoordinatorTests {
         #expect(shell.reconnectCount == 0)
     }
 
+    @Test("reports a known paired Mac as offline when reconnect fails")
+    func reportsReconnectAsPairedOffline() async {
+        let shell = HiveShellStub(
+            pairingResult: .failed,
+            workspaces: [],
+            connectionError: "Connection refused",
+            connectionErrorGuidance: "Open the remote app.",
+            hasKnownPairing: true,
+            isConnected: false
+        )
+        let coordinator = HiveWorkspaceCoordinator(shell: shell)
+
+        #expect(await !coordinator.reconnect())
+        #expect(coordinator.phase == .pairedOffline(
+            message: "Connection refused",
+            guidance: "Open the remote app."
+        ))
+    }
+
     private static let deviceLinkURL =
         "cmux-ios-dev://attach?v=3&r=192.168.1.25:3939"
         + "&f=" + String(repeating: "ab", count: 32)

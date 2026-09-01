@@ -14,6 +14,8 @@ public protocol HiveTerminalShellServing: AnyObject {
 
     func sendTerminalRawInput(_ data: Data, surfaceID: String)
 
+    func requestTerminalVisibleScreenReplay(surfaceID: String)
+
     func prepareTerminalViewport(
         surfaceID: String,
         columns: Int,

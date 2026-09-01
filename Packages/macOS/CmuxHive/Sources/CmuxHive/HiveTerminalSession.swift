@@ -103,6 +103,11 @@ public final class HiveTerminalSession {
         shell.sendTerminalRawInput(data, surfaceID: surfaceID)
     }
 
+    /// Replaces the local screen after a renderer grid grows.
+    public func refreshVisibleScreen() {
+        shell.requestTerminalVisibleScreenReplay(surfaceID: surfaceID)
+    }
+
     /// Report the local renderer's natural grid to the remote host.
     @discardableResult
     public func resize(columns: Int, rows: Int) async -> (

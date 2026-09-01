@@ -13,7 +13,7 @@ public final class HiveComposition {
     public init(
         databaseURL: URL,
         defaults: UserDefaults = .standard,
-        allowsLoopbackRoutes: Bool = true
+        allowsLoopbackRoutes: Bool = false
     ) throws {
         let pairedMacStore = try MobilePairedMacStore(databaseURL: databaseURL)
         let runtime = HiveMobileRuntime.network(
@@ -43,7 +43,7 @@ public final class HiveComposition {
     /// Creates the production owner at Hive's default database location.
     public convenience init(
         defaults: UserDefaults = .standard,
-        allowsLoopbackRoutes: Bool = true
+        allowsLoopbackRoutes: Bool = false
     ) throws {
         try self.init(
             databaseURL: Self.defaultDatabaseURL(),

@@ -34,6 +34,8 @@ struct HiveTerminalSessionTests {
         #expect(shell.inputs.count == 1)
         #expect(shell.inputs.first?.surfaceID == "surface-a")
         #expect(shell.inputs.first?.data == Data("ls\n".utf8))
+        session.refreshVisibleScreen()
+        #expect(shell.replayRequests == ["surface-a"])
 
         session.detach()
         #expect(shell.unmountedSurfaceID == "surface-a")
@@ -69,6 +71,7 @@ private final class HiveTerminalShellStub: HiveTerminalShellServing {
     var registrationCount = 0
     var processed: [(surfaceID: String, token: UUID)] = []
     var inputs: [(surfaceID: String, data: Data)] = []
+    var replayRequests: [String] = []
     var unmountedSurfaceID: String?
     var unmountedRegistrationToken: UUID?
 
@@ -101,6 +104,10 @@ private final class HiveTerminalShellStub: HiveTerminalShellServing {
 
     func sendTerminalRawInput(_ data: Data, surfaceID: String) {
         inputs.append((surfaceID, data))
+    }
+
+    func requestTerminalVisibleScreenReplay(surfaceID: String) {
+        replayRequests.append(surfaceID)
     }
 
     func finishCurrentOutput() {

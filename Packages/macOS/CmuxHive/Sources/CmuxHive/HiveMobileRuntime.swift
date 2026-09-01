@@ -40,7 +40,7 @@ public struct HiveMobileRuntime: MobileSyncRuntime, Sendable {
 
     /// Build the production LAN/Tailscale factory with exact DeviceLink lookup.
     public static func network(
-        allowsLoopbackRoutes: Bool = true,
+        allowsLoopbackRoutes: Bool = false,
         deviceLinkTLSOptions: @escaping @Sendable (
             CmxByteTransportRequest
         ) -> NWProtocolTLS.Options?
