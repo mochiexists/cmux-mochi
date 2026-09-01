@@ -47,6 +47,8 @@ let package = Package(
                 "DeviceLinkKit",
                 "CmuxMobileShell",
                 "CmuxMobileShellModel",
+                "CmuxMobileRPC",
+                "CmuxMobileTransport",
             ],
             swiftSettings: [
                 .swiftLanguageMode(.v6),
