@@ -45,6 +45,7 @@ let package = Package(
                 "CmuxHive",
                 "CMUXMobileCore",
                 "DeviceLinkKit",
+                "CmuxMobilePairedMac",
                 "CmuxMobileShell",
                 "CmuxMobileShellModel",
                 "CmuxMobileRPC",

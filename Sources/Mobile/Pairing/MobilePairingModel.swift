@@ -17,6 +17,8 @@ final class MobilePairingModel {
         case preparing
         /// A ticket is ready to display.
         case ready(Ready)
+        /// The displayed one-time enrollment ticket reached its deadline.
+        case expired(Ready)
         /// A phone has attached to the listener; show a paired/success state
         /// instead of the QR + spinner.
         case connected(Ready)
@@ -34,7 +36,8 @@ final class MobilePairingModel {
         let localNetworkLines: [String]
         /// Reachable Tailscale `host:port` routes represented by the code.
         let tailscaleLines: [String]
-
+        /// The deadline enforced by the DeviceLink enrollment-ticket store.
+        let expiresAt: Date
     }
 
     struct PairingRoutePlan: Equatable, Sendable {
@@ -69,6 +72,9 @@ final class MobilePairingModel {
     /// Observes host status while a code is shown and tracks new connections.
     /// Cancelled on each refresh.
     private var connectionObservationTask: Task<Void, Never>?
+    /// Moves an unused displayed QR into an explicit expired state at the same
+    /// deadline enforced by the host. Cancelled on refresh or window close.
+    private var expirationTask: Task<Void, Never>?
     /// Bumped on each ``refresh()`` so a slower in-flight run (the UI fires
     /// refresh from several places) can't overwrite a newer result with a stale
     /// ticket. Each run captures its value and bails after an `await` if superseded.
@@ -94,6 +100,8 @@ final class MobilePairingModel {
     func refresh() async {
         connectionObservationTask?.cancel()
         connectionObservationTask = nil
+        expirationTask?.cancel()
+        expirationTask = nil
         refreshGeneration &+= 1
         let generation = refreshGeneration
         state = .preparing
@@ -122,16 +130,19 @@ final class MobilePairingModel {
             // un-enrolled phone scanning an attach URL dials the routes and then
             // stalls in the handshake — the pairing code is the only payload a
             // first-time phone can actually redeem.
+            let expiresAt = Date().addingTimeInterval(ticketTTL)
             let pairingURL = try await MobileHostDeviceLink.shared.makePairingURL(lifetime: ticketTTL)
             guard generation == refreshGeneration else { return }
             state = .ready(
                 Ready(
                     attachURL: pairingURL.absoluteString,
                     localNetworkLines: routePlan.localNetworkLines,
-                    tailscaleLines: routePlan.tailscaleLines
+                    tailscaleLines: routePlan.tailscaleLines,
+                    expiresAt: expiresAt
                 )
             )
             observeConnections()
+            observeExpiration(at: expiresAt)
         } catch MobileHostDeviceLinkPairingError.noRoutes {
             guard generation == refreshGeneration else { return }
             state = .needsReachableTransport
@@ -149,13 +160,11 @@ final class MobilePairingModel {
 
     /// Cancels the connection observation. Call when the window closes.
     ///
-    /// There is deliberately no timer to cancel: the displayed code never
-    /// expires and is never regenerated behind the user's back. If a
-    /// endpoint or private-network address changes while the window sits open,
-    /// the Refresh Code button re-mints on demand.
     func stopObserving() {
         connectionObservationTask?.cancel()
         connectionObservationTask = nil
+        expirationTask?.cancel()
+        expirationTask = nil
     }
 
     /// Watches the mobile host's connection status while a code is displayed and
@@ -187,6 +196,22 @@ final class MobilePairingModel {
                     baselineConnectionCount: baseline
                 )
             }
+        }
+    }
+
+    /// Matches the visible QR lifecycle to the host-enforced ticket deadline.
+    /// We never regenerate behind the user's back: expiry removes the stale QR
+    /// and asks for an explicit refresh, avoiding a scan that can only fail.
+    private func observeExpiration(at expiresAt: Date) {
+        expirationTask?.cancel()
+        let generation = refreshGeneration
+        let delay = max(0, expiresAt.timeIntervalSinceNow)
+        expirationTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(delay))
+            guard !Task.isCancelled,
+                  let self,
+                  generation == self.refreshGeneration else { return }
+            self.state = Self.expirationTransition(from: self.state, now: Date())
         }
     }
 
@@ -230,6 +255,15 @@ final class MobilePairingModel {
         default:
             return current
         }
+    }
+
+    /// Expires only an unused displayed code. A successful pairing remains
+    /// latched even after the original enrollment deadline passes.
+    static func expirationTransition(from current: State, now: Date) -> State {
+        guard case let .ready(ready) = current, now >= ready.expiresAt else {
+            return current
+        }
+        return .expired(ready)
     }
 
     private func enablePairingHost() {

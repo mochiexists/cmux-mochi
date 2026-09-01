@@ -1,4 +1,5 @@
 public import CmuxHive
+public import CmuxMobilePairedMac
 public import CmuxMobileShellModel
 public import SwiftUI
 
@@ -6,6 +7,8 @@ public import SwiftUI
 public struct HiveWorkspaceBrowserView: View {
     @Bindable private var coordinator: HiveWorkspaceCoordinator
     @State private var pairingLink = ""
+    @State private var localOnlyRemoval: MobilePairedMac?
+    @State private var removalError: String?
     private let openTerminal: @MainActor (
         MobileWorkspacePreview,
         MobileTerminalPreview
@@ -28,6 +31,7 @@ public struct HiveWorkspaceBrowserView: View {
             pairingForm
             status
             workspaceList
+            pairedComputers
         }
         .padding(20)
         .frame(minWidth: 560, minHeight: 480)
@@ -39,6 +43,31 @@ public struct HiveWorkspaceBrowserView: View {
                 try? await Task.sleep(for: .seconds(1))
                 coordinator.refreshWorkspaceSnapshot()
             }
+        }
+        .confirmationDialog(
+            String(localized: "hive.remove.localOnly.title", defaultValue: "Forget on this Mac?"),
+            isPresented: Binding(
+                get: { localOnlyRemoval != nil },
+                set: { if !$0 { localOnlyRemoval = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button(
+                String(localized: "hive.remove.localOnly.action", defaultValue: "Forget Locally"),
+                role: .destructive
+            ) {
+                guard let mac = localOnlyRemoval else { return }
+                localOnlyRemoval = nil
+                Task { await remove(mac, localOnly: true) }
+            }
+            Button(String(localized: "hive.cancel", defaultValue: "Cancel"), role: .cancel) {
+                localOnlyRemoval = nil
+            }
+        } message: {
+            Text(String(
+                localized: "hive.remove.localOnly.message",
+                defaultValue: "The remote Mac could not be reached to revoke this key. Its local authorization will remain inert until removed there."
+            ))
         }
     }
 
@@ -86,16 +115,22 @@ public struct HiveWorkspaceBrowserView: View {
                 systemImage: "lock.shield"
             )
         case .connecting:
-            Label(
-                String(localized: "hive.status.connecting", defaultValue: "Connecting…"),
-                systemImage: "network"
-            )
+            VStack(alignment: .leading, spacing: 4) {
+                Label(
+                    String(localized: "hive.status.connecting", defaultValue: "Connecting…"),
+                    systemImage: "network"
+                )
+                connectionDetail
+            }
         case .connected:
-            Label(
-                String(localized: "hive.status.connected", defaultValue: "Authenticated with DeviceLink"),
-                systemImage: "checkmark.shield"
-            )
-            .foregroundStyle(.green)
+            VStack(alignment: .leading, spacing: 4) {
+                Label(
+                    String(localized: "hive.status.connected", defaultValue: "Authenticated with DeviceLink"),
+                    systemImage: "checkmark.shield"
+                )
+                .foregroundStyle(.green)
+                connectionDetail
+            }
         case let .pairedOffline(message, guidance):
             statusFailure(message: message, guidance: guidance)
         case let .failed(message, guidance):
@@ -110,9 +145,20 @@ public struct HiveWorkspaceBrowserView: View {
             if let guidance {
                 Text(guidance).foregroundStyle(.secondary)
             }
+            connectionDetail
             Button(String(localized: "hive.retry.action", defaultValue: "Retry")) {
                 Task { _ = await coordinator.reconnect() }
             }
+        }
+    }
+
+    @ViewBuilder
+    private var connectionDetail: some View {
+        if let detail = coordinator.connectionDetail {
+            Text(detail)
+                .font(.caption.monospaced())
+                .foregroundStyle(.secondary)
+                .textSelection(.enabled)
         }
     }
 
@@ -163,6 +209,56 @@ public struct HiveWorkspaceBrowserView: View {
                 }
             }
             .listStyle(.inset)
+        }
+    }
+
+    @ViewBuilder
+    private var pairedComputers: some View {
+        if !coordinator.pairedMacs.isEmpty {
+            Divider()
+            VStack(alignment: .leading, spacing: 8) {
+                Text(String(localized: "hive.paired.title", defaultValue: "Paired Macs"))
+                    .font(.headline)
+                ForEach(coordinator.pairedMacs) { mac in
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(mac.resolvedName)
+                            if let instanceTag = mac.instanceTag, !instanceTag.isEmpty {
+                                Text(instanceTag)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        Spacer()
+                        Button(
+                            String(localized: "hive.remove.action", defaultValue: "Remove"),
+                            role: .destructive
+                        ) {
+                            Task { await remove(mac) }
+                        }
+                    }
+                }
+                if let removalError {
+                    Text(removalError)
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                }
+            }
+        }
+    }
+
+    private func remove(_ mac: MobilePairedMac, localOnly: Bool = false) async {
+        removalError = nil
+        switch await coordinator.removePairing(mac, localOnly: localOnly) {
+        case .removed:
+            break
+        case .requiresLocalOnlyConfirmation:
+            localOnlyRemoval = mac
+        case .failed:
+            removalError = String(
+                localized: "hive.remove.failed",
+                defaultValue: "Could not remove this remote Mac."
+            )
         }
     }
 }

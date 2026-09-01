@@ -56,7 +56,7 @@ public struct CmxNetworkByteTransportFactory: CmxRouteAwareByteTransportFactory 
         }
         switch route.kind {
         case .localNetwork:
-            guard CmxPrivateLANHost().matches(host) else {
+            guard CmxLocalNetworkHost().matches(host) else {
                 throw CmxNetworkByteTransportError.deviceLinkAuthorizationUnavailable
             }
             throw CmxNetworkByteTransportError.authorizationIntentRequired
@@ -87,7 +87,7 @@ public struct CmxNetworkByteTransportFactory: CmxRouteAwareByteTransportFactory 
         }
         switch route.kind {
         case .localNetwork:
-            guard CmxPrivateLANHost().matches(host) else {
+            guard CmxLocalNetworkHost().matches(host) else {
                 throw CmxNetworkByteTransportError.deviceLinkAuthorizationUnavailable
             }
             guard let tlsOptions = deviceLinkTLSOptions?(request) else {

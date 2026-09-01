@@ -1,3 +1,5 @@
+import CMUXMobileCore
+import CmuxMobilePairedMac
 import Foundation
 import Testing
 @testable import CmuxMobileShell
@@ -64,5 +66,52 @@ import Testing
         )
         let scope = await store.currentScopeSnapshot()
         #expect(scope == nil)
+    }
+
+    @Test @MainActor func firstDeviceLinkPairingPersistsWithoutFakingAccountSignIn() async throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(
+            at: directory,
+            withIntermediateDirectories: true
+        )
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let pairedStore = try MobilePairedMacStore(
+            databaseURL: directory.appendingPathComponent("paired-macs.sqlite3")
+        )
+        let defaults = makePairingHintDefaults(hasKnownPairedMac: false)
+        let store = MobileShellComposite(
+            isSignedIn: false,
+            pairedMacStore: pairedStore,
+            identityProvider: nil,
+            pairingHintDefaults: defaults
+        )
+        let route = try CmxAttachRoute(
+            id: "device-link-loopback",
+            kind: .debugLoopback,
+            endpoint: .hostPort(host: "127.0.0.1", port: 51_003)
+        )
+        let ticket = try CmxAttachTicket(
+            workspaceID: "",
+            terminalID: nil,
+            macDeviceID: "first-account-free-mac",
+            macDisplayName: "First Mac",
+            routes: [route],
+            expiresAt: nil
+        )
+
+        let persisted = await store.persistPairedMacFromTicket(
+            ticket,
+            instanceTagUpdate: .replace("default")
+        )
+        let rows = try await pairedStore.loadAll(
+            stackUserID: MobileLocalPairingScope.identifier(),
+            teamID: nil
+        )
+
+        #expect(persisted)
+        #expect(!store.isSignedIn)
+        #expect(store.hasKnownPairedMac)
+        #expect(rows.map(\.macDeviceID) == ["first-account-free-mac"])
     }
 }

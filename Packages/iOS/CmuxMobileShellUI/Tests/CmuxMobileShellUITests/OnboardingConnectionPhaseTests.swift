@@ -8,7 +8,7 @@ import Testing
         #expect(PairingAttemptPresentation.resolve(isPairing: false) == .idle)
     }
 
-    @Test func inactiveTailnetProducesPairingWarningBeforeScanning() {
+    @Test func inactiveTailnetProducesFallbackNoticeWithoutBlockingLANPairing() {
         #expect(PairingNetworkWarning.resolve(status: .inactiveOrNotInstalled) == .tailscaleDisconnected)
         #expect(PairingNetworkWarning.resolve(status: .active) == nil)
         #expect(PairingNetworkWarning.resolve(status: .unknown) == nil)

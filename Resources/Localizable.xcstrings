@@ -61541,121 +61541,121 @@
         "ar": {
           "stringUnit": {
             "state": "translated",
-            "value": "توصيل iPhone/iPad"
+            "value": "إقران جهاز"
           }
         },
         "bs": {
           "stringUnit": {
             "state": "translated",
-            "value": "Poveži iPhone/iPad"
+            "value": "Upari uređaj"
           }
         },
         "da": {
           "stringUnit": {
             "state": "translated",
-            "value": "Forbind iPhone/iPad"
+            "value": "Par en enhed"
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "iPhone/iPad verbinden"
+            "value": "Gerät koppeln"
           }
         },
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Connect iPhone/iPad"
+            "value": "Pair a Device"
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Conectar iPhone/iPad"
+            "value": "Emparejar un dispositivo"
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Connecter l’iPhone/iPad"
+            "value": "Jumeler un appareil"
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Connetti iPhone/iPad"
+            "value": "Abbina un dispositivo"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "iPhone/iPadを接続"
+            "value": "デバイスをペアリング"
           }
         },
         "km": {
           "stringUnit": {
             "state": "translated",
-            "value": "ភ្ជាប់ iPhone/iPad"
+            "value": "ផ្គូផ្គងឧបករណ៍"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "iPhone/iPad 연결"
+            "value": "기기 페어링"
           }
         },
         "nb": {
           "stringUnit": {
             "state": "translated",
-            "value": "Koble til iPhone/iPad"
+            "value": "Koble sammen en enhet"
           }
         },
         "pl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Połącz iPhone/iPad"
+            "value": "Sparuj urządzenie"
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "Conectar iPhone/iPad"
+            "value": "Emparelhar um dispositivo"
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Подключить iPhone/iPad"
+            "value": "Сопрячь устройство"
           }
         },
         "th": {
           "stringUnit": {
             "state": "translated",
-            "value": "เชื่อมต่อ iPhone/iPad"
+            "value": "จับคู่อุปกรณ์"
           }
         },
         "tr": {
           "stringUnit": {
             "state": "translated",
-            "value": "iPhone/iPad’i Bağla"
+            "value": "Bir Aygıt Eşle"
           }
         },
         "uk": {
           "stringUnit": {
             "state": "translated",
-            "value": "Підключити iPhone/iPad"
+            "value": "Спарувати пристрій"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "连接 iPhone/iPad"
+            "value": "配对设备"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "連接 iPhone/iPad"
+            "value": "配對裝置"
           }
         }
       }
@@ -134950,13 +134950,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Your terminal workspaces are now syncing to your iPhone. You can close this window."
+            "value": "Your terminal workspaces are now syncing to the paired device. You can close this window."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "ターミナルのワークスペースがiPhoneと同期されました。このウィンドウは閉じても大丈夫です。"
+            "value": "ターミナルのワークスペースがペアリング済みのデバイスと同期されました。このウィンドウは閉じても大丈夫です。"
           }
         }
       }
@@ -134967,13 +134967,64 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "iPhone connected"
+            "value": "Device connected"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "iPhoneが接続されました"
+            "value": "デバイスが接続されました"
+          }
+        }
+      }
+    },
+    "mobile.pairing.copyLink": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Copy Pairing Link"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ペアリングリンクをコピー"
+          }
+        }
+      }
+    },
+    "mobile.pairing.expired.body": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pairing codes are single-use and valid for 10 minutes. Refresh before scanning again."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ペアリングコードは一度限りで、10 分間有効です。もう一度スキャンする前にコードを更新してください。"
+          }
+        }
+      }
+    },
+    "mobile.pairing.expired.title": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pairing code expired"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ペアリングコードの有効期限が切れました"
           }
         }
       }
@@ -135222,13 +135273,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "No cmux account is involved. This one-time code authorizes your iPhone directly."
+            "value": "No cmux account is involved. This one-time code authorizes the other device directly."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "cmux アカウントは使用しません。この一度限りのコードで iPhone を直接認証します。"
+            "value": "cmux アカウントは使用しません。この一度限りのコードでもう一方のデバイスを直接認証します。"
           }
         }
       }
@@ -135886,13 +135937,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Install cmux on your iPhone and open it."
+            "value": "Open cmux on your iPhone or another Mac."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "iPhone に cmux をインストールして開きます。"
+            "value": "iPhoneまたは別のMacでcmuxを開きます。"
           }
         }
       }
@@ -135903,13 +135954,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Tap Add device, then Scan QR Code, and point the camera at the code above."
+            "value": "On iPhone, scan the QR code. On another Mac, open Remote Macs and paste the copied pairing link."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "「デバイスを追加」→「QR コードをスキャン」をタップし、上のコードにカメラを向けます。"
+            "value": "iPhoneではQRコードをスキャンします。別のMacでは「リモートMac」を開き、コピーしたペアリングリンクを貼り付けます。"
           }
         }
       }
@@ -135954,13 +136005,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Connect your iPhone to the same local network or Tailscale network as this Mac."
+            "value": "Connect the other device to the same local network or Tailscale network as this Mac."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "iPhone をこの Mac と同じローカルネットワークまたは Tailscale ネットワークに接続します。"
+            "value": "もう一方のデバイスをこのMacと同じローカルネットワークまたはTailscaleネットワークに接続します。"
           }
         }
       }
@@ -135971,13 +136022,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Waiting for your iPhone…"
+            "value": "Waiting for the other device…"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "iPhone を待っています…"
+            "value": "もう一方のデバイスを待っています…"
           }
         }
       }
@@ -135988,13 +136039,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Pair your iPhone"
+            "value": "Pair a device"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "iPhone をペアリング"
+            "value": "デバイスをペアリング"
           }
         }
       }
@@ -136005,13 +136056,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Connect this Mac and your iPhone to the same local network or Tailscale network, then scan this code in the cmux app."
+            "value": "Connect both devices to the same local network or Tailscale network, then scan the code or copy the pairing link into cmux."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "この Mac と iPhone を同じローカルネットワークまたは Tailscale ネットワークに接続し、cmux アプリでこのコードをスキャンします。"
+            "value": "両方のデバイスを同じローカルネットワークまたはTailscaleネットワークに接続し、コードをスキャンするか、ペアリングリンクをcmuxにコピーします。"
           }
         }
       }
@@ -136039,13 +136090,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Pair iPhone"
+            "value": "Pair a Device"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "iPhone をペアリング"
+            "value": "デバイスをペアリング"
           }
         }
       }
@@ -262785,83 +262836,147 @@
     },
     "hive.empty.description": {
       "extractionState": "manual",
-      "localizations": { "en": { "stringUnit": { "state": "translated", "value": "Open Pair a Device on the other Mac, then paste its link above." } } }
+      "localizations": { "en": { "stringUnit": { "state": "translated", "value": "Open Pair a Device on the other Mac, then paste its link above." } }, "ja": { "stringUnit": { "state": "translated", "value": "もう一方のMacで「デバイスをペアリング」を開き、上にリンクを貼り付けてください。" } } }
     },
     "hive.empty.title": {
       "extractionState": "manual",
-      "localizations": { "en": { "stringUnit": { "state": "translated", "value": "No Remote Workspaces" } } }
+      "localizations": { "en": { "stringUnit": { "state": "translated", "value": "No Remote Workspaces" } }, "ja": { "stringUnit": { "state": "translated", "value": "リモートワークスペースがありません" } } }
     },
     "hive.error.invalidLink.guidance": {
       "extractionState": "manual",
-      "localizations": { "en": { "stringUnit": { "state": "translated", "value": "Open Pair a Device on the remote Mac and paste its new link." } } }
+      "localizations": { "en": { "stringUnit": { "state": "translated", "value": "Open Pair a Device on the remote Mac and paste its new link." } }, "ja": { "stringUnit": { "state": "translated", "value": "リモートMacで「デバイスをペアリング」を開き、新しいリンクを貼り付けてください。" } } }
     },
     "hive.error.invalidLink.message": {
       "extractionState": "manual",
-      "localizations": { "en": { "stringUnit": { "state": "translated", "value": "This is not a current Mochi pairing link." } } }
+      "localizations": { "en": { "stringUnit": { "state": "translated", "value": "This is not a current Mochi pairing link." } }, "ja": { "stringUnit": { "state": "translated", "value": "これは現在のMochiペアリングリンクではありません。" } } }
     },
     "hive.error.offline": {
       "extractionState": "manual",
-      "localizations": { "en": { "stringUnit": { "state": "translated", "value": "The remote Mac is offline." } } }
+      "localizations": { "en": { "stringUnit": { "state": "translated", "value": "The remote Mac is offline." } }, "ja": { "stringUnit": { "state": "translated", "value": "リモートMacはオフラインです。" } } }
     },
     "hive.error.pairing": {
       "extractionState": "manual",
-      "localizations": { "en": { "stringUnit": { "state": "translated", "value": "Could not pair with the remote Mac." } } }
+      "localizations": { "en": { "stringUnit": { "state": "translated", "value": "Could not pair with the remote Mac." } }, "ja": { "stringUnit": { "state": "translated", "value": "リモートMacとペアリングできませんでした。" } } }
     },
     "hive.error.store.description": {
       "extractionState": "manual",
-      "localizations": { "en": { "stringUnit": { "state": "translated", "value": "The local pairing store could not be opened." } } }
+      "localizations": { "en": { "stringUnit": { "state": "translated", "value": "The local pairing store could not be opened." } }, "ja": { "stringUnit": { "state": "translated", "value": "ローカルのペアリングストアを開けませんでした。" } } }
     },
     "hive.error.store.title": {
       "extractionState": "manual",
-      "localizations": { "en": { "stringUnit": { "state": "translated", "value": "Remote Macs Unavailable" } } }
+      "localizations": { "en": { "stringUnit": { "state": "translated", "value": "Remote Macs Unavailable" } }, "ja": { "stringUnit": { "state": "translated", "value": "リモートMacを利用できません" } } }
     },
     "hive.mirror.workspaceTitle": {
       "extractionState": "manual",
-      "localizations": { "en": { "stringUnit": { "state": "translated", "value": "%1$@ — %2$@" } } }
+      "localizations": { "en": { "stringUnit": { "state": "translated", "value": "%1$@ — %2$@" } }, "ja": { "stringUnit": { "state": "translated", "value": "%1$@ — %2$@" } } }
     },
     "hive.offline.guidance": {
       "extractionState": "manual",
-      "localizations": { "en": { "stringUnit": { "state": "translated", "value": "Open Mochi on the remote Mac, then retry." } } }
+      "localizations": { "en": { "stringUnit": { "state": "translated", "value": "Open Mochi on the remote Mac, then retry." } }, "ja": { "stringUnit": { "state": "translated", "value": "リモートMacでMochiを開き、もう一度お試しください。" } } }
     },
     "hive.offline.paired": {
       "extractionState": "manual",
-      "localizations": { "en": { "stringUnit": { "state": "translated", "value": "Pairing saved; the remote Mac is offline." } } }
+      "localizations": { "en": { "stringUnit": { "state": "translated", "value": "Pairing saved; the remote Mac is offline." } }, "ja": { "stringUnit": { "state": "translated", "value": "ペアリングを保存しました。リモートMacはオフラインです。" } } }
     },
     "hive.pair.action": {
       "extractionState": "manual",
-      "localizations": { "en": { "stringUnit": { "state": "translated", "value": "Pair" } } }
+      "localizations": { "en": { "stringUnit": { "state": "translated", "value": "Pair" } }, "ja": { "stringUnit": { "state": "translated", "value": "ペアリング" } } }
     },
     "hive.pair.placeholder": {
       "extractionState": "manual",
-      "localizations": { "en": { "stringUnit": { "state": "translated", "value": "Paste pairing link" } } }
+      "localizations": { "en": { "stringUnit": { "state": "translated", "value": "Paste pairing link" } }, "ja": { "stringUnit": { "state": "translated", "value": "ペアリングリンクを貼り付け" } } }
+    },
+    "hive.paired.title": {
+      "extractionState": "manual",
+      "localizations": { "en": { "stringUnit": { "state": "translated", "value": "Paired Macs" } }, "ja": { "stringUnit": { "state": "translated", "value": "ペアリング済みのMac" } } }
+    },
+    "hive.cancel": {
+      "extractionState": "manual",
+      "localizations": { "en": { "stringUnit": { "state": "translated", "value": "Cancel" } }, "ja": { "stringUnit": { "state": "translated", "value": "キャンセル" } } }
+    },
+    "hive.remove.action": {
+      "extractionState": "manual",
+      "localizations": { "en": { "stringUnit": { "state": "translated", "value": "Remove" } }, "ja": { "stringUnit": { "state": "translated", "value": "削除" } } }
+    },
+    "hive.remove.failed": {
+      "extractionState": "manual",
+      "localizations": { "en": { "stringUnit": { "state": "translated", "value": "Could not remove this remote Mac." } }, "ja": { "stringUnit": { "state": "translated", "value": "このリモートMacを削除できませんでした。" } } }
+    },
+    "hive.remove.localOnly.action": {
+      "extractionState": "manual",
+      "localizations": { "en": { "stringUnit": { "state": "translated", "value": "Forget Locally" } }, "ja": { "stringUnit": { "state": "translated", "value": "このMacから削除" } } }
+    },
+    "hive.remove.localOnly.message": {
+      "extractionState": "manual",
+      "localizations": { "en": { "stringUnit": { "state": "translated", "value": "The remote Mac could not be reached to revoke this key. Its local authorization will remain inert until removed there." } }, "ja": { "stringUnit": { "state": "translated", "value": "リモートMacに到達できず、このキーを取り消せませんでした。リモートMac側で削除されるまで、そちらに残る認証は使用されません。" } } }
+    },
+    "hive.remove.localOnly.title": {
+      "extractionState": "manual",
+      "localizations": { "en": { "stringUnit": { "state": "translated", "value": "Forget on this Mac?" } }, "ja": { "stringUnit": { "state": "translated", "value": "このMacから削除しますか？" } } }
     },
     "hive.retry.action": {
       "extractionState": "manual",
-      "localizations": { "en": { "stringUnit": { "state": "translated", "value": "Retry" } } }
+      "localizations": { "en": { "stringUnit": { "state": "translated", "value": "Retry" } }, "ja": { "stringUnit": { "state": "translated", "value": "再試行" } } }
+    },
+    "hive.route.connected": {
+      "extractionState": "manual",
+      "localizations": { "en": { "stringUnit": { "state": "translated", "value": "Connected over" } }, "ja": { "stringUnit": { "state": "translated", "value": "接続経路:" } } }
+    },
+    "hive.route.iroh": {
+      "extractionState": "manual",
+      "localizations": { "en": { "stringUnit": { "state": "translated", "value": "Iroh" } }, "ja": { "stringUnit": { "state": "translated", "value": "Iroh" } } }
+    },
+    "hive.route.lastTried": {
+      "extractionState": "manual",
+      "localizations": { "en": { "stringUnit": { "state": "translated", "value": "Last tried" } }, "ja": { "stringUnit": { "state": "translated", "value": "最後に試した経路:" } } }
+    },
+    "hive.route.local": {
+      "extractionState": "manual",
+      "localizations": { "en": { "stringUnit": { "state": "translated", "value": "local network" } }, "ja": { "stringUnit": { "state": "translated", "value": "ローカルネットワーク" } } }
+    },
+    "hive.route.loopback": {
+      "extractionState": "manual",
+      "localizations": { "en": { "stringUnit": { "state": "translated", "value": "local loopback" } }, "ja": { "stringUnit": { "state": "translated", "value": "ローカルループバック" } } }
+    },
+    "hive.route.recovering": {
+      "extractionState": "manual",
+      "localizations": { "en": { "stringUnit": { "state": "translated", "value": "Recovering the authenticated connection" } }, "ja": { "stringUnit": { "state": "translated", "value": "認証済みの接続を復旧しています" } } }
+    },
+    "hive.route.tailscale": {
+      "extractionState": "manual",
+      "localizations": { "en": { "stringUnit": { "state": "translated", "value": "Tailscale" } }, "ja": { "stringUnit": { "state": "translated", "value": "Tailscale" } } }
+    },
+    "hive.route.trying": {
+      "extractionState": "manual",
+      "localizations": { "en": { "stringUnit": { "state": "translated", "value": "Trying" } }, "ja": { "stringUnit": { "state": "translated", "value": "接続試行中:" } } }
+    },
+    "hive.route.websocket": {
+      "extractionState": "manual",
+      "localizations": { "en": { "stringUnit": { "state": "translated", "value": "WebSocket" } }, "ja": { "stringUnit": { "state": "translated", "value": "WebSocket" } } }
     },
     "hive.status.connected": {
       "extractionState": "manual",
-      "localizations": { "en": { "stringUnit": { "state": "translated", "value": "Authenticated with DeviceLink" } } }
+      "localizations": { "en": { "stringUnit": { "state": "translated", "value": "Authenticated with DeviceLink" } }, "ja": { "stringUnit": { "state": "translated", "value": "DeviceLinkで認証済み" } } }
     },
     "hive.status.connecting": {
       "extractionState": "manual",
-      "localizations": { "en": { "stringUnit": { "state": "translated", "value": "Connecting…" } } }
+      "localizations": { "en": { "stringUnit": { "state": "translated", "value": "Connecting…" } }, "ja": { "stringUnit": { "state": "translated", "value": "接続中…" } } }
     },
     "hive.status.pairing": {
       "extractionState": "manual",
-      "localizations": { "en": { "stringUnit": { "state": "translated", "value": "Pairing securely…" } } }
+      "localizations": { "en": { "stringUnit": { "state": "translated", "value": "Pairing securely…" } }, "ja": { "stringUnit": { "state": "translated", "value": "安全にペアリング中…" } } }
     },
     "hive.subtitle": {
       "extractionState": "manual",
-      "localizations": { "en": { "stringUnit": { "state": "translated", "value": "Pair another Mochi Mac and open its live workspaces over DeviceLink." } } }
+      "localizations": { "en": { "stringUnit": { "state": "translated", "value": "Pair another Mochi Mac and open its live workspaces over DeviceLink." } }, "ja": { "stringUnit": { "state": "translated", "value": "別のMochi Macをペアリングし、DeviceLink経由でライブワークスペースを開きます。" } } }
     },
     "hive.title": {
       "extractionState": "manual",
-      "localizations": { "en": { "stringUnit": { "state": "translated", "value": "Remote Macs" } } }
+      "localizations": { "en": { "stringUnit": { "state": "translated", "value": "Remote Macs" } }, "ja": { "stringUnit": { "state": "translated", "value": "リモートMac" } } }
     },
     "menu.window.remoteMacs": {
       "extractionState": "manual",
-      "localizations": { "en": { "stringUnit": { "state": "translated", "value": "Remote Macs…" } } }
+      "localizations": { "en": { "stringUnit": { "state": "translated", "value": "Remote Macs…" } }, "ja": { "stringUnit": { "state": "translated", "value": "リモートMac…" } } }
     },
     "cli.workspaceGroup.help.overview": {
       "extractionState": "manual",

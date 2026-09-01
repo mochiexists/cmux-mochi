@@ -1,3 +1,6 @@
+import CMUXMobileCore
+public import CmuxMobilePairedMac
+public import CmuxMobileShell
 public import CmuxMobileShellModel
 public import Observation
 
@@ -18,6 +21,10 @@ public final class HiveWorkspaceCoordinator {
     public private(set) var phase: Phase = .idle
     /// Latest immutable workspace projection from the shared shell engine.
     public private(set) var workspaces: [MobileWorkspacePreview]
+    /// Durable remote-Mac pairings, including offline Macs with no workspace snapshot.
+    public private(set) var pairedMacs: [MobilePairedMac]
+    /// Human-readable route/recovery detail shown under the lifecycle status.
+    public private(set) var connectionDetail: String?
     public var hasKnownPairing: Bool { shell.hasKnownHivePairing }
 
     @ObservationIgnored private let shell: any HiveShellServing
@@ -30,6 +37,8 @@ public final class HiveWorkspaceCoordinator {
         self.shell = shell
         self.pairingLinkDecoder = pairingLinkDecoder
         workspaces = shell.workspaces
+        pairedMacs = shell.hivePairedMacs
+        connectionDetail = nil
     }
 
     /// Create a renderer adapter for one terminal exposed by the shell.
@@ -61,7 +70,7 @@ public final class HiveWorkspaceCoordinator {
 
         phase = .pairing
         let result = await shell.connectPairingURLResult(link)
-        guard result.didConnect else {
+        guard result.didPair else {
             phase = .failed(
                 message: shell.connectionError ?? String(
                     localized: "hive.error.pairing",
@@ -71,21 +80,8 @@ public final class HiveWorkspaceCoordinator {
             )
             return false
         }
-        refreshWorkspaceSnapshot()
-        if shell.isHiveMacConnected {
-            phase = .connected
-        } else {
-            phase = .pairedOffline(
-                message: shell.connectionError ?? String(
-                    localized: "hive.offline.paired",
-                    defaultValue: "Pairing saved; the remote Mac is offline."
-                ),
-                guidance: shell.connectionErrorGuidance ?? String(
-                    localized: "hive.offline.guidance",
-                    defaultValue: "Open Mochi on the remote Mac, then retry."
-                )
-            )
-        }
+        await shell.loadPairedMacs()
+        refreshWorkspaceSnapshot(forcePhaseReconciliation: true)
         return true
     }
 
@@ -102,9 +98,85 @@ public final class HiveWorkspaceCoordinator {
             refreshBackupBeforeDial: false
         )
         if connected {
-            refreshWorkspaceSnapshot()
-            phase = .connected
+            await shell.loadPairedMacs()
+            refreshWorkspaceSnapshot(forcePhaseReconciliation: true)
         } else {
+            await shell.loadPairedMacs()
+            refreshWorkspaceSnapshot(forcePhaseReconciliation: true)
+        }
+        return connected
+    }
+
+    /// Refreshes both data and connection lifecycle after shell state changes.
+    public func refreshWorkspaceSnapshot(forcePhaseReconciliation: Bool = false) {
+        let latest = shell.workspaces
+        if workspaces != latest {
+            workspaces = latest
+        }
+        let latestPairings = shell.hivePairedMacs
+        if pairedMacs != latestPairings {
+            pairedMacs = latestPairings
+        }
+        reconcileConnectionPhase(force: forcePhaseReconciliation)
+    }
+
+    /// Removes a pairing, revoking it remotely when reachable.
+    public func removePairing(
+        _ mac: MobilePairedMac,
+        localOnly: Bool = false
+    ) async -> MobileComputerRemovalResult {
+        let aliasIDs = pairedMacs
+            .filter {
+                $0.macDeviceID == mac.macDeviceID
+                    && $0.instanceTag == mac.instanceTag
+            }
+            .map(\.id)
+        let result: MobileComputerRemovalResult
+        if localOnly {
+            result = await shell.removeComputerLocally(
+                representativeID: mac.id,
+                aliasIDs: aliasIDs
+            ) ? .removed : .failed
+        } else {
+            result = await shell.removeComputer(
+                representativeID: mac.id,
+                aliasIDs: aliasIDs
+            )
+        }
+        if result == .removed {
+            await shell.loadPairedMacs()
+            refreshWorkspaceSnapshot(forcePhaseReconciliation: true)
+        }
+        return result
+    }
+
+    private func reconcileConnectionPhase(force: Bool) {
+        if !force, case .pairing = phase { return }
+
+        if shell.hiveConnectionState == .connected {
+            phase = .connected
+            connectionDetail = routeDetail(prefix: String(
+                localized: "hive.route.connected",
+                defaultValue: "Connected over"
+            ))
+            return
+        }
+        if shell.hiveIsReconnecting || shell.hiveMacConnectionStatus == .reconnecting {
+            phase = .connecting
+            connectionDetail = routeDetail(prefix: String(
+                localized: "hive.route.trying",
+                defaultValue: "Trying"
+            )) ?? String(
+                localized: "hive.route.recovering",
+                defaultValue: "Recovering the authenticated connection"
+            )
+            return
+        }
+        connectionDetail = routeDetail(prefix: String(
+            localized: "hive.route.lastTried",
+            defaultValue: "Last tried"
+        ))
+        if hasKnownPairing {
             phase = .pairedOffline(
                 message: shell.connectionError ?? String(
                     localized: "hive.error.offline",
@@ -112,15 +184,28 @@ public final class HiveWorkspaceCoordinator {
                 ),
                 guidance: shell.connectionErrorGuidance
             )
+        } else if force {
+            phase = .idle
         }
-        return connected
     }
 
-    /// Refreshes the UI snapshot after background shell state changes.
-    public func refreshWorkspaceSnapshot() {
-        let latest = shell.workspaces
-        if workspaces != latest {
-            workspaces = latest
+    private func routeDetail(prefix: String) -> String? {
+        guard let route = shell.hiveActiveRoute else { return nil }
+        let transport = switch route.kind {
+        case .localNetwork:
+            String(localized: "hive.route.local", defaultValue: "local network")
+        case .tailscale:
+            String(localized: "hive.route.tailscale", defaultValue: "Tailscale")
+        case .debugLoopback:
+            String(localized: "hive.route.loopback", defaultValue: "local loopback")
+        case .iroh:
+            String(localized: "hive.route.iroh", defaultValue: "Iroh")
+        case .websocket:
+            String(localized: "hive.route.websocket", defaultValue: "WebSocket")
         }
+        guard case let .hostPort(host, port) = route.endpoint else {
+            return "\(prefix) \(transport)"
+        }
+        return "\(prefix) \(transport) (\(host):\(port))"
     }
 }

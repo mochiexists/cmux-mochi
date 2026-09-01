@@ -2,7 +2,7 @@ import AppKit
 import CmuxFoundation
 import SwiftUI
 
-/// The macOS onboarding window for pairing an iPhone with this Mac.
+/// The macOS onboarding window for pairing another cmux device with this Mac.
 ///
 /// Shows the account-free DeviceLink QR once this Mac has a phone-reachable
 /// authenticated private-LAN or Tailscale route.
@@ -58,11 +58,11 @@ struct MobilePairingView: View {
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 2) {
-            Text(String(localized: "mobile.pairing.window.heading", defaultValue: "Pair your iPhone"))
+            Text(String(localized: "mobile.pairing.window.heading", defaultValue: "Pair a device"))
                 .cmuxFont(.title2, weight: .semibold)
             Text(String(
                 localized: "mobile.pairing.window.deviceLinkSubheading",
-                defaultValue: "Connect this Mac and your iPhone to the same local network or Tailscale network, then scan this code in the cmux app."
+                defaultValue: "Connect both devices to the same local network or Tailscale network, then scan the code or copy the pairing link into cmux."
             ))
             .cmuxFont(.callout)
             .foregroundStyle(.secondary)
@@ -87,7 +87,7 @@ struct MobilePairingView: View {
             ),
             subtitle: String(
                 localized: "mobile.pairing.req.account.optional.subtitle",
-                defaultValue: "No cmux account is involved. This one-time code authorizes your iPhone directly."
+                defaultValue: "No cmux account is involved. This one-time code authorizes the other device directly."
             )
         ) {
             EmptyView()
@@ -118,7 +118,7 @@ struct MobilePairingView: View {
 
     private var networkReachability: NetworkReachability? {
         switch model.state {
-        case let .ready(ready), let .connected(ready):
+        case let .ready(ready), let .expired(ready), let .connected(ready):
             if !ready.localNetworkLines.isEmpty, !ready.tailscaleLines.isEmpty {
                 return .localAndTailscale
             }
@@ -197,6 +197,8 @@ struct MobilePairingView: View {
             failure(message: message)
         case let .ready(ready):
             readyContent(ready)
+        case .expired:
+            expiredContent
         case let .connected(ready):
             connectedContent(ready)
         }
@@ -252,6 +254,30 @@ struct MobilePairingView: View {
         .frame(maxWidth: .infinity, minHeight: 200)
     }
 
+    private var expiredContent: some View {
+        VStack(spacing: 12) {
+            Image(systemName: "clock.badge.exclamationmark")
+                .cmuxFont(size: 28)
+                .foregroundStyle(.orange)
+            Text(String(
+                localized: "mobile.pairing.expired.title",
+                defaultValue: "Pairing code expired"
+            ))
+            .cmuxFont(.headline)
+            Text(String(
+                localized: "mobile.pairing.expired.body",
+                defaultValue: "Pairing codes are single-use and valid for 10 minutes. Refresh before scanning again."
+            ))
+            .multilineTextAlignment(.center)
+            .foregroundStyle(.secondary)
+            Button(String(localized: "mobile.pairing.refresh", defaultValue: "Refresh Code")) {
+                Task { await model.refresh() }
+            }
+            .buttonStyle(.borderedProminent)
+        }
+        .frame(maxWidth: .infinity, minHeight: 200)
+    }
+
     @ViewBuilder
     private func readyContent(_ ready: MobilePairingModel.Ready) -> some View {
         VStack(alignment: .center, spacing: 14) {
@@ -270,7 +296,7 @@ struct MobilePairingView: View {
 
             HStack(spacing: 6) {
                 ProgressView().controlSize(.small)
-                Text(String(localized: "mobile.pairing.waiting", defaultValue: "Waiting for your iPhone…"))
+                Text(String(localized: "mobile.pairing.waiting", defaultValue: "Waiting for the other device…"))
                     .cmuxFont(.callout)
                     .foregroundStyle(.secondary)
             }
@@ -280,6 +306,15 @@ struct MobilePairingView: View {
         steps
 
         HStack {
+            Button(String(
+                localized: "mobile.pairing.copyLink",
+                defaultValue: "Copy Pairing Link"
+            )) {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(ready.attachURL, forType: .string)
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
             Spacer()
             Button(String(localized: "mobile.pairing.refresh", defaultValue: "Refresh Code")) {
                 Task { await model.refresh() }

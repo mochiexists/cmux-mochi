@@ -211,6 +211,29 @@ struct MobileHostAuthorizationTests {
         ])
     }
 
+    @Test func testMobileRouteResolverPublishesMDNSAsAddressChangeFallback() throws {
+        let resolver = MobileRouteResolver()
+        let snapshot = resolver.routes(
+            port: 61_234,
+            localNetworkHosts: ["192.168.1.20", "studio-mac.local"],
+            tailscaleHosts: ["100.71.210.41"]
+        )
+
+        let networkRoutes = snapshot.routes.filter { $0.kind != .debugLoopback }
+        #expect(networkRoutes.map(\.kind) == [
+            .localNetwork,
+            .localNetwork,
+            .tailscale,
+        ])
+        #expect(networkRoutes.compactMap { route -> String? in
+            guard case let .hostPort(host, _) = route.endpoint else { return nil }
+            return host
+        } == ["192.168.1.20", "studio-mac.local", "100.71.210.41"])
+        #expect(MobileRouteResolver.canonicalMDNSHostname("Studio-Mac") == "studio-mac.local")
+        #expect(MobileRouteResolver.canonicalMDNSHostname("studio-mac.local") == "studio-mac.local")
+        #expect(MobileRouteResolver.canonicalMDNSHostname("bad_name") == nil)
+    }
+
     @Test func testResolvedTailscaleRepublishPreservesPrivateLANRoutes() throws {
         let resolver = MobileRouteResolver()
         let snapshot = resolver.routes(

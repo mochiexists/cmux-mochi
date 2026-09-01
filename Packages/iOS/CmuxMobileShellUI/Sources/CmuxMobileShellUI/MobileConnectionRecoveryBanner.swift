@@ -4,14 +4,14 @@ import SwiftUI
 
 /// Surfaces the one connection failure the user must act on: the Mac rejected
 /// the saved DeviceLink pairing, so retrying with the same credential cannot
-/// help and the phone must scan a fresh Pair iPhone QR code. Transient drops and
+/// help and the phone must scan a fresh Pair a Device QR code. Transient drops and
 /// reconnect attempts deliberately do not render blocking chrome; they ride
 /// the status line under the computers picker and the terminal status pill.
 /// It can render as a floating pill above terminal content, or as an inline
 /// row when the current surface is a list instead of a terminal.
 struct MobileConnectionRecoveryBanner: View {
     static let defaultPairingRejectionDescription: String.LocalizationValue =
-        "This computer rejected the saved pairing. Open Pair iPhone on the computer and scan a fresh QR code."
+        "This computer rejected the saved pairing. Open Pair a Device on the computer and scan a fresh QR code."
 
     var connectionRequiresReauth: Bool
     var rendersInline = false

@@ -184,7 +184,7 @@ struct MobileSettingsView: View {
                     } footer: {
                         Text(L10n.string(
                             "mobile.onboarding.connect.tailscaleBody",
-                            defaultValue: "Connect over your Tailscale network. Scan the pairing code shown on your Mac."
+                            defaultValue: "Scan the pairing code shown on your Mac. cmux uses your local network when available and Tailscale when you're away."
                         ))
                     }
                 }

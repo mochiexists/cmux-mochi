@@ -362,6 +362,61 @@ import Testing
         #expect(store.activeRoute?.kind == .tailscale)
     }
 
+    @Test func accountFreeColdRelaunchReconnectsPersistedDeviceLinkMac() async throws {
+        let router = LivenessHostRouter()
+        await router.setHostIdentity(
+            deviceID: "account-free-mac",
+            instanceTag: "default",
+            displayName: "Account-free Mac"
+        )
+        let factory = RouteRecordingTransportFactory(
+            router: router,
+            box: TransportBox(),
+            failingPorts: []
+        )
+        let (pairedStore, directory) = try makePairedMacStore()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let localScopeID = MobileLocalPairingScope.identifier()
+        try await pairedStore.upsert(
+            macDeviceID: "account-free-mac",
+            displayName: "Account-free Mac",
+            routes: [try loopbackRoute(id: "stored-device-link", port: 51_002)],
+            instanceTag: "default",
+            markActive: true,
+            stackUserID: localScopeID,
+            teamID: nil,
+            now: Date()
+        )
+        let pairingDefaults = UserDefaults(
+            suiteName: "account-free-cold-reconnect-\(UUID().uuidString)"
+        )!
+        pairingDefaults.set(true, forKey: "cmux.mobile.hasKnownPairedMac")
+        let store = MobileShellComposite(
+            runtime: LivenessTestRuntime(
+                transportFactory: factory,
+                now: Date.init,
+                supportedRouteKinds: [.debugLoopback]
+            ),
+            isSignedIn: false,
+            pairedMacStore: pairedStore,
+            identityProvider: nil,
+            reachability: AlwaysOnlineReachability(),
+            pairingHintDefaults: pairingDefaults,
+            hiddenMacStore: InMemoryPairedMacHiddenStore()
+        )
+
+        await store.loadPairedMacs()
+        let connected = await store.reconnectActiveMacIfAvailable(
+            stackUserID: nil,
+            refreshBackupBeforeDial: false
+        )
+
+        #expect(!store.isSignedIn)
+        #expect(connected)
+        #expect(store.connectionState == .connected)
+        #expect(factory.attemptedPorts() == [51_002])
+    }
+
     @Test func automaticReconnectNeverFallsThroughToHiddenPairingIDRow() async throws {
         let router = LivenessHostRouter()
         let box = TransportBox()

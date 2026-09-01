@@ -113,9 +113,15 @@ final class MobileRouteResolver: @unchecked Sendable {
             }
         }
 
-        let orderedLocalNetworkHosts = Self.deduplicatedHosts(localNetworkHosts)
-            .filter { CmxPrivateLANHost().matches($0) }
-            .prefix(Self.maximumLocalNetworkRoutes)
+        let validLocalNetworkHosts = Self.deduplicatedHosts(localNetworkHosts)
+            .filter { CmxLocalNetworkHost().matches($0) }
+        let mdnsHosts = validLocalNetworkHosts.filter { $0.lowercased().hasSuffix(".local") }
+        let numericHosts = validLocalNetworkHosts.filter { !$0.lowercased().hasSuffix(".local") }
+        let numericLimit = mdnsHosts.isEmpty
+            ? Self.maximumLocalNetworkRoutes
+            : Self.maximumLocalNetworkRoutes - 1
+        let orderedLocalNetworkHosts = Array(numericHosts.prefix(numericLimit))
+            + Array(mdnsHosts.prefix(1))
         for (index, localHost) in orderedLocalNetworkHosts.enumerated() {
             let suffix = index == 0 ? "" : "_\(index + 1)"
             if let route = try? CmxAttachRoute(
@@ -309,8 +315,24 @@ final class MobileRouteResolver: @unchecked Sendable {
     }
 
     private static func localNetworkRouteHosts() -> [String] {
-        deduplicatedHosts(MobileHostNetworkPathMonitor.systemLocalIPv4Addresses())
+        let numericHosts = MobileHostNetworkPathMonitor.systemLocalIPv4Addresses()
             .filter { CmxPrivateLANHost().matches($0) }
+        let mdnsHost = canonicalMDNSHostname(ProcessInfo.processInfo.hostName)
+        return deduplicatedHosts(numericHosts + [mdnsHost].compactMap { $0 })
+    }
+
+    /// macOS publishes its system hostname over mDNS. Persisting that locator
+    /// alongside the current private IP lets a paired client survive DHCP and
+    /// subnet changes without any cloud account or route-update service.
+    static func canonicalMDNSHostname(_ hostName: String) -> String? {
+        var normalized = hostName
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        guard !normalized.isEmpty else { return nil }
+        if !normalized.hasSuffix(".local") {
+            normalized += ".local"
+        }
+        return CmxLocalNetworkHost().matches(normalized) ? normalized : nil
     }
 
     private static func deduplicatedHosts(_ hosts: [String]) -> [String] {

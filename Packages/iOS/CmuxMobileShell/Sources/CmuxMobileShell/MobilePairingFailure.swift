@@ -271,7 +271,7 @@ extension MobilePairingFailureCategory {
         case .invalidCode:
             return L10n.string(
                 "mobile.pairing.invalidCode",
-                defaultValue: "This isn't a cmux pairing QR. Scan the code shown in the Pair iPhone window on your Mac."
+                defaultValue: "This isn't a cmux pairing QR. Scan the code shown in the Pair a Device window on your Mac."
             )
         case .unrecognizedVersion:
             return L10n.string(

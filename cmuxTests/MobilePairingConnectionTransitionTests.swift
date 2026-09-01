@@ -15,7 +15,8 @@ struct MobilePairingConnectionTransitionTests {
         MobilePairingModel.Ready(
             attachURL: "cmux-ios://pair?v=3&r=100.64.0.1:7777",
             localNetworkLines: [],
-            tailscaleLines: ["100.64.0.1:7777"]
+            tailscaleLines: ["100.64.0.1:7777"],
+            expiresAt: Date(timeIntervalSince1970: 2_000_000_000)
         )
     }
 
@@ -91,6 +92,26 @@ struct MobilePairingConnectionTransitionTests {
             baselineConnectionCount: 0
         )
         #expect(next == .preparing)
+    }
+
+    @Test("An unused pairing code becomes visibly expired at its deadline")
+    func readyExpiresAtDeadline() {
+        let ready = makeReady()
+        let next = MobilePairingModel.expirationTransition(
+            from: .ready(ready),
+            now: ready.expiresAt
+        )
+        #expect(next == .expired(ready))
+    }
+
+    @Test("A successful pairing remains latched after the enrollment deadline")
+    func connectedDoesNotExpire() {
+        let ready = makeReady()
+        let next = MobilePairingModel.expirationTransition(
+            from: .connected(ready),
+            now: ready.expiresAt.addingTimeInterval(1)
+        )
+        #expect(next == .connected(ready))
     }
 
     @Test("A mixed route set selects only the Tailscale DeviceLink endpoint")

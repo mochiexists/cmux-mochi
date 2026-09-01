@@ -95,7 +95,7 @@ struct MobileHostPickerView: View {
     }
 
     private func finishScannerPairing(_ result: MobilePairingURLConnectionResult) async {
-        guard result == .connected else { return }
+        guard result.didPair else { return }
         await store.loadPairedMacs()
         showingScanner = false
         dismiss()

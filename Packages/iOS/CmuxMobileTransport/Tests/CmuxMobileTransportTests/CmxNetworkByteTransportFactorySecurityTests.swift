@@ -43,6 +43,19 @@ import Testing
         )
     )
 
+    let mdnsLocalNetwork = try CmxAttachRoute(
+        id: "local-network-mdns",
+        kind: .localNetwork,
+        endpoint: .hostPort(host: "studio-mac.local", port: 49831)
+    )
+    _ = try factory.makeTransport(
+        for: CmxByteTransportRequest(
+            route: mdnsLocalNetwork,
+            expectedPeerDeviceID: "mac-1",
+            authorizationMode: .transportAdmission
+        )
+    )
+
     let loopback = try CmxAttachRoute(
         id: "loopback",
         kind: .debugLoopback,

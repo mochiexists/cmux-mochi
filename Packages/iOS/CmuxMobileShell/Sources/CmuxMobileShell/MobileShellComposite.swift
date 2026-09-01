@@ -2213,15 +2213,15 @@ public final class MobileShellComposite: MobileTerminalOutputSinking {
             return .superseded
         }
         let resolvedScope = await currentScopeSnapshot(userID: stackUserID)
-        // An account-free pairing lives under this install's local scope, so
-        // "not signed in" and "no scope" are the two ways this silently does
-        // nothing -- and they need opposite fixes. Name which one it was.
+        // An account-free pairing lives under this install's local scope. Log
+        // both inputs so a missing local scope remains diagnosable without
+        // treating Stack sign-in as a DeviceLink reconnect requirement.
         MobileShellComposite.logStoredMacReconnectScope(
             isSignedIn: isSignedIn,
             requestedUserID: stackUserID,
             resolvedUserID: resolvedScope?.userID
         )
-        guard isSignedIn, let scope = resolvedScope else {
+        guard let scope = resolvedScope else {
             finishStoredMacReconnectAttempt(generation: generation)
             return .failed(.authorizationFailed)
         }
@@ -8522,11 +8522,17 @@ public final class MobileShellComposite: MobileTerminalOutputSinking {
     }
 
     private func isCurrentPairingAttempt(_ attemptID: UUID) -> Bool {
-        pairingAttemptID == attemptID && isSignedIn
+        // Pairing is authorized by the one-time DeviceLink payload and is
+        // invalidated explicitly by cancel/sign-out. Stack sign-in is not part
+        // of that authority (Hive deliberately has no Stack account).
+        pairingAttemptID == attemptID
     }
 
     private func isCurrentConnectionAttempt(_ generation: UUID) -> Bool {
-        generation == connectionAttemptGeneration && isSignedIn
+        // The generation is the cancellation boundary. DeviceLink connections
+        // are mutually authenticated by the transport and may be established
+        // while the legacy Stack-auth flag is false.
+        generation == connectionAttemptGeneration
     }
 
     private func beginMacSwitchAttempt() -> UUID {
@@ -8713,7 +8719,6 @@ public final class MobileShellComposite: MobileTerminalOutputSinking {
     private func isCurrentRemoteConnection(client: MobileCoreRPCClient, generation: UUID) -> Bool {
         generation == connectionGeneration
             && client === remoteClient
-            && isSignedIn
     }
 
     func markMacConnectionHealthy() {

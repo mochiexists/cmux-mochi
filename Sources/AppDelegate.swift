@@ -7585,7 +7585,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
             return workspace
         }
 
-        let title = String(localized: "mobile.pairing.window.title", defaultValue: "Pair iPhone")
+        let title = String(localized: "mobile.pairing.window.title", defaultValue: "Pair a Device")
         let workspace = manager.addWorkspace(
             title: title,
             select: focusWorkspace,

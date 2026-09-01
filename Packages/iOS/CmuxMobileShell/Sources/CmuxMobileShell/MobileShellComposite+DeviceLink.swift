@@ -58,12 +58,6 @@ extension MobileShellComposite {
     /// survives the launch is a key pair in the keychain — which is why this
     /// pairing reconnects after a cold start where the old ticket could not.
     func connectDeviceLinkPairing(payload: PairingPayload) async -> MobilePairingURLConnectionResult {
-        // A completed key exchange IS this device's credential, so the shell is
-        // authenticated from here on. Without this the pairing succeeds but
-        // never persists: scope resolution requires a signed-in shell, and a
-        // pairing that is not stored cannot be reconnected to — which looked
-        // like a reconnect bug rather than a persistence one.
-        if !isSignedIn { signIn() }
         _ = beginPairingValidationAttempt()
         connectionAttemptGeneration = UUID()
         clearPairingError()
@@ -90,11 +84,11 @@ extension MobileShellComposite {
                 stackUserID: identityProvider?.currentUserID
             )
             logDeviceLink("post-pairing dial connected=\(didConnect)")
-            // The pairing itself succeeded and is durable either way. A dial
-            // that did not land is a reachability problem for the ordinary
-            // retry path to solve, not a reason to tell the user their code
-            // was bad and send them back to the QR screen.
-            return .connected
+            // The pairing itself succeeded and is durable either way. Preserve
+            // that distinction so callers leave the scanner but can present an
+            // honest offline/retry state instead of briefly claiming a live
+            // connection or bouncing back to the QR.
+            return didConnect ? .connected : .pairedOffline
         } catch let error as MobileDeviceLinkEnrollmentError {
             logDeviceLink("enrollment failed \(String(describing: error))")
             applyDeviceLinkFailure(error)
@@ -169,7 +163,7 @@ extension MobileShellComposite {
         let kind: CmxAttachTransportKind
         if isLoopback {
             kind = .debugLoopback
-        } else if CmxPrivateLANHost().matches(host) {
+        } else if CmxLocalNetworkHost().matches(host) {
             kind = .localNetwork
         } else {
             kind = .tailscale
@@ -245,14 +239,21 @@ extension MobileShellComposite {
         }
     }
 
-    /// A human-recognizable name for this phone, shown on the Mac's device list
+    /// A human-recognizable name for this client, shown on the Mac's device list
     /// and in its enrollment notification.
     static var deviceLinkDeviceLabel: String {
         #if canImport(UIKit)
         let name = UIDevice.current.name.trimmingCharacters(in: .whitespacesAndNewlines)
         return name.isEmpty ? "iPhone" : name
+        #elseif os(macOS)
+        let name = Host.current().localizedName?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if let name, !name.isEmpty {
+            return name
+        }
+        return "Mac"
         #else
-        return "iOS device"
+        return "Device"
         #endif
     }
 }

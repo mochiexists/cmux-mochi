@@ -10,12 +10,13 @@ let package = Package(
     ],
     dependencies: [
         .package(path: "../CmuxHive"),
+        .package(path: "../../iOS/CmuxMobilePairedMac"),
         .package(path: "../../iOS/CmuxMobileShellModel"),
     ],
     targets: [
         .target(
             name: "CmuxHiveUI",
-            dependencies: ["CmuxHive", "CmuxMobileShellModel"],
+            dependencies: ["CmuxHive", "CmuxMobilePairedMac", "CmuxMobileShellModel"],
             swiftSettings: [
                 .swiftLanguageMode(.v6),
                 .enableUpcomingFeature("ExistentialAny"),

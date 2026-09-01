@@ -801,13 +801,13 @@ extension MobileShellComposite {
         if let accountID = explicitAccountID ?? identityProvider?.currentUserID {
             return accountID
         }
-        guard isSignedIn, hasKnownPairedMac else { return nil }
+        guard hasKnownPairedMac else { return nil }
         return MobileLocalPairingScope.identifier()
     }
 
     func reconnectScopeMatches(_ accountID: String) -> Bool {
         if MobileLocalPairingScope.isLocal(accountID) {
-            return isSignedIn && identityProvider?.currentUserID == nil
+            return identityProvider?.currentUserID == nil && hasKnownPairedMac
         }
         return isSignedIn && identityProvider?.currentUserID == accountID
     }
@@ -1051,7 +1051,8 @@ extension MobileShellComposite {
             // mid-manual-retry and re-block the dial the user just requested
             // (manual retries clear backoff on entry). Skip when any attempt
             // or scheduled retry is already active.
-            guard self.isSignedIn, self.connectionState != .connected,
+            guard self.reconnectBackoffScopeID() != nil,
+                  self.connectionState != .connected,
                   !self.connectionRecoveryOwner.isRedialingOrValidating,
                   self.automaticReconnectRetryTask == nil else { return }
             self.recoverMobileConnection(trigger: .automaticBackoffExpired)

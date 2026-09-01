@@ -284,7 +284,7 @@ extension MobileShellComposite {
     /// states where a redial cannot help.
     func recoverDisconnectedOnForegroundIfNeeded() {
         guard connectionState != .connected,
-              isSignedIn,
+              reconnectBackoffScopeID() != nil,
               pairedMacStore != nil,
               !connectionRequiresReauth,
               !isReconnectingStoredMac,

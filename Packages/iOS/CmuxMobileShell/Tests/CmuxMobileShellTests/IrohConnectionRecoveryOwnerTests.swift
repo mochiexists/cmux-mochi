@@ -152,19 +152,21 @@ extension ReconnectRouteSelectionTests {
             teamID: nil,
             now: now
         )
+        let pairingDefaults = UserDefaults(
+            suiteName: "devicelink-recovery-owner-\(UUID().uuidString)"
+        )!
+        pairingDefaults.set(true, forKey: "cmux.mobile.hasKnownPairedMac")
         let store = MobileShellComposite(
             runtime: LivenessTestRuntime(
                 transportFactory: factory,
                 now: { Date() },
                 supportedRouteKinds: [.tailscale]
             ),
-            isSignedIn: true,
+            isSignedIn: false,
             pairedMacStore: pairedStore,
             identityProvider: StaticIdentityProvider(userID: nil),
             reachability: AlwaysOnlineReachability(),
-            pairingHintDefaults: UserDefaults(
-                suiteName: "devicelink-recovery-owner-\(UUID().uuidString)"
-            )!
+            pairingHintDefaults: pairingDefaults
         )
 
         #expect(await store.reconnectActiveMacIfAvailable(stackUserID: nil))
@@ -182,7 +184,7 @@ extension ReconnectRouteSelectionTests {
         )
         #expect(store.connectionState == .disconnected)
         #expect(store.automaticReconnectBackoffOwner.transientFailureCount == 1)
-        #expect(store.phase == .workspaces)
+        #expect(!store.isSignedIn)
         #expect(store.workspaces.map(\.id) == cachedWorkspaceIDs)
         #expect(factory.attemptedKinds().count == 1)
         let firstRetryAt = try #require(

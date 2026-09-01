@@ -70,7 +70,7 @@ struct PairingView: View {
                                 .font(.headline)
                             Text(L10n.string(
                                 "mobile.addDevice.fork.subtitle",
-                                defaultValue: "No account needed. Scan the QR from your Mac's Pair iPhone window and you're in."
+                                defaultValue: "No account needed. Scan the QR from your Mac's Pair a Device window and you're in."
                             ))
                             .font(.footnote)
                             .foregroundStyle(.secondary)
@@ -99,7 +99,7 @@ struct PairingView: View {
                                 .font(.headline)
                                 Text(L10n.string(
                                     "mobile.pairing.tailscaleDisconnected.detail",
-                                    defaultValue: "Open Tailscale on this iPhone and connect it before scanning the Mac's QR code."
+                                    defaultValue: "You can still pair on the same local network. Connect Tailscale only when the Mac isn't nearby."
                                 ))
                                 .font(.footnote)
                                 .foregroundStyle(.secondary)
@@ -239,7 +239,7 @@ struct PairingView: View {
 
                 Text(L10n.string(
                     "mobile.pairing.progress.detail",
-                    defaultValue: "Connecting over Tailscale and saving this iPhone…"
+                    defaultValue: "Connecting securely, verifying the pairing code, and saving this iPhone…"
                 ))
                 .font(.footnote)
                 .foregroundStyle(.secondary)

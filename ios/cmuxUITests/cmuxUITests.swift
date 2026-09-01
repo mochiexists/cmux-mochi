@@ -193,9 +193,9 @@ final class cmuxUITests: XCTestCase {
 
         let connectScene = element("MobileOnboardingConnectScene")
         assertPageVisible(connectScene)
-        XCTAssertTrue(app.staticTexts["Connect over Tailscale"].exists)
+        XCTAssertTrue(app.staticTexts["Pair securely"].exists)
         XCTAssertTrue(app.staticTexts[
-            "Connect over your Tailscale network. Scan the pairing code shown on your Mac."
+            "Scan the pairing code shown on your Mac. cmux uses your local network when available and Tailscale when you're away."
         ].exists)
         XCTAssertFalse(element("MobileOnboardingSignInBridge").exists)
         XCTAssertFalse(app.buttons["signin.apple"].exists)
@@ -270,12 +270,12 @@ final class cmuxUITests: XCTestCase {
         func text(_ label: String) -> XCUIElement {
             app.staticTexts.matching(NSPredicate(format: "label == %@", label)).firstMatch
         }
-        XCTAssertTrue(text("cmux Mochi connects without an account. Keep cmux and Tailscale running, then scan the Pair iPhone QR code shown on your computer. Your current step is marked below.").exists)
+        XCTAssertTrue(text("cmux Mochi connects without an account. Keep cmux running, then scan the Pair a Device QR code shown on your computer. Use the same local network or Tailscale. Your current step is marked below.").exists)
         XCTAssertTrue(app.staticTexts["Get Tailscale for iPhone"].exists)
         XCTAssertTrue(app.staticTexts["Get Tailscale for Mac"].exists)
         setupHelp.swipeUp()
         setupHelp.swipeUp()
-        XCTAssertTrue(text("No cmux account or sign-in is required. The pairing QR and Tailscale connection are the trust boundary.").waitForExistence(timeout: 3))
+        XCTAssertTrue(text("No cmux account or sign-in is required. The pairing QR installs the mutual-TLS identity used on both local-network and Tailscale routes.").waitForExistence(timeout: 3))
         XCTAssertFalse(app.staticTexts.matching(NSPredicate(format: "label CONTAINS[c] %@", "same account")).firstMatch.exists)
         XCTAssertFalse(app.buttons["signin.apple"].exists)
     }

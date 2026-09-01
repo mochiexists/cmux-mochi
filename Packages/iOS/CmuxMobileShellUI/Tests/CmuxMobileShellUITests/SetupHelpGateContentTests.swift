@@ -44,7 +44,7 @@ import Testing
 
     @Test func connectionRejectionUsesFreshPairingInsteadOfAccountRecovery() {
         let copy = String(localized: MobileConnectionRecoveryBanner.defaultPairingRejectionDescription)
-        #expect(copy.localizedCaseInsensitiveContains("Pair iPhone"))
+        #expect(copy.localizedCaseInsensitiveContains("Pair a Device"))
         #expect(copy.localizedCaseInsensitiveContains("fresh QR code"))
         #expect(!copy.localizedCaseInsensitiveContains("account"))
         #expect(!copy.localizedCaseInsensitiveContains("sign out"))
