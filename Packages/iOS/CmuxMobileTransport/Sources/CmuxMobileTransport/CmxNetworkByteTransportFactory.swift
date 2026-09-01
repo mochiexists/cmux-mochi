@@ -6,6 +6,7 @@ public struct CmxNetworkByteTransportFactory: CmxRouteAwareByteTransportFactory 
     public var supportedKinds: [CmxAttachTransportKind]
     public var maximumReceiveLength: Int
     public var connectTimeoutNanoseconds: UInt64
+    public var localNetworkConnectTimeoutNanoseconds: UInt64
     private let tailscaleRouteAuthority: any CmxTailscaleRouteAuthorizing
 
     /// Fork (cmux Mochi): supplies DeviceLink's mutual-TLS options for a paired
@@ -22,6 +23,8 @@ public struct CmxNetworkByteTransportFactory: CmxRouteAwareByteTransportFactory 
         supportedKinds: [CmxAttachTransportKind] = [.localNetwork, .tailscale, .debugLoopback],
         maximumReceiveLength: Int = CmxNetworkByteTransport.defaultMaximumReceiveLength,
         connectTimeoutNanoseconds: UInt64 = CmxNetworkByteTransport.defaultConnectTimeoutNanoseconds,
+        localNetworkConnectTimeoutNanoseconds: UInt64 =
+            CmxNetworkByteTransport.defaultLocalNetworkConnectTimeoutNanoseconds,
         // Fork (cmux Mochi): supplied at construction so a factory is never
         // briefly live without the TLS options its tailnet dials require.
         deviceLinkTLSOptions:
@@ -30,6 +33,10 @@ public struct CmxNetworkByteTransportFactory: CmxRouteAwareByteTransportFactory 
         self.supportedKinds = supportedKinds
         self.maximumReceiveLength = maximumReceiveLength
         self.connectTimeoutNanoseconds = max(1, connectTimeoutNanoseconds)
+        self.localNetworkConnectTimeoutNanoseconds = max(
+            1,
+            localNetworkConnectTimeoutNanoseconds
+        )
         self.deviceLinkTLSOptions = deviceLinkTLSOptions
         tailscaleRouteAuthority = CmxSystemTailscaleRouteAuthority()
     }
@@ -38,11 +45,17 @@ public struct CmxNetworkByteTransportFactory: CmxRouteAwareByteTransportFactory 
         supportedKinds: [CmxAttachTransportKind] = [.localNetwork, .tailscale, .debugLoopback],
         maximumReceiveLength: Int = CmxNetworkByteTransport.defaultMaximumReceiveLength,
         connectTimeoutNanoseconds: UInt64 = CmxNetworkByteTransport.defaultConnectTimeoutNanoseconds,
+        localNetworkConnectTimeoutNanoseconds: UInt64 =
+            CmxNetworkByteTransport.defaultLocalNetworkConnectTimeoutNanoseconds,
         tailscaleRouteAuthority: any CmxTailscaleRouteAuthorizing
     ) {
         self.supportedKinds = supportedKinds
         self.maximumReceiveLength = maximumReceiveLength
         self.connectTimeoutNanoseconds = max(1, connectTimeoutNanoseconds)
+        self.localNetworkConnectTimeoutNanoseconds = max(
+            1,
+            localNetworkConnectTimeoutNanoseconds
+        )
         self.tailscaleRouteAuthority = tailscaleRouteAuthority
     }
 
@@ -97,7 +110,7 @@ public struct CmxNetworkByteTransportFactory: CmxRouteAwareByteTransportFactory 
                 host: host,
                 port: port,
                 maximumReceiveLength: maximumReceiveLength,
-                connectTimeoutNanoseconds: connectTimeoutNanoseconds,
+                connectTimeoutNanoseconds: localNetworkConnectTimeoutNanoseconds,
                 tlsOptions: tlsOptions
             )
         case .tailscale:

@@ -36,6 +36,49 @@ struct MobileDeviceLinkEnrollmentTests {
         #expect(MobileDeviceLinkEnroller.splitHostPort("host:70000") == nil)
     }
 
+    @Test("LAN enrollment candidates yield quickly to tailnet fallbacks")
+    func routeConnectTimeoutPolicy() {
+        let localTimeout: UInt64 = 2_000_000_000
+        let tailnetTimeout: UInt64 = 10_000_000_000
+
+        #expect(MobileDeviceLinkEnroller.connectTimeoutNanoseconds(
+            for: "192.168.1.20",
+            localNetwork: localTimeout,
+            other: tailnetTimeout
+        ) == localTimeout)
+        #expect(MobileDeviceLinkEnroller.connectTimeoutNanoseconds(
+            for: "studio-mac.local",
+            localNetwork: localTimeout,
+            other: tailnetTimeout
+        ) == localTimeout)
+        #expect(MobileDeviceLinkEnroller.connectTimeoutNanoseconds(
+            for: "100.64.1.2",
+            localNetwork: localTimeout,
+            other: tailnetTimeout
+        ) == tailnetTimeout)
+    }
+
+    @Test("enrollment prefers LAN then MagicDNS before tailnet address snapshots")
+    func enrollmentRouteOrdering() {
+        let routes = [
+            "100.64.1.2:41234",
+            "[fd7a:115c:a1e0::1]:41234",
+            "studio-mac.tailnet-name.ts.net:41234",
+            "studio-mac.local:41234",
+            "192.168.1.20:41234",
+            "127.0.0.1:41234",
+        ]
+
+        #expect(MobileDeviceLinkEnroller.orderedRoutes(routes) == [
+            "127.0.0.1:41234",
+            "studio-mac.local:41234",
+            "192.168.1.20:41234",
+            "studio-mac.tailnet-name.ts.net:41234",
+            "100.64.1.2:41234",
+            "[fd7a:115c:a1e0::1]:41234",
+        ])
+    }
+
     @Test("frames carry a big-endian length prefix")
     func framing() {
         let framed = MobileDeviceLinkEnroller.frame(Data("hi".utf8))

@@ -6,6 +6,32 @@ import Testing
 
 // MARK: - DeviceLink admission
 
+@Test func localNetworkRoutesUseTheShortFallbackDeadline() async throws {
+    let factory = CmxNetworkByteTransportFactory(
+        supportedKinds: [.localNetwork],
+        connectTimeoutNanoseconds: 9_000_000_000,
+        localNetworkConnectTimeoutNanoseconds: 2_000_000_000,
+        deviceLinkTLSOptions: { _ in NWProtocolTLS.Options() }
+    )
+    let route = try CmxAttachRoute(
+        id: "local-network",
+        kind: .localNetwork,
+        endpoint: .hostPort(host: "192.168.1.20", port: 49_831)
+    )
+
+    let transport = try #require(
+        factory.makeTransport(
+            for: CmxByteTransportRequest(
+                route: route,
+                expectedPeerDeviceID: "mac-1",
+                authorizationMode: .transportAdmission
+            )
+        ) as? CmxNetworkByteTransport
+    )
+
+    #expect(await transport.connectTimeoutNanoseconds == 2_000_000_000)
+}
+
 /// A DeviceLink pairing admits itself through the mutual-TLS handshake: this
 /// device's key against the Mac's pinned fingerprint. Transport admission is
 /// accepted on the routes a paired device actually dials, but only when there is an identity to

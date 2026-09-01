@@ -74,6 +74,12 @@ public actor CmxNetworkByteTransport: CmxByteTransport {
     public static let defaultMaximumReceiveLength = 64 * 1024
     /// Default connect deadline, after which ``connect()`` fails as timed out.
     public static let defaultConnectTimeoutNanoseconds: UInt64 = 15 * 1_000_000_000
+    /// Direct LAN candidates should either answer promptly or yield to the
+    /// durable tailnet fallback. A phone hotspot can advertise the tethered
+    /// Mac's address while isolating phone-to-client TCP; Network.framework
+    /// leaves that connection pending rather than reporting it unreachable.
+    public static let defaultLocalNetworkConnectTimeoutNanoseconds: UInt64 =
+        2 * 1_000_000_000
 
     private enum TransportState {
         case idle
