@@ -159,7 +159,16 @@ final class HiveWorkspaceMirrorController {
                 }
             }
             guard !bindingsByPanelID.isEmpty else {
-                tabManager?.closeWorkspace(workspace, recordHistory: false)
+                guard let tabManager else { return false }
+                if tabManager.tabs.count > 1 {
+                    tabManager.closeWorkspace(workspace, recordHistory: false)
+                } else {
+                    // Workspace.closePanel creates a replacement local terminal
+                    // when the final pane in the final workspace is removed.
+                    // The mirror controller must release the remote-only policy
+                    // in that case or the replacement remains a stuck mirror.
+                    workspace.detachRemoteTmuxMirrorKeptOpenLocallyIfNeeded()
+                }
                 return false
             }
             bindingsByPanelID.values.forEach { $0.reconnectIfNeeded() }

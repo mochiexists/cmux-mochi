@@ -51,6 +51,43 @@ struct HiveWorkspaceMirrorControllerTests {
         #expect(mirror.panels.count == 2)
         #expect(mirror.focusedPanelId != closedPanelID)
     }
+
+    @Test("releases mirror mode when the last remote pane closes in the last workspace")
+    func releasesLastWorkspaceAfterAllRemotePanesClose() throws {
+        let terminal = MobileTerminalPreview(id: "surface-a", name: "Alpha")
+        var remoteWorkspace = MobileWorkspacePreview(
+            id: "remote-workspace",
+            macDeviceID: "mac-a",
+            macDisplayName: "Studio",
+            name: "Remote",
+            terminals: [terminal]
+        )
+        remoteWorkspace.macInstanceTag = "dev-a"
+        let shell = HiveWorkspaceMirrorShellStub(workspaces: [remoteWorkspace])
+        let coordinator = HiveWorkspaceCoordinator(shell: shell)
+        let controller = HiveWorkspaceMirrorController()
+        let manager = TabManager()
+
+        controller.open(
+            workspace: remoteWorkspace,
+            selectedTerminal: terminal,
+            coordinator: coordinator,
+            in: manager
+        )
+        let mirror = try #require(manager.tabs.first { $0.isRemoteTmuxMirror })
+        for workspace in manager.tabs where workspace.id != mirror.id {
+            manager.closeWorkspace(workspace, recordHistory: false)
+        }
+        let remotePanelID = try #require(mirror.focusedPanelId)
+
+        #expect(mirror.removeRemoteTmuxDisplayPane(remotePanelID))
+        controller.reconcileMirrors()
+
+        #expect(manager.tabs.count == 1)
+        #expect(manager.tabs.first?.id == mirror.id)
+        #expect(!mirror.isRemoteTmuxMirror)
+        #expect(mirror.panels.count == 1)
+    }
 }
 
 @MainActor
