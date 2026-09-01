@@ -47,8 +47,14 @@ public final class HiveWorkspaceCoordinator {
             _ = try pairingLinkDecoder.decode(link)
         } catch {
             phase = .failed(
-                message: "This is not a current Mochi pairing link.",
-                guidance: "Open Pair a Device on the remote Mac and paste its new link."
+                message: String(
+                    localized: "hive.error.invalidLink.message",
+                    defaultValue: "This is not a current Mochi pairing link."
+                ),
+                guidance: String(
+                    localized: "hive.error.invalidLink.guidance",
+                    defaultValue: "Open Pair a Device on the remote Mac and paste its new link."
+                )
             )
             return false
         }
@@ -57,7 +63,10 @@ public final class HiveWorkspaceCoordinator {
         let result = await shell.connectPairingURLResult(link)
         guard result.didConnect else {
             phase = .failed(
-                message: shell.connectionError ?? "Could not pair with the remote Mac.",
+                message: shell.connectionError ?? String(
+                    localized: "hive.error.pairing",
+                    defaultValue: "Could not pair with the remote Mac."
+                ),
                 guidance: shell.connectionErrorGuidance
             )
             return false
@@ -67,8 +76,14 @@ public final class HiveWorkspaceCoordinator {
             phase = .connected
         } else {
             phase = .pairedOffline(
-                message: shell.connectionError ?? "Pairing saved; the remote Mac is offline.",
-                guidance: shell.connectionErrorGuidance ?? "Open Mochi on the remote Mac, then retry."
+                message: shell.connectionError ?? String(
+                    localized: "hive.offline.paired",
+                    defaultValue: "Pairing saved; the remote Mac is offline."
+                ),
+                guidance: shell.connectionErrorGuidance ?? String(
+                    localized: "hive.offline.guidance",
+                    defaultValue: "Open Mochi on the remote Mac, then retry."
+                )
             )
         }
         return true
@@ -91,7 +106,10 @@ public final class HiveWorkspaceCoordinator {
             phase = .connected
         } else {
             phase = .failed(
-                message: shell.connectionError ?? "The remote Mac is offline.",
+                message: shell.connectionError ?? String(
+                    localized: "hive.error.offline",
+                    defaultValue: "The remote Mac is offline."
+                ),
                 guidance: shell.connectionErrorGuidance
             )
         }

@@ -262783,6 +262783,86 @@
         }
       }
     },
+    "hive.empty.description": {
+      "extractionState": "manual",
+      "localizations": { "en": { "stringUnit": { "state": "translated", "value": "Open Pair a Device on the other Mac, then paste its link above." } } }
+    },
+    "hive.empty.title": {
+      "extractionState": "manual",
+      "localizations": { "en": { "stringUnit": { "state": "translated", "value": "No Remote Workspaces" } } }
+    },
+    "hive.error.invalidLink.guidance": {
+      "extractionState": "manual",
+      "localizations": { "en": { "stringUnit": { "state": "translated", "value": "Open Pair a Device on the remote Mac and paste its new link." } } }
+    },
+    "hive.error.invalidLink.message": {
+      "extractionState": "manual",
+      "localizations": { "en": { "stringUnit": { "state": "translated", "value": "This is not a current Mochi pairing link." } } }
+    },
+    "hive.error.offline": {
+      "extractionState": "manual",
+      "localizations": { "en": { "stringUnit": { "state": "translated", "value": "The remote Mac is offline." } } }
+    },
+    "hive.error.pairing": {
+      "extractionState": "manual",
+      "localizations": { "en": { "stringUnit": { "state": "translated", "value": "Could not pair with the remote Mac." } } }
+    },
+    "hive.error.store.description": {
+      "extractionState": "manual",
+      "localizations": { "en": { "stringUnit": { "state": "translated", "value": "The local pairing store could not be opened." } } }
+    },
+    "hive.error.store.title": {
+      "extractionState": "manual",
+      "localizations": { "en": { "stringUnit": { "state": "translated", "value": "Remote Macs Unavailable" } } }
+    },
+    "hive.mirror.workspaceTitle": {
+      "extractionState": "manual",
+      "localizations": { "en": { "stringUnit": { "state": "translated", "value": "%1$@ — %2$@" } } }
+    },
+    "hive.offline.guidance": {
+      "extractionState": "manual",
+      "localizations": { "en": { "stringUnit": { "state": "translated", "value": "Open Mochi on the remote Mac, then retry." } } }
+    },
+    "hive.offline.paired": {
+      "extractionState": "manual",
+      "localizations": { "en": { "stringUnit": { "state": "translated", "value": "Pairing saved; the remote Mac is offline." } } }
+    },
+    "hive.pair.action": {
+      "extractionState": "manual",
+      "localizations": { "en": { "stringUnit": { "state": "translated", "value": "Pair" } } }
+    },
+    "hive.pair.placeholder": {
+      "extractionState": "manual",
+      "localizations": { "en": { "stringUnit": { "state": "translated", "value": "Paste pairing link" } } }
+    },
+    "hive.retry.action": {
+      "extractionState": "manual",
+      "localizations": { "en": { "stringUnit": { "state": "translated", "value": "Retry" } } }
+    },
+    "hive.status.connected": {
+      "extractionState": "manual",
+      "localizations": { "en": { "stringUnit": { "state": "translated", "value": "Authenticated with DeviceLink" } } }
+    },
+    "hive.status.connecting": {
+      "extractionState": "manual",
+      "localizations": { "en": { "stringUnit": { "state": "translated", "value": "Connecting…" } } }
+    },
+    "hive.status.pairing": {
+      "extractionState": "manual",
+      "localizations": { "en": { "stringUnit": { "state": "translated", "value": "Pairing securely…" } } }
+    },
+    "hive.subtitle": {
+      "extractionState": "manual",
+      "localizations": { "en": { "stringUnit": { "state": "translated", "value": "Pair another Mochi Mac and open its live workspaces over DeviceLink." } } }
+    },
+    "hive.title": {
+      "extractionState": "manual",
+      "localizations": { "en": { "stringUnit": { "state": "translated", "value": "Remote Macs" } } }
+    },
+    "menu.window.remoteMacs": {
+      "extractionState": "manual",
+      "localizations": { "en": { "stringUnit": { "state": "translated", "value": "Remote Macs…" } } }
+    },
     "cli.workspaceGroup.help.overview": {
       "extractionState": "manual",
       "localizations": {
