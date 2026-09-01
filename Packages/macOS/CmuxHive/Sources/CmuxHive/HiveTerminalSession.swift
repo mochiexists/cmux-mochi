@@ -1,3 +1,4 @@
+public import CmuxMobileShell
 public import Foundation
 public import Observation
 
@@ -20,6 +21,7 @@ public final class HiveTerminalSession {
     @ObservationIgnored private let shell: any HiveTerminalShellServing
     @ObservationIgnored private var outputTask: Task<Void, Never>?
     @ObservationIgnored private var registrationToken: UUID?
+    @ObservationIgnored private var outputGeneration: UUID?
 
     public init(surfaceID: String, shell: any HiveTerminalShellServing) {
         self.surfaceID = surfaceID
@@ -28,11 +30,14 @@ public final class HiveTerminalSession {
 
     /// Start one output generation. Repeated calls while attached are ignored.
     public func attach(
-        onOutput: @escaping @MainActor @Sendable (Data) -> Void
+        onOutput: @escaping @MainActor @Sendable (Data) -> Void,
+        onEnd: @escaping @MainActor @Sendable () -> Void = {}
     ) {
         guard outputTask == nil else { return }
         let registration = shell.terminalOutputRegistration(surfaceID: surfaceID)
+        let generation = UUID()
         registrationToken = registration.registrationToken
+        outputGeneration = generation
         phase = .attached
         outputTask = Task { [weak self] in
             guard let self else { return }
@@ -44,6 +49,12 @@ public final class HiveTerminalSession {
                     streamToken: chunk.streamToken
                 )
             }
+            guard self.outputGeneration == generation else { return }
+            self.outputTask = nil
+            self.registrationToken = nil
+            self.outputGeneration = nil
+            self.phase = .idle
+            onEnd()
         }
     }
 
@@ -51,6 +62,7 @@ public final class HiveTerminalSession {
     public func detach() {
         outputTask?.cancel()
         outputTask = nil
+        outputGeneration = nil
         if let registrationToken {
             shell.terminalOutputDidUnmount(
                 surfaceID: surfaceID,
@@ -59,6 +71,31 @@ public final class HiveTerminalSession {
         }
         registrationToken = nil
         phase = .idle
+    }
+
+    /// Commit the natural viewport before registering output, so the first
+    /// cold replay is captured at the local renderer's current dimensions.
+    public func prepareViewport(
+        columns: Int,
+        rows: Int
+    ) -> MobileTerminalViewportPreparation? {
+        shell.prepareTerminalViewport(
+            surfaceID: surfaceID,
+            columns: columns,
+            rows: rows
+        )
+    }
+
+    /// Send a viewport generation that was committed before output attach.
+    public func updatePreparedViewport(
+        _ preparation: MobileTerminalViewportPreparation
+    ) async -> (
+        columns: Int,
+        rows: Int,
+        renderEpoch: String?,
+        renderRevisionFloor: UInt64?
+    )? {
+        await shell.updatePreparedTerminalViewport(preparation)
     }
 
     /// Send already-encoded terminal input to this remote surface.

@@ -39,13 +39,34 @@ struct HiveTerminalSessionTests {
         #expect(shell.unmountedSurfaceID == "surface-a")
         #expect(shell.unmountedRegistrationToken == shell.registrationToken)
     }
+
+    @Test("a naturally-ended output stream permits a new attachment")
+    func reattachesAfterStreamEnd() async {
+        let shell = HiveTerminalShellStub()
+        let session = HiveTerminalSession(surfaceID: "surface-a", shell: shell)
+
+        await withCheckedContinuation { (streamEnded: CheckedContinuation<Void, Never>) in
+            session.attach(onOutput: { _ in }) {
+                streamEnded.resume()
+            }
+            #expect(session.phase == .attached)
+            shell.finishCurrentOutput()
+        }
+        #expect(session.phase == .idle)
+
+        session.attach(onOutput: { _ in })
+        #expect(session.phase == .attached)
+        #expect(shell.registrationCount == 2)
+        session.detach()
+    }
 }
 
 @MainActor
 private final class HiveTerminalShellStub: HiveTerminalShellServing {
-    let registrationToken = UUID()
-    let outputStream: AsyncStream<MobileTerminalOutputChunk>
-    let outputContinuation: AsyncStream<MobileTerminalOutputChunk>.Continuation
+    var registrationToken = UUID()
+    var outputStream: AsyncStream<MobileTerminalOutputChunk>
+    var outputContinuation: AsyncStream<MobileTerminalOutputChunk>.Continuation
+    var registrationCount = 0
     var processed: [(surfaceID: String, token: UUID)] = []
     var inputs: [(surfaceID: String, data: Data)] = []
     var unmountedSurfaceID: String?
@@ -58,7 +79,12 @@ private final class HiveTerminalShellStub: HiveTerminalShellServing {
     func terminalOutputRegistration(
         surfaceID: String
     ) -> MobileTerminalOutputRegistration {
-        MobileTerminalOutputRegistration(
+        registrationCount += 1
+        if registrationCount > 1 {
+            registrationToken = UUID()
+            (outputStream, outputContinuation) = AsyncStream.makeStream()
+        }
+        return MobileTerminalOutputRegistration(
             registrationToken: registrationToken,
             stream: outputStream
         )
@@ -75,6 +101,29 @@ private final class HiveTerminalShellStub: HiveTerminalShellServing {
 
     func sendTerminalRawInput(_ data: Data, surfaceID: String) {
         inputs.append((surfaceID, data))
+    }
+
+    func finishCurrentOutput() {
+        outputContinuation.finish()
+    }
+
+    func prepareTerminalViewport(
+        surfaceID: String,
+        columns: Int,
+        rows: Int
+    ) -> MobileTerminalViewportPreparation? {
+        nil
+    }
+
+    func updatePreparedTerminalViewport(
+        _ preparation: MobileTerminalViewportPreparation
+    ) async -> (
+        columns: Int,
+        rows: Int,
+        renderEpoch: String?,
+        renderRevisionFloor: UInt64?
+    )? {
+        nil
     }
 
     func updateTerminalViewport(

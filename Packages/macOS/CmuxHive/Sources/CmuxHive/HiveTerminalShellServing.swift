@@ -14,6 +14,21 @@ public protocol HiveTerminalShellServing: AnyObject {
 
     func sendTerminalRawInput(_ data: Data, surfaceID: String)
 
+    func prepareTerminalViewport(
+        surfaceID: String,
+        columns: Int,
+        rows: Int
+    ) -> MobileTerminalViewportPreparation?
+
+    func updatePreparedTerminalViewport(
+        _ preparation: MobileTerminalViewportPreparation
+    ) async -> (
+        columns: Int,
+        rows: Int,
+        renderEpoch: String?,
+        renderRevisionFloor: UInt64?
+    )?
+
     func updateTerminalViewport(
         surfaceID: String,
         columns: Int,
