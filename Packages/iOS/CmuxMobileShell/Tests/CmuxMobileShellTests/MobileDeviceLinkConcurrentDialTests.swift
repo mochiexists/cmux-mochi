@@ -1,6 +1,6 @@
 import DeviceLinkKit
 import Foundation
-import Network
+@preconcurrency import Network
 import Testing
 
 @testable import CmuxMobileShell
