@@ -26,12 +26,10 @@ import Testing
     let port = try await server.start()
     defer { server.stop() }
 
-    let route = try CmxAttachRoute(
-        id: "loopback",
-        kind: .debugLoopback,
-        endpoint: .hostPort(host: "127.0.0.1", port: Int(port))
+    let transport = try CmxNetworkByteTransport(
+        host: "127.0.0.1",
+        port: Int(port)
     )
-    let transport = try CmxNetworkByteTransportFactory().makeTransport(for: route)
 
     do {
         try await transport.connect()
@@ -77,12 +75,10 @@ import Testing
     let port = try await server.start()
     defer { server.stop() }
 
-    let route = try CmxAttachRoute(
-        id: "loopback",
-        kind: .debugLoopback,
-        endpoint: .hostPort(host: "127.0.0.1", port: Int(port))
+    let transport = try CmxNetworkByteTransport(
+        host: "127.0.0.1",
+        port: Int(port)
     )
-    let transport = try CmxNetworkByteTransportFactory().makeTransport(for: route)
 
     try await transport.connect()
     let receiveTask = Task {

@@ -117,17 +117,17 @@ import Testing
     }
 }
 
-/// Route-only probes are deliberately plaintext, so their debug label must not
-/// be usable to dial beyond the local host.
-@Test func routeOnlyDebugProbeRejectsNonLoopbackHost() throws {
+/// Route-only probes carry no paired identity, so loopback is not allowed to
+/// become a plaintext authentication exception.
+@Test func routeOnlyDebugProbeRequiresAuthorizationIntent() throws {
     let factory = CmxNetworkByteTransportFactory(supportedKinds: [.debugLoopback])
     let route = try CmxAttachRoute(
-        id: "public-as-loopback-probe",
+        id: "loopback-probe",
         kind: .debugLoopback,
-        endpoint: .hostPort(host: "203.0.113.10", port: 49_831)
+        endpoint: .hostPort(host: "127.0.0.1", port: 49_831)
     )
 
-    #expect(throws: CmxNetworkByteTransportError.deviceLinkAuthorizationUnavailable) {
+    #expect(throws: CmxNetworkByteTransportError.authorizationIntentRequired) {
         _ = try factory.makeTransport(for: route)
     }
 }

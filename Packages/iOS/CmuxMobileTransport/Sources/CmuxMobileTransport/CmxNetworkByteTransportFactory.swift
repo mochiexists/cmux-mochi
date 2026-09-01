@@ -51,7 +51,7 @@ public struct CmxNetworkByteTransportFactory: CmxRouteAwareByteTransportFactory 
         guard supportedKinds.contains(route.kind) else {
             throw CmxNetworkByteTransportError.unsupportedRouteKind(route.kind)
         }
-        guard case let .hostPort(host, port) = route.endpoint else {
+        guard case let .hostPort(host, _) = route.endpoint else {
             throw CmxNetworkByteTransportError.unsupportedEndpoint(route.endpoint)
         }
         switch route.kind {
@@ -66,15 +66,11 @@ public struct CmxNetworkByteTransportFactory: CmxRouteAwareByteTransportFactory 
             guard CmxLoopbackHost().matches(host) else {
                 throw CmxNetworkByteTransportError.deviceLinkAuthorizationUnavailable
             }
+            throw CmxNetworkByteTransportError.authorizationIntentRequired
         case .iroh, .websocket:
             break
         }
-        return try CmxNetworkByteTransport(
-            host: host,
-            port: port,
-            maximumReceiveLength: maximumReceiveLength,
-            connectTimeoutNanoseconds: connectTimeoutNanoseconds
-        )
+        throw CmxNetworkByteTransportError.authorizationIntentRequired
     }
 
     /// Builds only mutually authenticated DeviceLink network routes.
