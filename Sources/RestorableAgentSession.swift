@@ -1354,6 +1354,7 @@ struct RestorableAgentSessionIndex: Sendable {
             fileManager: fileManager
         )
         let codexCwdLookup = CodexSessionCwdLookupCache(fileManager: fileManager)
+        let codexCheckpointVerifier = CodexCheckpointVerifier(fileManager: fileManager)
         let cachedAgentProcessValidator = CachedAgentProcessIdentityValidator()
         let builtInKindIDs = Set(RestorableAgentKind.allCases.map(\.rawValue))
         let hookKinds: [(kind: RestorableAgentKind, registration: CmuxVaultAgentRegistration?)] =
@@ -1391,9 +1392,22 @@ struct RestorableAgentSessionIndex: Sendable {
                 )
                 if kind == .codex, normalizedNonEmptyValue(effectiveRecord.launchCommand?.source)?.lowercased() == "environment", normalizedNonEmptyValue(effectiveRecord.launchCommand?.environment?["CODEX_HOME"]) == nil, (normalizedNonEmptyValue(effectiveRecord.launchCommand?.environment?["ANTHROPIC_BASE_URL"]) != nil || normalizedNonEmptyValue(effectiveRecord.launchCommand?.environment?["CLAUDE_CONFIG_DIR"]) != nil) { effectiveRecord.launchCommand = nil }
                 let normalizedSessionId = effectiveRecord.sessionId.trimmingCharacters(in: .whitespacesAndNewlines)
+                let codexVerification: CodexCheckpointVerification = {
+                    guard kind == .codex else { return .legacyUnindexed }
+                    let codexHome = codexCheckpointVerifier.codexHome(
+                        launchEnvironment: effectiveRecord.launchCommand?.environment,
+                        fallbackHomeDirectory: homeDirectory
+                    )
+                    return codexCheckpointVerifier.verify(
+                        sessionID: normalizedSessionId,
+                        codexHome: codexHome,
+                        transcriptPath: effectiveRecord.transcriptPath
+                    )
+                }()
                 guard !normalizedSessionId.isEmpty,
                       let workspaceId = UUID(uuidString: effectiveRecord.workspaceId),
                       let panelId = UUID(uuidString: effectiveRecord.surfaceId),
+                      codexVerification != .rejected,
                       hookRecordIsRestorable(
                           effectiveRecord,
                           kind: kind,
@@ -1403,10 +1417,14 @@ struct RestorableAgentSessionIndex: Sendable {
                     continue
                 }
 
+                let durableCodexWorkingDirectory: String? = {
+                    guard case .interactive(let evidence) = codexVerification else { return nil }
+                    return evidence.workingDirectory
+                }()
                 let snapshot = SessionRestorableAgentSnapshot(
                     kind: kind,
                     sessionId: normalizedSessionId,
-                    workingDirectory: restorableWorkingDirectory(
+                    workingDirectory: durableCodexWorkingDirectory ?? restorableWorkingDirectory(
                         for: effectiveRecord,
                         kind: kind,
                         registration: registration,
@@ -1561,7 +1579,8 @@ struct RestorableAgentSessionIndex: Sendable {
             )
         }
 
-        for (key, detected) in detectedSnapshots {
+        for (key, originalDetected) in detectedSnapshots {
+            var detected = originalDetected
             let sameKindPanelCandidate = hookCandidatesByPanelAndKind[
                 PanelKindKey(panelKey: key, kind: detected.snapshot.kind)
             ]
@@ -1576,7 +1595,39 @@ struct RestorableAgentSessionIndex: Sendable {
             let sameKindStablePanelCandidate = sameKindPanelCandidate ?? (
                 sameKindPanelIDCandidate?.isAmbiguous == false ? sameKindPanelIDCandidate?.entry : nil
             )
-            if detected.sessionIDSource == .forkParentFallback,
+            let detectedCodexVerification: CodexCheckpointVerification = {
+                guard detected.snapshot.kind == .codex else { return .legacyUnindexed }
+                let codexHome = codexCheckpointVerifier.codexHome(
+                    launchEnvironment: detected.snapshot.launchCommand?.environment,
+                    fallbackHomeDirectory: homeDirectory
+                )
+                return codexCheckpointVerifier.verify(
+                    sessionID: detected.snapshot.sessionId,
+                    codexHome: codexHome,
+                    transcriptPath: nil
+                )
+            }()
+            if case .interactive(let evidence) = detectedCodexVerification,
+               let workingDirectory = evidence.workingDirectory {
+                detected.snapshot.workingDirectory = workingDirectory
+            }
+            if detectedCodexVerification == .rejected,
+               let panelCandidate = sameKindStablePanelCandidate {
+                // A process can expose a short-lived review/subagent id and a
+                // transient cwd. Keep its liveness evidence, but retain the
+                // durable interactive owner for this stable surface.
+                resolved[key] = processDetectedEntry(
+                    key: key,
+                    snapshot: panelCandidate.snapshot,
+                    lifecycle: panelCandidate.lifecycle,
+                    updatedAt: panelCandidate.updatedAt,
+                    detected: detected
+                )
+            } else if detectedCodexVerification == .rejected {
+                // An indexed but missing/non-interactive Codex checkpoint is
+                // not safe to persist or execute as a restore target.
+                continue
+            } else if detected.sessionIDSource == .forkParentFallback,
                let panelCandidate = sameKindPanelCandidate,
                Self.hookCandidateRepresentsDetectedProcess(
                    panelCandidate,
