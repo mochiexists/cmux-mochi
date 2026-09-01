@@ -251,7 +251,7 @@ public final class MobileShellComposite: MobileTerminalOutputSinking {
     public internal(set) var connectedHostName: String
     public private(set) var connectionError: String?
     /// Actionable next-step line shown beneath ``connectionError`` (for example
-    /// "Check that both devices are on the same Tailscale"). Set and cleared
+    /// "Check that both devices are on the same network"). Set and cleared
     /// together with the error by the pairing-failure classifier sink.
     public private(set) var connectionErrorGuidance: String?
     public internal(set) var activeTicket: CmxAttachTicket?

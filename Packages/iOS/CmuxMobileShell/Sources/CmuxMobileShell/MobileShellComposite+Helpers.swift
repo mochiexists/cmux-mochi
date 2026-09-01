@@ -39,6 +39,14 @@ extension MobileShellComposite {
     }
 
     static func routeSortsBefore(_ left: CmxAttachRoute, _ right: CmxAttachRoute) -> Bool {
+        // Rank every kind before comparing priority. This keeps the comparator
+        // transitive while ensuring authenticated LAN precedes Tailscale even
+        // when fresh and persisted routes use different priority scales.
+        let leftRank = deviceLinkRouteRank(left.kind)
+        let rightRank = deviceLinkRouteRank(right.kind)
+        if leftRank != rightRank {
+            return leftRank < rightRank
+        }
         if left.priority == right.priority {
             return left.id < right.id
         }

@@ -2449,6 +2449,23 @@
         }
       }
     },
+    "mobile.computers.ping.authenticationRequired": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Checked by secure connection"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "安全な接続で確認されます"
+          }
+        }
+      }
+    },
     "mobile.computers.ping.unsupported": {
       "extractionState": "manual",
       "localizations": {

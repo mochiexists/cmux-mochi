@@ -5,8 +5,15 @@ import SwiftUI
 /// The macOS onboarding window for pairing an iPhone with this Mac.
 ///
 /// Shows the account-free DeviceLink QR once this Mac has a phone-reachable
-/// Tailscale route.
+/// authenticated private-LAN or Tailscale route.
 struct MobilePairingView: View {
+    private enum NetworkReachability {
+        case localAndTailscale
+        case local
+        case tailscale
+        case unavailable
+    }
+
     @State private var model = MobilePairingModel()
     /// Reports the scroll content's unconstrained height so the AppKit window
     /// can grow to reveal it while retaining scrolling on shorter displays.
@@ -55,7 +62,7 @@ struct MobilePairingView: View {
                 .cmuxFont(.title2, weight: .semibold)
             Text(String(
                 localized: "mobile.pairing.window.deviceLinkSubheading",
-                defaultValue: "Connect this Mac and your iPhone to the same Tailscale network, then scan this code in the cmux app."
+                defaultValue: "Connect this Mac and your iPhone to the same local network or Tailscale network, then scan this code in the cmux app."
             ))
             .cmuxFont(.callout)
             .foregroundStyle(.secondary)
@@ -68,7 +75,7 @@ struct MobilePairingView: View {
     private var requirements: some View {
         VStack(alignment: .leading, spacing: 12) {
             noAccountRow
-            tailscaleRow
+            networkRow
         }
     }
 
@@ -87,16 +94,16 @@ struct MobilePairingView: View {
         }
     }
 
-    private var tailscaleRow: some View {
-        let reachable = tailscaleReachable
+    private var networkRow: some View {
+        let reachability = networkReachability
         return requirementRow(
             title: String(
-                localized: "mobile.pairing.req.tailscale.title",
-                defaultValue: "Tailscale"
+                localized: "mobile.pairing.req.network.title",
+                defaultValue: "Network path"
             ),
-            subtitle: tailscaleSubtitle(reachable: reachable)
+            subtitle: networkSubtitle(reachability)
         ) {
-            if reachable == false {
+            if reachability == .unavailable {
                 Link(
                     String(
                         localized: "mobile.pairing.req.tailscale.get",
@@ -109,31 +116,46 @@ struct MobilePairingView: View {
         }
     }
 
-    private var tailscaleReachable: Bool? {
+    private var networkReachability: NetworkReachability? {
         switch model.state {
-        case let .ready(ready): return ready.reachableViaTailscale
-        case let .connected(ready): return ready.reachableViaTailscale
-        case .needsReachableTransport: return false
+        case let .ready(ready), let .connected(ready):
+            if !ready.localNetworkLines.isEmpty, !ready.tailscaleLines.isEmpty {
+                return .localAndTailscale
+            }
+            if !ready.localNetworkLines.isEmpty { return .local }
+            if !ready.tailscaleLines.isEmpty { return .tailscale }
+            return .unavailable
+        case .needsReachableTransport: return .unavailable
         default: return nil
         }
     }
 
-    private func tailscaleSubtitle(reachable: Bool?) -> String {
-        switch reachable {
-        case .some(true):
+    private func networkSubtitle(_ reachability: NetworkReachability?) -> String {
+        switch reachability {
+        case .localAndTailscale:
+            return String(
+                localized: "mobile.pairing.req.network.localAndTailscale",
+                defaultValue: "Reachable on your local network, with Tailscale available as fallback."
+            )
+        case .local:
+            return String(
+                localized: "mobile.pairing.req.network.local",
+                defaultValue: "Reachable on your local network."
+            )
+        case .tailscale:
             return String(
                 localized: "mobile.pairing.req.tailscale.reachable",
                 defaultValue: "Reachable over Tailscale."
             )
-        case .some(false):
+        case .unavailable:
             return String(
-                localized: "mobile.pairing.req.tailscale.missing",
-                defaultValue: "Not detected. Install Tailscale on this Mac and your iPhone, signed in to the same account."
+                localized: "mobile.pairing.req.network.missing",
+                defaultValue: "No private local-network or Tailscale route was detected."
             )
         case .none:
             return String(
-                localized: "mobile.pairing.req.tailscale.hint",
-                defaultValue: "Your Mac and iPhone both need Tailscale to connect over the internet."
+                localized: "mobile.pairing.req.network.hint",
+                defaultValue: "Local network is fastest; Tailscale remains available when you are away."
             )
         }
     }
@@ -186,8 +208,8 @@ struct MobilePairingView: View {
                 .cmuxFont(size: 28)
                 .foregroundStyle(.orange)
             Text(String(
-                localized: "mobile.pairing.needsTailscale.body",
-                defaultValue: "No Tailscale route is available. Connect this Mac and your iPhone to the same Tailscale network, then refresh."
+                localized: "mobile.pairing.needsNetwork.body",
+                defaultValue: "No reachable route is available. Join the same local network or connect both devices to Tailscale, then refresh."
             ))
             .multilineTextAlignment(.center)
             .foregroundStyle(.secondary)

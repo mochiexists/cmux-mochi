@@ -135131,6 +135131,23 @@
         }
       }
     },
+    "mobile.pairing.needsNetwork.body": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No reachable route is available. Join the same local network or connect both devices to Tailscale, then refresh."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "接続可能な経路がありません。同じローカルネットワークに接続するか、両方のデバイスを Tailscale に接続してから更新してください。"
+          }
+        }
+      }
+    },
     "mobile.pairing.preparing": {
       "extractionState": "manual",
       "localizations": {
@@ -135263,6 +135280,91 @@
           "stringUnit": {
             "state": "translated",
             "value": "cmux にサインイン済み"
+          }
+        }
+      }
+    },
+    "mobile.pairing.req.network.hint": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Local network is fastest; Tailscale remains available when you are away."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ローカルネットワークが最速です。外出先では Tailscale を利用できます。"
+          }
+        }
+      }
+    },
+    "mobile.pairing.req.network.local": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reachable on your local network."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ローカルネットワーク経由で接続できます。"
+          }
+        }
+      }
+    },
+    "mobile.pairing.req.network.localAndTailscale": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reachable on your local network, with Tailscale available as fallback."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ローカルネットワーク経由で接続でき、フォールバックとして Tailscale も利用できます。"
+          }
+        }
+      }
+    },
+    "mobile.pairing.req.network.missing": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No private local-network or Tailscale route was detected."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "プライベートローカルネットワークまたは Tailscale の経路を検出できませんでした。"
+          }
+        }
+      }
+    },
+    "mobile.pairing.req.network.title": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Network path"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ネットワーク経路"
           }
         }
       }
@@ -135846,6 +135948,23 @@
         }
       }
     },
+    "mobile.pairing.step.network": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connect your iPhone to the same local network or Tailscale network as this Mac."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "iPhone をこの Mac と同じローカルネットワークまたは Tailscale ネットワークに接続します。"
+          }
+        }
+      }
+    },
     "mobile.pairing.waiting": {
       "extractionState": "manual",
       "localizations": {
@@ -135886,13 +136005,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Connect this Mac and your iPhone to the same Tailscale network, then scan this code in the cmux app."
+            "value": "Connect this Mac and your iPhone to the same local network or Tailscale network, then scan this code in the cmux app."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "この Mac と iPhone を同じ Tailscale ネットワークに接続し、cmux アプリでこのコードをスキャンします。"
+            "value": "この Mac と iPhone を同じローカルネットワークまたは Tailscale ネットワークに接続し、cmux アプリでこのコードをスキャンします。"
           }
         }
       }
@@ -174546,6 +174665,91 @@
         }
       }
     },
+    "mobile.pairing.listener.bind.addressUnavailable": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mobile pairing could not use port %lld because that address is not available on this Mac."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "この Mac ではアドレスを使用できないため、モバイルペアリングでポート %lld を使用できませんでした。"
+          }
+        }
+      }
+    },
+    "mobile.pairing.listener.bind.failed": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mobile pairing could not start on port %lld. Try again."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "モバイルペアリングをポート %lld で開始できませんでした。もう一度お試しください。"
+          }
+        }
+      }
+    },
+    "mobile.pairing.listener.bind.inUse": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mobile pairing could not use port %lld because another process is already listening on it."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "別のプロセスがすでに待ち受けているため、モバイルペアリングでポート %lld を使用できませんでした。"
+          }
+        }
+      }
+    },
+    "mobile.pairing.listener.bind.permissionDenied": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mobile pairing does not have permission to use port %lld."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "モバイルペアリングにはポート %lld を使用する権限がありません。"
+          }
+        }
+      }
+    },
+    "mobile.pairing.listener.identityFailed": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mobile pairing could not load its identity. Unlock Keychain and try again."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "モバイルペアリング ID を読み込めませんでした。キーチェーンのロックを解除して、もう一度お試しください。"
+          }
+        }
+      }
+    },
     "settings.mobile.port": {
       "extractionState": "manual",
       "localizations": {
@@ -174580,6 +174784,40 @@
         }
       }
     },
+    "settings.mobile.port.apply.cancelled": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pairing port apply was cancelled."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ペアリングポートの適用がキャンセルされました。"
+          }
+        }
+      }
+    },
+    "settings.mobile.port.apply.identityFailed": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Could not load the pairing identity. Unlock Keychain and try again."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ペアリング ID を読み込めませんでした。キーチェーンのロックを解除して、もう一度お試しください。"
+          }
+        }
+      }
+    },
     "settings.mobile.port.apply.inUse": {
       "extractionState": "manual",
       "localizations": {
@@ -174593,6 +174831,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "ポート %lld は使用中です。引き続きポート %lld で待ち受けています。"
+          }
+        }
+      }
+    },
+    "settings.mobile.port.apply.listenerFailed": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Could not prepare the pairing listener. Try again."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ペアリングリスナーを準備できませんでした。もう一度お試しください。"
           }
         }
       }
@@ -174746,6 +175001,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "ループバック"
+          }
+        }
+      }
+    },
+    "settings.mobile.route.localNetwork": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Local Network"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ローカルネットワーク"
           }
         }
       }

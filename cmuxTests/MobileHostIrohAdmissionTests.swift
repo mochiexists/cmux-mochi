@@ -79,7 +79,7 @@ struct IrohDeviceLinkMacGateTests {
     @Test func privateNetworkRoutesPrioritizeNumericTailscaleAndNeverUseLoopback() throws {
         let snapshot = MobileRouteResolver().routes(
             port: 58_465,
-            tailscaleHosts: [
+            resolvedTailscaleHosts: [
                 "127.0.0.1",
                 "work-mac.tailnet.ts.net",
                 "100.71.210.41",

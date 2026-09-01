@@ -219,6 +219,16 @@ enum MobileHostPortApplyOutcome: Equatable {
     case savedWhileDisabled
     /// The requested port was outside the valid `1...65535` range.
     case invalid
+    /// Listener preparation failed before a port-conflict decision was possible.
+    case failed(String)
+}
+
+/// One source of truth for the nested pairing startup deadlines. Identity
+/// preparation must finish first so the pairing sheet can publish the useful
+/// failure before its outer listener-readiness wait expires.
+enum MobileHostPairingDeadlines {
+    static let identityLoad: Duration = .seconds(4)
+    static let listenerReadiness: Duration = .seconds(6)
 }
 
 @MainActor
@@ -287,6 +297,15 @@ final class MobileHostService {
     // internal (not private): read by the fork's DeviceLink extension.
     let routeResolver = MobileRouteResolver()
     private var listener: NWListener?
+    /// A listener start may wait on the login keychain. Keeping it as an async
+    /// task prevents that Security.framework IPC from beachballing the app and
+    /// coalesces repeated settings notifications into one start attempt.
+    private var listenerStartTask: Task<Void, Never>?
+    private var listenerStartGeneration = UUID()
+    /// Invalidates an in-flight make-before-break port application when a
+    /// newer apply, stop, or restart supersedes it while it is awaiting the
+    /// pairing identity or listener readiness.
+    private var portApplyGeneration = UUID()
     // internal (not private): read by the fork's DeviceLink extension.
     var listenerGeneration = UUID()
     private var listenerUsesEphemeralFallback = false
@@ -669,6 +688,17 @@ final class MobileHostService {
         return .noop
     }
 
+    /// Whether a caller asking for a pairing QR must wait for the listener's
+    /// async start to settle. A pending start counts even before an NWListener
+    /// has been constructed.
+    nonisolated static func shouldAwaitListenerReadiness(
+        listenerExists: Bool,
+        startPending: Bool,
+        boundPort: Int?
+    ) -> Bool {
+        boundPort == nil && (listenerExists || startPending)
+    }
+
     /// Iroh is an account-authenticated transport and starts for every signed-in
     /// Mac. The legacy listener remains opt-in so existing Tailscale and private
     /// network users keep their route without making it a prerequisite for Iroh.
@@ -730,22 +760,77 @@ final class MobileHostService {
     /// route around, and the port has to appear in the message for the reader
     /// to know which one to free.
     nonisolated static func bindFailureDescription(port: Int, error: NWError) -> String {
-        let cause: String
         if case let .posix(code) = error {
             switch code {
             case .EADDRINUSE:
-                cause = "another process is already listening on it"
+                let format = String(
+                    localized: "mobile.pairing.listener.bind.inUse",
+                    defaultValue: "Mobile pairing could not use port %lld because another process is already listening on it."
+                )
+                return String(format: format, Int64(port))
             case .EADDRNOTAVAIL:
-                cause = "that address is not available on this machine"
+                let format = String(
+                    localized: "mobile.pairing.listener.bind.addressUnavailable",
+                    defaultValue: "Mobile pairing could not use port %lld because that address is not available on this Mac."
+                )
+                return String(format: format, Int64(port))
             case .EACCES:
-                cause = "this process is not permitted to bind it"
+                let format = String(
+                    localized: "mobile.pairing.listener.bind.permissionDenied",
+                    defaultValue: "Mobile pairing does not have permission to use port %lld."
+                )
+                return String(format: format, Int64(port))
             default:
-                cause = String(describing: error)
+                break
             }
-        } else {
-            cause = String(describing: error)
         }
-        return "Mobile pairing could not bind port \(port): \(cause)."
+        let format = String(
+            localized: "mobile.pairing.listener.bind.failed",
+            defaultValue: "Mobile pairing could not start on port %lld. Try again."
+        )
+        return String(format: format, Int64(port))
+    }
+
+    /// Re-checks an Apply Port attempt after every suspension point. Pairing
+    /// being switched off wins over supersession so the requested value is
+    /// retained for the next enable; any other lifecycle change cancels the
+    /// stale attempt instead of adopting its candidate listener.
+    nonisolated static func portApplyContinuationOutcome(
+        enabled: Bool,
+        isCurrentAttempt: Bool
+    ) -> MobileHostPortApplyOutcome? {
+        if !enabled { return .savedWhileDisabled }
+        guard isCurrentAttempt else {
+            return portApplyCancelledOutcome()
+        }
+        return nil
+    }
+
+    nonisolated private static func portApplyCancelledOutcome() -> MobileHostPortApplyOutcome {
+        .failed(
+            String(
+                localized: "settings.mobile.port.apply.cancelled",
+                defaultValue: "Pairing port apply was cancelled."
+            )
+        )
+    }
+
+    /// Classifies synchronous `NWListener` construction errors without
+    /// collapsing address conflicts into a generic listener-preparation error.
+    nonisolated static func portApplyListenerCreationOutcome(
+        error: any Error
+    ) -> MobileHostPortApplyOutcome {
+        if let networkError = error as? NWError,
+           case let .posix(code) = networkError,
+           code == .EADDRINUSE || code == .EADDRNOTAVAIL {
+            return .portInUse
+        }
+        return .failed(
+            String(
+                localized: "settings.mobile.port.apply.listenerFailed",
+                defaultValue: "Could not prepare the pairing listener. Try again."
+            )
+        )
     }
 
     /// Applies an explicitly-requested pairing port.
@@ -764,7 +849,7 @@ final class MobileHostService {
             requestedPort: port
         ) {
             switch preBind {
-            case .invalid, .portInUse:
+            case .invalid, .portInUse, .failed:
                 break
             case .savedWhileDisabled, .applied:
                 defaults.set(port, forKey: Self.portDefaultsKey)
@@ -773,12 +858,116 @@ final class MobileHostService {
         }
         // A real bind is required (pairing on, valid port, different from bound).
         guard let endpointPort = NWEndpoint.Port(rawValue: UInt16(port)) else { return .invalid }
-        guard let candidate = await bindReadyCandidate(on: endpointPort, generation: UUID()) else {
-            return .portInUse
+        let applyGeneration = UUID()
+        portApplyGeneration = applyGeneration
+        let tcpOptions = NWProtocolTCP.Options()
+        tcpOptions.noDelay = true
+        let parameters: NWParameters
+        do {
+            parameters = try await Self.deviceLinkListenerParameters(tcp: tcpOptions)
+        } catch is CancellationError {
+            if let lifecycleOutcome = portApplyLifecycleOutcome(
+                generation: applyGeneration,
+                port: port,
+                defaults: defaults
+            ) {
+                return lifecycleOutcome
+            }
+            return Self.portApplyCancelledOutcome()
+        } catch {
+            if let lifecycleOutcome = portApplyLifecycleOutcome(
+                generation: applyGeneration,
+                port: port,
+                defaults: defaults
+            ) {
+                return lifecycleOutcome
+            }
+            mobileHostLog.error(
+                "mobile pairing port apply could not load identity: \(String(describing: error), privacy: .public)"
+            )
+            return .failed(
+                String(
+                    localized: "settings.mobile.port.apply.identityFailed",
+                    defaultValue: "Could not load the pairing identity. Unlock Keychain and try again."
+                )
+            )
+        }
+        if let lifecycleOutcome = portApplyLifecycleOutcome(
+            generation: applyGeneration,
+            port: port,
+            defaults: defaults
+        ) {
+            return lifecycleOutcome
+        }
+        let candidate: (listener: NWListener, generation: UUID)
+        do {
+            guard let boundCandidate = try await bindReadyCandidate(
+                on: endpointPort,
+                generation: UUID(),
+                parameters: parameters
+            ) else {
+                if let lifecycleOutcome = portApplyLifecycleOutcome(
+                    generation: applyGeneration,
+                    port: port,
+                    defaults: defaults
+                ) {
+                    return lifecycleOutcome
+                }
+                return .portInUse
+            }
+            candidate = boundCandidate
+        } catch is CancellationError {
+            if let lifecycleOutcome = portApplyLifecycleOutcome(
+                generation: applyGeneration,
+                port: port,
+                defaults: defaults
+            ) {
+                return lifecycleOutcome
+            }
+            return Self.portApplyCancelledOutcome()
+        } catch {
+            if let lifecycleOutcome = portApplyLifecycleOutcome(
+                generation: applyGeneration,
+                port: port,
+                defaults: defaults
+            ) {
+                return lifecycleOutcome
+            }
+            mobileHostLog.error(
+                "mobile pairing port apply could not create listener: \(String(describing: error), privacy: .public)"
+            )
+            return Self.portApplyListenerCreationOutcome(error: error)
+        }
+        if let lifecycleOutcome = portApplyLifecycleOutcome(
+            generation: applyGeneration,
+            port: port,
+            defaults: defaults
+        ) {
+            candidate.listener.stateUpdateHandler = nil
+            candidate.listener.newConnectionHandler = nil
+            candidate.listener.cancel()
+            return lifecycleOutcome
         }
         adoptCandidateListener(candidate.listener, generation: candidate.generation, port: port)
+        portApplyGeneration = UUID()
         defaults.set(port, forKey: Self.portDefaultsKey)
         return .applied(port)
+    }
+
+    private func portApplyLifecycleOutcome(
+        generation: UUID,
+        port: Int,
+        defaults: UserDefaults
+    ) -> MobileHostPortApplyOutcome? {
+        let enabled = Self.isListeningEnabled(defaults: defaults)
+        let outcome = Self.portApplyContinuationOutcome(
+            enabled: enabled,
+            isCurrentAttempt: portApplyGeneration == generation
+        )
+        if outcome == .savedWhileDisabled {
+            defaults.set(port, forKey: Self.portDefaultsKey)
+        }
+        return outcome
     }
 
     /// Binds a candidate `NWListener` on `endpointPort` while the current listener
@@ -786,18 +975,12 @@ final class MobileHostService {
     /// or `nil` when the port is unavailable. A bounded, cancellable deadline
     /// guarantees the call can't hang; on timeout/failure the candidate is torn
     /// down and `nil` returned, leaving the live listener untouched.
-    private func bindReadyCandidate(on endpointPort: NWEndpoint.Port, generation: UUID) async -> (listener: NWListener, generation: UUID)? {
-        let tcpOptions = NWProtocolTCP.Options()
-        tcpOptions.noDelay = true
-        let candidate: NWListener
-        do {
-            candidate = try NWListener(
-                using: Self.deviceLinkListenerParameters(tcp: tcpOptions),
-                on: endpointPort
-            )
-        } catch {
-            return nil
-        }
+    private func bindReadyCandidate(
+        on endpointPort: NWEndpoint.Port,
+        generation: UUID,
+        parameters: NWParameters
+    ) async throws -> (listener: NWListener, generation: UUID)? {
+        let candidate = try NWListener(using: parameters, on: endpointPort)
         let queue = callbackQueue
         let didBind: Bool = await withCheckedContinuation { (continuation: CheckedContinuation<Bool, Never>) in
             // One-shot resume guard + deadline holder (lock carve-out): the state
@@ -896,10 +1079,8 @@ final class MobileHostService {
         // Starting it reads this Mac's DeviceLink identity out of the keychain
         // synchronously on the main thread (`hostIdentity()` ->
         // `SecItemCopyMatching`). Debug builds are ad-hoc signed, so every
-        // rebuild has a new CDHash and the login-keychain ACL treats it as a
-        // different app — securityd then raises a confirmation dialog that no
-        // one answers under `xcodebuild test`, and the host wedges before XCTest
-        // can connect ("The test runner hung before establishing connection").
+        // rebuild has a new CDHash and the login-keychain ACL can raise a
+        // confirmation dialog that no one answers under `xcodebuild test`.
         //
         // Suppression must depend only on the test-process marker. Using the
         // absence of a stored pairing preference made app-host tests inherit
@@ -932,7 +1113,7 @@ final class MobileHostService {
         }
 
         CmxIrohTCPFirstActivation.start(
-            startTCP: { startListener(usePreferredPort: true) },
+            startTCP: { scheduleListenerStart(usePreferredPort: true) },
             scheduleIroh: { MobileHostIrohRuntime.shared.setDesiredActive(true) }
         )
     }
@@ -963,28 +1144,61 @@ final class MobileHostService {
     }
     #endif
 
-    private func startListener(usePreferredPort: Bool) {
+    private func scheduleListenerStart(usePreferredPort: Bool) {
+        guard listener == nil, listenerStartTask == nil else { return }
+        let generation = UUID()
         let desiredPort = Self.configuredPort()
+        listenerStartGeneration = generation
+        // Publish the start's target synchronously. A settings notification can
+        // otherwise observe a pending start with no applied port and restart it
+        // before its task gets its first main-actor turn.
         appliedPreferredPort = desiredPort
-        // Fork (cmux Mochi): fail closed when there is no tailnet interface to
-        // pin to. Binding anyway would serve the pairing host on every
-        // interface, which is the exposure the pin exists to close.
-        // `handleNetworkPathChange` retries once Tailscale comes up, so this is
-        // a deferral rather than a dead end.
-        if Self.tailnetInterfaceUnavailableInRelease {
-            lastErrorDescription = "Tailscale is not running; the pairing host stays closed until it is."
-            mobileHostLog.info("mobile host listener deferred: no tailnet interface to bind to")
-            // The path monitor normally starts after a successful bind. Start it
-            // here too, or nothing would observe Tailscale coming up and the
-            // deferral would be permanent.
-            startNetworkPathMonitorIfNeeded()
+        listenerStartTask = Task { @MainActor [weak self] in
+            await self?.startListener(
+                usePreferredPort: usePreferredPort,
+                startGeneration: generation,
+                desiredPort: desiredPort
+            )
+        }
+    }
+
+    private func startListener(
+        usePreferredPort: Bool,
+        startGeneration: UUID,
+        desiredPort: Int
+    ) async {
+        defer {
+            if listenerStartGeneration == startGeneration {
+                listenerStartTask = nil
+            }
+        }
+        let tcpOptions = NWProtocolTCP.Options()
+        tcpOptions.noDelay = true
+        let parameters: NWParameters
+        do {
+            parameters = try await Self.deviceLinkListenerParameters(tcp: tcpOptions)
+        } catch is CancellationError {
+            return
+        } catch {
+            guard !Task.isCancelled,
+                  listenerStartGeneration == startGeneration,
+                  Self.isListeningEnabled,
+                  listener == nil else { return }
+            lastErrorDescription = String(
+                localized: "mobile.pairing.listener.identityFailed",
+                defaultValue: "Mobile pairing could not load its identity. Unlock Keychain and try again."
+            )
+            mobileHostLog.error(
+                "mobile host listener could not load pairing identity: \(String(describing: error), privacy: .public)"
+            )
             drainReadinessWaiters()
             return
         }
+        guard !Task.isCancelled,
+              listenerStartGeneration == startGeneration,
+              Self.isListeningEnabled,
+              listener == nil else { return }
         do {
-            let tcpOptions = NWProtocolTCP.Options()
-            tcpOptions.noDelay = true
-            let parameters = try Self.deviceLinkListenerParameters(tcp: tcpOptions)
             let nextListener = try makeListener(
                 parameters: parameters,
                 usePreferredPort: usePreferredPort,
@@ -1005,8 +1219,25 @@ final class MobileHostService {
             listenerPort = nil
             nextListener.start(queue: callbackQueue)
             startNetworkPathMonitorIfNeeded()
+        } catch is CancellationError {
+            return
         } catch {
-            lastErrorDescription = "Mobile pairing could not bind port \(desiredPort): \(error)."
+            // A stopped or superseded start must never overwrite the live
+            // replacement's status or resolve its readiness waiters.
+            guard !Task.isCancelled,
+                  listenerStartGeneration == startGeneration else { return }
+            if let networkError = error as? NWError {
+                lastErrorDescription = Self.bindFailureDescription(
+                    port: desiredPort,
+                    error: networkError
+                )
+            } else {
+                let format = String(
+                    localized: "mobile.pairing.listener.bind.failed",
+                    defaultValue: "Mobile pairing could not start on port %lld. Try again."
+                )
+                lastErrorDescription = String(format: format, Int64(desiredPort))
+            }
             mobileHostLog.error(
                 "mobile host listener failed to bind fixed port \(desiredPort, privacy: .public): \(String(describing: error), privacy: .public)"
             )
@@ -1041,7 +1272,11 @@ final class MobileHostService {
         drainReadinessWaiters()
     }
 
-    private func stopLegacyListener(reason: String) {
+    private func stopLegacyListener(reason: String, drainReadiness: Bool = true) {
+        listenerStartGeneration = UUID()
+        portApplyGeneration = UUID()
+        listenerStartTask?.cancel()
+        listenerStartTask = nil
         stopNetworkPathMonitor()
         listenerGeneration = UUID()
         listenerUsesEphemeralFallback = false
@@ -1057,6 +1292,11 @@ final class MobileHostService {
         activeConnections.removeAll()
         closeRegisteredDeviceLinkConnections(reason: reason)
         MobileHostPublicStatusCache.update(routes: [])
+        // A pending async start has no NWListener state callback to resolve
+        // callers waiting for readiness, so stopping it must do so directly.
+        if drainReadiness {
+            drainReadinessWaiters()
+        }
     }
 
     private func closeRegisteredDeviceLinkConnections(reason: String) {
@@ -1119,7 +1359,11 @@ final class MobileHostService {
     /// never hangs on a listener that never settles.
     func ensureListeningAndReady() async -> MobileHostServiceStatus {
         start()
-        if listener == nil || listenerPort != nil {
+        guard Self.shouldAwaitListenerReadiness(
+            listenerExists: listener != nil,
+            startPending: listenerStartTask != nil,
+            boundPort: listenerPort
+        ) else {
             return statusSnapshot()
         }
         return await withCheckedContinuation { continuation in
@@ -1129,7 +1373,9 @@ final class MobileHostService {
                 // reaches `.ready` within milliseconds; this only guards a
                 // never-settling listener. Cancelled on the normal drain path.
                 readinessTimeoutTask = Task { @MainActor [weak self] in
-                    try? await ContinuousClock().sleep(for: .seconds(6))
+                    try? await ContinuousClock().sleep(
+                        for: MobileHostPairingDeadlines.listenerReadiness
+                    )
                     guard let self, !Task.isCancelled else { return }
                     self.drainReadinessWaiters()
                 }
@@ -1189,7 +1435,7 @@ final class MobileHostService {
             ?? Self.configuredPort(defaults: defaults)
         switch Self.syncDecision(
             enabled: Self.isListeningEnabled(defaults: defaults),
-            listenerRunning: listener != nil,
+            listenerRunning: listener != nil || listenerStartTask != nil,
             desiredPort: desiredPort,
             appliedPort: appliedPreferredPort
         ) {
@@ -1205,7 +1451,9 @@ final class MobileHostService {
     }
 
     private func restart() {
-        stopLegacyListener(reason: "pairing port changed")
+        // Keep pairing-sheet readiness callers parked across the immediate
+        // replacement; draining here would publish a false stopped snapshot.
+        stopLegacyListener(reason: "pairing port changed", drainReadiness: false)
         start()
     }
 
@@ -1594,7 +1842,10 @@ final class MobileHostService {
             return
         }
         MobileHostPublicStatusCache.update(
-            routes: routeResolver.routes(port: port, tailscaleHosts: tailscaleHosts).routes
+            routes: routeResolver.routes(
+                port: port,
+                resolvedTailscaleHosts: tailscaleHosts
+            ).routes
         )
     }
 
@@ -1654,9 +1905,14 @@ extension MobileHostService {
     }
 
     func debugResetMobileLifecycleStateForTesting() {
+        listenerStartGeneration = UUID()
+        portApplyGeneration = UUID()
+        listenerStartTask?.cancel()
+        listenerStartTask = nil
         listenerGeneration = UUID()
         listenerUsesEphemeralFallback = false
         listenerPort = nil
+        appliedPreferredPort = nil
         activeConnections.removeAll()
         clientIDsByConnectionID.removeAll()
         MobileHostRequestActivity.resetForTesting()

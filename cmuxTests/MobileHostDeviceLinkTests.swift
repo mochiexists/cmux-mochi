@@ -1,6 +1,7 @@
 import CMUXMobileCore
 import CmuxIrohTransport
 import DeviceLinkKit
+import Dispatch
 import Foundation
 import Testing
 #if canImport(cmux_DEV)
@@ -16,6 +17,147 @@ import Testing
 /// onto the network.
 @Suite("DeviceLink host boundaries", .serialized)
 struct MobileHostDeviceLinkTests {
+    @MainActor
+    @Test func identityKeychainLoaderNeverRunsOnMainThread() async throws {
+        let material = try DeviceIdentityMaterial.generate(commonName: "cmux-test")
+        let threadProbe = IdentityLoaderThreadProbe()
+        let link = MobileHostDeviceLink(
+            scope: KeychainScope(bundleIdentifier: "dev.cmux.identity-loader-test"),
+            identityMaterialLoader: {
+                threadProbe.record(Thread.isMainThread)
+                return material
+            }
+        )
+
+        let fingerprint = try await link.hostFingerprintOrThrow()
+
+        #expect(fingerprint == material.fingerprint)
+        #expect(threadProbe.wasMainThread == false)
+        #expect(threadProbe.callCount == 1)
+    }
+
+    @MainActor
+    @Test func concurrentIdentityRequestsShareOneKeychainLoad() async throws {
+        let material = try DeviceIdentityMaterial.generate(commonName: "cmux-coalescing-test")
+        let threadProbe = IdentityLoaderThreadProbe()
+        let releaseLoader = DispatchSemaphore(value: 0)
+        let link = MobileHostDeviceLink(
+            scope: KeychainScope(bundleIdentifier: "dev.cmux.identity-coalescing-test"),
+            identityMaterialLoader: {
+                threadProbe.record(Thread.isMainThread)
+                releaseLoader.wait()
+                return material
+            }
+        )
+
+        async let first = link.hostFingerprintOrThrow()
+        async let second = link.hostFingerprintOrThrow()
+        try await waitForLoaderCall(threadProbe)
+        try await waitForIdentityWaiterCount(link, expected: 2)
+        releaseLoader.signal()
+
+        let fingerprints = try await (first, second)
+        #expect(fingerprints.0 == material.fingerprint)
+        #expect(fingerprints.1 == material.fingerprint)
+        #expect(threadProbe.callCount == 1)
+    }
+
+    @MainActor
+    @Test func cancelledIdentityWaiterCachesMaterialForReplacementStart() async throws {
+        let material = try DeviceIdentityMaterial.generate(commonName: "cmux-cancellation-test")
+        let threadProbe = IdentityLoaderThreadProbe()
+        let releaseLoader = DispatchSemaphore(value: 0)
+        let link = MobileHostDeviceLink(
+            scope: KeychainScope(bundleIdentifier: "dev.cmux.identity-cancellation-test"),
+            identityMaterialLoader: {
+                threadProbe.record(Thread.isMainThread)
+                releaseLoader.wait()
+                return material
+            }
+        )
+
+        let cancelledRequest = Task { @MainActor in
+            try await link.hostFingerprintOrThrow()
+        }
+        try await waitForLoaderCall(threadProbe)
+        cancelledRequest.cancel()
+        releaseLoader.signal()
+
+        do {
+            _ = try await cancelledRequest.value
+            Issue.record("cancelled identity request unexpectedly succeeded")
+        } catch is CancellationError {
+            // Expected: cancellation affects this caller, not the shared cache.
+        }
+
+        let replacementFingerprint = try await link.hostFingerprintOrThrow()
+        #expect(replacementFingerprint == material.fingerprint)
+        #expect(threadProbe.callCount == 1)
+    }
+
+    @MainActor
+    @Test func timedOutIdentityWaitKeepsOneTransactionForRetry() async throws {
+        let material = try DeviceIdentityMaterial.generate(commonName: "cmux-timeout-test")
+        let threadProbe = IdentityLoaderThreadProbe()
+        let releaseLoader = DispatchSemaphore(value: 0)
+        defer { releaseLoader.signal() }
+        let link = MobileHostDeviceLink(
+            scope: KeychainScope(bundleIdentifier: "dev.cmux.identity-timeout-test"),
+            identityMaterialLoader: {
+                threadProbe.record(Thread.isMainThread)
+                releaseLoader.wait()
+                return material
+            },
+            identityLoadTimeout: .milliseconds(40)
+        )
+
+        do {
+            _ = try await link.hostFingerprintOrThrow()
+            Issue.record("blocked identity request unexpectedly beat its deadline")
+        } catch is CancellationError {
+            Issue.record("identity deadline was misreported as caller cancellation")
+        } catch {
+            #expect(String(describing: error).contains("deadline"))
+        }
+
+        releaseLoader.signal()
+        let replacementFingerprint = try await link.hostFingerprintOrThrow()
+        #expect(replacementFingerprint == material.fingerprint)
+        #expect(threadProbe.callCount == 1)
+    }
+
+    @MainActor
+    @Test func retryAfterTimedOutIdentityFailureStartsFreshLoadImmediately() async throws {
+        struct ExpectedFirstLoadFailure: Error {}
+
+        let material = try DeviceIdentityMaterial.generate(commonName: "cmux-timeout-failure-retry-test")
+        let loader = RetryingIdentityLoader(
+            firstError: ExpectedFirstLoadFailure(),
+            replacement: material
+        )
+        let link = MobileHostDeviceLink(
+            scope: KeychainScope(bundleIdentifier: "dev.cmux.identity-timeout-failure-retry-test"),
+            identityMaterialLoader: { try loader.load() },
+            identityLoadTimeout: .milliseconds(40)
+        )
+
+        do {
+            _ = try await link.hostFingerprintOrThrow()
+            Issue.record("blocked identity request unexpectedly beat its deadline")
+        } catch is CancellationError {
+            Issue.record("identity deadline was misreported as caller cancellation")
+        } catch {
+            #expect(String(describing: error).contains("deadline"))
+        }
+
+        loader.releaseFirstLoad()
+        try await waitForCompletedIdentityFailure(link)
+
+        let replacementFingerprint = try await link.hostFingerprintOrThrow()
+        #expect(replacementFingerprint == material.fingerprint)
+        #expect(loader.callCount == 2)
+    }
+
     // MARK: - authorization contexts
 
     @Test func testEnrollmentCandidateMayOnlyEnroll() async {
@@ -253,6 +395,98 @@ struct MobileHostDeviceLinkTests {
             self.fingerprint = fingerprint
             self.connectionID = connectionID
         }
+    }
+}
+
+@MainActor
+private func waitForLoaderCall(_ probe: IdentityLoaderThreadProbe) async throws {
+    let clock = ContinuousClock()
+    let deadline = clock.now.advanced(by: .seconds(2))
+    while probe.callCount == 0, clock.now < deadline {
+        try await clock.sleep(for: .milliseconds(10))
+    }
+    #expect(probe.callCount == 1)
+}
+
+@MainActor
+private func waitForIdentityWaiterCount(
+    _ link: MobileHostDeviceLink,
+    expected: Int
+) async throws {
+    let clock = ContinuousClock()
+    let deadline = clock.now.advanced(by: .seconds(2))
+    while link.debugIdentityLoadWaiterCount < expected, clock.now < deadline {
+        try await clock.sleep(for: .milliseconds(10))
+    }
+    #expect(link.debugIdentityLoadWaiterCount == expected)
+}
+
+@MainActor
+private func waitForCompletedIdentityFailure(_ link: MobileHostDeviceLink) async throws {
+    let clock = ContinuousClock()
+    let deadline = clock.now.advanced(by: .seconds(2))
+    while !link.debugIdentityLoadHasCompletedFailure, clock.now < deadline {
+        try await clock.sleep(for: .milliseconds(10))
+    }
+    #expect(link.debugIdentityLoadHasCompletedFailure)
+}
+
+private final class IdentityLoaderThreadProbe: @unchecked Sendable {
+    private let lock = NSLock()
+    private var values: [Bool] = []
+
+    var wasMainThread: Bool? {
+        lock.lock()
+        defer { lock.unlock() }
+        return values.last
+    }
+
+    var callCount: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return values.count
+    }
+
+    func record(_ wasMainThread: Bool) {
+        lock.lock()
+        values.append(wasMainThread)
+        lock.unlock()
+    }
+}
+
+private final class RetryingIdentityLoader: @unchecked Sendable {
+    private let lock = NSLock()
+    private let firstLoadGate = DispatchSemaphore(value: 0)
+    private let firstError: any Error
+    private let replacement: DeviceIdentityMaterial
+    private var calls = 0
+
+    init(firstError: any Error, replacement: DeviceIdentityMaterial) {
+        self.firstError = firstError
+        self.replacement = replacement
+    }
+
+    var callCount: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return calls
+    }
+
+    func releaseFirstLoad() {
+        firstLoadGate.signal()
+    }
+
+    func load() throws -> DeviceIdentityMaterial {
+        lock.lock()
+        calls += 1
+        let call = calls
+        lock.unlock()
+
+        if call == 1 {
+            firstLoadGate.wait()
+            throw firstError
+        }
+        return replacement
     }
 }
 

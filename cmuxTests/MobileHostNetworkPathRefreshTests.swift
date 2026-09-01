@@ -93,6 +93,33 @@ import Testing
         #expect(addresses.allSatisfy { !$0.contains(":") })
     }
 
+    @Test func localNetworkRoutePublicationRequiresRunningPhysicalInterface() {
+        #expect(MobileHostNetworkPathMonitor.localNetworkInterfaceIsEligible(
+            name: "en11",
+            isUp: true,
+            isRunning: true,
+            isLoopback: false
+        ))
+        #expect(!MobileHostNetworkPathMonitor.localNetworkInterfaceIsEligible(
+            name: "en11",
+            isUp: true,
+            isRunning: false,
+            isLoopback: false
+        ))
+        #expect(!MobileHostNetworkPathMonitor.localNetworkInterfaceIsEligible(
+            name: "vnic0",
+            isUp: true,
+            isRunning: true,
+            isLoopback: false
+        ))
+        #expect(!MobileHostNetworkPathMonitor.localNetworkInterfaceIsEligible(
+            name: "bridge100",
+            isUp: true,
+            isRunning: true,
+            isLoopback: false
+        ))
+    }
+
     // MARK: - Republish policy
 
     @Test func firstObservationRepublishes() {
@@ -135,18 +162,18 @@ import Testing
 
     @Test func invalidateDropsCachedResolvedHosts() async {
         let resolver = MobileRouteResolver()
-        // Seed the cache through the awaited resolution path. MagicDNS may be
-        // retained as resolver metadata, but only the numeric tailnet address
-        // may be published to a plaintext compatibility client.
+        // Seed the cache through the awaited resolution path. The authenticated
+        // route set retains both the numeric fast path and durable MagicDNS
+        // fallback.
         let seeded = await resolver.routesResolvingTailscaleDNS(
             port: 51000,
             resolveHosts: { ["old-net.tail1234.ts.net", "100.64.0.1"] }
         )
-        #expect(tailscaleHosts(in: seeded) == ["100.64.0.1"])
+        #expect(tailscaleHosts(in: seeded) == ["100.64.0.1", "old-net.tail1234.ts.net"])
 
         // The cache serves the seeded hosts while fresh.
         let cached = resolver.routes(port: 51000, now: Date(), immediateHosts: { [] })
-        #expect(tailscaleHosts(in: cached) == ["100.64.0.1"])
+        #expect(tailscaleHosts(in: cached) == ["100.64.0.1", "old-net.tail1234.ts.net"])
 
         // After invalidation (the network changed), the old-network hosts are
         // gone and only live interface-scan hosts remain.

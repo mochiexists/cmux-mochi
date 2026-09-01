@@ -39,8 +39,8 @@ extension MobilePairingView {
                 Spacer(minLength: 0)
             }
             step(2, String(
-                localized: "mobile.pairing.step.tailscale",
-                defaultValue: "Connect your iPhone to the same Tailscale network as this Mac."
+                localized: "mobile.pairing.step.network",
+                defaultValue: "Connect your iPhone to the same local network or Tailscale network as this Mac."
             ))
             step(3, String(
                 localized: "mobile.pairing.step.scan",

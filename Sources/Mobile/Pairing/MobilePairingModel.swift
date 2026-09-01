@@ -3,7 +3,7 @@ import Foundation
 import Observation
 
 /// Drives the account-free iPhone pairing window. It turns on the DeviceLink
-/// host, requires a non-loopback Tailscale route, and mints the single QR code
+/// host, requires a non-loopback DeviceLink route, and mints the single QR code
 /// used to enroll the phone. The displayed code is regenerated only when the
 /// user requests a refresh.
 @MainActor
@@ -20,7 +20,7 @@ final class MobilePairingModel {
         /// A phone has attached to the listener; show a paired/success state
         /// instead of the QR + spinner.
         case connected(Ready)
-        /// No non-loopback Tailscale route is available yet.
+        /// No non-loopback DeviceLink route is available yet.
         case needsReachableTransport
         /// The listener could not be started or no ticket could be minted.
         case failed(String)
@@ -30,23 +30,34 @@ final class MobilePairingModel {
     struct Ready: Equatable {
         /// The DeviceLink URL encoded into the QR code.
         let attachURL: String
+        /// Reachable private-LAN `host:port` routes represented by the code.
+        let localNetworkLines: [String]
         /// Reachable Tailscale `host:port` routes represented by the code.
         let tailscaleLines: [String]
 
-        /// Whether at least one Tailscale route resolved.
-        var reachableViaTailscale: Bool { !tailscaleLines.isEmpty }
     }
 
     struct PairingRoutePlan: Equatable, Sendable {
+        /// Private-LAN endpoints eligible for the DeviceLink QR.
+        let localNetworkLines: [String]
         /// The Tailscale endpoints eligible for the DeviceLink QR.
         let tailscaleLines: [String]
 
+        var deviceLinkLines: [String] { localNetworkLines + tailscaleLines }
+
         static func make(routes: [CmxAttachRoute]) -> PairingRoutePlan? {
-            let tailscaleLines = routes.compactMap(
-                MobilePairingModel.phoneReachableTailscaleLine
+            let ordered = routes.sorted { $0.priority < $1.priority }
+            let localNetworkLines = ordered.compactMap {
+                MobilePairingModel.phoneReachableLine($0, kind: .localNetwork)
+            }
+            let tailscaleLines = ordered.compactMap {
+                MobilePairingModel.phoneReachableLine($0, kind: .tailscale)
+            }
+            guard !localNetworkLines.isEmpty || !tailscaleLines.isEmpty else { return nil }
+            return PairingRoutePlan(
+                localNetworkLines: localNetworkLines,
+                tailscaleLines: tailscaleLines
             )
-            guard !tailscaleLines.isEmpty else { return nil }
-            return PairingRoutePlan(tailscaleLines: tailscaleLines)
         }
     }
 
@@ -116,14 +127,17 @@ final class MobilePairingModel {
             state = .ready(
                 Ready(
                     attachURL: pairingURL.absoluteString,
+                    localNetworkLines: routePlan.localNetworkLines,
                     tailscaleLines: routePlan.tailscaleLines
                 )
             )
             observeConnections()
         } catch MobileHostDeviceLinkPairingError.noRoutes {
+            guard generation == refreshGeneration else { return }
             state = .needsReachableTransport
             observeRouteAvailability()
         } catch {
+            guard generation == refreshGeneration else { return }
             state = .failed(
                 String(
                     localized: "mobile.pairing.error.noTicket",
@@ -222,12 +236,13 @@ final class MobilePairingModel {
         UserDefaults.standard.set(true, forKey: MobileHostService.listeningEnabledDefaultsKey)
     }
 
-    /// Formats a phone-reachable Tailscale route for the DeviceLink status UI.
+    /// Formats a phone-reachable route for the DeviceLink status UI.
     /// Iroh and loopback endpoints are deliberately excluded.
-    private nonisolated static func phoneReachableTailscaleLine(
-        _ route: CmxAttachRoute
+    private nonisolated static func phoneReachableLine(
+        _ route: CmxAttachRoute,
+        kind: CmxAttachTransportKind
     ) -> String? {
-        guard route.kind == .tailscale,
+        guard route.kind == kind,
               !CmxLoopbackHost().matches(route),
               case let .hostPort(host, port) = route.endpoint
         else {

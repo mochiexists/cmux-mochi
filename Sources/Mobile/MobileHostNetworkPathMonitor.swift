@@ -95,8 +95,11 @@ final class MobileHostNetworkPathMonitor {
         return "\(status)|\(interfaces)|\(gatewayList)|\(addresses)"
     }
 
-    /// Local IPv4 addresses of all up, non-loopback interfaces (see the type
-    /// doc for why IPv6 is excluded). Sorted by ``signature(status:interfaceNames:gateways:localAddresses:)``,
+    /// Local IPv4 addresses of running physical network interfaces (see the
+    /// type doc for why IPv6 is excluded). Restricting publication to `en*`
+    /// interfaces keeps inactive adapters and VM/Internet-Sharing bridges from
+    /// consuming every LAN-first dial attempt before the Tailscale fallback.
+    /// Sorted by ``signature(status:interfaceNames:gateways:localAddresses:)``,
     /// so order here does not matter.
     nonisolated static func systemLocalIPv4Addresses() -> [String] {
         var interfaces: UnsafeMutablePointer<ifaddrs>?
@@ -105,10 +108,15 @@ final class MobileHostNetworkPathMonitor {
         var addresses: [String] = []
         for pointer in sequence(first: first, next: { $0.pointee.ifa_next }) {
             let interface = pointer.pointee
-            guard let address = interface.ifa_addr,
-                  address.pointee.sa_family == sa_family_t(AF_INET),
-                  (interface.ifa_flags & UInt32(IFF_UP)) != 0,
-                  (interface.ifa_flags & UInt32(IFF_LOOPBACK)) == 0
+            guard let nameCString = interface.ifa_name,
+                  localNetworkInterfaceIsEligible(
+                      name: String(cString: nameCString),
+                      isUp: (interface.ifa_flags & UInt32(IFF_UP)) != 0,
+                      isRunning: (interface.ifa_flags & UInt32(IFF_RUNNING)) != 0,
+                      isLoopback: (interface.ifa_flags & UInt32(IFF_LOOPBACK)) != 0
+                  ),
+                  let address = interface.ifa_addr,
+                  address.pointee.sa_family == sa_family_t(AF_INET)
             else { continue }
             var host = [CChar](repeating: 0, count: Int(NI_MAXHOST))
             guard getnameinfo(
@@ -123,6 +131,16 @@ final class MobileHostNetworkPathMonitor {
             addresses.append(String(cString: host))
         }
         return addresses
+    }
+
+    /// Pure interface admission policy for LAN route publication.
+    nonisolated static func localNetworkInterfaceIsEligible(
+        name: String,
+        isUp: Bool,
+        isRunning: Bool,
+        isLoopback: Bool
+    ) -> Bool {
+        isUp && isRunning && !isLoopback && name.hasPrefix("en")
     }
 
     /// Whether a path observation should be reported: any observation that

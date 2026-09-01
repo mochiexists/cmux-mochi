@@ -19,7 +19,7 @@ public struct CmxNetworkByteTransportFactory: CmxRouteAwareByteTransportFactory 
         (@Sendable (CmxByteTransportRequest) -> NWProtocolTLS.Options?)?
 
     public init(
-        supportedKinds: [CmxAttachTransportKind] = [.tailscale, .debugLoopback],
+        supportedKinds: [CmxAttachTransportKind] = [.localNetwork, .tailscale, .debugLoopback],
         maximumReceiveLength: Int = CmxNetworkByteTransport.defaultMaximumReceiveLength,
         connectTimeoutNanoseconds: UInt64 = CmxNetworkByteTransport.defaultConnectTimeoutNanoseconds,
         // Fork (cmux Mochi): supplied at construction so a factory is never
@@ -35,7 +35,7 @@ public struct CmxNetworkByteTransportFactory: CmxRouteAwareByteTransportFactory 
     }
 
     init(
-        supportedKinds: [CmxAttachTransportKind] = [.tailscale, .debugLoopback],
+        supportedKinds: [CmxAttachTransportKind] = [.localNetwork, .tailscale, .debugLoopback],
         maximumReceiveLength: Int = CmxNetworkByteTransport.defaultMaximumReceiveLength,
         connectTimeoutNanoseconds: UInt64 = CmxNetworkByteTransport.defaultConnectTimeoutNanoseconds,
         tailscaleRouteAuthority: any CmxTailscaleRouteAuthorizing
@@ -54,8 +54,20 @@ public struct CmxNetworkByteTransportFactory: CmxRouteAwareByteTransportFactory 
         guard case let .hostPort(host, port) = route.endpoint else {
             throw CmxNetworkByteTransportError.unsupportedEndpoint(route.endpoint)
         }
-        guard route.kind != .tailscale else {
+        switch route.kind {
+        case .localNetwork:
+            guard CmxPrivateLANHost().matches(host) else {
+                throw CmxNetworkByteTransportError.deviceLinkAuthorizationUnavailable
+            }
             throw CmxNetworkByteTransportError.authorizationIntentRequired
+        case .tailscale:
+            throw CmxNetworkByteTransportError.authorizationIntentRequired
+        case .debugLoopback:
+            guard CmxLoopbackHost().matches(host) else {
+                throw CmxNetworkByteTransportError.deviceLinkAuthorizationUnavailable
+            }
+        case .iroh, .websocket:
+            break
         }
         return try CmxNetworkByteTransport(
             host: host,
@@ -78,9 +90,23 @@ public struct CmxNetworkByteTransportFactory: CmxRouteAwareByteTransportFactory 
             throw CmxNetworkByteTransportError.unsupportedEndpoint(route.endpoint)
         }
         switch route.kind {
+        case .localNetwork:
+            guard CmxPrivateLANHost().matches(host) else {
+                throw CmxNetworkByteTransportError.deviceLinkAuthorizationUnavailable
+            }
+            guard let tlsOptions = deviceLinkTLSOptions?(request) else {
+                throw CmxNetworkByteTransportError.deviceLinkAuthorizationUnavailable
+            }
+            return try CmxNetworkByteTransport(
+                host: host,
+                port: port,
+                maximumReceiveLength: maximumReceiveLength,
+                connectTimeoutNanoseconds: connectTimeoutNanoseconds,
+                tlsOptions: tlsOptions
+            )
         case .tailscale:
             guard let tlsOptions = deviceLinkTLSOptions?(request) else {
-                throw CmxNetworkByteTransportError.tailscaleAuthorizationUnavailable
+                throw CmxNetworkByteTransportError.deviceLinkAuthorizationUnavailable
             }
             return CmxPreparingTailscaleByteTransport(
                 request: request,
@@ -94,10 +120,10 @@ public struct CmxNetworkByteTransportFactory: CmxRouteAwareByteTransportFactory 
             // is still mutual-TLS-only. Loopback is not an authentication
             // exception.
             guard let tlsOptions = deviceLinkTLSOptions?(request) else {
-                throw CmxNetworkByteTransportError.tailscaleAuthorizationUnavailable
+                throw CmxNetworkByteTransportError.deviceLinkAuthorizationUnavailable
             }
-            guard CmxLoopbackHost().matches(route) else {
-                throw CmxNetworkByteTransportError.tailscaleAuthorizationUnavailable
+            guard CmxLoopbackHost().matches(host) else {
+                throw CmxNetworkByteTransportError.deviceLinkAuthorizationUnavailable
             }
             return try CmxNetworkByteTransport(
                 host: host,

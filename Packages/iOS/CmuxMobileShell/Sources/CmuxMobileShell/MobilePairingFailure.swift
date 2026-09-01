@@ -439,6 +439,8 @@ extension MobilePairingFailureCategory {
                 return .connectionDropped(host: host, port: port)
             case .tailscaleAuthorizationUnavailable:
                 return .tailscaleUnavailable(host: host, port: port)
+            case .deviceLinkAuthorizationUnavailable:
+                return .authFailed
             case .authorizationIntentRequired, .unsupportedAuthorizationMode:
                 return .unsupportedRoute
             case .emptyHost, .invalidPort, .invalidMaximumReceiveLength,

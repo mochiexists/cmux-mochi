@@ -58,3 +58,27 @@ import Testing
 
     #expect(result == .unsupportedRoute)
 }
+
+@Test func pingReportsAuthenticationRequiredForSecureLANRoute() async throws {
+    let route = try CmxAttachRoute(
+        id: "local-network",
+        kind: .localNetwork,
+        endpoint: .hostPort(host: "192.168.1.20", port: 49_831)
+    )
+
+    let result = await CmxNetworkRoutePinger().ping(route)
+
+    #expect(result == .authenticationRequired)
+}
+
+@Test func pingRejectsPublicHostMislabeledAsSecureLAN() async throws {
+    let route = try CmxAttachRoute(
+        id: "public-as-local-network",
+        kind: .localNetwork,
+        endpoint: .hostPort(host: "203.0.113.10", port: 49_831)
+    )
+
+    let result = await CmxNetworkRoutePinger().ping(route)
+
+    #expect(result == .unsupportedRoute)
+}

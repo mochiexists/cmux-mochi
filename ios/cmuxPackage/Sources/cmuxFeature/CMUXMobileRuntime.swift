@@ -27,7 +27,7 @@ public struct CMUXMobileRuntime: Sendable, MobileSyncRuntime {
     public var artifactLaneProvider: MobileArtifactLaneProvider?
 
     public init(
-        supportedRouteKinds: [CmxAttachTransportKind] = [.tailscale, .debugLoopback],
+        supportedRouteKinds: [CmxAttachTransportKind] = [.localNetwork, .tailscale, .debugLoopback],
         transportFactory: any CmxByteTransportFactory,
         rpcRequestTimeoutNanoseconds: UInt64 = CMUXMobileRuntime.defaultRPCRequestTimeoutNanoseconds,
         pairingRequestTimeoutNanoseconds: UInt64 = CMUXMobileRuntime.defaultPairingRequestTimeoutNanoseconds,

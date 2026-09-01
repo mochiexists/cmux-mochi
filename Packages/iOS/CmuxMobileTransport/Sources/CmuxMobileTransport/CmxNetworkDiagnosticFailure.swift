@@ -7,8 +7,8 @@ extension CmxNetworkByteTransportError: DiagnosticFailureProviding {
             .timedOut
         case let .connectionFailed(_, kind):
             kind.diagnosticFailureKind
-        case .tailscaleAuthorizationUnavailable, .authorizationIntentRequired,
-             .unsupportedAuthorizationMode:
+        case .deviceLinkAuthorizationUnavailable, .tailscaleAuthorizationUnavailable,
+             .authorizationIntentRequired, .unsupportedAuthorizationMode:
             .authorizationFailed
         case .unsupportedRouteKind, .unsupportedEndpoint:
             .unsupportedRoute

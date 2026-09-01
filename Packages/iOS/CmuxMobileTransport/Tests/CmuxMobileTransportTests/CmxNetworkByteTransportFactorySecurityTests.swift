@@ -75,7 +75,7 @@ import Testing
             kind: kind,
             endpoint: .hostPort(host: host, port: 49831)
         )
-        #expect(throws: CmxNetworkByteTransportError.tailscaleAuthorizationUnavailable) {
+        #expect(throws: CmxNetworkByteTransportError.deviceLinkAuthorizationUnavailable) {
             _ = try factory.makeTransport(
                 for: CmxByteTransportRequest(
                     route: route,
@@ -84,6 +84,51 @@ import Testing
                 )
             )
         }
+    }
+}
+
+/// Route kinds are trust claims, not permission to dial an arbitrary address.
+/// Even with a valid DeviceLink identity, the network factory must reject a
+/// public host mislabeled as LAN and a non-loopback host mislabeled as debug.
+@Test func rejectsHostsOutsideTheirDeclaredPrivateNetworkKind() throws {
+    let factory = CmxNetworkByteTransportFactory(
+        supportedKinds: [.debugLoopback, .localNetwork],
+        deviceLinkTLSOptions: { _ in NWProtocolTLS.Options() }
+    )
+
+    for (id, kind, host) in [
+        ("public-as-lan", CmxAttachTransportKind.localNetwork, "203.0.113.10"),
+        ("lan-as-loopback", CmxAttachTransportKind.debugLoopback, "192.168.1.20"),
+    ] {
+        let route = try CmxAttachRoute(
+            id: id,
+            kind: kind,
+            endpoint: .hostPort(host: host, port: 49_831)
+        )
+        #expect(throws: CmxNetworkByteTransportError.deviceLinkAuthorizationUnavailable) {
+            _ = try factory.makeTransport(
+                for: CmxByteTransportRequest(
+                    route: route,
+                    expectedPeerDeviceID: "mac-1",
+                    authorizationMode: .transportAdmission
+                )
+            )
+        }
+    }
+}
+
+/// Route-only probes are deliberately plaintext, so their debug label must not
+/// be usable to dial beyond the local host.
+@Test func routeOnlyDebugProbeRejectsNonLoopbackHost() throws {
+    let factory = CmxNetworkByteTransportFactory(supportedKinds: [.debugLoopback])
+    let route = try CmxAttachRoute(
+        id: "public-as-loopback-probe",
+        kind: .debugLoopback,
+        endpoint: .hostPort(host: "203.0.113.10", port: 49_831)
+    )
+
+    #expect(throws: CmxNetworkByteTransportError.deviceLinkAuthorizationUnavailable) {
+        _ = try factory.makeTransport(for: route)
     }
 }
 

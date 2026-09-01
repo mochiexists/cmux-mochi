@@ -40,6 +40,8 @@ public enum CmxNetworkByteTransportError: Error, Equatable, Sendable {
     case authorizationIntentRequired
     /// The request's authorization mode cannot be served by plaintext TCP.
     case unsupportedAuthorizationMode(CmxTransportAuthorizationMode)
+    /// No DeviceLink identity could be resolved for this authenticated request.
+    case deviceLinkAuthorizationUnavailable
     /// The exact legacy peer, live Tailscale-range tunnel, and effective
     /// connection endpoints could not all be proven.
     case tailscaleAuthorizationUnavailable

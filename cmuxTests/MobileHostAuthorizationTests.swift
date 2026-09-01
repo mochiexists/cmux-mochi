@@ -98,12 +98,12 @@ struct MobileHostAuthorizationTests {
 
     /// A bind failure has to name the port to be actionable: the port is fixed
     /// by design, so the reader's next step is freeing that specific one.
-    @Test func testMobileHostBindFailureNamesThePortAndTheLikelyCause() {
+    @Test func testMobileHostBindFailureNamesThePortWithoutRawNetworkError() {
         let message = MobileHostService.bindFailureDescription(
             port: 58465, error: NWError.posix(.EADDRINUSE)
         )
         #expect(message.contains("58465"))
-        #expect(message.lowercased().contains("already listening"))
+        #expect(!message.contains("POSIXErrorCode"))
     }
 
 
@@ -138,7 +138,7 @@ struct MobileHostAuthorizationTests {
         let resolver = MobileRouteResolver()
         let snapshot = resolver.routes(
             port: 61234,
-            tailscaleHosts: [
+            resolvedTailscaleHosts: [
                 "work-mac.tailnet.ts.net",
                 "100.71.210.41",
                 "fd7a:115c:a1e0::1234",
@@ -173,7 +173,16 @@ struct MobileHostAuthorizationTests {
         let resolver = MobileRouteResolver()
         let snapshot = resolver.routes(
             port: 61_234,
-            localNetworkHosts: ["192.168.1.20", "10.0.0.8", "100.71.210.41", "203.0.113.10"],
+            localNetworkHosts: [
+                "192.168.1.20",
+                "10.0.0.8",
+                "172.16.0.2",
+                "172.17.0.3",
+                "172.18.0.4",
+                "172.19.0.5",
+                "100.71.210.41",
+                "203.0.113.10",
+            ],
             tailscaleHosts: ["100.71.210.41", "work-mac.tailnet.ts.net"]
         )
 
@@ -181,14 +190,38 @@ struct MobileHostAuthorizationTests {
         #expect(networkRoutes.map(\.kind) == [
             .localNetwork,
             .localNetwork,
+            .localNetwork,
+            .localNetwork,
+            .localNetwork,
             .tailscale,
             .tailscale,
         ])
-        #expect(networkRoutes.map(\.priority) == [5, 6, 10, 100])
+        #expect(networkRoutes.map(\.priority) == [5, 6, 7, 8, 9, 10, 100])
         #expect(networkRoutes.compactMap { route -> String? in
             guard case let .hostPort(host, _) = route.endpoint else { return nil }
             return host
-        } == ["192.168.1.20", "10.0.0.8", "100.71.210.41", "work-mac.tailnet.ts.net"])
+        } == [
+            "192.168.1.20",
+            "10.0.0.8",
+            "172.16.0.2",
+            "172.17.0.3",
+            "172.18.0.4",
+            "100.71.210.41",
+            "work-mac.tailnet.ts.net",
+        ])
+    }
+
+    @Test func testResolvedTailscaleRepublishPreservesPrivateLANRoutes() throws {
+        let resolver = MobileRouteResolver()
+        let snapshot = resolver.routes(
+            port: 61_234,
+            resolvedTailscaleHosts: ["100.71.210.41", "work-mac.tailnet.ts.net"],
+            localNetworkHosts: { ["192.168.1.20"] }
+        )
+
+        let networkRoutes = snapshot.routes.filter { $0.kind != .debugLoopback }
+        #expect(networkRoutes.map(\.kind) == [.localNetwork, .tailscale, .tailscale])
+        #expect(networkRoutes.map(\.priority) == [5, 10, 100])
     }
     @Test func testMobileRouteResolverImmediateSnapshotUsesNumericTailscaleFallbackWithoutDNS() throws {
         let resolver = MobileRouteResolver()

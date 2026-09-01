@@ -215,6 +215,95 @@ import Testing
         #expect(merged.count == 2)
     }
 
+    @Test func constrainedReconnectMergeKeepsFreshLANBeforePersistedTailscale() throws {
+        let oldLAN = try CmxAttachRoute(
+            id: "local-network-old",
+            kind: .localNetwork,
+            endpoint: .hostPort(host: "192.168.1.20", port: 50_906),
+            priority: 0
+        )
+        let oldTailscale = try CmxAttachRoute(
+            id: "tailscale-old",
+            kind: .tailscale,
+            endpoint: .hostPort(host: "100.82.214.112", port: 50_906),
+            priority: 1
+        )
+        let freshLAN = try CmxAttachRoute(
+            id: "local-network-new",
+            kind: .localNetwork,
+            endpoint: .hostPort(host: "192.168.1.77", port: 50_906),
+            priority: 5
+        )
+
+        let merged = MobileShellComposite.mergedReconnectRoutes(
+            ticketRoutes: [freshLAN],
+            storedRoutes: [oldLAN, oldTailscale],
+            at: .distantPast
+        )
+
+        #expect(merged.map(\.kind) == [.localNetwork, .localNetwork, .tailscale])
+    }
+
+    @Test func reconnectRouteOrderingIsTransitiveAcrossEveryTransportKind() throws {
+        let routes = try [
+            CmxAttachRoute(
+                id: "tailscale",
+                kind: .tailscale,
+                endpoint: .hostPort(host: "100.82.214.112", port: 50_906),
+                priority: 0
+            ),
+            CmxAttachRoute(
+                id: "iroh",
+                kind: .iroh,
+                endpoint: .peer(
+                    id: String(repeating: "e", count: 64),
+                    relayHint: nil,
+                    directAddrs: [],
+                    relayURL: nil
+                ),
+                priority: 1
+            ),
+            CmxAttachRoute(
+                id: "websocket",
+                kind: .websocket,
+                endpoint: .url("wss://example.invalid/cmux"),
+                priority: 0
+            ),
+            CmxAttachRoute(
+                id: "local-network",
+                kind: .localNetwork,
+                endpoint: .hostPort(host: "192.168.1.20", port: 50_906),
+                priority: 2
+            ),
+            CmxAttachRoute(
+                id: "loopback",
+                kind: .debugLoopback,
+                endpoint: .hostPort(host: "127.0.0.1", port: 50_906),
+                priority: 3
+            ),
+        ]
+
+        let ordered = routes.sorted(by: MobileShellComposite.routeSortsBefore)
+
+        let expected: [CmxAttachTransportKind] = [
+            .debugLoopback,
+            .localNetwork,
+            .tailscale,
+            .websocket,
+            .iroh,
+        ]
+        #expect(ordered.map { $0.kind } == expected)
+
+        for left in routes {
+            #expect(!MobileShellComposite.routeSortsBefore(left, left))
+            for middle in routes where MobileShellComposite.routeSortsBefore(left, middle) {
+                for right in routes where MobileShellComposite.routeSortsBefore(middle, right) {
+                    #expect(MobileShellComposite.routeSortsBefore(left, right))
+                }
+            }
+        }
+    }
+
     @Test func reconnectActiveMacFallsThroughStaleRouteToGoodRouteInOneAttempt() async throws {
         let clock = TestClock()
         let router = LivenessHostRouter()

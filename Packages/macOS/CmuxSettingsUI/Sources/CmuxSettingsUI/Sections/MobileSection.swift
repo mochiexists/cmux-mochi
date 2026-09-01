@@ -187,7 +187,12 @@ public struct MobileSection: View {
             applyResult = result
             // Keep the field on the attempted value (with its warning) when the
             // port is in use; otherwise let it track the persisted value again.
-            if case .portInUse = result {} else { editedPort = nil }
+            switch result {
+            case .applied, .savedForLater:
+                editedPort = nil
+            case .portInUse, .invalid, .failed:
+                break
+            }
             isApplying = false
         }
     }
@@ -227,6 +232,11 @@ public struct MobileSection: View {
                     systemImage: "checkmark.circle.fill"
                 )
                 .foregroundStyle(.secondary)
+            }
+        } else if case let .failed(message) = applyResult {
+            statusCaption {
+                Label(message, systemImage: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.red)
             }
         } else if iOSPairingHost.current, let snapshot = status.current {
             statusCaption { boundPortStatusText(snapshot) }

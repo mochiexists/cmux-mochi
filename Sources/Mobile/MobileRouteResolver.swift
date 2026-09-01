@@ -11,6 +11,8 @@ struct MobileHostRouteSnapshot: Sendable {
 }
 
 final class MobileRouteResolver: @unchecked Sendable {
+    private static let localNetworkPriorityBase = 5
+    private static let maximumLocalNetworkRoutes = 5
     private static let tailscaleRouteCacheTTL: TimeInterval = 30
 
     private let cacheLock = NSLock()
@@ -27,12 +29,16 @@ final class MobileRouteResolver: @unchecked Sendable {
     func routes(
         port: Int,
         now: Date = Date(),
+        localNetworkHosts: () -> [String] = {
+            MobileRouteResolver.localNetworkRouteHosts()
+        },
         immediateHosts: () -> [String] = { MobileRouteResolver.tailscaleRouteHosts(resolveDNS: false) }
     ) -> MobileHostRouteSnapshot {
         refreshTailscaleRoutes()
         let cachedHosts = resolvedTailscaleRouteHostsFromCache(now: now) ?? []
         return routes(
             port: port,
+            localNetworkHosts: localNetworkHosts(),
             tailscaleHosts: Self.deduplicatedHosts(cachedHosts + immediateHosts())
         )
     }
@@ -45,7 +51,11 @@ final class MobileRouteResolver: @unchecked Sendable {
         now: Date = Date()
     ) async -> MobileHostRouteSnapshot {
         let hosts = await resolvedTailscaleRouteHosts(resolveHosts: resolveHosts, now: now)
-        return routes(port: port, tailscaleHosts: hosts)
+        return routes(
+            port: port,
+            localNetworkHosts: Self.localNetworkRouteHosts(),
+            tailscaleHosts: hosts
+        )
     }
 
     /// Drop the resolved-host cache and orphan any in-flight resolution.
@@ -66,7 +76,30 @@ final class MobileRouteResolver: @unchecked Sendable {
         cacheLock.unlock()
     }
 
-    func routes(port: Int, tailscaleHosts: [String]) -> MobileHostRouteSnapshot {
+    /// Builds the publication snapshot after a Tailscale refresh completes.
+    ///
+    /// The refresh result contains only Tailscale hosts, so LAN discovery must
+    /// be repeated here. Otherwise this second-phase publication overwrites the
+    /// immediate LAN-bearing snapshot with a Tailscale-only one.
+    func routes(
+        port: Int,
+        resolvedTailscaleHosts: [String],
+        localNetworkHosts: () -> [String] = {
+            MobileRouteResolver.localNetworkRouteHosts()
+        }
+    ) -> MobileHostRouteSnapshot {
+        routes(
+            port: port,
+            localNetworkHosts: localNetworkHosts(),
+            tailscaleHosts: resolvedTailscaleHosts
+        )
+    }
+
+    func routes(
+        port: Int,
+        localNetworkHosts: [String],
+        tailscaleHosts: [String]
+    ) -> MobileHostRouteSnapshot {
         var resolved: [CmxAttachRoute] = []
 
         if Self.includesDebugLoopbackRoute {
@@ -77,6 +110,21 @@ final class MobileRouteResolver: @unchecked Sendable {
                 priority: 0
             ) {
                 resolved.append(debugRoute)
+            }
+        }
+
+        let orderedLocalNetworkHosts = Self.deduplicatedHosts(localNetworkHosts)
+            .filter { CmxPrivateLANHost().matches($0) }
+            .prefix(Self.maximumLocalNetworkRoutes)
+        for (index, localHost) in orderedLocalNetworkHosts.enumerated() {
+            let suffix = index == 0 ? "" : "_\(index + 1)"
+            if let route = try? CmxAttachRoute(
+                id: "\(CmxAttachTransportKind.localNetwork.rawValue)\(suffix)",
+                kind: .localNetwork,
+                endpoint: .hostPort(host: localHost, port: port),
+                priority: Self.localNetworkPriorityBase + index
+            ) {
+                resolved.append(route)
             }
         }
 
@@ -258,6 +306,11 @@ final class MobileRouteResolver: @unchecked Sendable {
             .map(\.address))
 
         return deduplicatedHosts(hosts)
+    }
+
+    private static func localNetworkRouteHosts() -> [String] {
+        deduplicatedHosts(MobileHostNetworkPathMonitor.systemLocalIPv4Addresses())
+            .filter { CmxPrivateLANHost().matches($0) }
     }
 
     private static func deduplicatedHosts(_ hosts: [String]) -> [String] {

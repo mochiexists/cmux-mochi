@@ -57,11 +57,12 @@ struct cmuxApp: App {
         // `debugLoopback` (127.0.0.1) backs the UI-test mock Mac. Enable it on
         // the simulator and on DEBUG device builds so on-device XCUITests can
         // attach to an in-runner mock host; release device builds keep only
-        // real transports.
+        // real transports. Local Network and Tailscale share DeviceLink mTLS;
+        // local routes are tried first and Tailscale remains the fallback.
         #if targetEnvironment(simulator) || DEBUG
-        let supportedKinds: [CmxAttachTransportKind] = [.debugLoopback, .tailscale]
+        let supportedKinds: [CmxAttachTransportKind] = [.debugLoopback, .localNetwork, .tailscale]
         #else
-        let supportedKinds: [CmxAttachTransportKind] = [.tailscale]
+        let supportedKinds: [CmxAttachTransportKind] = [.localNetwork, .tailscale]
         #endif
         // Fork (cmux Mochi): tailnet dials are mutual TLS, so the factory needs
         // this device's identity and the Mac's pin. Supplied as a closure so the

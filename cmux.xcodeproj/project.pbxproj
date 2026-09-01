@@ -1398,7 +1398,6 @@ C0DE71B10000000000000001 /* AppDelegate+AgentChatNotifications.swift in Sources 
 		C0DE10510000000000000001 /* MobileHostServiceSettingsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE10510000000000000002 /* MobileHostServiceSettingsTests.swift */; };
 		B8B0FA00000000000000000B /* MobileHostStatusRouteProbe.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8B0FA00000000000000000C /* MobileHostStatusRouteProbe.swift */; };
 		B8B0FA000000000000000013 /* MobileHostStatusRouteProbeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8B0FA000000000000000014 /* MobileHostStatusRouteProbeTests.swift */; };
-		B8B0FA00000000000000000D /* MobileHostTailnetInterface.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8B0FA00000000000000000E /* MobileHostTailnetInterface.swift */; };
 		C7A50B000000000000000020 /* MobileHostTerminalTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7A50B000000000000000021 /* MobileHostTerminalTheme.swift */; };
 		7A1B2C3D4E5F60718293A4B6 /* MobileHostTerminalThemeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A1B2C3D4E5F60718293A4B5 /* MobileHostTerminalThemeTests.swift */; };
 		C1A070000000000000000005 /* MobileHostTransportAuthorization.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A070000000000000000015 /* MobileHostTransportAuthorization.swift */; };
@@ -4037,7 +4036,6 @@ C0DE71B10000000000000002 /* AppDelegate+AgentChatNotifications.swift */ = {isa =
 		C0DE10510000000000000002 /* MobileHostServiceSettingsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileHostServiceSettingsTests.swift; sourceTree = "<group>"; };
 		B8B0FA00000000000000000C /* MobileHostStatusRouteProbe.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = "MobileHostStatusRouteProbe.swift"; sourceTree = "<group>"; };
 		B8B0FA000000000000000014 /* MobileHostStatusRouteProbeTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = "MobileHostStatusRouteProbeTests.swift"; sourceTree = "<group>"; };
-		B8B0FA00000000000000000E /* MobileHostTailnetInterface.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = "MobileHostTailnetInterface.swift"; sourceTree = "<group>"; };
 		C7A50B000000000000000021 /* MobileHostTerminalTheme.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MobileHostTerminalTheme.swift; sourceTree = "<group>"; };
 		7A1B2C3D4E5F60718293A4B5 /* MobileHostTerminalThemeTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MobileHostTerminalThemeTests.swift; sourceTree = "<group>"; };
 		C1A070000000000000000015 /* MobileHostTransportAuthorization.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MobileHostTransportAuthorization.swift; sourceTree = "<group>"; };
@@ -5568,7 +5566,6 @@ C0DE71B10000000000000002 /* AppDelegate+AgentChatNotifications.swift */ = {isa =
 				F1100000000000000000000D /* MobileBrowserWireEncoder.swift */,
 				B8B056D90000000000000002 /* MobileHostIdentity.swift */,
 				B8B0FA000000000000000010 /* MobileRouteReachabilityService.swift */,
-				B8B0FA00000000000000000E /* MobileHostTailnetInterface.swift */,
 				B8B0FA00000000000000000C /* MobileHostStatusRouteProbe.swift */,
 				B8B0FA00000000000000000A /* MobileHostService+DeviceLink.swift */,
 				B8B0FA000000000000000008 /* MobileHostRouteProbing.swift */,
@@ -9350,7 +9347,6 @@ C0DE71B10000000000000002 /* AppDelegate+AgentChatNotifications.swift */ = {isa =
 				B8B0FA000000000000000009 /* MobileHostService+DeviceLink.swift in Sources */,
 				F67FBC88671C40AC3A3284CE /* MobileHostService.swift in Sources */,
 				B8B0FA00000000000000000B /* MobileHostStatusRouteProbe.swift in Sources */,
-				B8B0FA00000000000000000D /* MobileHostTailnetInterface.swift in Sources */,
 				C7A50B000000000000000020 /* MobileHostTerminalTheme.swift in Sources */,
 				C1A070000000000000000005 /* MobileHostTransportAuthorization.swift in Sources */,
 				C0DEFEF90000000000000001 /* MobileNotificationFeedWireItem.swift in Sources */,

@@ -115,16 +115,10 @@ extension MobileShellComposite {
         outcome: MobileDeviceLinkEnrollmentOutcome,
         payload: PairingPayload
     ) async -> Bool {
-        // Prefer the route that actually completed the pairing handshake: it is
-        // the one proven to reach this Mac from this device. A simulator can
-        // only use loopback (it shares the Mac's network stack, which cannot
-        // TCP-connect to the Mac's own tailnet address), while a phone reaches
-        // the tailnet address — so neither ordering is right in general, but
-        // "what just worked" always is.
-        let orderedDescriptions = [outcome.route] + payload.routes.filter { $0 != outcome.route }
-        let routes = orderedDescriptions.enumerated().compactMap { index, description in
-            Self.deviceLinkRoute(from: description, priority: index)
-        }
+        let routes = Self.orderedDeviceLinkRoutes(
+            payloadRoutes: payload.routes,
+            successfulRoute: outcome.route
+        )
         // Record which pairing belongs to this Mac while both halves are known.
         // Reconnect otherwise has to guess which key to offer, and with more
         // than one paired Mac it guesses wrong.
@@ -158,9 +152,12 @@ extension MobileShellComposite {
         return persisted
     }
 
-    /// Rebuilds the route that worked, so reconnection starts where pairing
-    /// succeeded rather than re-discovering it.
-    private static func deviceLinkRoute(from description: String, priority: Int = 0) -> CmxAttachRoute? {
+    /// Rebuilds one advertised DeviceLink route with its concrete transport
+    /// kind so reconnect ordering can prefer LAN without losing fallback.
+    nonisolated static func deviceLinkRoute(
+        from description: String,
+        priority: Int = 0
+    ) -> CmxAttachRoute? {
         guard let (host, port) = MobileDeviceLinkEnroller.splitHostPort(description) else {
             return nil
         }
@@ -168,14 +165,65 @@ extension MobileShellComposite {
         // a tailscale route is contradictory, and route policy checks disagree
         // about such a row - which is how a simulator pairing ends up with a
         // stored route nothing will dial.
-        let isLoopback = host == "127.0.0.1" || host == "::1" || host.lowercased() == "localhost"
-        let kind: CmxAttachTransportKind = isLoopback ? .debugLoopback : .tailscale
+        let isLoopback = CmxLoopbackHost().matches(host)
+        let kind: CmxAttachTransportKind
+        if isLoopback {
+            kind = .debugLoopback
+        } else if CmxPrivateLANHost().matches(host) {
+            kind = .localNetwork
+        } else {
+            kind = .tailscale
+        }
         return try? CmxAttachRoute(
             id: "\(kind.rawValue)-\(priority)",
             kind: kind,
             endpoint: .hostPort(host: host, port: port),
             priority: priority
         )
+    }
+
+    /// Rebuilds payload routes in the reconnect contract order: loopback for a
+    /// simulator, then authenticated LAN, then Tailscale fallback. The route
+    /// that completed enrollment breaks ties within one transport kind, but a
+    /// temporary cellular pairing must not pin Tailscale ahead of LAN forever.
+    nonisolated static func orderedDeviceLinkRoutes(
+        payloadRoutes: [String],
+        successfulRoute: String
+    ) -> [CmxAttachRoute] {
+        let successfulFirst = [successfulRoute] + payloadRoutes.filter { $0 != successfulRoute }
+        let unprioritized = successfulFirst.compactMap { deviceLinkRoute(from: $0) }
+        let ordered = unprioritized.enumerated().sorted { left, right in
+            let leftRank = deviceLinkRouteRank(left.element.kind)
+            let rightRank = deviceLinkRouteRank(right.element.kind)
+            if leftRank != rightRank {
+                return leftRank < rightRank
+            }
+            return left.offset < right.offset
+        }
+        return ordered.enumerated().compactMap { priority, item in
+            guard case let .hostPort(host, port) = item.element.endpoint else {
+                return nil
+            }
+            return try? CmxAttachRoute(
+                id: "\(item.element.kind.rawValue)-\(priority)",
+                kind: item.element.kind,
+                endpoint: .hostPort(host: host, port: port),
+                priority: priority
+            )
+        }
+    }
+
+    nonisolated static func deviceLinkRouteRank(_ kind: CmxAttachTransportKind) -> Int {
+        switch kind {
+        case .debugLoopback:
+            return 0
+        case .localNetwork:
+            return 1
+        case .tailscale:
+            return 2
+        case .iroh, .websocket:
+            return 3
+        }
     }
 
     /// Maps an enrollment failure onto the pairing UI.
