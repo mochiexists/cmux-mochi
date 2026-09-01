@@ -7,6 +7,21 @@ import Testing
 
 @Suite("Hive mobile runtime")
 struct HiveMobileRuntimeTests {
+    @Test("excludes loopback routes unless explicitly enabled")
+    func excludesLoopbackByDefault() {
+        let defaultRuntime = HiveMobileRuntime.network { _ in nil }
+        let debugRuntime = HiveMobileRuntime.network(
+            allowsLoopbackRoutes: true
+        ) { _ in nil }
+
+        #expect(defaultRuntime.supportedRouteKinds == [.localNetwork, .tailscale])
+        #expect(debugRuntime.supportedRouteKinds == [
+            .debugLoopback,
+            .localNetwork,
+            .tailscale,
+        ])
+    }
+
     @Test("resolves TLS from the immutable peer device and instance target")
     func resolvesExactPeerCredential() throws {
         let recorder = TLSRequestRecorder()
