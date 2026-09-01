@@ -15,12 +15,11 @@ public final class HiveWorkspaceCoordinator {
     }
 
     public private(set) var phase: Phase = .idle
+    /// Latest immutable workspace projection from the shared shell engine.
+    public private(set) var workspaces: [MobileWorkspacePreview]
 
     @ObservationIgnored private let shell: any HiveShellServing
     @ObservationIgnored private let pairingLinkDecoder: HivePairingLinkDecoder
-
-    /// Current remote workspace snapshots, including owning Mac identity/tag.
-    public var workspaces: [MobileWorkspacePreview] { shell.workspaces }
 
     public init(
         shell: any HiveShellServing,
@@ -28,6 +27,7 @@ public final class HiveWorkspaceCoordinator {
     ) {
         self.shell = shell
         self.pairingLinkDecoder = pairingLinkDecoder
+        workspaces = shell.workspaces
     }
 
     /// Create a renderer adapter for one terminal exposed by the shell.
@@ -60,6 +60,7 @@ public final class HiveWorkspaceCoordinator {
             )
             return false
         }
+        refreshWorkspaceSnapshot()
         phase = .connected
         return true
     }
@@ -73,6 +74,7 @@ public final class HiveWorkspaceCoordinator {
             refreshBackupBeforeDial: false
         )
         if connected {
+            refreshWorkspaceSnapshot()
             phase = .connected
         } else {
             phase = .failed(
@@ -81,5 +83,10 @@ public final class HiveWorkspaceCoordinator {
             )
         }
         return connected
+    }
+
+    /// Refreshes the UI snapshot after background shell state changes.
+    public func refreshWorkspaceSnapshot() {
+        workspaces = shell.workspaces
     }
 }
