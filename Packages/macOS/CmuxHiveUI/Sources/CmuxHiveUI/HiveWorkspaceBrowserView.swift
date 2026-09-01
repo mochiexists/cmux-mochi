@@ -122,7 +122,7 @@ public struct HiveWorkspaceBrowserView: View {
         } else {
             List {
                 ForEach(HiveComputerWorkspaceGroup.grouped(coordinator.workspaces)) { computer in
-                    Section(computer.displayName) {
+                    Section {
                         ForEach(computer.workspaces) { workspace in
                             VStack(alignment: .leading, spacing: 6) {
                                 Text(workspace.name).font(.headline)
@@ -138,6 +138,15 @@ public struct HiveWorkspaceBrowserView: View {
                                 }
                             }
                             .padding(.vertical, 4)
+                        }
+                    } header: {
+                        HStack(spacing: 6) {
+                            Text(computer.displayName)
+                            if let instanceTag = computer.instanceTag, !instanceTag.isEmpty {
+                                Text(instanceTag)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
                         }
                     }
                 }
