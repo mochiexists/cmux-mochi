@@ -30,7 +30,7 @@ public final class HiveComposition {
         }
         let shell = MobileShellComposite(
             runtime: runtime,
-            isSignedIn: true,
+            isSignedIn: false,
             pairedMacStore: pairedMacStore,
             clientIDRepository: MobileClientIDRepository(defaults: defaults),
             pairingHintDefaults: defaults,

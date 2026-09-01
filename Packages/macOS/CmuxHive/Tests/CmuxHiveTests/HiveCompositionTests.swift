@@ -25,6 +25,7 @@ struct HiveCompositionTests {
         )
 
         #expect(composition.coordinator.phase == .idle)
+        #expect(!composition.shell.isSignedIn)
         #expect(FileManager.default.fileExists(atPath: databaseURL.path))
     }
 }

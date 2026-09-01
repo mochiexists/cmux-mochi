@@ -546,7 +546,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
     /// Coordinates remote tmux (`ssh … tmux -CC`) mirroring; composition-root owned.
     let remoteTmuxController = RemoteTmuxController()
     /// Owns DeviceLink-authenticated Mac-to-Mac workspace viewing.
-    let hiveWorkspaceService = HiveWorkspaceService()
+    lazy var hiveWorkspaceService = HiveWorkspaceService()
     /// Composition-root lifetime owner shared by every window's font-size
     /// queue. Window coordinators receive this dependency explicitly; no
     /// coordinator reaches back through `AppDelegate.shared`.
