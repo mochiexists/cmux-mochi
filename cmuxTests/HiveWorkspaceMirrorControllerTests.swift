@@ -1,4 +1,6 @@
+import CMUXMobileCore
 import CmuxHive
+import CmuxMobilePairedMac
 import CmuxMobileShell
 import CmuxMobileShellModel
 import Foundation
@@ -97,6 +99,11 @@ private final class HiveWorkspaceMirrorShellStub: HiveShellServing, HiveTerminal
     var connectionErrorGuidance: String?
     var hasKnownHivePairing = true
     var isHiveMacConnected = true
+    var hiveConnectionState: MobileConnectionState = .connected
+    var hiveMacConnectionStatus: MobileMacConnectionStatus = .connected
+    var hiveIsReconnecting = false
+    var hiveActiveRoute: CmxAttachRoute?
+    var hivePairedMacs: [MobilePairedMac] = []
     private var outputContinuations: [UUID: AsyncStream<MobileTerminalOutputChunk>.Continuation] = [:]
 
     init(workspaces: [MobileWorkspacePreview]) {
@@ -110,6 +117,22 @@ private final class HiveWorkspaceMirrorShellStub: HiveShellServing, HiveTerminal
     func reconnectActiveMacIfAvailable(
         stackUserID: String?,
         refreshBackupBeforeDial: Bool
+    ) async -> Bool {
+        true
+    }
+
+    func loadPairedMacs() async {}
+
+    func removeComputer(
+        representativeID: String,
+        aliasIDs: [String]
+    ) async -> MobileComputerRemovalResult {
+        .removed
+    }
+
+    func removeComputerLocally(
+        representativeID: String,
+        aliasIDs: [String]
     ) async -> Bool {
         true
     }
