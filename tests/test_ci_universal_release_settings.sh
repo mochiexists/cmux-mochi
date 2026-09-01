@@ -15,6 +15,22 @@ do
   fi
 done
 
+if ! grep -Fq -- 'url = https://github.com/mochiexists/ghostty.git' "$ROOT_DIR/.gitmodules"; then
+  echo "FAIL: the ghostty submodule must use the fork that contains the pinned commit"
+  exit 1
+fi
+
+for file in \
+  "$ROOT_DIR/.github/workflows/build-ghosttykit.yml" \
+  "$ROOT_DIR/scripts/download-prebuilt-ghosttykit.sh" \
+  "$ROOT_DIR/scripts/ensure-ghosttykit.sh"
+do
+  if ! grep -Fq -- 'mochiexists/ghostty' "$file"; then
+    echo "FAIL: $file must publish or download GhosttyKit from mochiexists/ghostty"
+    exit 1
+  fi
+done
+
 if ! grep -Fq -- '-Dsentry=false' "$ROOT_DIR/scripts/build-sign-upload.sh"; then
   echo "FAIL: build-sign-upload.sh must disable Ghostty native Sentry"
   exit 1
