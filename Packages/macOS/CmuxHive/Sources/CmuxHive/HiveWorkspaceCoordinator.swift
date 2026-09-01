@@ -30,6 +30,14 @@ public final class HiveWorkspaceCoordinator {
         self.pairingLinkDecoder = pairingLinkDecoder
     }
 
+    /// Create a renderer adapter for one terminal exposed by the shell.
+    public func makeTerminalSession(surfaceID: String) -> HiveTerminalSession? {
+        guard let terminalShell = shell as? any HiveTerminalShellServing else {
+            return nil
+        }
+        return HiveTerminalSession(surfaceID: surfaceID, shell: terminalShell)
+    }
+
     /// Pair using the host's DeviceLink v3 URL and expose the shell result.
     @discardableResult
     public func pair(link: String) async -> Bool {
