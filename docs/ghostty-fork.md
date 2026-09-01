@@ -34,12 +34,18 @@ When we change the fork, update this document and the parent submodule SHA.
 - Conflict note: screen-export success must preserve the on-disk file but close
   both directory handles; every error or empty-selection path must delete the
   temporary directory and close both handles.
+- Artifact status: the local universal ReleaseFast framework is built from this
+  exact commit with Ghostty native Sentry disabled and passes the cmux
+  100-export descriptor soak. A clean release runner remains blocked until the
+  matching prebuilt archive is published and its checksum is added to
+  `scripts/ghosttykit-checksums.txt`.
 
-The submodule pinned by this branch is `88357634c`, the fork-main merge of
-https://github.com/manaflow-ai/ghostty/pull/175. It combines the initial cmux
-theme-picker render fix at `5068b3a37` with terminal-owned semantic-prompt row
-lifecycle enforcement through `2d6e944e3` from
-https://github.com/manaflow-ai/ghostty/pull/176.
+The submodule pinned by this branch is `fd9b5b94b`. It descends from the
+`88357634c` fork-main merge of https://github.com/manaflow-ai/ghostty/pull/175,
+combines the initial cmux theme-picker render fix at `5068b3a37` with
+terminal-owned semantic-prompt row lifecycle enforcement through `2d6e944e3`
+from https://github.com/manaflow-ai/ghostty/pull/176, and adds the screen-export
+descriptor fix described above.
 The earlier integration combines the hidden-renderer reclamation and
 retry-deadline line through `4d6f0014f` with the resolved font-binding action
 callbacks originally ending at `80d7fb35a`.
@@ -256,7 +262,7 @@ The final font integration landed in merge commits `23003282d` and
     callback userdata alive until `ghostty_surface_free` returns, and never
     destroy or otherwise reenter the surface from the synchronous callback.
 
-The pinned `88357634c4` universal ReleaseFast GhosttyKit archive combines the
+The historical `88357634c4` universal ReleaseFast GhosttyKit archive combines the
 initial theme-picker render and semantic prompt lifecycle fixes. It was built
 with Zig 0.16.0 and is published at
 https://github.com/manaflow-ai/ghostty/releases/tag/xcframework-88357634c4dbadc87981e2ebb64eb599c53aa012-crashsubdir-cmux-crash-v1
