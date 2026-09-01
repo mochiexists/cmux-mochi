@@ -12,6 +12,29 @@ When we change the fork, update this document and the parent submodule SHA.
 
 ## Current fork changes
 
+### Screen export directory-handle lifecycle
+
+- Commit: `fd9b5b94b` (`fix: close screen export directory handles`)
+- Upstream provenance: adapts Ghostty commit `77ffb01f0` to the fork's current
+  Zig `std.Io` APIs and retains cmux's active-screen export behavior.
+- Files:
+  - `src/Surface.zig`
+  - `src/os/TempDir.zig`
+- Summary:
+  - Closes both temporary-directory handles after a successful screen export
+    while preserving the exported file for clipboard, open, and paste
+    consumers.
+  - Cleans up both handles and any partial directory on construction or export
+    failure, with idempotent close/deinit behavior guarding future error paths.
+  - Adds descriptor-count, preserved-file readability, deletion, and
+    idempotency regression coverage.
+  - Fixes the two-directory-handle leak per mobile screen export that exhausted
+    the cmux process descriptor table, caused hook socket failures, and preceded
+    a LaunchServices crash while opening the macOS Recent Items menu.
+- Conflict note: screen-export success must preserve the on-disk file but close
+  both directory handles; every error or empty-selection path must delete the
+  temporary directory and close both handles.
+
 The submodule pinned by this branch is `88357634c`, the fork-main merge of
 https://github.com/manaflow-ai/ghostty/pull/175. It combines the initial cmux
 theme-picker render fix at `5068b3a37` with terminal-owned semantic-prompt row
