@@ -17,7 +17,8 @@ struct HiveWorkspaceCoordinatorTests {
         )
         let shell = HiveShellStub(
             pairingResult: .connected,
-            workspaces: [workspace]
+            workspaces: [workspace],
+            isConnected: true
         )
         let coordinator = HiveWorkspaceCoordinator(shell: shell)
 
@@ -29,6 +30,37 @@ struct HiveWorkspaceCoordinatorTests {
         #expect(coordinator.phase == .connected)
         #expect(coordinator.workspaces == [workspace])
         #expect(shell.receivedPairingLinks == [Self.deviceLinkURL])
+    }
+
+    @Test("reports a saved pairing as offline when its first dial fails")
+    func reportsPairedOffline() async {
+        let shell = HiveShellStub(
+            pairingResult: .connected,
+            workspaces: [],
+            connectionError: "Connection refused",
+            connectionErrorGuidance: "Open the remote app.",
+            hasKnownPairing: true,
+            isConnected: false
+        )
+        let coordinator = HiveWorkspaceCoordinator(shell: shell)
+
+        let paired = await coordinator.pair(link: Self.deviceLinkURL)
+
+        #expect(paired)
+        #expect(coordinator.phase == .pairedOffline(
+            message: "Connection refused",
+            guidance: "Open the remote app."
+        ))
+    }
+
+    @Test("does not attempt reconnect before any Mac has been paired")
+    func skipsReconnectWithoutPairing() async {
+        let shell = HiveShellStub(pairingResult: .failed, workspaces: [])
+        let coordinator = HiveWorkspaceCoordinator(shell: shell)
+
+        #expect(await !coordinator.reconnect())
+        #expect(coordinator.phase == .idle)
+        #expect(shell.reconnectCount == 0)
     }
 
     private static let deviceLinkURL =
@@ -43,18 +75,25 @@ private final class HiveShellStub: HiveShellServing {
     var workspaces: [MobileWorkspacePreview]
     var connectionError: String?
     var connectionErrorGuidance: String?
+    var hasKnownHivePairing: Bool
+    var isHiveMacConnected: Bool
     private(set) var receivedPairingLinks: [String] = []
+    private(set) var reconnectCount = 0
 
     init(
         pairingResult: MobilePairingURLConnectionResult,
         workspaces: [MobileWorkspacePreview],
         connectionError: String? = nil,
-        connectionErrorGuidance: String? = nil
+        connectionErrorGuidance: String? = nil,
+        hasKnownPairing: Bool = false,
+        isConnected: Bool = false
     ) {
         self.pairingResult = pairingResult
         self.workspaces = workspaces
         self.connectionError = connectionError
         self.connectionErrorGuidance = connectionErrorGuidance
+        self.hasKnownHivePairing = hasKnownPairing
+        self.isHiveMacConnected = isConnected
     }
 
     func connectPairingURLResult(
@@ -68,6 +107,7 @@ private final class HiveShellStub: HiveShellServing {
         stackUserID: String?,
         refreshBackupBeforeDial: Bool
     ) async -> Bool {
-        pairingResult.didConnect
+        reconnectCount += 1
+        return isHiveMacConnected
     }
 }

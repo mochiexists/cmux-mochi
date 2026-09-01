@@ -11,6 +11,8 @@ public protocol HiveShellServing: AnyObject {
     var workspaces: [MobileWorkspacePreview] { get }
     var connectionError: String? { get }
     var connectionErrorGuidance: String? { get }
+    var hasKnownHivePairing: Bool { get }
+    var isHiveMacConnected: Bool { get }
 
     func connectPairingURLResult(
         _ rawValue: String?
@@ -22,4 +24,7 @@ public protocol HiveShellServing: AnyObject {
     ) async -> Bool
 }
 
-extension MobileShellComposite: HiveShellServing {}
+extension MobileShellComposite: HiveShellServing {
+    public var hasKnownHivePairing: Bool { hasKnownPairedMac }
+    public var isHiveMacConnected: Bool { connectionState == .connected }
+}

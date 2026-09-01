@@ -11,12 +11,14 @@ public final class HiveWorkspaceCoordinator {
         case pairing
         case connecting
         case connected
+        case pairedOffline(message: String, guidance: String?)
         case failed(message: String, guidance: String?)
     }
 
     public private(set) var phase: Phase = .idle
     /// Latest immutable workspace projection from the shared shell engine.
     public private(set) var workspaces: [MobileWorkspacePreview]
+    public var hasKnownPairing: Bool { shell.hasKnownHivePairing }
 
     @ObservationIgnored private let shell: any HiveShellServing
     @ObservationIgnored private let pairingLinkDecoder: HivePairingLinkDecoder
@@ -61,13 +63,24 @@ public final class HiveWorkspaceCoordinator {
             return false
         }
         refreshWorkspaceSnapshot()
-        phase = .connected
+        if shell.isHiveMacConnected {
+            phase = .connected
+        } else {
+            phase = .pairedOffline(
+                message: shell.connectionError ?? "Pairing saved; the remote Mac is offline.",
+                guidance: shell.connectionErrorGuidance ?? "Open Mochi on the remote Mac, then retry."
+            )
+        }
         return true
     }
 
     /// Reconnect the last active DeviceLink pairing from local storage.
     @discardableResult
     public func reconnect() async -> Bool {
+        guard hasKnownPairing else {
+            phase = .idle
+            return false
+        }
         phase = .connecting
         let connected = await shell.reconnectActiveMacIfAvailable(
             stackUserID: nil,
@@ -87,6 +100,9 @@ public final class HiveWorkspaceCoordinator {
 
     /// Refreshes the UI snapshot after background shell state changes.
     public func refreshWorkspaceSnapshot() {
-        workspaces = shell.workspaces
+        let latest = shell.workspaces
+        if workspaces != latest {
+            workspaces = latest
+        }
     }
 }

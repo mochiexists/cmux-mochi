@@ -32,7 +32,9 @@ public struct HiveWorkspaceBrowserView: View {
         .padding(20)
         .frame(minWidth: 560, minHeight: 480)
         .task {
-            _ = await coordinator.reconnect()
+            if coordinator.hasKnownPairing {
+                _ = await coordinator.reconnect()
+            }
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(1))
                 coordinator.refreshWorkspaceSnapshot()
@@ -94,13 +96,22 @@ public struct HiveWorkspaceBrowserView: View {
                 systemImage: "checkmark.shield"
             )
             .foregroundStyle(.green)
+        case let .pairedOffline(message, guidance):
+            statusFailure(message: message, guidance: guidance)
         case let .failed(message, guidance):
-            VStack(alignment: .leading, spacing: 4) {
-                Label(message, systemImage: "exclamationmark.triangle")
-                    .foregroundStyle(.orange)
-                if let guidance {
-                    Text(guidance).foregroundStyle(.secondary)
-                }
+            statusFailure(message: message, guidance: guidance)
+        }
+    }
+
+    private func statusFailure(message: String, guidance: String?) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label(message, systemImage: "exclamationmark.triangle")
+                .foregroundStyle(.orange)
+            if let guidance {
+                Text(guidance).foregroundStyle(.secondary)
+            }
+            Button(String(localized: "hive.retry.action", defaultValue: "Retry")) {
+                Task { _ = await coordinator.reconnect() }
             }
         }
     }
