@@ -136,10 +136,10 @@ final class MobileHostNetworkPathMonitor {
         return addresses
     }
 
-    /// The primary iPhone USB Personal Hotspot interface, when one owns the
-    /// current IPv4 route. A phone providing the hotspot cannot dial back into
-    /// its Mac client, so publishing that client address as a LAN route creates
-    /// a guaranteed timeout before every real fallback.
+    /// The primary iPhone Personal Hotspot interface, when one owns the current
+    /// IPv4 route. A phone providing the hotspot cannot dial back into its Mac
+    /// client, so publishing that client address as a LAN route creates a
+    /// guaranteed timeout before every real fallback.
     nonisolated static func systemTetheredInterfaceNames() -> Set<String> {
         guard let globalIPv4 = SCDynamicStoreCopyValue(
             nil,
@@ -150,9 +150,25 @@ final class MobileHostNetworkPathMonitor {
                   nil,
                   "Setup:/Network/Service/\(serviceID)/Interface" as CFString
               ) as? [String: Any],
-              let deviceName = interface["DeviceName"] as? String,
-              let serviceName = interface["UserDefinedName"] as? String,
-              personalHotspotServiceName(serviceName)
+              let deviceName = interface["DeviceName"] as? String
+        else {
+            return []
+        }
+
+        let serviceName = interface["UserDefinedName"] as? String ?? ""
+        if personalHotspotServiceName(serviceName) {
+            return [deviceName]
+        }
+
+        guard let ipv4 = SCDynamicStoreCopyValue(
+            nil,
+            "State:/Network/Service/\(serviceID)/IPv4" as CFString
+        ) as? [String: Any],
+              let addresses = ipv4["Addresses"] as? [String],
+              personalHotspotIPv4Configuration(
+                  addresses: addresses,
+                  router: ipv4["Router"] as? String
+              )
         else {
             return []
         }
@@ -163,6 +179,23 @@ final class MobileHostNetworkPathMonitor {
     nonisolated static func personalHotspotServiceName(_ name: String) -> Bool {
         let normalized = name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         return normalized.contains("iphone") && normalized.contains("usb")
+    }
+
+    /// Recognizes the IPv4 network reserved by iPhone Personal Hotspot even
+    /// when macOS exposes it through the generic Wi-Fi service name.
+    nonisolated static func personalHotspotIPv4Configuration(
+        addresses: [String],
+        router: String?
+    ) -> Bool {
+        guard router == "172.20.10.1" else { return false }
+        return addresses.contains { address in
+            let octets = address.split(separator: ".").compactMap { Int($0) }
+            guard octets.count == 4 else { return false }
+            return octets[0] == 172
+                && octets[1] == 20
+                && octets[2] == 10
+                && (2...14).contains(octets[3])
+        }
     }
 
     /// Pure interface admission policy for LAN route publication.
