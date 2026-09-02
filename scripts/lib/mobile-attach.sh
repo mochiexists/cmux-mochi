@@ -189,6 +189,63 @@ cmux_attach_enable_pairing_host() {
   fi
 }
 
+# Read the port the tagged bundle is expected to bind after its defaults have
+# reconciled. Keeping this separate from the deterministic fallback preserves a
+# developer's explicit per-tag port while still giving readiness probes one
+# exact value to wait for.
+cmux_attach_configured_pairing_port() {
+  local tag="$1" bundle_id pairing_port
+  bundle_id="$(cmux_attach_mac_bundle_id "$tag")"
+  pairing_port="$(defaults read "$bundle_id" mobile.iOSPairingHost.port 2>/dev/null || true)"
+  [[ "$pairing_port" =~ ^[0-9]+$ ]] || return 1
+  (( pairing_port >= 1 && pairing_port <= 65535 )) || return 1
+  printf '%s' "$pairing_port"
+}
+
+# A live tagged app can observe the tag-specific port default asynchronously.
+# Do not mint while its control socket still reports the old listener: that QR
+# would be invalidated when settings reconciliation restarts the listener.
+cmux_attach_wait_for_pairing_host_port() {
+  local tag="$1" repo_root="${2:?repo root is required}" max="${3:-40}"
+  local slug expected_port cli_output cli_result _i
+  slug="$(cmux_attach__slug "$tag")"
+  expected_port="$(cmux_attach_configured_pairing_port "$tag")" || return 1
+  for _i in $(seq 1 "$max"); do
+    cli_result=0
+    cli_output="$(CMUX_TAG="$slug" "$repo_root/scripts/cmux-debug-cli.sh" rpc \
+      mobile.host.status '{}' 2>/dev/null)" || cli_result=$?
+    if [[ "$cli_result" -eq 0 ]] && [[ -n "$cli_output" ]]; then
+      if PAIRING_HOST_STATUS="$cli_output" EXPECTED_PAIRING_PORT="$expected_port" \
+        /usr/bin/python3 - <<'PY'
+import json
+import os
+
+try:
+    response = json.loads(os.environ["PAIRING_HOST_STATUS"])
+    host = response["host_service"]
+    expected = int(os.environ["EXPECTED_PAIRING_PORT"])
+except (KeyError, TypeError, ValueError, json.JSONDecodeError):
+    raise SystemExit(1)
+
+raise SystemExit(
+    not (
+        host.get("is_running") is True
+        and host.get("port") == expected
+        and host.get("configured_port") == expected
+        and host.get("uses_ephemeral_fallback") is False
+    )
+)
+PY
+      then
+        return 0
+      fi
+    fi
+    sleep 0.25
+  done
+  echo "warning: tagged Mac '$tag' did not settle on configured pairing port $expected_port" >&2
+  return 1
+}
+
 # True if the tagged Mac app's debug socket is bound (app running + listening).
 cmux_attach_mac_socket_ready() {
   local sock
@@ -218,6 +275,7 @@ cmux_attach_ensure_mac() {
   cmux_attach_enable_pairing_host "$tag" || true
 
   if [[ -S "$sock" ]]; then
+    cmux_attach_wait_for_pairing_host_port "$tag" "$repo_root" || true
     # Quick probe (2 attempts ~1s): if pairing already mints, done.
     if [[ -n "$repo_root" ]] && [[ -n "$(cmux_attach_mint_url "$tag" 60 "$repo_root" "$target" 2)" ]]; then
       return 0
@@ -256,6 +314,7 @@ cmux_attach_ensure_mac() {
       if [[ -z "$repo_root" ]]; then
         return 0
       fi
+      cmux_attach_wait_for_pairing_host_port "$tag" "$repo_root" || return 1
       mint_attempts="${CMUX_ATTACH_MINT_MAX_ATTEMPTS:-20}"
       if [[ -n "$(cmux_attach_mint_url "$tag" 60 "$repo_root" "$target" "$mint_attempts")" ]]; then
         return 0
@@ -464,6 +523,7 @@ cmux_attach_ensure_mac_devicelink() {
   cmux_attach_enable_pairing_host "$tag" || true
 
   if [[ -S "$sock" ]]; then
+    cmux_attach_wait_for_pairing_host_port "$tag" "$repo_root" || true
     if [[ -n "$(cmux_attach_mint_devicelink_url "$tag" 60 "$repo_root" "$target" 2)" ]]; then
       return 0
     fi
@@ -486,6 +546,7 @@ cmux_attach_ensure_mac_devicelink() {
   open -g "$app" >/dev/null 2>&1 || open "$app" >/dev/null 2>&1 || true
   for _i in $(seq 1 60); do
     if [[ -S "$sock" ]]; then
+      cmux_attach_wait_for_pairing_host_port "$tag" "$repo_root" || return 1
       mint_attempts="${CMUX_ATTACH_MINT_MAX_ATTEMPTS:-20}"
       if [[ -n "$(cmux_attach_mint_devicelink_url "$tag" 60 "$repo_root" "$target" "$mint_attempts")" ]]; then
         return 0
