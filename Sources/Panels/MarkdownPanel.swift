@@ -429,8 +429,20 @@ final class MarkdownPanel: Panel, ObservableObject, FilePreviewTextEditingPanel,
     /// Watches ``filePath`` for changes via ``CmuxFileWatch/FileWatcher``, which
     /// handles inode reattachment and nearest-existing-ancestor recovery
     /// internally; each change reloads the content.
+    static func shouldStartFileWatcher(
+        for filePath: String,
+        fileManager: FileManager = .default
+    ) -> Bool {
+        fileManager.fileExists(atPath: filePath)
+    }
+
     private func startWatching() {
         stopWatching()
+        // Session restore must not synchronously walk and open ancestor
+        // directories for a document whose path has disappeared. Keep the
+        // restored panel in its existing unavailable state; reopening the file
+        // after it returns creates a fresh panel and watcher.
+        guard Self.shouldStartFileWatcher(for: filePath) else { return }
         let watcher = FileWatcher(path: filePath)
         fileWatcher = watcher
         let events = watcher.events

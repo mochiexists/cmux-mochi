@@ -12,6 +12,20 @@ import XCTest
 
 @MainActor
 final class MarkdownPanelTests: XCTestCase {
+    func testMissingMarkdownFileRestoresWithoutStartingFileWatcher() {
+        let missingURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("cmux-missing-markdown-\(UUID().uuidString)", isDirectory: true)
+            .appendingPathComponent("missing.md")
+
+        XCTAssertFalse(FileManager.default.fileExists(atPath: missingURL.path))
+        XCTAssertFalse(MarkdownPanel.shouldStartFileWatcher(for: missingURL.path))
+
+        let panel = MarkdownPanel(workspaceId: UUID(), filePath: missingURL.path)
+        defer { panel.close() }
+
+        XCTAssertTrue(panel.isFileUnavailable)
+    }
+
     func testControlMarkdownOpenReusesExistingRightSidePane() throws {
         let manager = TabManager()
         let workspace = try XCTUnwrap(manager.tabs.first)
