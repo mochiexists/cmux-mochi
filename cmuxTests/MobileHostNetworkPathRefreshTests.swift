@@ -181,6 +181,27 @@ import Testing
         ) == true)
     }
 
+    @Test func initialPathObservationKeepsAReadyListener() {
+        #expect(!MobileHostService.shouldRestartListenerForPathChange(
+            isInitialObservation: true,
+            listenerReady: true
+        ))
+    }
+
+    @Test func changedPathObservationRebindsAReadyListener() {
+        #expect(MobileHostService.shouldRestartListenerForPathChange(
+            isInitialObservation: false,
+            listenerReady: true
+        ))
+    }
+
+    @Test func changedPathDuringBindDoesNotStartASecondListener() {
+        #expect(!MobileHostService.shouldRestartListenerForPathChange(
+            isInitialObservation: false,
+            listenerReady: false
+        ))
+    }
+
     // MARK: - Resolver cache invalidation
 
     private func tailscaleHosts(in snapshot: MobileHostRouteSnapshot) -> [String] {

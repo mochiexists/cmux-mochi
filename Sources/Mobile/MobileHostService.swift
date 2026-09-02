@@ -324,6 +324,10 @@ final class MobileHostService {
     /// networks or Tailscale flips, not only when the listener restarts.
     /// `nil` while stopped.
     private var pathMonitor: MobileHostNetworkPathMonitor?
+    /// Invalidates main-actor callbacks already queued by a cancelled monitor,
+    /// preventing a burst of old-path observations from restarting each newly
+    /// rebound listener in turn.
+    private var pathMonitorGeneration = UUID()
     /// Injected once via `configure(auth:)` at app startup, before the
     /// listener starts accepting connections.
     private var auth: AuthCoordinator?
@@ -1446,14 +1450,14 @@ final class MobileHostService {
         case .stop:
             stopLegacyListener(reason: "legacy pairing listener disabled")
         case .restart:
-            restart()
+            restart(reason: "pairing port changed")
         }
     }
 
-    private func restart() {
+    private func restart(reason: String) {
         // Keep pairing-sheet readiness callers parked across the immediate
         // replacement; draining here would publish a false stopped snapshot.
-        stopLegacyListener(reason: "pairing port changed", drainReadiness: false)
+        stopLegacyListener(reason: reason, drainReadiness: false)
         start()
     }
 
@@ -1856,19 +1860,36 @@ final class MobileHostService {
     /// the lifetime of the listener and is stopped by ``stop()``.
     private func startNetworkPathMonitorIfNeeded() {
         guard pathMonitor == nil else { return }
-        let monitor = MobileHostNetworkPathMonitor { [weak self] in
-            self?.handleNetworkPathChange()
+        let generation = UUID()
+        pathMonitorGeneration = generation
+        let monitor = MobileHostNetworkPathMonitor { [weak self] isInitialObservation in
+            self?.handleNetworkPathChange(
+                isInitialObservation: isInitialObservation,
+                generation: generation
+            )
         }
         monitor.start(queue: callbackQueue)
         pathMonitor = monitor
     }
 
     private func stopNetworkPathMonitor() {
+        pathMonitorGeneration = UUID()
         pathMonitor?.cancel()
         pathMonitor = nil
     }
 
-    private func handleNetworkPathChange() {
+    nonisolated static func shouldRestartListenerForPathChange(
+        isInitialObservation: Bool,
+        listenerReady: Bool
+    ) -> Bool {
+        !isInitialObservation && listenerReady
+    }
+
+    private func handleNetworkPathChange(
+        isInitialObservation: Bool,
+        generation: UUID
+    ) {
+        guard generation == pathMonitorGeneration else { return }
         MobileHostIrohRuntime.shared.retryIfNeeded()
         // The cached Tailscale hosts (and any in-flight resolution) may describe
         // the previous network; drop them on EVERY path observation so no later
@@ -1879,6 +1900,20 @@ final class MobileHostService {
         // TTL-fresh cache from the previous network with no further path
         // callback coming to correct it.
         routeResolver.invalidateResolvedTailscaleHostCache()
+        if Self.shouldRestartListenerForPathChange(
+            isInitialObservation: isInitialObservation,
+            listenerReady: listenerPort != nil
+        ) {
+            // A wildcard NWListener can remain reported as `.ready` while its
+            // underlying socket becomes defunct after a Wi-Fi, hotspot, USB,
+            // or VPN transition. Republishing the new addresses against that
+            // stale socket produces a valid-looking QR whose routes all refuse
+            // connections. Rebind the fixed port on every real path change;
+            // the replacement monitor's first observation only republishes, so
+            // this cannot form a restart loop.
+            restart(reason: "network path changed")
+            return
+        }
         guard let port = listenerPort else {
             // Mid-bind (no port yet): the `.ready` handler publishes against the
             // current path when the bind completes, and the invalidation above

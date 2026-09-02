@@ -5,12 +5,12 @@ import SystemConfiguration
 /// Watches the system network path for the mobile pairing host and reports
 /// deduplicated path changes on the main actor.
 ///
-/// The pairing listener stays bound when the Mac moves networks or Tailscale
-/// flips, so the advertised route set (and the team device registry that
-/// ``DeviceRegistryClient`` mirrors from `statusUpdates()`) needs an explicit
-/// trigger to refresh; ``MobileHostService`` owns the republish action and
-/// this type owns the observation: one `NWPathMonitor`, a path signature for
-/// duplicate suppression, and nothing else.
+/// When the Mac moves networks or Tailscale flips, the advertised route set
+/// changes and the wildcard pairing listener may retain a defunct socket even
+/// while Network.framework still reports it as ready. ``MobileHostService``
+/// owns the listener rebind and route republish; this type owns the observation:
+/// one `NWPathMonitor`, a path signature for duplicate suppression, and nothing
+/// else.
 ///
 /// Every observation that differs from the previous one fires `onPathChange`,
 /// *including the first*: the initial callback can arrive after the
@@ -35,13 +35,13 @@ final class MobileHostNetworkPathMonitor {
     private let monitor = NWPathMonitor()
     /// Signature of the last observed path, for duplicate suppression.
     private var lastSignature: String?
-    private let onPathChange: @MainActor () -> Void
+    private let onPathChange: @MainActor (_ isInitialObservation: Bool) -> Void
     /// Returns the machine's local IPv4 addresses; injectable for tests.
     /// Called on the monitor queue, off-main.
     private let localIPv4Addresses: @Sendable () -> [String]
 
     init(
-        onPathChange: @escaping @MainActor () -> Void,
+        onPathChange: @escaping @MainActor (_ isInitialObservation: Bool) -> Void,
         localIPv4Addresses: @escaping @Sendable () -> [String] = {
             MobileHostNetworkPathMonitor.systemLocalIPv4Addresses()
         }
@@ -72,13 +72,14 @@ final class MobileHostNetworkPathMonitor {
     }
 
     private func handleObservation(signature: String) {
+        let isInitialObservation = lastSignature == nil
         let changed = Self.shouldReportPathChange(
             previousSignature: lastSignature,
             newSignature: signature
         )
         lastSignature = signature
         guard changed else { return }
-        onPathChange()
+        onPathChange(isInitialObservation)
     }
 
     /// Stable identity of a network path for change detection. Order-insensitive
