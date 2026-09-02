@@ -36,8 +36,9 @@ struct OneShotTerminalLauncherStore {
         self.currentDate = currentDate
     }
 
-    /// Returns a directory that the terminal host can safely enter before
-    /// delivering launcher input, or nil so the launcher guard owns fallback.
+    /// Returns the requested directory when the terminal host can enter it, or
+    /// the nearest enterable ancestor when the requested leaf no longer exists.
+    /// The launcher payload retains the exact requested path for diagnostics.
     static func enterableWorkingDirectory(
         _ value: String?,
         fileManager: FileManager = .default
@@ -46,13 +47,19 @@ struct OneShotTerminalLauncherStore {
               !trimmed.isEmpty else {
             return nil
         }
-        var isDirectory: ObjCBool = false
-        guard fileManager.fileExists(atPath: trimmed, isDirectory: &isDirectory),
-              isDirectory.boolValue,
-              fileManager.isExecutableFile(atPath: trimmed) else {
-            return nil
+        var candidate = trimmed
+        while true {
+            var isDirectory: ObjCBool = false
+            if fileManager.fileExists(atPath: candidate, isDirectory: &isDirectory),
+               isDirectory.boolValue,
+               fileManager.isExecutableFile(atPath: candidate) {
+                return candidate
+            }
+
+            let parent = (candidate as NSString).deletingLastPathComponent
+            guard !parent.isEmpty, parent != candidate else { return nil }
+            candidate = parent
         }
-        return trimmed
     }
 
     /// Writes a private action payload and returns its one-shot script.
