@@ -103,12 +103,45 @@ extension MobileShellComposite {
             .sorted(by: Self.routeSortsBefore)
         if preferNonLoopback {
             ordered.removeAll { $0.kind == .debugLoopback }
+            ordered = Self.preferringNumericTailscaleRoutes(ordered)
         }
         let irohRoutes = ordered.filter { $0.kind == .iroh }
         if !irohRoutes.isEmpty {
             return irohRoutes
         }
         return ordered
+    }
+
+    /// Keeps every transport class in its existing position while moving
+    /// directly dialable Tailscale address snapshots ahead of MagicDNS names.
+    ///
+    /// On physical iOS devices the route-aware transport can prove a numeric
+    /// tailnet endpoint before DNS has selected the VPN path. The legacy
+    /// host/port picker already enforced that policy, but the production
+    /// DeviceLink reconnect path consumes `storedReconnectRoutes` directly.
+    /// Reordering only the Tailscale slots preserves LAN/Iroh priority and
+    /// retains MagicDNS as the durable fallback when a numeric address changes.
+    private static func preferringNumericTailscaleRoutes(
+        _ routes: [CmxAttachRoute]
+    ) -> [CmxAttachRoute] {
+        let tailscaleIndices = routes.indices.filter { routes[$0].kind == .tailscale }
+        guard tailscaleIndices.count > 1 else { return routes }
+
+        let tailscaleRoutes = tailscaleIndices.map { routes[$0] }
+        let numeric = tailscaleRoutes.filter { route in
+            guard case let .hostPort(host, _) = route.endpoint else { return false }
+            return isIPLiteralHost(host)
+        }
+        let named = tailscaleRoutes.filter { route in
+            guard case let .hostPort(host, _) = route.endpoint else { return true }
+            return !isIPLiteralHost(host)
+        }
+
+        var result = routes
+        for (index, route) in zip(tailscaleIndices, numeric + named) {
+            result[index] = route
+        }
+        return result
     }
 
     /// The dial order for one stored Mac, honoring the user's connection-method

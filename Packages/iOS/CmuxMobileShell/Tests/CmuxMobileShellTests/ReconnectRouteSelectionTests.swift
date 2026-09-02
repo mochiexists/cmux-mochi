@@ -179,6 +179,34 @@ import Testing
         #expect(pick?.0 == "100.82.214.112")
     }
 
+    @Test func physicalStoredReconnectRoutesPreferIPLiteralOverMagicDNSHostname() throws {
+        // `connectStoredMacOutcome` consumes `storedReconnectRoutes` directly,
+        // not the legacy host/port helper above. Keep the production route set
+        // on the same physical-device policy so a failing MagicDNS proof does
+        // not add a visible authorization failure before the numeric route.
+        let ip = try CmxAttachRoute(
+            id: "tailscale_2",
+            kind: .tailscale,
+            endpoint: .hostPort(host: "100.82.214.112", port: 50922),
+            priority: 10
+        )
+
+        let routes = MobileShellComposite.storedReconnectRoutes(
+            [try magicDNS(50922), ip],
+            supportedKinds: [.tailscale],
+            preferNonLoopback: true
+        )
+
+        let hosts = routes.compactMap { route -> String? in
+            guard case let .hostPort(host, _) = route.endpoint else { return nil }
+            return host
+        }
+        #expect(hosts == [
+            "100.82.214.112",
+            "lawrences-macbook-pro-2.tail137216.ts.net",
+        ])
+    }
+
     @Test func magicDNSHostnameStillUsedWhenNoIPRouteExists() throws {
         // If the only non-loopback route is a hostname, still prefer it over
         // loopback on device (better than dialing the phone's own 127.0.0.1).
