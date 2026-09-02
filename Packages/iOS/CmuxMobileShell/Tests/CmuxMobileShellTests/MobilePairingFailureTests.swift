@@ -325,6 +325,13 @@ import Testing
         #expect(MobilePairingFailureCategory.unrecognizedVersion.analyticsReason == "unrecognized_version")
     }
 
+    @Test func pairingNotSavedMessageRendersItsDashInsteadOfAnEscapePlaceholder() {
+        let message = MobilePairingFailureCategory.pairingNotSaved.message
+
+        #expect(message.contains("—"))
+        #expect(!message.contains("{2014}"))
+    }
+
     @Test func missingRouteFallsBackWithoutCrashingOnFormat() {
         // A host/port-format category with no route must fall back to a generic
         // message instead of producing a malformed "%@:%d" string.
