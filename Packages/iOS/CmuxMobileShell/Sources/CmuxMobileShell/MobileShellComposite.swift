@@ -2109,6 +2109,10 @@ public final class MobileShellComposite: MobileTerminalOutputSinking {
         ) {
             clearTransientAutomaticReconnectBackoff(accountID: accountID)
         }
+        // A user-requested retry intentionally owns the full-screen reconnect
+        // presentation. Automatic backoff retries leave this sticky completion
+        // bit alone so an offline Mac cannot make the UI flash on every dial.
+        didFinishStoredMacReconnectAttempt = false
         isReconnectingStoredMac = true
         return await reconnectActiveMacIfAvailable(stackUserID: stackUserID)
     }

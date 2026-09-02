@@ -118,6 +118,26 @@ import Testing
             isRunning: true,
             isLoopback: false
         ))
+        #expect(!MobileHostNetworkPathMonitor.localNetworkInterfaceIsEligible(
+            name: "en11",
+            isUp: true,
+            isRunning: true,
+            isLoopback: false,
+            isTethered: true
+        ))
+        #expect(MobileHostNetworkPathMonitor.personalHotspotServiceName("iPhone USB"))
+        #expect(!MobileHostNetworkPathMonitor.personalHotspotServiceName("USB 10/100/1000 LAN"))
+    }
+
+    @Test func tetherOnlyHostDoesNotPublishMDNSAsAFalseLANFallback() {
+        #expect(MobileRouteResolver.localNetworkRouteHosts(
+            localIPv4Addresses: [],
+            hostName: "timapple-m5"
+        ).isEmpty)
+        #expect(MobileRouteResolver.localNetworkRouteHosts(
+            localIPv4Addresses: ["192.168.1.20"],
+            hostName: "timapple-m5"
+        ) == ["192.168.1.20", "timapple-m5.local"])
     }
 
     // MARK: - Republish policy

@@ -315,9 +315,24 @@ final class MobileRouteResolver: @unchecked Sendable {
     }
 
     private static func localNetworkRouteHosts() -> [String] {
-        let numericHosts = MobileHostNetworkPathMonitor.systemLocalIPv4Addresses()
+        localNetworkRouteHosts(
+            localIPv4Addresses: MobileHostNetworkPathMonitor.systemLocalIPv4Addresses(),
+            hostName: ProcessInfo.processInfo.hostName
+        )
+    }
+
+    /// Builds LAN locators only when this Mac owns a phone-reachable LAN
+    /// address. In particular, do not publish mDNS by itself while an iPhone
+    /// USB Personal Hotspot is the sole path: the name resolves to the same
+    /// tethered client address that the phone cannot dial.
+    static func localNetworkRouteHosts(
+        localIPv4Addresses: [String],
+        hostName: String
+    ) -> [String] {
+        let numericHosts = localIPv4Addresses
             .filter { CmxPrivateLANHost().matches($0) }
-        let mdnsHost = canonicalMDNSHostname(ProcessInfo.processInfo.hostName)
+        guard !numericHosts.isEmpty else { return [] }
+        let mdnsHost = canonicalMDNSHostname(hostName)
         return deduplicatedHosts(numericHosts + [mdnsHost].compactMap { $0 })
     }
 

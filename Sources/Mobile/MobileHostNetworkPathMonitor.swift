@@ -1,5 +1,6 @@
 import Foundation
 @preconcurrency import Network
+import SystemConfiguration
 
 /// Watches the system network path for the mobile pairing host and reports
 /// deduplicated path changes on the main actor.
@@ -102,6 +103,7 @@ final class MobileHostNetworkPathMonitor {
     /// Sorted by ``signature(status:interfaceNames:gateways:localAddresses:)``,
     /// so order here does not matter.
     nonisolated static func systemLocalIPv4Addresses() -> [String] {
+        let tetheredInterfaceNames = systemTetheredInterfaceNames()
         var interfaces: UnsafeMutablePointer<ifaddrs>?
         guard getifaddrs(&interfaces) == 0, let first = interfaces else { return [] }
         defer { freeifaddrs(interfaces) }
@@ -113,7 +115,8 @@ final class MobileHostNetworkPathMonitor {
                       name: String(cString: nameCString),
                       isUp: (interface.ifa_flags & UInt32(IFF_UP)) != 0,
                       isRunning: (interface.ifa_flags & UInt32(IFF_RUNNING)) != 0,
-                      isLoopback: (interface.ifa_flags & UInt32(IFF_LOOPBACK)) != 0
+                      isLoopback: (interface.ifa_flags & UInt32(IFF_LOOPBACK)) != 0,
+                      isTethered: tetheredInterfaceNames.contains(String(cString: nameCString))
                   ),
                   let address = interface.ifa_addr,
                   address.pointee.sa_family == sa_family_t(AF_INET)
@@ -133,14 +136,44 @@ final class MobileHostNetworkPathMonitor {
         return addresses
     }
 
+    /// The primary iPhone USB Personal Hotspot interface, when one owns the
+    /// current IPv4 route. A phone providing the hotspot cannot dial back into
+    /// its Mac client, so publishing that client address as a LAN route creates
+    /// a guaranteed timeout before every real fallback.
+    nonisolated static func systemTetheredInterfaceNames() -> Set<String> {
+        guard let globalIPv4 = SCDynamicStoreCopyValue(
+            nil,
+            "State:/Network/Global/IPv4" as CFString
+        ) as? [String: Any],
+              let serviceID = globalIPv4["PrimaryService"] as? String,
+              let interface = SCDynamicStoreCopyValue(
+                  nil,
+                  "Setup:/Network/Service/\(serviceID)/Interface" as CFString
+              ) as? [String: Any],
+              let deviceName = interface["DeviceName"] as? String,
+              let serviceName = interface["UserDefinedName"] as? String,
+              personalHotspotServiceName(serviceName)
+        else {
+            return []
+        }
+        return [deviceName]
+    }
+
+    /// Pure recognition seam for the system-created iPhone USB network service.
+    nonisolated static func personalHotspotServiceName(_ name: String) -> Bool {
+        let normalized = name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return normalized.contains("iphone") && normalized.contains("usb")
+    }
+
     /// Pure interface admission policy for LAN route publication.
     nonisolated static func localNetworkInterfaceIsEligible(
         name: String,
         isUp: Bool,
         isRunning: Bool,
-        isLoopback: Bool
+        isLoopback: Bool,
+        isTethered: Bool = false
     ) -> Bool {
-        isUp && isRunning && !isLoopback && name.hasPrefix("en")
+        isUp && isRunning && !isLoopback && !isTethered && name.hasPrefix("en")
     }
 
     /// Whether a path observation should be reported: any observation that

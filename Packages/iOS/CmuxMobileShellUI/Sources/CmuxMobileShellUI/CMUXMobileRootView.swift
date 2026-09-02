@@ -400,7 +400,8 @@ struct CMUXMobileRootView: View {
             connectionState: store.connectionState,
             isReconnectingStoredMac: store.isReconnectingStoredMac
                 || store.macConnectionStatus == .reconnecting,
-            isMacSwitchInFlight: store.isMacSwitchInFlight
+            isMacSwitchInFlight: store.isMacSwitchInFlight,
+            didFinishStoredMacReconnectAttempt: store.didFinishStoredMacReconnectAttempt
         )
     }
 
