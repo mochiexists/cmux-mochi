@@ -15,11 +15,15 @@ public struct IOSBuildScopedPairedMacStore: MobilePairedMacStoring {
     private let scope: MobileIOSBuildScope
     private let mutationGate: PairedMacMutationGate
 
-    public init(inner: any MobilePairedMacStoring, scope: MobileIOSBuildScope) {
+    public init(
+        inner: any MobilePairedMacStoring,
+        scope: MobileIOSBuildScope,
+        compatibilityPolicy: MobileMacBuildCompatibilityPolicy? = nil
+    ) {
         self.rawInner = inner
-        self.inner = MobileMacBuildCompatibilityPolicy
-            .development(expectedInstanceTag: scope.value)
-            .scoping(inner)
+        let resolvedPolicy = compatibilityPolicy
+            ?? .development(expectedInstanceTag: scope.value)
+        self.inner = resolvedPolicy.scoping(inner)
         self.scope = scope
         self.mutationGate = PairedMacMutationGate()
     }

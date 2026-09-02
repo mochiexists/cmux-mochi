@@ -260,7 +260,11 @@ public struct CMUXMobileRootScene: View {
         let coordinator = auth.coordinator
         let buildScopedStore: any MobilePairedMacStoring
         if let buildScope {
-            buildScopedStore = IOSBuildScopedPairedMacStore(inner: store, scope: buildScope)
+            buildScopedStore = IOSBuildScopedPairedMacStore(
+                inner: store,
+                scope: buildScope,
+                compatibilityPolicy: buildCompatibilityPolicy
+            )
         } else {
             buildScopedStore = store
         }

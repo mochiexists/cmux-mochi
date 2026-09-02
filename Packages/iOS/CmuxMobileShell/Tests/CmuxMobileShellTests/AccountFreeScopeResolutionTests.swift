@@ -128,7 +128,11 @@ import Testing
         )
         let buildScope = try #require(MobileIOSBuildScope("release-pairing-proof"))
         let pairedStore = MobileMacBuildCompatibilityPolicy.official.scoping(
-            IOSBuildScopedPairedMacStore(inner: rawStore, scope: buildScope)
+            IOSBuildScopedPairedMacStore(
+                inner: rawStore,
+                scope: buildScope,
+                compatibilityPolicy: .official
+            )
         )
         let defaults = makePairingHintDefaults(hasKnownPairedMac: false)
         let store = MobileShellComposite(
