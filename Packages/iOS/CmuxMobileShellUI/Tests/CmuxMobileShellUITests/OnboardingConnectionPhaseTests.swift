@@ -19,22 +19,26 @@ import Testing
         #expect(MobileReconnectPresentation.shouldBlockWorkspaceNavigation(
             connectionState: .disconnected,
             isReconnectingStoredMac: true,
-            isMacSwitchInFlight: false
+            isMacSwitchInFlight: false,
+            didFinishStoredMacReconnectAttempt: false
         ))
         #expect(MobileReconnectPresentation.shouldBlockWorkspaceNavigation(
             connectionState: .disconnected,
             isReconnectingStoredMac: false,
-            isMacSwitchInFlight: true
+            isMacSwitchInFlight: true,
+            didFinishStoredMacReconnectAttempt: true
         ))
         #expect(!MobileReconnectPresentation.shouldBlockWorkspaceNavigation(
             connectionState: .connected,
             isReconnectingStoredMac: true,
-            isMacSwitchInFlight: true
+            isMacSwitchInFlight: true,
+            didFinishStoredMacReconnectAttempt: true
         ))
         #expect(!MobileReconnectPresentation.shouldBlockWorkspaceNavigation(
             connectionState: .disconnected,
             isReconnectingStoredMac: false,
-            isMacSwitchInFlight: false
+            isMacSwitchInFlight: false,
+            didFinishStoredMacReconnectAttempt: true
         ))
     }
 

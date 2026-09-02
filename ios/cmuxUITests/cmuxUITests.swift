@@ -333,23 +333,25 @@ final class cmuxUITests: XCTestCase {
     }
 
     @MainActor
-    func testDeleteComputersVerifierPasses() throws {
+    func testHideComputersVerifierPasses() throws {
         let app = launchApp(mockData: false, environment: [
-            "CMUX_DELETE_COMPUTERS_VERIFIER": "1",
+            "CMUX_HIDE_COMPUTERS_VERIFIER": "1",
         ])
         defer { app.terminate() }
 
-        let status = app.staticTexts["DeleteComputersVerifierStatus"]
+        let status = app.staticTexts["HideComputersVerifierStatus"]
         XCTAssertTrue(status.waitForExistence(timeout: 10))
         let pass = NSPredicate(format: "label == %@", "PASS")
         expectation(for: pass, evaluatedWith: status)
         waitForExpectations(timeout: 10)
         XCTAssertEqual(status.label, "PASS")
-        XCTAssertTrue(app.staticTexts["halfRemovedAbsent=true"].exists)
+        XCTAssertTrue(app.staticTexts["halfHiddenAbsent=true"].exists)
         XCTAssertTrue(app.staticTexts["halfRemainingPresent=true"].exists)
         XCTAssertTrue(app.staticTexts["halfNoDisconnectedBanner=true"].exists)
         XCTAssertTrue(app.staticTexts["refreshPreservedHalfList=true"].exists)
-        XCTAssertTrue(app.staticTexts["allRemoved=true"].exists)
+        XCTAssertTrue(app.staticTexts["allHidden=true"].exists)
+        XCTAssertTrue(app.staticTexts["allHiddenKnownPairedMac=true"].exists)
+        XCTAssertTrue(app.staticTexts["allHiddenNormalEmpty=true"].exists)
         XCTAssertTrue(app.staticTexts["refreshPreservedEmptyList=true"].exists)
     }
 
