@@ -127,6 +127,18 @@ import Testing
         ))
         #expect(MobileHostNetworkPathMonitor.personalHotspotServiceName("iPhone USB"))
         #expect(!MobileHostNetworkPathMonitor.personalHotspotServiceName("USB 10/100/1000 LAN"))
+        #expect(MobileHostNetworkPathMonitor.personalHotspotIPv4Configuration(
+            addresses: ["172.20.10.12"],
+            router: "172.20.10.1"
+        ))
+        #expect(!MobileHostNetworkPathMonitor.personalHotspotIPv4Configuration(
+            addresses: ["192.168.1.20"],
+            router: "192.168.1.1"
+        ))
+        #expect(!MobileHostNetworkPathMonitor.personalHotspotIPv4Configuration(
+            addresses: ["172.20.11.12"],
+            router: "172.20.10.1"
+        ))
     }
 
     @Test func tetherOnlyHostDoesNotPublishMDNSAsAFalseLANFallback() {
