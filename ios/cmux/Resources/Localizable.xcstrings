@@ -5594,6 +5594,23 @@
         }
       }
     },
+    "mobile.pairing.pairingNotSaved": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This Mac paired, but the pairing could not be saved on this device, so it will not reconnect. This usually means the Mac and iPhone builds do not match — check they are the same channel or dev tag."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "この Mac とはペアリングできましたが、このデバイスにペアリング情報を保存できなかったため、再接続できません。通常、Mac と iPhone のビルドが一致していないことが原因です。同じチャンネルまたは開発タグであることを確認してください。"
+          }
+        }
+      }
+    },
     "mobile.pairing.emailMismatchFormat": {
       "extractionState": "manual",
       "localizations": {

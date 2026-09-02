@@ -286,7 +286,7 @@ extension MobilePairingFailureCategory {
         case .pairingNotSaved:
             return L10n.string(
                 "mobile.pairing.pairingNotSaved",
-                defaultValue: "This Mac paired, but the pairing could not be saved on this device, so it will not reconnect. This usually means the Mac and iPhone builds do not match {2014} check they are the same channel or dev tag."
+                defaultValue: "This Mac paired, but the pairing could not be saved on this device, so it will not reconnect. This usually means the Mac and iPhone builds do not match — check they are the same channel or dev tag."
             )
         case .macUpdateRequired:
             return L10n.string(
