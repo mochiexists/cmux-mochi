@@ -10,7 +10,11 @@ struct CmxPreparedTailscaleRoute: Sendable {
 
 protocol CmxTailscaleRouteAuthorizing: Sendable {
     func prepare(request: CmxByteTransportRequest) async throws -> CmxPreparedTailscaleRoute
-    func validate(proof: CmxTailscaleRouteProof, connectionPath: NWPath) async throws
+    func validate(
+        proof: CmxTailscaleRouteProof,
+        connectionPath: NWPath,
+        phase: CmxTailscaleRouteValidationPhase
+    ) async throws
 }
 
 actor CmxSystemTailscaleRouteAuthority: CmxTailscaleRouteAuthorizing {
@@ -65,7 +69,11 @@ actor CmxSystemTailscaleRouteAuthority: CmxTailscaleRouteAuthorizing {
         return CmxPreparedTailscaleRoute(proof: proof, requiredInterface: interface)
     }
 
-    func validate(proof: CmxTailscaleRouteProof, connectionPath: NWPath) throws {
+    func validate(
+        proof: CmxTailscaleRouteProof,
+        connectionPath: NWPath,
+        phase: CmxTailscaleRouteValidationPhase
+    ) throws {
         let observed = observedPath()
         let authoritySnapshot = Self.authoritySnapshot(
             generation: observed.generation,
@@ -75,7 +83,8 @@ actor CmxSystemTailscaleRouteAuthority: CmxTailscaleRouteAuthorizing {
         try CmxTailscaleRouteProofValidator().validate(
             proof: proof,
             authoritySnapshot: authoritySnapshot,
-            connectionPath: connectionSnapshot
+            connectionPath: connectionSnapshot,
+            phase: phase
         )
     }
 

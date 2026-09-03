@@ -2302,15 +2302,26 @@ public final class MobileShellComposite: MobileTerminalOutputSinking {
         }
         let activeMac = loadedActiveMac.flatMap { isHidden($0) ? nil : $0 }
         let allMacs = loadedMacs.filter { !isHidden($0) }
-        // Candidate Macs in priority order: the active Mac first, then every
-        // other saved Mac. Rows with no locally usable route stay in the list so
-        // one authenticated registry snapshot can upgrade an older Tailscale
+        // Candidate Macs in priority order: the active Mac first, then saved
+        // Macs on other physical devices. A sibling app build on the active Mac
+        // is an explicit user choice, not an automatic fallback: silently
+        // crossing from Nightly to Stable makes one outage look like a reconnect
+        // loop and can surface the wrong build's workspace state.
+        //
+        // Rows with no locally usable route stay in the list so one
+        // authenticated registry snapshot can upgrade an older Tailscale
         // pairing, or recover a route that was never persisted locally.
         var candidates: [MobilePairedMac] = []
         if let activeMac {
             candidates.append(activeMac)
+            let activeCanonicalDeviceID = cmxCanonicalDeviceID(activeMac.macDeviceID)
+            candidates.append(contentsOf: allMacs.filter {
+                $0.id != activeMac.id
+                    && cmxCanonicalDeviceID($0.macDeviceID) != activeCanonicalDeviceID
+            })
+        } else {
+            candidates.append(contentsOf: allMacs)
         }
-        candidates.append(contentsOf: allMacs.filter { $0.id != activeMac?.id })
         // Distinguishes "the pairing is not in the store for this scope" from
         // "it is, but every route was filtered before dialing" -- opposite fixes,
         // and both look like a silent reconnect failure from outside.

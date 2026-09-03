@@ -504,6 +504,55 @@ import Testing
         #expect(factory.attemptedPorts() == [51000])
     }
 
+    @Test func automaticReconnectDoesNotSwitchToSiblingBuildOnSameMac() async throws {
+        let router = LivenessHostRouter()
+        let factory = RouteRecordingTransportFactory(
+            router: router,
+            box: TransportBox(),
+            failingPorts: [51_000]
+        )
+        let (pairedStore, directory) = try makePairedMacStore()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        try await pairedStore.upsert(
+            macDeviceID: "shared-mac",
+            displayName: "Studio Nightly",
+            routes: [try loopbackRoute(id: "nightly", port: 51_000)],
+            instanceTag: "nightly",
+            markActive: true,
+            stackUserID: "user-1",
+            teamID: nil,
+            now: Date(timeIntervalSince1970: 20)
+        )
+        try await pairedStore.upsert(
+            macDeviceID: "shared-mac",
+            displayName: "Studio Stable",
+            routes: [try loopbackRoute(id: "stable", port: 51_001)],
+            instanceTag: "default",
+            markActive: false,
+            stackUserID: "user-1",
+            teamID: nil,
+            now: Date(timeIntervalSince1970: 10)
+        )
+        let store = MobileShellComposite(
+            runtime: LivenessTestRuntime(
+                transportFactory: factory,
+                now: Date.init,
+                supportedRouteKinds: [.debugLoopback]
+            ),
+            isSignedIn: true,
+            pairedMacStore: pairedStore,
+            identityProvider: StaticIdentityProvider(userID: "user-1"),
+            reachability: AlwaysOnlineReachability(),
+            pairingHintDefaults: UserDefaults(
+                suiteName: "sibling-build-reconnect-\(UUID().uuidString)"
+            )!,
+            hiddenMacStore: InMemoryPairedMacHiddenStore()
+        )
+
+        #expect(!(await store.reconnectActiveMacIfAvailable(stackUserID: "user-1")))
+        #expect(factory.attemptedPorts() == [51_000])
+    }
+
     @Test func connectionPoolRecordsFallbackRouteThatActuallyConnected() async throws {
         let clock = TestClock()
         let router = LivenessHostRouter()

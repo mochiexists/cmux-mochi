@@ -139,6 +139,15 @@ struct CmxTailscaleRouteProof: Equatable, Sendable {
     let generation: UInt64
 }
 
+/// Which facts a connection-path validation may assert. Network.framework can
+/// publish a path update before the socket has bound its endpoints, so that
+/// early callback may only prove route-level facts. Ready and write boundaries
+/// still require the exact local and remote endpoints from the route proof.
+enum CmxTailscaleRouteValidationPhase: Sendable {
+    case pathUpdate
+    case established
+}
+
 struct CmxTailscaleRouteProofValidator {
     func prepare(
         request: CmxByteTransportRequest,
@@ -187,7 +196,8 @@ struct CmxTailscaleRouteProofValidator {
     func validate(
         proof: CmxTailscaleRouteProof,
         authoritySnapshot: CmxTailscaleAuthoritySnapshot,
-        connectionPath: CmxTailscaleConnectionPathSnapshot
+        connectionPath: CmxTailscaleConnectionPathSnapshot,
+        phase: CmxTailscaleRouteValidationPhase
     ) throws {
         guard authoritySnapshot.generation == proof.generation else {
             throw CmxTailscaleRouteProofError.routeGenerationChanged
@@ -206,6 +216,7 @@ struct CmxTailscaleRouteProofValidator {
               connectionPath.availableInterfaces.contains(proof.interface) else {
             throw CmxTailscaleRouteProofError.connectionPathUnavailable
         }
+        guard phase == .established else { return }
         guard let localAddress = connectionPath.localAddress,
               proof.selfAddresses.contains(localAddress) else {
             throw CmxTailscaleRouteProofError.localEndpointMismatch

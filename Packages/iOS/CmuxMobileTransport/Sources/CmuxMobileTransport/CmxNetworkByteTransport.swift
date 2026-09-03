@@ -698,7 +698,7 @@ public actor CmxNetworkByteTransport: CmxByteTransport {
         guard tailscaleBinding != nil, !isTerminal else { return }
         tailscalePathRevision = tailscalePathRevision == .max ? 1 : tailscalePathRevision + 1
         do {
-            try await validateTailscaleAuthorization(path: path)
+            try await validateTailscaleAuthorization(path: path, phase: .pathUpdate)
         } catch {
             tailscaleAuthorizationInvalidated = true
             failTransport(.tailscaleAuthorizationUnavailable)
@@ -711,7 +711,7 @@ public actor CmxNetworkByteTransport: CmxByteTransport {
             throw CmxNetworkByteTransportError.tailscaleAuthorizationUnavailable
         }
         let revision = tailscalePathRevision
-        try await validateTailscaleAuthorization(path: path)
+        try await validateTailscaleAuthorization(path: path, phase: .established)
         // The authority call yields this actor. Reject any connection-path
         // update that interleaved before the synchronous send boundary.
         guard revision == tailscalePathRevision else {
@@ -719,7 +719,10 @@ public actor CmxNetworkByteTransport: CmxByteTransport {
         }
     }
 
-    private func validateTailscaleAuthorization(path: NWPath) async throws {
+    private func validateTailscaleAuthorization(
+        path: NWPath,
+        phase: CmxTailscaleRouteValidationPhase
+    ) async throws {
         guard let binding = tailscaleBinding else { return }
         guard !tailscaleAuthorizationInvalidated,
               binding.request == binding.preparedRoute.proof.request,
@@ -729,7 +732,8 @@ public actor CmxNetworkByteTransport: CmxByteTransport {
         do {
             try await binding.authority.validate(
                 proof: binding.preparedRoute.proof,
-                connectionPath: path
+                connectionPath: path,
+                phase: phase
             )
         } catch {
             throw CmxNetworkByteTransportError.tailscaleAuthorizationUnavailable
