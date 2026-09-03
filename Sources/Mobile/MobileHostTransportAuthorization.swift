@@ -83,6 +83,21 @@ final class MobileHostConnectionRegistry: @unchecked Sendable {
         return connections.count
     }
 
+    /// Number of live DeviceLink connections authenticated with a durable
+    /// paired-device identity. Enrollment candidates are deliberately excluded:
+    /// they can reach the Mac before the phone has persisted its new identity,
+    /// so treating one as paired makes the Mac report success while the phone
+    /// is still capable of rejecting the pairing.
+    var pairedDeviceCount: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return connections.values.reduce(into: 0) { count, entry in
+            if case .pairedDevice = entry.authorization {
+                count += 1
+            }
+        }
+    }
+
     func insert(
         _ connection: MobileHostConnection,
         id: UUID,

@@ -185,6 +185,54 @@ extension MobileHostAuthorizationTests {
         }
     }
 
+    @Test func testPairedDeviceCountExcludesEnrollmentCandidates() async {
+        let registry = MobileHostConnectionRegistry.shared
+        for connection in registry.removeAll() {
+            await connection.close(reason: "test setup")
+        }
+
+        let candidateID = UUID()
+        let pairedID = UUID()
+        let candidate = MobileHostConnection(
+            id: candidateID,
+            transport: GatedMobileHostByteTransport(),
+            authorizeRequest: { _ in nil },
+            onAuthorizedRequest: { _ in },
+            handleRequest: { _ in .ok([:]) },
+            onClose: { _ in }
+        )
+        let paired = MobileHostConnection(
+            id: pairedID,
+            transport: GatedMobileHostByteTransport(),
+            authorizeRequest: { _ in nil },
+            onAuthorizedRequest: { _ in },
+            handleRequest: { _ in .ok([:]) },
+            onClose: { _ in }
+        )
+
+        #expect(registry.insert(
+            candidate,
+            id: candidateID,
+            authorization: .enrollmentCandidate(fingerprint: "candidate"),
+            limit: 8
+        ))
+        #expect(registry.count == 1)
+        #expect(registry.pairedDeviceCount == 0)
+
+        #expect(registry.insert(
+            paired,
+            id: pairedID,
+            authorization: .pairedDevice(fingerprint: "paired", label: "iPhone"),
+            limit: 8
+        ))
+        #expect(registry.count == 2)
+        #expect(registry.pairedDeviceCount == 1)
+
+        for connection in registry.removeAll() {
+            await connection.close(reason: "test cleanup")
+        }
+    }
+
     private static func mobileHostStatusFrame(id: String) throws -> Data {
         try MobileSyncFrameCodec.encodeFrame(
             Data("{\"id\":\"\(id)\",\"method\":\"mobile.host.status\",\"params\":{}}".utf8)

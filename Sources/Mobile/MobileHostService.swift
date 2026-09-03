@@ -174,6 +174,10 @@ struct MobileHostServiceStatus {
     let usesEphemeralFallback: Bool
     let routes: [CmxAttachRoute]
     let activeConnectionCount: Int
+    /// Live DeviceLink connections that authenticated with a persisted paired
+    /// identity. Unlike `activeConnectionCount`, this excludes the temporary
+    /// enrollment socket used while a phone is still saving the pairing.
+    let pairedDeviceConnectionCount: Int
     let lastErrorDescription: String?
 
     var payload: [String: Any] {
@@ -185,6 +189,7 @@ struct MobileHostServiceStatus {
             "uses_ephemeral_fallback": usesEphemeralFallback,
             "routes": routes.mobileHostJSONObjects(for: .authenticated, at: now),
             "active_connection_count": activeConnectionCount,
+            "paired_device_connection_count": pairedDeviceConnectionCount,
             "last_error": lastErrorDescription ?? NSNull()
         ]
     }
@@ -1413,6 +1418,7 @@ final class MobileHostService {
             usesEphemeralFallback: isRunning && listenerUsesEphemeralFallback,
             routes: routes,
             activeConnectionCount: MobileHostConnectionRegistry.shared.count,
+            pairedDeviceConnectionCount: MobileHostConnectionRegistry.shared.pairedDeviceCount,
             lastErrorDescription: lastErrorDescription
         )
     }

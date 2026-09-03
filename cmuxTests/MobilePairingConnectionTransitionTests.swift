@@ -25,8 +25,8 @@ struct MobilePairingConnectionTransitionTests {
         let ready = makeReady()
         let next = MobilePairingModel.connectionTransition(
             from: .ready(ready),
-            activeConnectionCount: 1,
-            baselineConnectionCount: 0
+            pairedDeviceConnectionCount: 1,
+            baselinePairedDeviceConnectionCount: 0
         )
         #expect(next == .connected(ready))
     }
@@ -36,8 +36,8 @@ struct MobilePairingConnectionTransitionTests {
         let ready = makeReady()
         let next = MobilePairingModel.connectionTransition(
             from: .ready(ready),
-            activeConnectionCount: 0,
-            baselineConnectionCount: 0
+            pairedDeviceConnectionCount: 0,
+            baselinePairedDeviceConnectionCount: 0
         )
         #expect(next == .ready(ready))
     }
@@ -49,15 +49,15 @@ struct MobilePairingConnectionTransitionTests {
         // count must keep showing the QR so a second device can still pair.
         let stillWaiting = MobilePairingModel.connectionTransition(
             from: .ready(ready),
-            activeConnectionCount: 1,
-            baselineConnectionCount: 1
+            pairedDeviceConnectionCount: 1,
+            baselinePairedDeviceConnectionCount: 1
         )
         #expect(stillWaiting == .ready(ready))
         // A second device attaches (count rises above the baseline) -> connected.
         let connected = MobilePairingModel.connectionTransition(
             from: .ready(ready),
-            activeConnectionCount: 2,
-            baselineConnectionCount: 1
+            pairedDeviceConnectionCount: 2,
+            baselinePairedDeviceConnectionCount: 1
         )
         #expect(connected == .connected(ready))
     }
@@ -67,8 +67,8 @@ struct MobilePairingConnectionTransitionTests {
         let ready = makeReady()
         let next = MobilePairingModel.connectionTransition(
             from: .connected(ready),
-            activeConnectionCount: 1,
-            baselineConnectionCount: 1
+            pairedDeviceConnectionCount: 1,
+            baselinePairedDeviceConnectionCount: 1
         )
         #expect(next == .connected(ready))
     }
@@ -78,8 +78,8 @@ struct MobilePairingConnectionTransitionTests {
         let ready = makeReady()
         let next = MobilePairingModel.connectionTransition(
             from: .connected(ready),
-            activeConnectionCount: 2,
-            baselineConnectionCount: 1
+            pairedDeviceConnectionCount: 2,
+            baselinePairedDeviceConnectionCount: 1
         )
         #expect(next == .connected(ready))
     }
@@ -88,8 +88,8 @@ struct MobilePairingConnectionTransitionTests {
     func preparingIsUnaffected() {
         let next = MobilePairingModel.connectionTransition(
             from: .preparing,
-            activeConnectionCount: 1,
-            baselineConnectionCount: 0
+            pairedDeviceConnectionCount: 1,
+            baselinePairedDeviceConnectionCount: 0
         )
         #expect(next == .preparing)
     }

@@ -19,8 +19,8 @@ final class MobilePairingModel {
         case ready(Ready)
         /// The displayed one-time enrollment ticket reached its deadline.
         case expired(Ready)
-        /// A phone has attached to the listener; show a paired/success state
-        /// instead of the QR + spinner.
+        /// A phone has reconnected with its newly persisted paired identity;
+        /// show a paired/success state instead of the QR + spinner.
         case connected(Ready)
         /// No non-loopback DeviceLink route is available yet.
         case needsReachableTransport
@@ -168,23 +168,21 @@ final class MobilePairingModel {
     }
 
     /// Watches the mobile host's connection status while a code is displayed and
-    /// flips `.ready` (QR shown, waiting) to `.connected` once a phone has
-    /// attached. Success stays latched until an explicit refresh or window close;
-    /// enrollment briefly reconnects while it installs the durable device identity,
-    /// and letting that transport churn restore the QR makes a successful scan look
-    /// like it failed. Cancelled and superseded on each ``refresh()`` via the generation
-    /// guard, and on ``stopObserving()``.
+    /// flips `.ready` (QR shown, waiting) to `.connected` only after a phone has
+    /// persisted its paired identity and reconnected with it. Success stays latched
+    /// until an explicit refresh or window close. Cancelled and superseded on each
+    /// ``refresh()`` via the generation guard, and on ``stopObserving()``.
     private func observeConnections() {
         connectionObservationTask?.cancel()
         let generation = refreshGeneration
-        // Connections already present when this code is displayed (another phone
-        // is attached, or we are pairing an additional device). Only a NEW
-        // connection above this baseline means "this freshly minted QR was
-        // scanned"; without the baseline, opening the window while a phone is
-        // already connected would falsely jump to "connected" before the new
-        // ticket is ever used, which also makes pairing an additional device
-        // impossible (the QR would hide immediately).
-        let baseline = host.statusSnapshot().activeConnectionCount
+        // Durable paired-device connections already present when this code is
+        // displayed (another phone is attached, or we are pairing an additional
+        // device). Only a NEW connection above this baseline means the scanned
+        // ticket was saved successfully; without the baseline, opening the window
+        // while a phone is already connected would falsely jump to "connected"
+        // before the new ticket is ever used, which also makes pairing an
+        // additional device impossible (the QR would hide immediately).
+        let baseline = host.statusSnapshot().pairedDeviceConnectionCount
         connectionObservationTask = Task { [weak self] in
             guard let self else { return }
             for await status in self.host.statusUpdates() {
@@ -192,8 +190,8 @@ final class MobilePairingModel {
                 guard generation == self.refreshGeneration else { return }
                 self.state = Self.connectionTransition(
                     from: self.state,
-                    activeConnectionCount: status.activeConnectionCount,
-                    baselineConnectionCount: baseline
+                    pairedDeviceConnectionCount: status.pairedDeviceConnectionCount,
+                    baselinePairedDeviceConnectionCount: baseline
                 )
             }
         }
@@ -236,19 +234,18 @@ final class MobilePairingModel {
         }
     }
 
-    /// Computes the next render state from a connection-count change, relative to
-    /// the `baselineConnectionCount` captured when the code was displayed. A
-    /// connection *above* the baseline (a phone that attached after the QR was
-    /// shown) flips a displayed ticket from `.ready` to `.connected`. Once shown,
-    /// success is monotonic for that ticket; only ``refresh()`` may display a QR
-    /// again. All other states pass through unchanged. Pure, so the transition is
-    /// unit tested without a live host.
+    /// Computes the next render state from a durable paired-device count change,
+    /// relative to the baseline captured when the code was displayed. A persisted
+    /// identity reconnecting above that baseline flips a displayed ticket from
+    /// `.ready` to `.connected`. Once shown, success is monotonic for that ticket;
+    /// only ``refresh()`` may display a QR again. All other states pass through
+    /// unchanged. Pure, so the transition is unit tested without a live host.
     static func connectionTransition(
         from current: State,
-        activeConnectionCount: Int,
-        baselineConnectionCount: Int
+        pairedDeviceConnectionCount: Int,
+        baselinePairedDeviceConnectionCount: Int
     ) -> State {
-        let connected = activeConnectionCount > baselineConnectionCount
+        let connected = pairedDeviceConnectionCount > baselinePairedDeviceConnectionCount
         switch current {
         case let .ready(ready) where connected:
             return .connected(ready)
