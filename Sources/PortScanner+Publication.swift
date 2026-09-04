@@ -96,21 +96,33 @@ extension PortScanner {
                 let deliveredResults = publicationBuffer.completeAgentDelivery(results)
                 for result in deliveredResults {
                     let workspaceId = result.workspaceId
-                    guard agentRevisionByWorkspace[workspaceId, default: 0] == result.revision else {
+                    let wasApplied = appliedWorkspaceIds.contains(workspaceId)
+
+                    // The synchronous MainActor callback is the source of truth for what the
+                    // workspace now displays. Its lifecycle may change before this queue hop
+                    // completes, but forgetting an applied value makes the following empty scan
+                    // look identical to the history's initial empty state and leaves ghost ports
+                    // visible indefinitely.
+                    if wasApplied {
+                        agentPublicationHistory.acknowledge(
+                            workspaceId: workspaceId,
+                            ports: result.ports,
+                            requestID: result.requestID
+                        )
+                    } else {
                         agentPublicationHistory.reject(
                             workspaceId: workspaceId,
                             requestID: result.requestID
                         )
+                    }
+
+                    guard agentRevisionByWorkspace[workspaceId, default: 0] == result.revision else {
                         continue
                     }
                     let hasNewerPublication = publicationBuffer.hasPendingAgentPublication(
                         newerThan: result
                     )
-                    guard appliedWorkspaceIds.contains(workspaceId) else {
-                        agentPublicationHistory.reject(
-                            workspaceId: workspaceId,
-                            requestID: result.requestID
-                        )
+                    guard wasApplied else {
                         if !trackedAgentWorkspaces.contains(workspaceId), !hasNewerPublication {
                             forceAgentResultWorkspaces.remove(workspaceId)
                             agentPublicationHistory.remove(workspaceId: workspaceId)
@@ -129,12 +141,6 @@ extension PortScanner {
                        !hasNewerPublication {
                         agentPublicationHistory.remove(workspaceId: workspaceId)
                         scanCoordination.removeAgentWorkspaces([workspaceId])
-                    } else {
-                        agentPublicationHistory.acknowledge(
-                            workspaceId: workspaceId,
-                            ports: result.ports,
-                            requestID: result.requestID
-                        )
                     }
                     if result.removesLifecycle, !hasNewerPublication {
                         completedLifecycles.append(result)
