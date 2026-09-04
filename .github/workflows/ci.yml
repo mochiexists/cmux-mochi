@@ -461,11 +461,11 @@ jobs:
     # linux-preflight itself succeeds. Require the direct needs explicitly.
     if: ${{ !cancelled() && needs.changes.result == 'success' && needs.linux-preflight.result == 'success' && needs.changes.outputs.macos == 'true' }}
     name: app-host unit tests (${{ matrix.shard }}/4)
-    # App-host XCTest needs a runner that can broker testmanagerd control
-    # sessions. Validated head-to-head that warp-macos-15-arm64-6x runs the
-    # full app-host suite with 0 unexpected failures, so route through the
-    # shared MACOS_RUNNER_15 var like the other macOS jobs.
-    runs-on: ${{ vars.MACOS_RUNNER_15 || 'warp-macos-15-arm64-6x' }}
+    # App-host XCTest needs a runner with an interactive Aqua session that can
+    # broker testmanagerd control sessions. Keep that routing independent from
+    # ordinary macOS builds: a generic GitHub-hosted MACOS_RUNNER_15 can compile
+    # the app but produces random AppKit/WebKit and hook-server failures here.
+    runs-on: ${{ vars.MACOS_RUNNER_APP_HOST || vars.MACOS_RUNNER_15 || 'warp-macos-15-arm64-6x' }}
     timeout-minutes: 75
     strategy:
       fail-fast: false
