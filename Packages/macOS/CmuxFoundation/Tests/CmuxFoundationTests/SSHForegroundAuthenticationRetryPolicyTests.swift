@@ -358,12 +358,16 @@ struct SSHForegroundAuthenticationRetryPolicyTests {
         #!/bin/sh
         trap '' HUP INT TERM
         printf '%s\\n' "$$" >> "$CMUX_TEST_PID_LOG"
+        /bin/sleep 30 &
+        cmux_test_sleep_pid=$!
+        printf '%s\\n' "$cmux_test_sleep_pid" >> "$CMUX_TEST_PID_LOG"
         cmux_test_depth="${CMUX_TEST_CHAIN_DEPTH:-0}"
         if [ "$cmux_test_depth" -gt 0 ]; then
           CMUX_TEST_CHAIN_DEPTH=$((cmux_test_depth - 1)) /bin/sh "$0" &
         else
           : > "$CMUX_TEST_READY_MARKER"
         fi
+        wait "$cmux_test_sleep_pid" 2>/dev/null || true
         while :; do /bin/sleep 30; done
         """.write(to: chainScript, atomically: true, encoding: .utf8)
         try fileManager.setAttributes([.posixPermissions: 0o700], ofItemAtPath: chainScript.path)
@@ -439,8 +443,14 @@ struct SSHForegroundAuthenticationRetryPolicyTests {
 
         let capturedStderr = (try? String(contentsOf: stderrCapture.url, encoding: .utf8)) ?? ""
         let stderrTail = capturedStderr.split(separator: "\n").suffix(400).joined(separator: "\n")
-        #expect(process.terminationStatus == 0, "terminator stderr:\n\(stderrTail)")
-        #expect(processIDs.count == 25)
+        #expect(
+            process.terminationReason == .exit && process.terminationStatus == 0,
+            "terminator reason=\(process.terminationReason) status=\(process.terminationStatus) stderr:\n\(stderrTail)"
+        )
+        // Every shell starts and records its sleeper before launching the next shell.
+        // This makes the ready marker prove that both halves of the 25-level tree exist,
+        // and catches leaf processes that a single freeze/snapshot pass can miss.
+        #expect(processIDs.count == 50)
         // The budget covers the single two-second grace deadline and bounded
         // post-deadline sweep. Chain setup is synchronized outside this measurement;
         // a per-level deadline regression would take roughly 50 seconds.

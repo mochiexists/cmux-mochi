@@ -85,41 +85,49 @@ public struct SSHForegroundAuthenticationRetryPolicy: Sendable {
             [ "$cmux_ssh_auth_cleanup_now" -lt "$cmux_ssh_auth_cleanup_deadline" ]
           )
 
-          # Snapshot the whole original tree with a SINGLE `ps`, then STOP every member.
-          # The chain is already fully spawned before cleanup begins, so one process-table
-          # read after freezing the root captures every descendant; the closure is computed
-          # in-shell (no per-node fork) and each member is stopped with the builtin `kill`.
-          # This matters on a fork-starved shared CI runner, where every extra spawn risks
-          # EAGAIN and a silently skipped signal. Returns every PID reached from the root.
+          # Freeze the root, snapshot its descendant closure, freeze every discovered member,
+          # then rescan until the frozen closure stops growing. A descendant can fork between
+          # the first process-table read and its own STOP, so a single snapshot is not an
+          # authoritative tree boundary. Once a pass freezes every PID it found, the next pass
+          # captures that race without per-node `pgrep` forks. Keep the number of process-table
+          # reads bounded for a hostile or fork-starved tree; the later recursive sweep remains
+          # a best-effort supplement to this fork-free PID backstop.
           cmux_ssh_snapshot_auth_tree() (
             cmux_ssh_auth_snapshot_root="$1"
             kill -STOP "$cmux_ssh_auth_snapshot_root" >/dev/null 2>&1 || true
-            cmux_ssh_auth_snapshot_table=$(/bin/ps -axo pid=,ppid= 2>/dev/null) || cmux_ssh_auth_snapshot_table=""
             cmux_ssh_auth_snapshot_all=" $cmux_ssh_auth_snapshot_root "
-            # Repeatedly fold children of already-collected pids into the set until it is
-            # closed. Bounded by tree depth; every iteration is pure shell, no subprocess.
-            cmux_ssh_auth_snapshot_grew=1
-            while [ "$cmux_ssh_auth_snapshot_grew" = 1 ]; do
+            cmux_ssh_auth_snapshot_passes_remaining=8
+            while [ "$cmux_ssh_auth_snapshot_passes_remaining" -gt 0 ]; do
+              cmux_ssh_auth_snapshot_table=$(/bin/ps -axo pid=,ppid= 2>/dev/null) || break
               cmux_ssh_auth_snapshot_grew=0
-              # shellcheck disable=SC2086
-              set -- $cmux_ssh_auth_snapshot_table
-              while [ "$#" -ge 2 ]; do
-                cmux_ssh_auth_snapshot_child="$1"
-                cmux_ssh_auth_snapshot_parent="$2"
-                shift 2
-                case "$cmux_ssh_auth_snapshot_all" in
-                  *" $cmux_ssh_auth_snapshot_child "*) continue ;;
-                esac
-                case "$cmux_ssh_auth_snapshot_all" in
-                  *" $cmux_ssh_auth_snapshot_parent "*)
-                    cmux_ssh_auth_snapshot_all="$cmux_ssh_auth_snapshot_all$cmux_ssh_auth_snapshot_child "
-                    cmux_ssh_auth_snapshot_grew=1
-                    ;;
-                esac
+              # Repeatedly fold children of already-collected PIDs into the set until this
+              # one table snapshot is closed. Each fold is pure shell work.
+              cmux_ssh_auth_snapshot_folded=1
+              while [ "$cmux_ssh_auth_snapshot_folded" = 1 ]; do
+                cmux_ssh_auth_snapshot_folded=0
+                # shellcheck disable=SC2086
+                set -- $cmux_ssh_auth_snapshot_table
+                while [ "$#" -ge 2 ]; do
+                  cmux_ssh_auth_snapshot_child="$1"
+                  cmux_ssh_auth_snapshot_parent="$2"
+                  shift 2
+                  case "$cmux_ssh_auth_snapshot_all" in
+                    *" $cmux_ssh_auth_snapshot_child "*) continue ;;
+                  esac
+                  case "$cmux_ssh_auth_snapshot_all" in
+                    *" $cmux_ssh_auth_snapshot_parent "*)
+                      cmux_ssh_auth_snapshot_all="$cmux_ssh_auth_snapshot_all$cmux_ssh_auth_snapshot_child "
+                      cmux_ssh_auth_snapshot_grew=1
+                      cmux_ssh_auth_snapshot_folded=1
+                      ;;
+                  esac
+                done
               done
-            done
-            for cmux_ssh_auth_snapshot_pid in $cmux_ssh_auth_snapshot_all; do
-              kill -STOP "$cmux_ssh_auth_snapshot_pid" >/dev/null 2>&1 || true
+              for cmux_ssh_auth_snapshot_pid in $cmux_ssh_auth_snapshot_all; do
+                kill -STOP "$cmux_ssh_auth_snapshot_pid" >/dev/null 2>&1 || true
+              done
+              if [ "$cmux_ssh_auth_snapshot_grew" = 0 ]; then break; fi
+              cmux_ssh_auth_snapshot_passes_remaining=$((cmux_ssh_auth_snapshot_passes_remaining - 1))
             done
             printf '%s' "$cmux_ssh_auth_snapshot_all"
           )
@@ -232,9 +240,9 @@ public struct SSHForegroundAuthenticationRetryPolicy: Sendable {
           if ! cmux_ssh_auth_process_is_original "$cmux_ssh_auth_tree_root_pid" "$cmux_ssh_auth_tree_root_parent"; then
             exit 0
           fi
-          # Freeze and snapshot the tree first, before anything that can fork and fail.
-          # Liveness then depends only on this snapshot plus the fork-free builtin kill
-          # backstop below, never on the graceful walk or the clock succeeding.
+          # Freeze and close the tree snapshot first, before the graceful walk can alter it.
+          # Liveness then depends on the closed snapshot plus the fork-free builtin kill
+          # backstop below, not on the recursive walk or the clock succeeding.
           cmux_ssh_auth_tree_snapshot=$(cmux_ssh_snapshot_auth_tree "$cmux_ssh_auth_tree_root_pid")
           # The clock is best-effort: if `date` cannot fork on a starved host, treat the
           # deadline as already lapsed so the walk skips the graceful phase and kills.
