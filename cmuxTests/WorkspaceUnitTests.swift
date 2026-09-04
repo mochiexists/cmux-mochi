@@ -6978,6 +6978,28 @@ final class WorkspacePanelGitBranchTests: XCTestCase {
         )
     }
 
+    func testSidebarFinderDirectoryPrefersFocusedLocalPanel() throws {
+        let workspace = Workspace()
+        let homeDirectory = "/Users/cmux"
+        let projectDirectory = "/Users/cmux/project"
+
+        let homePanelId = try XCTUnwrap(workspace.focusedPanelId)
+        let paneId = try XCTUnwrap(workspace.paneId(forPanelId: homePanelId))
+        let projectPanel = try XCTUnwrap(workspace.newTerminalSurface(
+            inPane: paneId,
+            focus: false
+        ))
+
+        workspace.updatePanelDirectory(panelId: homePanelId, directory: homeDirectory)
+        workspace.updatePanelDirectory(panelId: projectPanel.id, directory: projectDirectory)
+
+        workspace.focusPanel(projectPanel.id)
+        XCTAssertEqual(workspace.sidebarFinderDirectory(), projectDirectory)
+
+        workspace.focusPanel(homePanelId)
+        XCTAssertEqual(workspace.sidebarFinderDirectory(), homeDirectory)
+    }
+
     func testRemoteSidebarDirectoryCanonicalizationDedupesTildeAndAbsoluteHomePaths() {
         let workspace = Workspace()
         workspace.configureRemoteConnection(
