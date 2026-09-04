@@ -71,6 +71,10 @@ struct RemoteDaemonRPCClientTimeoutIsolationTests {
 
     @Test("a timed-out PTY attach does not wait for a blocked cancellation write")
     func timedOutPTYAttachBoundsCancellationWrite() throws {
+        let setupTimeout: TimeInterval = 5
+        let callCompletionTimeout: TimeInterval = 6
+        let failureSafetyTimeout: TimeInterval = 12
+        let transportTerminationTimeout: TimeInterval = 2
         let executable = try makeTransport()
         defer {
             try? FileManager.default.removeItem(
@@ -79,6 +83,9 @@ struct RemoteDaemonRPCClientTimeoutIsolationTests {
         }
 
         let stalledAttachRead = DispatchSemaphore(value: 0)
+        let attachmentEventQueue = DispatchQueue(
+            label: "com.cmux.tests.remote-daemon.blocked-cancellation-attachment-event"
+        )
         let unexpectedTermination = DispatchSemaphore(value: 0)
         let client = RemoteDaemonRPCClient(
             configuration: configuration(),
@@ -101,7 +108,7 @@ struct RemoteDaemonRPCClientTimeoutIsolationTests {
             rows: 24,
             command: nil,
             requireExisting: true,
-            queue: .global()
+            queue: attachmentEventQueue
         ) { event in
             if case .data(let data) = event, data == Data("attach-read".utf8) {
                 stalledAttachRead.signal()
@@ -112,7 +119,7 @@ struct RemoteDaemonRPCClientTimeoutIsolationTests {
         let releaseWrite = DispatchSemaphore(value: 0)
         let writeBlockQueue = DispatchQueue(label: "com.cmux.tests.remote-daemon.block-cancellation-write")
         writeBlockQueue.async {
-            guard stalledAttachRead.wait(timeout: .now() + 2) == .success else {
+            guard stalledAttachRead.wait(timeout: .now() + setupTimeout) == .success else {
                 releaseWrite.signal()
                 return
             }
@@ -125,7 +132,7 @@ struct RemoteDaemonRPCClientTimeoutIsolationTests {
         // from stranding the test process; ordinary cleanup is deterministic.
         let cleanupFired = DispatchSemaphore(value: 0)
         let cleanupTimer = DispatchSource.makeTimerSource(queue: writeBlockQueue)
-        cleanupTimer.schedule(deadline: .now() + 5)
+        cleanupTimer.schedule(deadline: .now() + failureSafetyTimeout)
         cleanupTimer.setEventHandler {
             cleanupFired.signal()
             releaseWrite.signal()
@@ -163,12 +170,15 @@ struct RemoteDaemonRPCClientTimeoutIsolationTests {
             }
         }
 
-        #expect(writeBlockEntered.wait(timeout: .now() + 2) == .success)
-        #expect(callFinished.wait(timeout: .now() + 6) == .success)
+        let writeBlockResult = writeBlockEntered.wait(timeout: .now() + setupTimeout)
+        #expect(writeBlockResult == .success)
+        guard writeBlockResult == .success else { return }
+
+        #expect(callFinished.wait(timeout: .now() + callCompletionTimeout) == .success)
         #expect(callTimedOut.wait(timeout: .now()) == .success)
         #expect(unexpectedCallResult.wait(timeout: .now()) == .timedOut)
         #expect(cleanupFired.wait(timeout: .now()) == .timedOut)
-        #expect(unexpectedTermination.wait(timeout: .now() + 2) == .success)
+        #expect(unexpectedTermination.wait(timeout: .now() + transportTerminationTimeout) == .success)
     }
 
     private func configuration() -> WorkspaceRemoteConfiguration {
