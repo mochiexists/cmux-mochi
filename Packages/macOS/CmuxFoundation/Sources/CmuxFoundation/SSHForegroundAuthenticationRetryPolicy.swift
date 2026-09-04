@@ -245,10 +245,14 @@ public struct SSHForegroundAuthenticationRetryPolicy: Sendable {
           esac
           cmux_ssh_terminate_auth_process "$cmux_ssh_auth_tree_root_pid" "$cmux_ssh_auth_tree_root_parent"
           # Backstop: every member of the frozen original tree that the ordered, deadline-
-          # bounded walk did not already reap is force-killed together. The snapshot was
-          # taken while the tree was frozen, so a reparent during the walk cannot hide one.
-          # shellcheck disable=SC2086
-          kill -KILL -- $cmux_ssh_auth_tree_snapshot >/dev/null 2>&1 || true
+          # bounded walk did not already reap is force-killed. Signal each PID separately:
+          # a large batch can be interrupted by the resulting SIGCHLD burst on a saturated
+          # runner, preventing the function from returning so its caller can reap the root.
+          # The loop and builtin `kill` remain fork-free, and the frozen snapshot means a
+          # reparent during the walk cannot hide a descendant.
+          for cmux_ssh_auth_snapshot_pid in $cmux_ssh_auth_tree_snapshot; do
+            kill -KILL "$cmux_ssh_auth_snapshot_pid" >/dev/null 2>&1 || true
+          done
         )
         """
     }
