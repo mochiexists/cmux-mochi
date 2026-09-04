@@ -310,7 +310,6 @@ extension TerminalController {
         if let lineLimit, lineLimit <= 0 {
             return .err(code: "invalid_params", message: "lines must be greater than 0", data: nil)
         }
-        let textMode = (v2String(params, "mode") ?? v2String(params, "text_mode") ?? "source").lowercased()
 
         let resolved = v2SurfacePanelContext(params: params)
         if let error = resolved.error {

@@ -13073,7 +13073,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            self?.refreshGhosttyShortcuts()
+            MainActor.assumeIsolated {
+                self?.refreshGhosttyShortcuts()
+            }
         }
     }
 
