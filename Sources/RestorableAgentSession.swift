@@ -1032,6 +1032,17 @@ struct SessionRestorableAgentSnapshot: Codable, Sendable {
         useLocalRestoreVerb: Bool = true,
         restoringWorkingDirectory: String? = nil
     ) -> String? {
+        // The compact restore verb must preserve the same unsupported-agent
+        // result as the inline command builder. Otherwise a custom agent with
+        // no resume recipe queues a command that cannot restore anything.
+        if case .custom = kind,
+           preparedResumeArguments(
+               launchCommand: launchCommand,
+               workingDirectory: resumeWorkingDirectory(preferred: restoringWorkingDirectory),
+               observedPermissionMode: permissionMode
+           ) == nil {
+            return nil
+        }
         if useLocalRestoreVerb {
             let executable = AgentRestoreLaunch.cliStartupExecutableToken
             guard AgentRestoreCLIArgument(rawValue: kind.rawValue) != nil,
