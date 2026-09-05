@@ -1,5 +1,6 @@
 import Darwin
 import Foundation
+import os
 import Testing
 import CmuxCore
 @testable import CmuxRemoteDaemon
@@ -7,7 +8,7 @@ import CmuxCore
 @Suite("RemoteDaemonRPCClient timeout isolation")
 struct RemoteDaemonRPCClientTimeoutIsolationTests {
     @Test("a timed-out PTY attach cancels remotely while preserving the transport and subscriptions")
-    func timedOutPTYAttachPreservesHealthyTransportState() throws {
+    func timedOutPTYAttachPreservesHealthyTransportState() async throws {
         let executable = try makeTransport()
         defer {
             try? FileManager.default.removeItem(
@@ -15,8 +16,9 @@ struct RemoteDaemonRPCClientTimeoutIsolationTests {
             )
         }
 
-        let existingPTYEvent = DispatchSemaphore(value: 0)
-        let unexpectedTermination = DispatchSemaphore(value: 0)
+        let existingPTYEvents = AsyncStream<Void>.makeStream(bufferingPolicy: .bufferingNewest(1))
+        defer { existingPTYEvents.continuation.finish() }
+        let unexpectedTermination = OSAllocatedUnfairLock(initialState: false)
         let client = RemoteDaemonRPCClient(
             configuration: configuration(),
             remotePath: "/fake/cmuxd-remote",
@@ -25,7 +27,7 @@ struct RemoteDaemonRPCClientTimeoutIsolationTests {
                 missingRequiredFunctionality: "missing functionality"
             )
         ) { _ in
-            unexpectedTermination.signal()
+            unexpectedTermination.withLock { $0 = true }
         }
         defer { client.stop() }
         client.transportExecutableOverride = executable
@@ -41,7 +43,7 @@ struct RemoteDaemonRPCClientTimeoutIsolationTests {
             queue: .global()
         ) { event in
             if case .data(let data) = event, data == Data("still-alive".utf8) {
-                existingPTYEvent.signal()
+                existingPTYEvents.continuation.yield(())
             }
         }
         #expect(existingAttachment.replayByteCount == 11)
@@ -65,8 +67,23 @@ struct RemoteDaemonRPCClientTimeoutIsolationTests {
 
         let result = try client.call(method: "hello", params: [:], timeout: 1)
         #expect(result["transport"] as? String == "alive")
-        #expect(existingPTYEvent.wait(timeout: .now() + 1) == .success)
-        #expect(unexpectedTermination.wait(timeout: .now()) == .timedOut)
+        // Suspend the Swift Testing task while its global-queue callback runs;
+        // a semaphore here needlessly occupies a cooperative executor worker.
+        let eventDeadline = ContinuousClock.now.advanced(by: .seconds(1))
+        let receivedExistingPTYEvent = await withTaskGroup(of: Bool.self) { group in
+            group.addTask {
+                for await _ in existingPTYEvents.stream { return true }
+                return false
+            }
+            group.addTask {
+                try? await Task.sleep(until: eventDeadline, clock: .continuous)
+                return false
+            }
+            defer { group.cancelAll() }
+            return await group.next() ?? false
+        }
+        #expect(receivedExistingPTYEvent)
+        #expect(!unexpectedTermination.withLock { $0 })
     }
 
     @Test("a timed-out PTY attach does not wait for a blocked cancellation write")
