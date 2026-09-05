@@ -668,10 +668,15 @@ final class MarkdownPanelTests: XCTestCase {
         let frame = NSRect(x: 0, y: 0, width: 720, height: 360)
         let webView = WKWebView(frame: frame, configuration: WKWebViewConfiguration())
         let window = NSWindow(contentRect: frame, styleMask: [.borderless], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
         window.contentView = webView
         window.orderFrontRegardless()
         defer {
+            webView.stopLoading()
             webView.navigationDelegate = nil
+            _ = window.makeFirstResponder(nil)
+            window.contentView = nil
+            window.orderOut(nil)
             window.close()
         }
 
@@ -755,11 +760,16 @@ final class MarkdownPanelTests: XCTestCase {
         let webView = MarkdownWebView(frame: frame, configuration: configuration)
         coordinator.webView = webView
         let window = NSWindow(contentRect: frame, styleMask: [.borderless], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
         window.contentView = webView
         window.orderFrontRegardless()
         defer {
+            webView.stopLoading()
             webView.navigationDelegate = nil
             coordinator.webView = nil
+            _ = window.makeFirstResponder(nil)
+            window.contentView = nil
+            window.orderOut(nil)
             window.close()
         }
 
@@ -853,10 +863,15 @@ final class MarkdownPanelTests: XCTestCase {
         let frame = NSRect(x: 0, y: 0, width: 320, height: 240)
         let webView = WKWebView(frame: frame, configuration: WKWebViewConfiguration())
         let window = NSWindow(contentRect: frame, styleMask: [.borderless], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
         window.contentView = webView
         window.orderFrontRegardless()
         defer {
+            webView.stopLoading()
             webView.navigationDelegate = nil
+            _ = window.makeFirstResponder(nil)
+            window.contentView = nil
+            window.orderOut(nil)
             window.close()
         }
 
@@ -896,13 +911,18 @@ final class MarkdownPanelTests: XCTestCase {
         let webView = MarkdownWebView(frame: frame, configuration: configuration)
         coordinator.webView = webView
         let window = NSWindow(contentRect: frame, styleMask: [.borderless], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
         window.contentView = webView
         window.orderFrontRegardless()
         defer {
+            webView.stopLoading()
             webView.navigationDelegate = nil
             coordinator.webView = nil
             coordinator.cancelImageLoads()
             remoteImageHandler.cancelOpenTasks()
+            _ = window.makeFirstResponder(nil)
+            window.contentView = nil
+            window.orderOut(nil)
             window.close()
         }
 
