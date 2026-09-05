@@ -1931,6 +1931,19 @@ final class BrowserPanelPopupContextTests: XCTestCase {
 
 @MainActor
 final class BrowserPanelWebViewLifecycleTests: XCTestCase {
+    private func waitForNavigationToSettle(_ panel: BrowserPanel) {
+        let deadline = Date().addingTimeInterval(3)
+        while Date() < deadline {
+            let snapshot = panel.hiddenWebViewDiscardSnapshot
+            if !snapshot.isLoading && !snapshot.webViewIsLoading && !snapshot.hasActiveMainFrameProvisionalNavigation {
+                return
+            }
+            RunLoop.main.run(until: Date().addingTimeInterval(0.01))
+        }
+        let blockers = panel.webViewLifecycleTopPayload()["discard_blockers"] ?? []
+        XCTFail("Navigation did not settle: \(blockers)")
+    }
+
     func testHiddenDiscardPolicyReadsUserDefaults() throws {
         let suiteName = "cmux.browserHiddenDiscardPolicyTests.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
@@ -1968,8 +1981,11 @@ final class BrowserPanelWebViewLifecycleTests: XCTestCase {
             defaults.set(7200, forKey: BrowserHiddenWebViewDiscardPolicy.hiddenDelayKey)
             XCTAssertEqual(
                 BrowserHiddenWebViewDiscardPolicy.hiddenDelay(defaults: defaults),
-                BrowserHiddenWebViewDiscardPolicy.maximumHiddenDelay
+                BrowserHiddenWebViewDiscardPolicy.defaultHiddenDelay
             )
+
+            defaults.set(3600, forKey: BrowserHiddenWebViewDiscardPolicy.hiddenDelayKey)
+            XCTAssertEqual(BrowserHiddenWebViewDiscardPolicy.hiddenDelay(defaults: defaults), 3600)
 
             defaults.set(-1, forKey: BrowserHiddenWebViewDiscardPolicy.hiddenDelayKey)
             XCTAssertEqual(
@@ -2130,11 +2146,7 @@ final class BrowserPanelWebViewLifecycleTests: XCTestCase {
         )
         defer { panel.close() }
 
-        let deadline = Date().addingTimeInterval(1.0)
-        while panel.webView.isLoading,
-              RunLoop.main.run(mode: .default, before: deadline),
-              Date() < deadline {}
-        XCTAssertFalse(panel.webView.isLoading, "Timed out waiting for about:blank to finish loading")
+        waitForNavigationToSettle(panel)
 
         panel.noteWebViewVisibility(false, reason: "test.hidden", now: discardedAt)
         let originalWebView = panel.webView
@@ -2179,11 +2191,7 @@ final class BrowserPanelWebViewLifecycleTests: XCTestCase {
         )
         defer { panel.close() }
 
-        let deadline = Date().addingTimeInterval(1.0)
-        while panel.webView.isLoading,
-              RunLoop.main.run(mode: .default, before: deadline),
-              Date() < deadline {}
-        XCTAssertFalse(panel.webView.isLoading, "Timed out waiting for about:blank to finish loading")
+        waitForNavigationToSettle(panel)
 
         panel.noteWebViewVisibility(true, reason: "test.visible.first")
         XCTAssertEqual(panel.webViewLifecycleState, .liveVisible)
@@ -2226,11 +2234,7 @@ final class BrowserPanelWebViewLifecycleTests: XCTestCase {
         )
         defer { panel.close() }
 
-        let deadline = Date().addingTimeInterval(1.0)
-        while panel.webView.isLoading,
-              RunLoop.main.run(mode: .default, before: deadline),
-              Date() < deadline {}
-        XCTAssertFalse(panel.webView.isLoading, "Timed out waiting for about:blank to finish loading")
+        waitForNavigationToSettle(panel)
 
         panel.restoreSessionNavigationHistory(
             backHistoryURLStrings: ["https://example.test/back"],
@@ -2361,7 +2365,7 @@ final class BrowserPanelRemoteStoreTests: XCTestCase {
             remoteWebsiteDataStoreIdentifier: remoteWorkspaceId
         )
 
-        XCTAssertTrue(localPanel.webView.configuration.websiteDataStore === WKWebsiteDataStore.default())
+        XCTAssertTrue(localPanel.webView.configuration.websiteDataStore === BrowserProfileStore.shared.websiteDataStore(for: localPanel.profileID))
         XCTAssertFalse(firstRemotePanel.webView.configuration.websiteDataStore === WKWebsiteDataStore.default())
         XCTAssertTrue(
             firstRemotePanel.webView.configuration.websiteDataStore ===
@@ -2421,12 +2425,16 @@ final class BrowserPanelRemoteStoreTests: XCTestCase {
             remoteWebsiteDataStoreIdentifier: remoteWorkspaceId
         )
         let baseURL = try XCTUnwrap(URL(string: "http://cmux-loopback.localtest.me:3000/"))
-
+        defer { panel.close() }
+        // Normal navigation prepares this before loading. Without it the UA
+        // delegate cancels the substituted HTML and defers a remote network
+        // reload, so the test would inspect the initial blank document.
+        panel.webView.applyBrowserUserAgentPolicy(for: baseURL)
         panel.webView.loadHTMLString(
-            "<!doctype html><html><body>remote loopback bridge</body></html>",
+            "<!doctype html><html><body id='cmux-remote-bridge-fixture'>remote loopback bridge</body></html>",
             baseURL: baseURL
         )
-        try await waitForBrowserWebViewLoad(panel.webView)
+        let loadDiagnostics = try await waitForBrowserWebViewLoad(panel)
 
         let result = try await panel.evaluateJavaScript(
             """
@@ -2449,7 +2457,8 @@ final class BrowserPanelRemoteStoreTests: XCTestCase {
 
         XCTAssertEqual(
             result,
-            #"["http://cmux-loopback.localtest.me:3000/frontend","http://cmux-loopback.localtest.me:8000/api","http://api.cmux-loopback.localtest.me:8000/v1","ws://cmux-loopback.localtest.me:5173/hmr","wss://localhost:5173/hmr","https://localhost:9443/secure"]"#
+            #"["http://cmux-loopback.localtest.me:3000/frontend","http://cmux-loopback.localtest.me:8000/api","http://api.cmux-loopback.localtest.me:8000/v1","ws://cmux-loopback.localtest.me:5173/hmr","wss://localhost:5173/hmr","https://localhost:9443/secure"]"#,
+            loadDiagnostics
         )
     }
 
@@ -2475,15 +2484,44 @@ final class BrowserPanelRemoteStoreTests: XCTestCase {
         XCTAssertEqual(panel.webView.url?.host, "localhost")
     }
 
-    private func waitForBrowserWebViewLoad(_ webView: WKWebView, timeout: TimeInterval = 2.0) async throws {
+    private func waitForBrowserWebViewLoad(_ panel: BrowserPanel, timeout: TimeInterval = 2.0) async throws -> String {
+        let webView = panel.webView
         let deadline = Date().addingTimeInterval(timeout)
-        while webView.isLoading {
-            if Date() >= deadline {
-                XCTFail("Timed out waiting for browser web view to finish loading")
-                return
+        var diagnostics = "No document evaluated"
+        repeat {
+            do {
+                let snapshot = try await webView.evaluateJavaScript("""
+                JSON.stringify({
+                  ready: document.readyState === 'complete' && !!document.getElementById('cmux-remote-bridge-fixture'),
+                  current: {
+                    href: window.location.href,
+                    hostname: window.location.hostname,
+                    protocol: window.location.protocol,
+                    baseURI: document.baseURI,
+                    readyState: document.readyState,
+                    bridge: typeof window.__cmuxRewriteRemoteLoopbackURL
+                  }
+                })
+                """) as? String ?? "No snapshot returned"
+                diagnostics = snapshot
+                if let data = snapshot.data(using: .utf8),
+                   let state = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                   state["ready"] as? Bool == true {
+                    return diagnostics
+                }
+            } catch {
+                diagnostics = "Evaluation error: \(error.localizedDescription)"
             }
             try await Task.sleep(nanoseconds: 10_000_000)
-        }
+        } while Date() < deadline
+        throw NSError(
+            domain: "BrowserBridgeFixtureLoad",
+            code: 1,
+            userInfo: [NSLocalizedDescriptionKey:
+                "Fixture document did not finish loading. webViewURL=\(webView.url?.absoluteString ?? "nil") " +
+                "displayURL=\(panel.preferredURLStringForOmnibar()) isLoading=\(webView.isLoading) " +
+                "customUserAgent=\(webView.customUserAgent ?? "nil") snapshot=\(diagnostics)"]
+        )
     }
 
     func testBrowserMoveIntoRemoteWorkspaceRebuildsWebsiteDataStoreScope() throws {
@@ -2491,7 +2529,7 @@ final class BrowserPanelRemoteStoreTests: XCTestCase {
         let sourcePaneId = try XCTUnwrap(source.bonsplitController.allPaneIds.first)
         let sourceBrowser = try XCTUnwrap(source.newBrowserSurface(inPane: sourcePaneId, focus: false))
         let localStore = sourceBrowser.webView.configuration.websiteDataStore
-        XCTAssertTrue(localStore === WKWebsiteDataStore.default())
+        XCTAssertTrue(localStore === BrowserProfileStore.shared.websiteDataStore(for: sourceBrowser.profileID))
 
         let destination = Workspace()
         destination.configureRemoteConnection(
@@ -2555,7 +2593,7 @@ final class BrowserPanelRemoteStoreTests: XCTestCase {
         )
         let attachedBrowser = try XCTUnwrap(destination.panels[attachedPanelId] as? BrowserPanel)
 
-        XCTAssertTrue(attachedBrowser.webView.configuration.websiteDataStore === WKWebsiteDataStore.default())
+        XCTAssertTrue(attachedBrowser.webView.configuration.websiteDataStore === BrowserProfileStore.shared.websiteDataStore(for: attachedBrowser.profileID))
         XCTAssertTrue(remainingRemoteBrowser.webView.configuration.websiteDataStore === remoteStore)
         XCTAssertFalse(remainingRemoteBrowser.webView.configuration.websiteDataStore === attachedBrowser.webView.configuration.websiteDataStore)
     }
