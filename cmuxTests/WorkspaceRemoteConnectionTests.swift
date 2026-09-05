@@ -3968,7 +3968,39 @@ final class CLINotifyProcessIntegrationTests: XCTestCase {
             if let data = line.data(using: .utf8),
                let payload = try? JSONSerialization.jsonObject(with: data, options: []) as? [String: Any],
                let id = payload["id"] as? String {
-                return self.v2Response(id: id, ok: true, result: [:])
+                let method = payload["method"] as? String ?? ""
+                switch method {
+                case "surface.list":
+                    let params = payload["params"] as? [String: Any] ?? [:]
+                    XCTAssertEqual(params["workspace_id"] as? String, workspaceId)
+                    return self.v2Response(id: id, ok: true, result: [
+                        "surfaces": [["id": surfaceId, "focused": true]],
+                    ])
+                case "feed.push":
+                    return self.v2Response(id: id, ok: true, result: [:])
+                case "system.top":
+                    let params = payload["params"] as? [String: Any] ?? [:]
+                    XCTAssertEqual(params["all_windows"] as? Bool, true)
+                    XCTAssertEqual(params["include_processes"] as? Bool, true)
+                    return self.v2Response(id: id, ok: true, result: ["windows": []])
+                case "surface.resume.set":
+                    let params = payload["params"] as? [String: Any] ?? [:]
+                    XCTAssertEqual(params["workspace_id"] as? String, workspaceId)
+                    XCTAssertEqual(params["surface_id"] as? String, surfaceId)
+                    XCTAssertEqual(params["kind"] as? String, "codex")
+                    XCTAssertEqual(params["checkpoint_id"] as? String, sessionId)
+                    return self.v2Response(id: id, ok: true, result: ["resume_binding": [:]])
+                case "workspace.set_auto_title":
+                    let params = payload["params"] as? [String: Any] ?? [:]
+                    XCTAssertEqual(params["workspace_id"] as? String, workspaceId)
+                    XCTAssertEqual(params["probe"] as? Bool, true)
+                    return self.v2Response(id: id, ok: true, result: ["enabled": false])
+                default:
+                    XCTFail("Unexpected method: \(method)")
+                    return self.v2Response(id: id, ok: false, error: [
+                        "code": "unexpected", "message": "Unexpected method: \(method)",
+                    ])
+                }
             }
             return "OK"
         }
@@ -3997,7 +4029,7 @@ final class CLINotifyProcessIntegrationTests: XCTestCase {
         XCTAssertEqual(result.stdout, "{}\n")
         XCTAssertTrue(
             state.commands.contains { command in
-                command.contains("notify_target \(workspaceId) \(surfaceId) Codex|Error|Try again later.")
+                command == "notify_target_async \(workspaceId) \(surfaceId) Codex|Error|Try again later."
             },
             "Expected typed Codex error notification, saw \(state.commands)"
         )
