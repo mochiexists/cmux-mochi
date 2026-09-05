@@ -2356,6 +2356,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
             .trimmingCharacters(in: .whitespacesAndNewlines)
         let resolvedFileName = (fileName?.isEmpty == false) ? fileName! : "Cmd Click Fixture.txt"
         let fixtureDirectoryURL = URL(fileURLWithPath: fixtureDirectory, isDirectory: true)
+        let requestedWorkingDirectory = env["CMUX_UI_TEST_TERMINAL_CMD_CLICK_WORKING_DIRECTORY"]?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let workingDirectory = requestedWorkingDirectory.flatMap { $0.isEmpty ? nil : $0 }
+            ?? fixtureDirectoryURL.path
         let expectedFileURL = fixtureDirectoryURL.appendingPathComponent(resolvedFileName)
         let siblingFileURL = fixtureDirectoryURL.appendingPathComponent("OtherFile")
         let extraFileNames: [String]
@@ -2390,7 +2394,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
             text.replacingOccurrences(of: "'", with: "'\"'\"'")
         }
         let displayToken: String
-        let shellCommand: String
+        var shellCommand: String
         switch resolvedLineFormat {
         case "osc8":
             displayToken = resolvedFileName
@@ -2399,9 +2403,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
             shellCommand = "clear\rfor i in $(seq 1 48); do printf '\\033]8;;%s\\033\\\\%s\\033]8;;\\033\\\\\\n' '\(escapedURL)' '\(escapedDisplayToken)'; done\r"
         case "log":
             displayToken = "\(baseDisplayToken)\(displaySuffix)"
-            let blockLine = "\(linePrefix)\(displayToken)"
-            let shellBlockLine = singleQuotedShellLiteral(blockLine)
-            shellCommand = "clear\rfor i in $(seq 1 48); do printf '%s\\n' '\(shellBlockLine)'; done\r"
+            if let linkTarget = env["CMUX_UI_TEST_TERMINAL_CMD_CLICK_LINK_TARGET"], !linkTarget.isEmpty {
+                let escapedPrefix = singleQuotedShellLiteral(linePrefix)
+                let escapedTarget = singleQuotedShellLiteral(linkTarget)
+                let escapedDisplayToken = singleQuotedShellLiteral(displayToken)
+                shellCommand = "clear\rfor i in $(seq 1 48); do printf '%s\\033]8;;%s\\033\\\\%s\\033]8;;\\033\\\\\\n' '\(escapedPrefix)' '\(escapedTarget)' '\(escapedDisplayToken)'; done\r"
+            } else {
+                let blockLine = "\(linePrefix)\(displayToken)"
+                let shellBlockLine = singleQuotedShellLiteral(blockLine)
+                shellCommand = "clear\rfor i in $(seq 1 48); do printf '%s\\n' '\(shellBlockLine)'; done\r"
+            }
         case "alt_screen_log":
             displayToken = "\(baseDisplayToken)\(displaySuffix)"
             let blockLine = "\(linePrefix)\(displayToken)"
@@ -2420,6 +2431,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
                 let shellBlockLine = singleQuotedShellLiteral(blockLine)
                 shellCommand = "clear\rfor i in $(seq 1 48); do printf '%s\\n' '\(shellBlockLine)'; done\r"
             }
+        }
+        if workingDirectory != fixtureDirectoryURL.path {
+            shellCommand = "cd -- '\(singleQuotedShellLiteral(workingDirectory))'\r" + shellCommand
         }
         let deadline = Date().addingTimeInterval((commandPath?.isEmpty == false) ? 60.0 : 20.0)
         var seeded = false
@@ -2631,7 +2645,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
                 "displayToken": displayToken,
                 "fileName": resolvedFileName,
                 "expectedPath": expectedFileURL.path,
-                "fixtureDirectory": fixtureDirectoryURL.path
+                "fixtureDirectory": fixtureDirectoryURL.path,
+                "workingDirectory": workingDirectory
             ]
             if let terminalPanel {
                 let terminalFrame = terminalPanel.hostedView.debugPortalFrameInWindow
@@ -2987,7 +3002,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
                 return
             }
 
-            workspace.updatePanelDirectory(panelId: terminalPanel.id, directory: fixtureDirectoryURL.path)
+            workspace.updatePanelDirectory(panelId: terminalPanel.id, directory: workingDirectory)
 
             let terminalFrame = terminalPanel.hostedView.debugPortalFrameInWindow
             let terminalReady = terminalPanel.surface.surface != nil
@@ -3000,7 +3015,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
             if terminalReady && terminalVisible && !seeded {
                 seeded = true
                 sendTextWhenReady(shellCommand, to: workspace, beforeSend: {
-                    workspace.updatePanelDirectory(panelId: terminalPanel.id, directory: fixtureDirectoryURL.path)
+                    workspace.updatePanelDirectory(panelId: terminalPanel.id, directory: workingDirectory)
                 })
             }
 

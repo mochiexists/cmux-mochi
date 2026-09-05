@@ -52,6 +52,16 @@ struct TerminalLinkOpenCoordinator {
                 defaults: defaults
             ) {
                 log("link.openURL resolvedAsFilePath=\(resolvedPath)")
+                #if DEBUG
+                // Local files bypass the normalized-URL branch below. Capture
+                // this destination at the same boundary for native link tests.
+                if UITestCaptureSink().appendLineIfConfigured(
+                    envKey: "CMUX_UI_TEST_CAPTURE_OPEN_URL_PATH",
+                    line: fileURL.absoluteString
+                ) {
+                    return true
+                }
+                #endif
                 return routeLocalFile(
                     fileURL,
                     request: request,
