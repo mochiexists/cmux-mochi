@@ -8,7 +8,9 @@ func cliTestProcessTimedOut(
     exitSignal: DispatchSemaphore,
     timeout: TimeInterval
 ) -> Bool {
-    exitSignal.wait(timeout: .now() + timeout) == .timedOut
+    // Notification delivery can lag behind the actual exit under executor
+    // pressure. Only a child still running at the deadline has timed out.
+    exitSignal.wait(timeout: .now() + timeout) == .timedOut && process.isRunning
 }
 
 @Suite
@@ -279,6 +281,8 @@ enum ClaudeHookLiveDeliveryHarness {
         process.standardInput = stdinPipe
         process.standardOutput = stdoutPipe
         process.standardError = stderrPipe
+        let exitSignal = DispatchSemaphore(value: 0)
+        process.terminationHandler = { _ in exitSignal.signal() }
 
         do {
             try process.run()
@@ -288,12 +292,7 @@ enum ClaudeHookLiveDeliveryHarness {
         stdinPipe.fileHandleForWriting.write(Data(standardInput.utf8))
         try? stdinPipe.fileHandleForWriting.close()
 
-        let exitSignal = DispatchSemaphore(value: 0)
-        DispatchQueue.global(qos: .userInitiated).async {
-            process.waitUntilExit()
-            exitSignal.signal()
-        }
-        let timedOut = exitSignal.wait(timeout: .now() + 10) == .timedOut
+        let timedOut = cliTestProcessTimedOut(process, exitSignal: exitSignal, timeout: 10)
         if timedOut {
             process.terminate()
             if exitSignal.wait(timeout: .now() + 1) == .timedOut {
