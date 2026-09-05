@@ -440,8 +440,8 @@ struct BrowserDiscardedWebViewRestoreRetryGreenTests {
         }
     }
 
-    @Test func mainFrameDownloadCompletesRestoreAndSuppressesBlankShellHeal() throws {
-        let url = try #require(URL(string: "http://127.0.0.1:1/cmux-issue-7504-download"))
+    @Test func mainFrameDownloadCompletesRestoreAndSuppressesBlankShellHeal() async throws {
+        let url = try #require(URL(string: "data:text/html,%3Cp%3Erestore-download-fixture%3C/p%3E"))
         let discardedAt = Date(timeIntervalSince1970: 700)
         let panel = BrowserPanel(
             workspaceId: UUID(),
@@ -450,11 +450,20 @@ struct BrowserDiscardedWebViewRestoreRetryGreenTests {
         )
         defer { panel.close() }
 
-        #expect(waitForDiscardRestoreRetryWebViewToSettle(panel))
+        // Yield the main actor for deferred navigation instead of synchronously
+        // pumping a run loop while waiting on that actor's own tasks. The
+        // document is local; refused-port networking is not part of this test.
+        let settleDeadline = ContinuousClock.now.advanced(by: .seconds(30))
+        while panel.webView.isLoading || panel.isLoading,
+              ContinuousClock.now < settleDeadline {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        try #require(!panel.webView.isLoading && !panel.isLoading)
 
         panel.noteWebViewVisibility(false, reason: "test.hidden", now: discardedAt)
-        #expect(panel.discardHiddenWebViewForMemory(reason: "test.discard", now: discardedAt))
-        #expect(panel.restoreDiscardedWebViewIfNeeded(reason: "test.restore"))
+        try #require(panel.discardHiddenWebViewForMemory(reason: "test.discard", now: discardedAt))
+        try #require(panel.restoreDiscardedWebViewIfNeeded(reason: "test.restore"))
+        try #require(panel.webViewLifecycleTopPayload()["restore_pending"] as? Bool == true)
 
         // Simulate WebKit converting the pending restore navigation into a
         // main-frame download before any document commits.
