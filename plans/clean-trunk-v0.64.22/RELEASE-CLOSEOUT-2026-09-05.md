@@ -183,6 +183,60 @@ and candidate/device gates above before claiming release readiness.
   silently added as a runtime change during this closeout. CI must confirm the
   corrected candidate; the local run remains red.
 
+## Continued failure remediation after `54a2ff23ee`
+
+- CI `33985557097` at `54a2ff23ee` passed Swift package tests and the
+  build/lag check. App-host shard 4 failed its prerequisite hook gate:
+  `ClaudeHookLiveDeliveryTargetTests.stopFollowsMovedPaneToCurrentWorkspace`
+  reported `timedOut: true` despite status 0 and completed `{}` output.
+  Its log is `/tmp/cmux-ci-54a2-shard4.log`. The job stopped before the full
+  shard, so this does not clear the older full-shard failures.
+- The shared hook harness and HTML-open helper waited on a global-queue exit
+  observer. A delayed observer could classify an already-exited child as a
+  timeout. The new actual-process regression holds observer delivery and checks
+  both exit 0 and exit 7; a live sleeping child remains a negative control.
+  Native app-host red proof recorded both expected failures in
+  `/tmp/cmux-closeout-schema-theme-completion-red.log`; regression commit
+  `69f2adf4ee` precedes repair `78679eb471`. These are local red/green results,
+  not a claim that CI has run those new commits.
+- The repair registers completion before launch and checks actual process
+  liveness at the unchanged deadline. No production process runner changed.
+- Background tests now independently calculate the opaque sRGB composite
+  introduced intentionally by `379033c4bf`, preserving clear local pane fills.
+  Generated-template and legacy-migration schema fixtures now use the fork's
+  intended URLs. No runtime color or settings behavior changed.
+- `/tmp/cmux-closeout-schema-theme-completion-green.log` **TEST SUCCEEDED**:
+  24 XCTest cases and 16 Swift Testing cases in four suites passed, including
+  the process regression, hook lifecycle/PID authentication and HTML-open tests.
+  The tagged app and test target built successfully.
+- Native CLI probe `/tmp/cmux-closeout-cli-routing-probe.log` distinguished
+  incomplete explicit-window/mock-hook responses from a real simulator routing
+  gap: ambient commands omitted the caller's pane and dispatched even when the
+  caller surface was stale. Both existing regression selectors failed before
+  the runtime correction. This inconsistency already exists in upstream
+  introduction `aac235180e`; it is not evidence of a deliberate fork change.
+- Shared simulator/iOS routing now resolves the live caller pane from
+  `surface.list` and rejects a stale caller before dispatch. Explicit window or
+  surface targeting still overrides ambient context. The existing
+  `cli.simulator.error.callerSurfaceUnavailable` message is reused; its English
+  and Japanese catalogue entries were parsed and verified, with no new strings.
+- CLI mock fixtures now answer the actual window/topology and hook protocol.
+  The typed Codex error assertion retains the exact error body and target IDs
+  while checking the intentionally asynchronous notification command.
+- `/tmp/cmux-closeout-cli-routing-green.log` **TEST SUCCEEDED**: eight XCTest
+  cases and all five live-delivery Swift Testing cases passed. Coverage includes
+  ambient/stale simulator routing, explicit-window precedence, numeric simulator
+  and iOS selectors, screenshot preparation and typed Codex error notification.
+  App/test targets and the bundled CLI rebuilt successfully. This does not prove
+  physical-device networking or clear the remaining full-CI failures.
+- `/tmp/cmux-closeout-process-completion-repeat.log` **TEST EXECUTE SUCCEEDED**:
+  ten iterations of the completion-regression and live-delivery suites passed
+  (70 test executions), using the final built helpers without instrumentation.
+- The existing desktop Markdown pane already has built-in source editing,
+  Save/Revert and preview switching. Its toolbar calls the editing toggle
+  **Show TextEdit**; this is not a WYSIWYG editor. No new Markdown feature was
+  added to this release closeout.
+
 ## Publication boundary
 
 The current fork workflows publish Nightly and upload TestFlight only from
