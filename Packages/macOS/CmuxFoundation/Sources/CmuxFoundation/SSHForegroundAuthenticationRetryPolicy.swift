@@ -60,6 +60,14 @@ public struct SSHForegroundAuthenticationRetryPolicy: Sendable {
         ].joined(separator: "|")
     }
 
+    /// Masks teardown signals after a signal handler commits to retiring an
+    /// authentication process tree. This keeps a secondary signal from killing
+    /// the handler before it reaps the authentication root and exits with the
+    /// original signal status.
+    public func signalDrivenCleanupMaskShellCommand() -> String {
+        "trap '' HUP INT TERM"
+    }
+
     /// Builds the shell helper that terminates a foreground-authentication process tree.
     ///
     /// The immediate authentication PID is a shell wrapper whose descendants own
@@ -74,6 +82,10 @@ public struct SSHForegroundAuthenticationRetryPolicy: Sendable {
     /// isolated child process group is terminated as one unit before recursion.
     /// The caller supplies the authentication root's known wrapper PID so root
     /// validation is not inferred from a potentially reused candidate PID.
+    /// Once signal-driven cleanup is committed, the caller must ignore HUP, INT,
+    /// and TERM until this helper returns. Stopped process-group teardown can
+    /// otherwise deliver a secondary signal before the caller reaps the root and
+    /// retires with the original signal status.
     ///
     /// - Returns: A shell function named `cmux_ssh_terminate_auth_process_tree`.
     public func processTreeTerminationShellFunction() -> String {

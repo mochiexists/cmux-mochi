@@ -6,6 +6,13 @@ import Testing
 
 @Suite(.serialized)
 struct SSHForegroundAuthenticationRetryPolicyTests {
+    @Test func signalDrivenCleanupMasksSecondarySignals() {
+        #expect(
+            SSHForegroundAuthenticationRetryPolicy().signalDrivenCleanupMaskShellCommand()
+                == "trap '' HUP INT TERM"
+        )
+    }
+
     @Test func mapsBootTimeTransportFailureToRetryableStatus() throws {
         let result = try run(
             "printf '%s\\n' 'ssh: connect to host example.test port 22: Network is unreachable' >&2; exit 255"
@@ -397,6 +404,7 @@ struct SSHForegroundAuthenticationRetryPolicyTests {
         done
         test -f "$CMUX_TEST_CLEANUP_START_MARKER" || exit 96
         echo "harness: sh=$BASH_VERSION maxproc=$(ulimit -u) pgid=$(/bin/ps -o pgid= -p $$) root=$cmux_test_auth_root self=$$ ppid=$PPID" >&2
+        \(SSHForegroundAuthenticationRetryPolicy().signalDrivenCleanupMaskShellCommand())
         cmux_ssh_terminate_auth_process_tree "$cmux_test_auth_root" "$$"
         echo "harness: cleanup_rc=$?" >&2
         /bin/ps -o pid= -o ppid= -o pgid= -o state= -o command= -p "$(/usr/bin/tr '\\n' ',' < "$CMUX_TEST_PID_LOG" | /usr/bin/sed 's/,$//')" >&2 || true
