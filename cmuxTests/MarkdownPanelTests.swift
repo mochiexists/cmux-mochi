@@ -381,11 +381,15 @@ final class MarkdownPanelTests: XCTestCase {
         XCTAssertFalse(panel.isFileUnavailable)
 
         let reloaded = expectation(description: "markdown file change reloaded")
-        let cancellable = panel.$content.dropFirst().sink { content in
-            if content == updatedContent {
+        // An atomic save can produce multiple watcher events for the same
+        // content. Observe the first matching reload, not every publication.
+        let cancellable = panel.$content
+            .dropFirst()
+            .filter { $0 == updatedContent }
+            .prefix(1)
+            .sink { _ in
                 reloaded.fulfill()
             }
-        }
         defer { cancellable.cancel() }
 
         try updatedContent.write(to: fileURL, atomically: true, encoding: .utf8)
