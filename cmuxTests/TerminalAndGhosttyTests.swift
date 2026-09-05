@@ -2437,14 +2437,33 @@ struct TerminalKeyboardCopyModeCursorAppearanceTests {
 }
 
 final class GhosttyBackgroundThemeTests: XCTestCase {
+    private func assertCompositedColor(
+        _ actual: NSColor,
+        foreground: NSColor,
+        opacity: CGFloat,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        guard let actual = actual.usingColorSpace(.sRGB),
+              let foreground = foreground.usingColorSpace(.sRGB),
+              let backdrop = NSColor.windowBackgroundColor.usingColorSpace(.sRGB) else {
+            XCTFail("Expected sRGB-convertible colors", file: file, line: line)
+            return
+        }
+        XCTAssertEqual(actual.redComponent, foreground.redComponent * opacity + backdrop.redComponent * (1 - opacity), accuracy: 0.005, file: file, line: line)
+        XCTAssertEqual(actual.greenComponent, foreground.greenComponent * opacity + backdrop.greenComponent * (1 - opacity), accuracy: 0.005, file: file, line: line)
+        XCTAssertEqual(actual.blueComponent, foreground.blueComponent * opacity + backdrop.blueComponent * (1 - opacity), accuracy: 0.005, file: file, line: line)
+        XCTAssertEqual(actual.alphaComponent, 1, accuracy: 0.005, file: file, line: line)
+    }
+
     func testColorClampsOpacity() {
         let base = NSColor(srgbRed: 0.10, green: 0.20, blue: 0.30, alpha: 1.0)
 
         let lowerClamped = GhosttyBackgroundTheme.color(backgroundColor: base, opacity: -2.0)
-        XCTAssertEqual(lowerClamped.alphaComponent, 0.0, accuracy: 0.0001)
+        assertCompositedColor(lowerClamped, foreground: base, opacity: 0)
 
         let upperClamped = GhosttyBackgroundTheme.color(backgroundColor: base, opacity: 5.0)
-        XCTAssertEqual(upperClamped.alphaComponent, 1.0, accuracy: 0.0001)
+        assertCompositedColor(upperClamped, foreground: base, opacity: 1)
     }
 
     func testColorFromNotificationUsesBackgroundAndOpacity() {
@@ -2464,15 +2483,11 @@ final class GhosttyBackgroundThemeTests: XCTestCase {
             fallbackColor: fallbackColor,
             fallbackOpacity: fallbackOpacity
         )
-        guard let srgb = actual.usingColorSpace(.sRGB) else {
-            XCTFail("Expected sRGB-convertible color")
-            return
-        }
-
-        XCTAssertEqual(srgb.redComponent, 0.18, accuracy: 0.005)
-        XCTAssertEqual(srgb.greenComponent, 0.29, accuracy: 0.005)
-        XCTAssertEqual(srgb.blueComponent, 0.44, accuracy: 0.005)
-        XCTAssertEqual(srgb.alphaComponent, 0.57, accuracy: 0.005)
+        assertCompositedColor(
+            actual,
+            foreground: NSColor(srgbRed: 0.18, green: 0.29, blue: 0.44, alpha: 1),
+            opacity: 0.57
+        )
     }
 
     func testColorFromNotificationFallsBackWhenPayloadMissing() {
@@ -2485,15 +2500,7 @@ final class GhosttyBackgroundThemeTests: XCTestCase {
             fallbackColor: fallbackColor,
             fallbackOpacity: fallbackOpacity
         )
-        guard let srgb = actual.usingColorSpace(.sRGB) else {
-            XCTFail("Expected sRGB-convertible color")
-            return
-        }
-
-        XCTAssertEqual(srgb.redComponent, 0.12, accuracy: 0.005)
-        XCTAssertEqual(srgb.greenComponent, 0.34, accuracy: 0.005)
-        XCTAssertEqual(srgb.blueComponent, 0.56, accuracy: 0.005)
-        XCTAssertEqual(srgb.alphaComponent, 0.42, accuracy: 0.005)
+        assertCompositedColor(actual, foreground: fallbackColor, opacity: CGFloat(fallbackOpacity))
     }
 }
 
@@ -2508,7 +2515,8 @@ final class PanelAppearanceBackgroundTests: XCTestCase {
 
         XCTAssertTrue(appearance.usesClearContentBackground)
         XCTAssertFalse(appearance.drawsContentBackground)
-        XCTAssertEqual(appearance.backgroundColor.alphaComponent, 0.42, accuracy: 0.0001)
+        // Semantic chrome color is composited; the local content fill stays clear.
+        XCTAssertEqual(appearance.backgroundColor.alphaComponent, 1.0, accuracy: 0.0001)
         XCTAssertEqual(appearance.contentBackgroundColor.alphaComponent, 0.0, accuracy: 0.0001)
     }
 

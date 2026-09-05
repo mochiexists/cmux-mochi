@@ -1855,6 +1855,17 @@ final class BrowserDeveloperToolsShortcutDefaultsTests: XCTestCase {
 
 @MainActor
 final class BrowserDeveloperToolsConfigurationTests: XCTestCase {
+    private func expectedCompositedBackground(_ foreground: NSColor, opacity: CGFloat) -> NSColor? {
+        guard let foreground = foreground.usingColorSpace(.sRGB),
+              let backdrop = NSColor.windowBackgroundColor.usingColorSpace(.sRGB) else { return nil }
+        return NSColor(
+            srgbRed: foreground.redComponent * opacity + backdrop.redComponent * (1 - opacity),
+            green: foreground.greenComponent * opacity + backdrop.greenComponent * (1 - opacity),
+            blue: foreground.blueComponent * opacity + backdrop.blueComponent * (1 - opacity),
+            alpha: 1
+        )
+    }
+
     func testBrowserPanelEnablesInspectableWebViewAndDeveloperExtras() {
         let panel = BrowserPanel(workspaceId: UUID())
         let developerExtras = panel.webView.configuration.preferences.value(forKey: "developerExtrasEnabled") as? Bool
@@ -1880,7 +1891,7 @@ final class BrowserDeveloperToolsConfigurationTests: XCTestCase {
         )
 
         guard let actual = panel.webView.underPageBackgroundColor?.usingColorSpace(.sRGB),
-              let expected = updatedColor.withAlphaComponent(updatedOpacity).usingColorSpace(.sRGB) else {
+              let expected = expectedCompositedBackground(updatedColor, opacity: CGFloat(updatedOpacity)) else {
             XCTFail("Expected sRGB-convertible under-page background colors")
             return
         }
@@ -1950,7 +1961,7 @@ final class BrowserDeveloperToolsConfigurationTests: XCTestCase {
         )
 
         guard let actual = panel.webView.underPageBackgroundColor?.usingColorSpace(.sRGB),
-              let expected = updatedColor.withAlphaComponent(0.57).usingColorSpace(.sRGB) else {
+              let expected = expectedCompositedBackground(updatedColor, opacity: 0.57) else {
             XCTFail("Expected sRGB-convertible under-page background colors")
             return
         }
