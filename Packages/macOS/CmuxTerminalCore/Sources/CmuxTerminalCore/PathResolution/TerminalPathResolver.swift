@@ -16,6 +16,8 @@ public import Foundation
 /// file system; tests inject a fake probe. This mirrors
 /// ``TerminalLinkRouter``'s injected `BrowserHostNormalizing` seam.
 public struct TerminalPathResolver: Sendable {
+    /// Bounded context needed to reconstruct a visibly split file path.
+    public static let maximumWrappedPathRows = 3
     private let fileExists: @Sendable (String) -> Bool
     private let isDirectory: @Sendable (String) -> Bool
 
@@ -112,7 +114,7 @@ public struct TerminalPathResolver: Sendable {
         if let result = resolveVisibleLinePath(lines[row], column: column, cwd: cwd) {
             return result
         }
-        let maximumRows = 3
+        let maximumRows = Self.maximumWrappedPathRows
         for startRow in max(0, row - maximumRows + 1)...row {
             let firstLine = Array(lines[startRow])
             // A rooted suffix may follow prose or an opening Markdown delimiter.

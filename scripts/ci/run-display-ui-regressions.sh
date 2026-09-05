@@ -369,6 +369,7 @@ run_browser_find_focus() {
     -destination "platform=macOS" \
     -maximum-test-execution-time-allowance 180 \
     -only-testing:cmuxUITests/BrowserPaneNavigationKeybindUITests/testCmdFOpensBrowserFindAfterCmdDCmdLNavigation \
+    -only-testing:cmuxUITests/TerminalCmdClickUITests \
     test-without-building
 }
 

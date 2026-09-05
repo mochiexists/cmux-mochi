@@ -1,5 +1,6 @@
 import XCTest
 import Foundation
+import AppKit
 
 final class TerminalCmdClickUITests: XCTestCase {
     private enum DisplayMode: String {
@@ -496,9 +497,8 @@ final class TerminalCmdClickUITests: XCTestCase {
             expectedResolvedPath,
             "Expected cmd-click to trim the prose period from the Markdown path. result=\(result)"
         )
-        XCTAssertEqual(
-            result["lastCommandOpenedInMarkdownViewer"] as? String,
-            "1",
+        XCTAssertTrue(
+            waitForCondition(timeout: 5) { self.loadSetupData()?["expectedFileInMarkdownViewer"] as? String == "1" },
             "Expected Markdown paths to open in the cmux Markdown viewer. result=\(result)"
         )
         XCTAssertEqual(
@@ -542,9 +542,8 @@ final class TerminalCmdClickUITests: XCTestCase {
             expectedResolvedPath,
             "Expected cmd-click to trim the prose period from the absolute Markdown path. result=\(result)"
         )
-        XCTAssertEqual(
-            result["lastCommandOpenedInMarkdownViewer"] as? String,
-            "1",
+        XCTAssertTrue(
+            waitForCondition(timeout: 5) { self.loadSetupData()?["expectedFileInMarkdownViewer"] as? String == "1" },
             "Expected absolute Markdown paths to open in the cmux Markdown viewer. result=\(result)"
         )
         XCTAssertEqual(
@@ -773,6 +772,11 @@ final class TerminalCmdClickUITests: XCTestCase {
 
         var previousOpenCount = loadCapturedOpenPaths().count
         for tokenColumnOffset in 0..<fileName.count {
+            if tokenColumnOffset > 0 {
+                // These are independent single-click probes, not a native
+                // double-click gesture that should select and suppress open.
+                RunLoop.current.run(until: Date().addingTimeInterval(NSEvent.doubleClickInterval + 0.05))
+            }
             let result = try runCommand(
                 action: "cmd_click_token",
                 additionalPayload: ["tokenColumnOffset": tokenColumnOffset]

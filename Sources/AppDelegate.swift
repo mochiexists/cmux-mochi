@@ -2432,9 +2432,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
                 shellCommand = "clear\rfor i in $(seq 1 48); do printf '%s\\n' '\(shellBlockLine)'; done\r"
             }
         }
-        if workingDirectory != fixtureDirectoryURL.path {
-            shellCommand = "cd -- '\(singleQuotedShellLiteral(workingDirectory))'\r" + shellCommand
-        }
+        // Set the real shell directory too: a metadata-only fixture is raced
+        // by the next shell hook reporting its actual startup directory.
+        shellCommand = "cd -- '\(singleQuotedShellLiteral(workingDirectory))'\r" + shellCommand
         let deadline = Date().addingTimeInterval((commandPath?.isEmpty == false) ? 60.0 : 20.0)
         var seeded = false
         var resolved = false
@@ -2530,13 +2530,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
             let size = ghostty_surface_size(surface)
             let rows = max(Int(size.rows), 1)
             let cols = max(Int(size.columns), 1)
-            let debugCellSize = terminalPanel.hostedView.debugCellSize
-            let cellWidth = debugCellSize.width > 0 ? debugCellSize.width : CGFloat(size.cell_width_px)
-            let cellHeight = debugCellSize.height > 0 ? debugCellSize.height : CGFloat(size.cell_height_px)
-            guard cellWidth > 0, cellHeight > 0 else { return nil }
+            guard let metrics = terminalPanel.hostedView.debugGridMetrics else { return nil }
+            let cellWidth = metrics.cellWidth
+            let cellHeight = metrics.cellHeight
 
-            let xInset = max(0, (bounds.width - (CGFloat(cols) * cellWidth)) / 2)
-            let yInset = max(0, (bounds.height - (CGFloat(rows) * cellHeight)) / 2)
+            let xInset = metrics.xInset
+            let yInset = metrics.yInset
             let pointClampX: (CGFloat) -> CGFloat = { x in
                 min(bounds.width - 4, max(4, x))
             }
@@ -2557,8 +2556,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
             for (lineIndex, line) in visibleLines.enumerated() {
                 var searchStart = line.startIndex
                 var ranges: [Range<String.Index>] = []
+                // A long absolute path can wrap across multiple physical rows.
+                // Click its visible leading segment, not a row from the
+                // unwrapped text-export representation.
+                let searchableToken = String(displayToken.prefix(max(1, cols - 2)))
                 while searchStart < line.endIndex,
-                      let range = line.range(of: displayToken, range: searchStart..<line.endIndex) {
+                      let range = line.range(of: searchableToken, range: searchStart..<line.endIndex) {
                     ranges.append(range)
                     searchStart = range.upperBound
                 }
@@ -2653,6 +2656,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
                 payload["surfaceId"] = terminalPanel.id.uuidString
                 payload["terminalVisibleInUI"] = terminalPanel.hostedView.debugPortalVisibleInUI ? "1" : "0"
                 payload["terminalFrameInWindow"] = rectPayload(terminalFrame)
+                if let workspace = terminalPanel.surface.owningWorkspace() {
+                    let expectedPath = (expectedFileURL.path as NSString).resolvingSymlinksInPath
+                    payload["expectedFileInMarkdownViewer"] = workspace.panels.values.contains { panel in
+                        guard let markdown = panel as? MarkdownPanel else { return false }
+                        return (markdown.filePath as NSString).resolvingSymlinksInPath == expectedPath
+                    } ? "1" : "0"
+                }
             }
             if let window {
                 payload["windowFrame"] = rectPayload(window.frame)
@@ -3027,7 +3037,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
             let hasRenderedToken = renderedTokenCount >= 6
             if hasRenderedToken,
                (tokenPointPayload?["tokenLayoutMatch"] as? String) != "1" {
-                tokenPointPayload = tokenPoints(in: terminalPanel, visibleText: visibleText)
+                if let surface = terminalPanel.surface.surface,
+                   let gridRows = TerminalController.shared.readTerminalViewportGridRows(
+                    terminalPanel: terminalPanel,
+                    rowRange: 0..<Int(ghostty_surface_size(surface).rows)
+                   ) {
+                    tokenPointPayload = tokenPoints(in: terminalPanel, visibleText: gridRows.joined(separator: "\n"))
+                }
             }
             let tokenLayoutReady = (tokenPointPayload?["tokenLayoutMatch"] as? String) == "1"
 

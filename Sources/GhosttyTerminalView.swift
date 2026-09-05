@@ -4709,7 +4709,8 @@ class GhosttyNSView: NSView, NSUserInterfaceValidations {
         return performed
     }
 
-    private func keyboardCopyModeGridMetrics(surface: ghostty_surface_t) -> KeyboardCopyModeGridMetrics? {
+    fileprivate func terminalGridMetrics() -> KeyboardCopyModeGridMetrics? {
+        guard let surface else { return nil }
         var native = ghostty_surface_grid_metrics_s()
         guard ghostty_surface_grid_metrics(surface, &native),
               native.cell_width.isFinite,
@@ -4786,7 +4787,7 @@ class GhosttyNSView: NSView, NSUserInterfaceValidations {
         keyboardCopyModeCursor = resolved.cursor
         syncKeyboardCopyModeSelectionKind(surface: surface)
         guard !keyboardCopyModeVisualActive,
-              let metrics = keyboardCopyModeGridMetrics(surface: surface) else {
+              let metrics = terminalGridMetrics() else {
             keyboardCopyModeCursorOverlayView.isHidden = true
             return
         }
@@ -6918,30 +6919,14 @@ class GhosttyNSView: NSView, NSUserInterfaceValidations {
         let size = ghostty_surface_size(surface)
         let rows = max(Int(size.rows), 1)
         let cols = max(Int(size.columns), 1)
-        let visibleText = TerminalController.shared.readTerminalTextForSnapshot(
-            terminalPanel: panel,
-            lineLimit: max(200, rows * 4)
-        ) ?? ""
-        let visibleLines = visibleText.visibleLines(rows: rows)
-        let rowOffset = max(0, rows - visibleLines.count)
         let rowFromTop = max(0, min(rows - 1, viewportOffsetStart / cols))
-        let visibleRow = rowFromTop - rowOffset
-        guard visibleRow >= 0, visibleRow < visibleLines.count else { return nil }
-
         let column = max(0, min(cols - 1, viewportOffsetStart % cols))
-        guard let resolution = TerminalPathResolver().resolveVisiblePath(
-            visibleLines,
-            row: visibleRow,
+        return resolveVisibleGridPath(
+            row: rowFromTop,
             column: column,
-            cwd: cwd
-        ) else {
-            return nil
-        }
-
-        return makeWordPathResolution(
-            path: resolution.path,
-            source: .snapshot,
-            rawToken: resolution.rawToken
+            rows: rows,
+            cwd: cwd,
+            panel: panel
         )
     }
 
@@ -6962,28 +6947,46 @@ class GhosttyNSView: NSView, NSUserInterfaceValidations {
         let size = ghostty_surface_size(surface)
         let rows = max(Int(size.rows), 1)
         let cols = max(Int(size.columns), 1)
-        let resolvedCellWidth = cellSize.width > 0 ? cellSize.width : CGFloat(size.cell_width_px)
-        let resolvedCellHeight = cellSize.height > 0 ? cellSize.height : CGFloat(size.cell_height_px)
-        guard resolvedCellWidth > 0, resolvedCellHeight > 0 else { return nil }
+        // Mouse locations are AppKit points; cellSize and surface_size expose
+        // backing pixels. Use the renderer's logical grid, including padding.
+        guard let metrics = terminalGridMetrics() else { return nil }
+        let resolvedCellWidth = metrics.cellWidth
+        let resolvedCellHeight = metrics.cellHeight
 
-        let visibleText = TerminalController.shared.readTerminalTextForSnapshot(
-            terminalPanel: panel,
-            lineLimit: max(200, rows * 4)
-        ) ?? ""
-        let visibleLines = visibleText.visibleLines(rows: rows)
-        let rowOffset = max(0, rows - visibleLines.count)
-        let xInset = max(0, (bounds.width - (CGFloat(cols) * resolvedCellWidth)) / 2)
-        let yInset = max(0, (bounds.height - (CGFloat(rows) * resolvedCellHeight)) / 2)
+        let xInset = metrics.xInset
+        let yInset = metrics.yInset
 
         let yFromTop = bounds.height - point.y
         let rowFromTop = max(0, min(rows - 1, Int((yFromTop - yInset) / resolvedCellHeight)))
-        let visibleRow = rowFromTop - rowOffset
-        guard visibleRow >= 0, visibleRow < visibleLines.count else { return nil }
-
         let column = max(0, min(cols - 1, Int((point.x - xInset) / resolvedCellWidth)))
+        return resolveVisibleGridPath(
+            row: rowFromTop,
+            column: column,
+            rows: rows,
+            cwd: cwd,
+            panel: panel
+        )
+    }
+
+    private func resolveVisibleGridPath(
+        row: Int,
+        column: Int,
+        rows: Int,
+        cwd: String,
+        panel: TerminalPanel
+    ) -> WordPathResolution? {
+        // Bound native reads to the context the resolver can use, not the
+        // entire viewport on every pointer update.
+        let adjacentRows = TerminalPathResolver.maximumWrappedPathRows - 1
+        let startRow = max(0, row - adjacentRows)
+        let endRow = min(rows, row + adjacentRows + 1)
+        guard let visibleLines = TerminalController.shared.readTerminalViewportGridRows(
+            terminalPanel: panel,
+            rowRange: startRow..<endRow
+        ) else { return nil }
         guard let resolution = TerminalPathResolver().resolveVisiblePath(
             visibleLines,
-            row: visibleRow,
+            row: row - startRow,
             column: column,
             cwd: cwd
         ) else {
@@ -8480,8 +8483,8 @@ final class GhosttySurfaceScrollView: NSView {
         surfaceView.terminalSurface?.id
     }
 
-    var debugCellSize: CGSize {
-        surfaceView.cellSize
+    var debugGridMetrics: KeyboardCopyModeGridMetrics? {
+        surfaceView.terminalGridMetrics()
     }
 
     private func debugPointInSurface(_ point: NSPoint) -> NSPoint {
