@@ -106,13 +106,15 @@ extension CLINotifyProcessIntegrationRegressionTests {
         state: MockSocketServerState,
         connectionCount: Int = 1,
         fulfillWhen: (@Sendable (String) -> Bool)? = nil,
+        socketPassword: String = CLIMockSocketAuthentication.password,
         handler: @escaping @Sendable (String) -> String
     ) -> XCTestExpectation {
         startMockServerAllowingNoResponse(
             listenerFD: listenerFD,
             state: state,
             connectionCount: connectionCount,
-            fulfillWhen: fulfillWhen
+            fulfillWhen: fulfillWhen,
+            socketPassword: socketPassword
         ) { line in
             handler(line)
         }
@@ -123,6 +125,7 @@ extension CLINotifyProcessIntegrationRegressionTests {
         state: MockSocketServerState,
         connectionCount: Int = 1,
         fulfillWhen: (@Sendable (String) -> Bool)? = nil,
+        socketPassword: String = CLIMockSocketAuthentication.password,
         handler: @escaping @Sendable (String) -> String?
     ) -> XCTestExpectation {
         let handled = expectation(description: "cli mock socket handled")
@@ -164,6 +167,10 @@ extension CLINotifyProcessIntegrationRegressionTests {
                         let lineData = pending.subdata(in: 0..<newlineRange.lowerBound)
                         pending.removeSubrange(0...newlineRange.lowerBound)
                         guard let line = String(data: lineData, encoding: .utf8) else { continue }
+                        if let response = CLIMockSocketAuthentication.response(to: line, password: socketPassword) {
+                            _ = response.withCString { Darwin.write(clientFD, $0, strlen($0)) }
+                            continue
+                        }
                         state.append(line)
                         if fulfillWhen?(line) == true {
                             fulfillOnce()
@@ -184,6 +191,7 @@ extension CLINotifyProcessIntegrationRegressionTests {
         listenerFD: Int32,
         state: MockSocketServerState,
         connectionCount: Int = 1,
+        socketPassword: String = CLIMockSocketAuthentication.password,
         handler: @escaping @Sendable (String) -> String
     ) {
         for _ in 0..<max(1, connectionCount) {
@@ -217,6 +225,10 @@ extension CLINotifyProcessIntegrationRegressionTests {
                         let lineData = pending.subdata(in: 0..<newlineRange.lowerBound)
                         pending.removeSubrange(0...newlineRange.lowerBound)
                         guard let line = String(data: lineData, encoding: .utf8) else { continue }
+                        if let response = CLIMockSocketAuthentication.response(to: line, password: socketPassword) {
+                            _ = response.withCString { Darwin.write(clientFD, $0, strlen($0)) }
+                            continue
+                        }
                         state.append(line)
                         let response = handler(line) + "\n"
                         _ = response.withCString { ptr in
