@@ -5648,6 +5648,11 @@ final class TerminalWindowPortalLifecycleTests: XCTestCase {
         )
         TerminalWindowPortalRegistry.synchronizeForAnchor(anchor)
         realizeWindowLayout(window)
+        let surfaceReadyTimeout: TimeInterval = 5
+        XCTAssertTrue(
+            waitUntil(timeout: surfaceReadyTimeout) { surface.debugCurrentPixelSize().width > 0 },
+            "Expected the terminal to initialize before measuring resize geometry"
+        )
         let initialPixelSize = surface.debugCurrentPixelSize()
         XCTAssertGreaterThan(initialPixelSize.width, 0)
 
@@ -5666,8 +5671,15 @@ final class TerminalWindowPortalLifecycleTests: XCTestCase {
 
         TerminalWindowPortalRegistry.endInteractiveGeometryResize(in: window)
         interactionIsActive = false
-        drainMainQueue()
-        drainMainQueue()
+        // Coalescing can need more than two main-queue hops when a previous
+        // geometry generation is pending. Observe the actual resize instead.
+        let finalResizeTimeout: TimeInterval = 0.5
+        XCTAssertTrue(
+            waitUntil(timeout: finalResizeTimeout) {
+                surface.debugCurrentPixelSize().width < initialPixelSize.width
+            },
+            "Expected the final resize to settle within the bounded deadline"
+        )
 
         XCTAssertLessThan(
             surface.debugCurrentPixelSize().width,
