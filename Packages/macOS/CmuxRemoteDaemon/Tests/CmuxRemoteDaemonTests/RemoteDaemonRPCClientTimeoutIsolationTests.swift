@@ -7,9 +7,11 @@ import CmuxCore
 
 @Suite("RemoteDaemonRPCClient timeout isolation")
 struct RemoteDaemonRPCClientTimeoutIsolationTests {
-    @Test("a timed-out PTY attach cancels remotely while preserving the transport and subscriptions")
-    func timedOutPTYAttachPreservesHealthyTransportState() async throws {
-        let probeStart = ContinuousClock.now
+    @Test(
+        "a timed-out PTY attach cancels remotely while preserving the transport and subscriptions",
+        arguments: [false, true]
+    )
+    func timedOutPTYAttachPreservesHealthyTransportState(delayedObservation: Bool) async throws {
         let executable = try makeTransport()
         defer {
             try? FileManager.default.removeItem(
@@ -19,6 +21,11 @@ struct RemoteDaemonRPCClientTimeoutIsolationTests {
 
         let existingPTYEvents = AsyncStream<Void>.makeStream(bufferingPolicy: .bufferingNewest(1))
         defer { existingPTYEvents.continuation.finish() }
+        let eventReceivedAt = OSAllocatedUnfairLock<ContinuousClock.Instant?>(initialState: nil)
+        // The global queue can be occupied by neighbouring synchronous RPC
+        // tests. Use an owned delivery queue, as the PTY bridge does, so this
+        // measures subscription survival rather than unrelated worker pressure.
+        let attachmentEventQueue = DispatchQueue(label: "com.cmux.tests.remote-daemon.healthy-attachment-event")
         let unexpectedTermination = OSAllocatedUnfairLock(initialState: false)
         let client = RemoteDaemonRPCClient(
             configuration: configuration(),
@@ -41,15 +48,15 @@ struct RemoteDaemonRPCClientTimeoutIsolationTests {
             rows: 24,
             command: nil,
             requireExisting: true,
-            queue: .global()
+            queue: attachmentEventQueue
         ) { event in
-            print("[DEBUG-timeout] event \(event) at \(probeStart.duration(to: .now))")
             if case .data(let data) = event, data == Data("still-alive".utf8) {
+                let receivedAt = ContinuousClock.now
+                eventReceivedAt.withLock { $0 = receivedAt }
                 existingPTYEvents.continuation.yield(())
             }
         }
         #expect(existingAttachment.replayByteCount == 11)
-        print("[DEBUG-timeout] attachment \(existingAttachment) at \(probeStart.duration(to: .now))")
 
         do {
             _ = try client.call(
@@ -70,34 +77,27 @@ struct RemoteDaemonRPCClientTimeoutIsolationTests {
 
         let result = try client.call(method: "hello", params: [:], timeout: 1)
         #expect(result["transport"] as? String == "alive")
-        DispatchQueue.global().async {
-            print("[DEBUG-timeout] global sentinel at \(probeStart.duration(to: .now))")
-        }
-        DispatchQueue(label: "com.cmux.tests.timeout-probe").async {
-            print("[DEBUG-timeout] serial sentinel at \(probeStart.duration(to: .now))")
-        }
-        // Suspend the Swift Testing task while its global-queue callback runs;
-        // a semaphore here needlessly occupies a cooperative executor worker.
+        // Keep the one-second delivery deadline. The task may resume later on
+        // a busy executor, so assert callback receipt time, not which child
+        // task happens to finish first after both become runnable.
         let eventDeadline = ContinuousClock.now.advanced(by: .seconds(1))
-        print("[DEBUG-timeout] wait start at \(probeStart.duration(to: .now))")
-        let receivedExistingPTYEvent = await withTaskGroup(of: Bool.self) { group in
+        if delayedObservation {
+            // Exercise the CI ordering: an on-time event must still count when
+            // the test's observer is not scheduled until after the deadline.
+            try await Task.sleep(until: eventDeadline, clock: .continuous)
+        }
+        await withTaskGroup(of: Void.self) { group in
             group.addTask {
-                print("[DEBUG-timeout] consumer starts at \(probeStart.duration(to: .now))")
-                for await _ in existingPTYEvents.stream {
-                    print("[DEBUG-timeout] stream received at \(probeStart.duration(to: .now))")
-                    return true
-                }
-                return false
+                for await _ in existingPTYEvents.stream { return }
             }
             group.addTask {
                 try? await Task.sleep(until: eventDeadline, clock: .continuous)
-                print("[DEBUG-timeout] timer woke at \(probeStart.duration(to: .now)), cancelled=\(Task.isCancelled)")
-                return false
             }
             defer { group.cancelAll() }
-            return await group.next() ?? false
+            await group.next()
         }
-        #expect(receivedExistingPTYEvent)
+        let receivedAt = try #require(eventReceivedAt.withLock { $0 })
+        #expect(receivedAt <= eventDeadline)
         #expect(!unexpectedTermination.withLock { $0 })
     }
 
