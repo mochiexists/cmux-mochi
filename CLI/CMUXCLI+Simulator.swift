@@ -714,11 +714,37 @@ extension CMUXCLI {
             workspaceHandle: workspace,
             windowHandle: window
         )
-        return try simulatorRoutingParams(
+        var params = try simulatorRoutingParams(
             normalizedSurface: normalizedSurface,
             window: window,
             workspace: workspace
         )
+        // An explicit target overrides terminal context. Otherwise use the
+        // caller's live pane, not whichever Simulator happens to be focused.
+        guard window == nil, normalizedSurface == nil, let workspace,
+              let callerSurface = ProcessInfo.processInfo.environment["CMUX_SURFACE_ID"]?
+                .trimmingCharacters(in: .whitespacesAndNewlines),
+              !callerSurface.isEmpty else { return params }
+
+        let payload = try client.sendV2(
+            method: "surface.list",
+            params: ["workspace_id": workspace]
+        )
+        let surfaces = payload["surfaces"] as? [[String: Any]] ?? []
+        guard let caller = surfaces.first(where: {
+            ($0["id"] as? String)?.caseInsensitiveCompare(callerSurface) == .orderedSame
+                || ($0["ref"] as? String) == callerSurface
+        }),
+              let pane = ((caller["pane_id"] as? String) ?? (caller["pane_ref"] as? String))?
+                .trimmingCharacters(in: .whitespacesAndNewlines),
+              !pane.isEmpty else {
+            throw CLIError(message: String(
+                localized: "cli.simulator.error.callerSurfaceUnavailable",
+                defaultValue: "The caller surface is no longer available. Pass --surface or --window to select a Simulator."
+            ))
+        }
+        params["pane_id"] = pane
+        return params
     }
 
     private func simulatorRoutingParams(
