@@ -6,6 +6,30 @@ private func existsIn(_ existingPaths: Set<String>) -> @Sendable (String) -> Boo
     { path in existingPaths.contains((path as NSString).standardizingPath) }
 }
 
+@Suite struct TerminalBulletPathResolutionTests {
+    @Test(arguments: [
+        "Standard - Consultant Agreement - Form of Consulting Agreement.docx",
+        "(NINTENDO) BOTW Guardian Sound Effect.mkv",
+    ])
+    func resolvesFullFilenameAfterBullet(filename: String) {
+        let expected = "/tmp/files/\(filename)"
+        let resolver = TerminalPathResolver(fileExists: existsIn([expected, "/tmp/files/Agreement.docx"]))
+        let line = "  - \(filename)"
+        for column in 4..<line.count {
+            #expect(resolver.resolveVisibleLinePath(line, column: column, cwd: "/tmp/files")?.path == expected)
+        }
+        for column in 0..<4 {
+            #expect(resolver.resolveVisibleLinePath(line, column: column, cwd: "/tmp/files") == nil)
+        }
+    }
+
+    @Test func literalDashFilenameWinsWhenItExists() {
+        let literal = "/tmp/files/- report notes.md"
+        let resolver = TerminalPathResolver(fileExists: existsIn([literal, "/tmp/files/report notes.md"]))
+        #expect(resolver.resolveVisibleLinePath("- report notes.md", column: 4, cwd: "/tmp/files")?.path == literal)
+    }
+}
+
 @Suite struct TerminalPathTrailingPunctuationTests {
     @Test func trimsTrailingPeriodAfterMarkdownFile() {
         #expect(
