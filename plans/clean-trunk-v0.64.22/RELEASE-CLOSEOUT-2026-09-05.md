@@ -43,6 +43,7 @@ promotion requires Tim's manual sign-off; never auto-install into his main sessi
 | Unsupported custom-agent resume | Two failing hibernation tests now pass after the shared startup-input builder preserves the unsupported-agent/no-recipe result. The full hibernation, termination, and auto-resume suites completed successfully in the focused run. |
 | Observer and clipboard fixtures | Full observation and artifact-store suites passed with positive rollout/CWD assertions and bounded asynchronous lease-removal assertions. |
 | Daemon timeout test | Test-only asynchronous callback wait retains the one-second deadline; deliberate missing-event fault injection fails; the full 25-test package passes locally. CI confirmation remains required. |
+| Daemon timeout repair after CI probe | Owned callback queue and actual receipt-time assertion replace global-queue scheduling sensitivity. All 25 package tests pass locally (including two observation variants); ten focused repeats pass both variants. With the event deliberately withheld, both variants fail. Logs: `/tmp/cmux-timeout-repair-ci-probe.log`, `/tmp/cmux-timeout-repair-final-green.log`, `/tmp/cmux-timeout-repair-missing-event-red.log`. |
 | Consolidated corrected cases | `/tmp/cmux-closeout-final-targeted.log`: 126 Swift Testing cases in ten suites passed; 58 of 59 XCTest cases passed. The sole failure is the development-source SSH upload fixture described below. The overall command correctly exits 65, not success. |
 | WebKit capture and restore | The zoomed capture needs a foreground, unoccluded test window: activation changed its occlusion state and capture completed in 1.571 seconds. No production screenshot change. Download restore passed in 0.444 seconds with local HTML and an asynchronous readiness wait. |
 | Preview and Markdown | The consolidated run passed all 27 file-preview and 30 Markdown tests without the reported lifetime crashes. |
@@ -57,8 +58,18 @@ Local logs: `/tmp/cmux-closeout-ssh-anchor-green.log`,
   callback wait failed; SSH anchor fixture failed; app-host shard 1 had five
   Swift Testing issues and XCTest post-test crashes. Shard 2 also failed with
   screenshot-count and download-restore assertions. Release build was skipped.
-- The daemon package's 25 cases pass locally after a test-only nonblocking wait;
-  this does not establish the original macOS 15 failure's cause or replace CI.
+- The daemon timeout case failed again on CI `33962543128`; the nonblocking
+  wait alone did not fix it. Instrumented CI `33964233854` at `45a6e6acd5`
+  reproduced the cause: the dedicated queue ran at 0.146 seconds, but the
+  global-queue PTY events and global sentinel ran at 2.233 seconds, after the
+  one-second deadline. The observer task itself resumed at 2.228 seconds.
+  This establishes test callback-queue starvation, not missing transport data.
+  The fixture now uses its own delivery queue (like the actual PTY bridge),
+  records callback receipt time, and checks that timestamp against the unchanged
+  deadline. Immediate and deliberately delayed observation are both exercised.
+  No production transport code changed. The temporary timing probes were removed.
+  Missing-event fault injection fails both variants, as required. Fresh CI must
+  still confirm the corrected fixture on macOS 15.
 - The corrected zoom, artifact-count, lease, observer, download-restore and window
   fixtures pass locally. The broader screenshot suite was stopped after a
   separate navigation fixture hung; it has not been claimed as a full-suite pass.
