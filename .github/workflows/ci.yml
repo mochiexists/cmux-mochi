@@ -104,6 +104,9 @@ jobs:
       - name: Validate app-host unit-test wiring
         run: ./scripts/lint-pbxproj-test-wiring.sh
 
+      - name: Validate built Debug app discovery
+        run: python3 tests/test_ci_built_debug_app.py
+
       - name: Validate TUI npm package artifact transfer
         run: python3 tests/test_tui_npm_package_artifact.py
 
@@ -1335,6 +1338,12 @@ jobs:
             fi
             echo "::group::swift test $pkgdir"
             case "$pkg" in
+            CmuxFoundation)
+              # These fixtures fork, signal process trees, and close pipe
+              # readers. Concurrent forks can inherit another test's reader
+              # before exec, invalidating the closed-reader assertion.
+              swift test --package-path "$pkgdir" --no-parallel
+              ;;
             CmuxAgentChat|CmuxAuthRuntime|CmuxIrohTransport)
               ./scripts/ci/run-swift-testing-suites.sh "$pkgdir"
               ;;
@@ -1735,16 +1744,7 @@ jobs:
       - name: Run CoreAnimation main-thread startup regression
         run: |
           set -euo pipefail
-          APP="$(
-            find "$CMUX_DERIVED_DATA_PATH" -path "*/Build/Products/Debug/cmux DEV.app" -exec stat -f '%m %N' {} \; \
-              | sort -nr \
-              | head -1 \
-              | cut -d' ' -f2-
-          )"
-          if [ -z "${APP:-}" ] || [ ! -d "$APP" ]; then
-            echo "cmux DEV.app not found in DerivedData" >&2
-            exit 1
-          fi
+          APP="$(python3 scripts/ci/find-built-debug-app.py "$CMUX_DERIVED_DATA_PATH")"
 
           CMUX_ALLOW_UNTAGGED_CA_REGRESSION=1 \
           CMUX_CA_ASSERT_HOLD_SECONDS=15 \
@@ -1755,11 +1755,8 @@ jobs:
         run: |
           set -euo pipefail
 
-          APP="$(find "$CMUX_DERIVED_DATA_PATH" -path "*/Build/Products/Debug/cmux DEV.app" -print -quit)"
-          if [ -z "${APP:-}" ] || [ ! -d "$APP" ]; then
-            echo "cmux DEV.app not found in DerivedData" >&2
-            exit 1
-          fi
+          APP="$(python3 scripts/ci/find-built-debug-app.py "$CMUX_DERIVED_DATA_PATH")"
+          APP_BINARY="$(python3 scripts/ci/find-built-debug-app.py "$CMUX_DERIVED_DATA_PATH" --executable)"
 
           TAG="ci-lag"
           SOCK="/tmp/cmux-debug-${TAG}.sock"
@@ -1768,11 +1765,10 @@ jobs:
               || echo 'com.cmuxterm.app.debug'
           )"
 
-          pkill -x "cmux DEV" || true
           rm -f "$SOCK" "/tmp/cmux-${TAG}.sock" || true
           defaults write "$BUNDLE_ID" socketControlMode -string full >/dev/null 2>&1 || true
 
-          CMUX_TAG="$TAG" CMUX_SOCKET_PATH="$SOCK" CMUX_UI_TEST_MODE=1 "$APP/Contents/MacOS/cmux DEV" >/tmp/cmux-ci-lag.log 2>&1 &
+          CMUX_TAG="$TAG" CMUX_SOCKET_PATH="$SOCK" CMUX_UI_TEST_MODE=1 "$APP_BINARY" >/tmp/cmux-ci-lag.log 2>&1 &
           APP_PID=$!
           trap 'kill "$APP_PID" >/dev/null 2>&1 || true' EXIT
 
