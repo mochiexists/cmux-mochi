@@ -101,18 +101,32 @@ private struct ScriptedRemoteProcessRunner: RemoteSessionProcessRunning, @unchec
 
 private final class RecordingScriptedRemoteProcessRunner: RemoteSessionProcessRunning, @unchecked Sendable {
     private let script: RemoteProcessScript
-    private let recordedRequests = OSAllocatedUnfairLock(initialState: [RemoteProcessRequest]())
+    private let startedAt = ProcessInfo.processInfo.systemUptime
+    private let recordedRequests = OSAllocatedUnfairLock(initialState: [(request: RemoteProcessRequest, elapsed: TimeInterval)]())
 
     init(script: @escaping RemoteProcessScript) {
         self.script = script
     }
 
     var requests: [RemoteProcessRequest] {
-        recordedRequests.withLock { $0 }
+        recordedRequests.withLock { $0.map { $0.request } }
+    }
+
+    var timingSummary: String {
+        recordedRequests.withLock { entries in
+            entries.map { entry in
+                let command = String((entry.request.arguments.last ?? "").prefix(96))
+                    .replacingOccurrences(of: "\n", with: "\\n")
+                return String(format: "%.3fs", entry.elapsed) + " " +
+                    URL(fileURLWithPath: entry.request.executable).lastPathComponent +
+                    " \(entry.request.arguments.first ?? "") … \(command)"
+            }.joined(separator: "\n")
+        }
     }
 
     func run(_ request: RemoteProcessRequest, operation: (any RemoteTransferCancelling)?) throws -> RemoteCommandResult {
-        recordedRequests.withLock { $0.append(request) }
+        let elapsed = ProcessInfo.processInfo.systemUptime - startedAt
+        recordedRequests.withLock { $0.append((request, elapsed)) }
         return try ScriptedRemoteProcessRunner(script: script).run(request, operation: operation)
     }
 }
@@ -133,7 +147,7 @@ private func assertRemoteDaemonUploadRequest(
         options: .regularExpression
     ), "Expected absolute remote HOME/platform upload path in \(command)", file: file, line: line)
     let path = String(command[pathRange])
-    let quote: (String) -> String = { "'" + $0.replacingOccurrences(of: "'", with: "'\\''") + "'" }
+    let quote: (String) -> String = { "'" + $0.replacingOccurrences(of: "'", with: "'\"'\"'") + "'" }
     XCTAssertEqual(command, "sh -c \(quote("cat > \(quote(path))"))", file: file, line: line)
 }
 
@@ -2086,11 +2100,13 @@ final class WorkspaceRemoteConnectionTests: XCTestCase {
 
         workspace.configureRemoteConnection(config, autoConnect: true)
 
+        await workspace.remoteSessionTransitionTask?.value
         await fulfillment(of: [uploadInvoked], timeout: 2)
         let diagnostic = "state=\(workspace.remoteConnectionState) detail=\(workspace.remoteConnectionDetail ?? "nil")"
         workspace.disconnectRemoteConnection(clearConfiguration: true)
         await workspace.remoteSessionTransitionTask?.value
         let requests = runner.requests
+        print("SSH upload fixture request timing:\n\(runner.timingSummary)")
         XCTAssertFalse(requests.contains { $0.executable == "/usr/bin/scp" })
         let upload = try XCTUnwrap(requests.first { $0.arguments.last?.contains("cat > ") == true }, diagnostic)
         try assertRemoteDaemonUploadRequest(upload, sourceFile: fakeDaemonURL)
@@ -2189,11 +2205,13 @@ final class WorkspaceRemoteConnectionTests: XCTestCase {
 
         workspace.configureRemoteConnection(config, autoConnect: true)
 
+        await workspace.remoteSessionTransitionTask?.value
         await fulfillment(of: [uploadInvoked], timeout: 2)
         let diagnostic = "state=\(workspace.remoteConnectionState) detail=\(workspace.remoteConnectionDetail ?? "nil")"
         workspace.disconnectRemoteConnection(clearConfiguration: true)
         await workspace.remoteSessionTransitionTask?.value
         let requests = runner.requests
+        print("SSH capability reinstall fixture request timing:\n\(runner.timingSummary)")
         XCTAssertFalse(requests.contains { $0.executable == "/usr/bin/scp" })
         let helloIndex = try XCTUnwrap(requests.firstIndex { remoteDaemonServeCommand($0.arguments.last ?? "") }, diagnostic)
         let buildIndex = try XCTUnwrap(requests.firstIndex { URL(fileURLWithPath: $0.executable).lastPathComponent == "go" }, diagnostic)
