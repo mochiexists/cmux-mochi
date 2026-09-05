@@ -108,6 +108,49 @@ Build/lag and app-host shards 2 and 3 passed; Foundation and shards 1 and 4 fail
 No new Nightly/TestFlight has been cut. Complete the concrete failure clusters
 and candidate/device gates above before claiming release readiness.
 
+### Window ownership and resize follow-up
+
+- Original CI reports were recovered from the configured M4 runner:
+  `/tmp/cmux-ci-d791-notification-crash.ips`,
+  `/tmp/cmux-ci-d791-dock-crash.ips`, and
+  `/tmp/cmux-ci-d791-browser-crash.ips`. All three identify
+  `objc_release -> _NSWindowTransformAnimation dealloc -> autorelease pool ->
+  CA transaction commit`. The dock case pumps the run loop in
+  `realizeWindowLayout`; that selector is not proof the dock created the bad window.
+- Full notification + first-reveal suites reproduced three bad-pointer crashes
+  locally in `/tmp/cmux-closeout-window-churn-red.log`, including browser
+  detachment. Their shared fixtures closed strongly held windows with default
+  close ownership and pending animations. The fixture correction sets
+  `isReleasedWhenClosed = false` and `animationBehavior = .none` before presentation,
+  retaining existing close/order-out cleanup. Production animation is unchanged.
+- A separate dock probe (`/tmp/cmux-closeout-dock-probe.log`) established the
+  resize-routing bug: expected/hosted window 9575, stale event window 9567;
+  controller drag active, resize ownership active only for 9567. Dock, workspace,
+  and remote-mirror divider entrypoints now prefer their attached/visible hosting
+  window, falling back to the event window only when no host is available.
+  This is a runtime change and requires refreshed candidate dogfood.
+- Stable/Nightly auth and build-flavor fixtures now use the fork's bundle IDs,
+  retaining dev precedence and separate stable/Nightly callback assertions.
+- The SSH creation mock now returns the initial `surface_id`, matching the real
+  server contract. Standalone bundled-CLI proof: old fixture exits 1 after
+  `surface.list`/rollback; corrected fixture exits 0 through create, rename,
+  configure, select, with the original payload assertions retained.
+- The adjacent final-size test initially failed intermittently (two of five
+  repeats). Instrumented repetitions showed a pending update settling without
+  another resize request in 5–7 ms, and occasional measurement before initial
+  terminal readiness. The fixture now waits for initial readiness using the
+  existing bounded helper, then observes final width within 0.5 seconds instead
+  of assuming exactly two queue hops. No resize engine change was made for this
+  observation issue. All temporary probes are removed.
+- `/tmp/cmux-closeout-window-resize-final.log` **TEST SUCCEEDED**: 15 XCTest
+  cases plus 40 Swift Testing cases passed. This includes the complete notification
+  and browser first-reveal suites, all three selected resize cases, fork identity
+  coverage, and the native bundled-CLI SSH creation test. The same tagged app and
+  test targets compiled successfully. The full CI run and candidate dogfood are
+  still required; other previously identified failure clusters remain open.
+- Final-size verification then passed 20 consecutive iterations with the final,
+  probe-free fixture (`/tmp/cmux-closeout-resize-flush-final-repeat.log`).
+
 - CI run `33951214221`, source `6d46ff5f97`: Swift package timeout-isolation
   callback wait failed; SSH anchor fixture failed; app-host shard 1 had five
   Swift Testing issues and XCTest post-test crashes. Shard 2 also failed with
