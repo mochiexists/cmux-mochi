@@ -54,6 +54,60 @@ Local logs: `/tmp/cmux-closeout-ssh-anchor-green.log`,
 
 ## Concrete blockers under investigation
 
+### Latest CI refresh: `33965443888` at `d7911a442a`
+
+The daemon timeout repair is now confirmed on CI: all 25 package tests pass,
+including both delayed-observation variants. The overall run remains **failed**.
+Build/lag and app-host shards 2 and 3 passed; Foundation and shards 1 and 4 failed.
+
+- Foundation's queued-input PTY test failed to observe either backoff or input.
+  A fresh local full-package run passed all 175 tests, and 20 isolated queued-input
+  repeats passed. A subsequent full-package repeat failed a different signal-exit
+  timing assertion. Neither failure is classified as fixed. Failure-only PTY
+  transcript/attach-log diagnostics were added; no retry deadline or production
+  reconnect logic was changed.
+- Shard 1 recorded 60 distinct failing XCTest methods across 14 classes; shard 4
+  recorded 65 across 20 classes. These are not 125 proven production regressions,
+  but neither are they waived. Evidence clusters include stale upstream identity,
+  schema and compositing expectations; outdated CLI mock surface responses; and
+  process completion observers reporting timeout despite successful child output.
+- Three shard-4 SIGSEGV selectors remain explicit blockers:
+  `TerminalNotificationSocketActionTests.testNotificationJumpToUnreadPayloadMatchesOpenedFallbackNotification`,
+  `TerminalWindowPortalLifecycleTests.testDockDividerLifecycleScopesTerminalResizeToHostingWindow`,
+  and `BrowserPortalFirstRevealScrollTests.nextTurnRestoreSurvivesDetachment`.
+  CI backtraces are unsymbolicated; no xcresult artifact was uploaded. Logs are
+  `/tmp/cmux-ci-d791-shard1.log` and `/tmp/cmux-ci-d791-shard4.log`.
+- A separate watchdog defect is reproduced: XCTest's `Selected tests` summary
+  starts the 45-second post-test timer even though Swift Testing starts afterward.
+  A synthetic mixed-framework child was incorrectly killed with exit 0 before its
+  Swift test finished. The repair tracks both frameworks and preserves failures;
+  it does not explain or waive the earlier assertions/crashes.
+- The unsafe-selector restore test used custom agents without a resume recipe,
+  contradicting the intended unsupported-agent result. Its corrected fixture
+  checks both no-recipe rejection and the safe selector with a real resume recipe.
+- Focused local reproduction (`/tmp/cmux-closeout-d791-crash-selectors.log`):
+  all three corrected restore tests passed, as did the notification and browser
+  detachment selectors. The dock-divider selector failed its window-scoped resize
+  assertion, not a crash. The Markdown reload test aborted in
+  `XCTestExpectation.fulfill`; its subscriber allowed repeated matching file-change
+  publications to fulfill one expectation repeatedly. The fixture now takes only
+  the first matching publication, retaining the timeout and final content checks.
+  The combined run exited 65 and is not a pass or clearance of the CI SIGSEGVs.
+- Mixed-framework watchdog validation: 14 subprocess scenarios pass, including
+  XCTest-pass/Swift-fail returning 125 and an unfinished silent Swift run returning
+  124. The existing shell retry test also passes. Regression commit `aaf36b75b7`,
+  fix `65c3395991`; a fresh actual CI run remains required.
+- Follow-up tagged app-host run
+  `/tmp/cmux-closeout-markdown-restore-green.log` **TEST SUCCEEDED**:
+  all 30 Markdown XCTest cases and all three restore-startup Swift Testing cases
+  pass after the fixture fixes. The app and test target compiled successfully.
+  These narrow passes do not clear the separate dock-resize assertion or CI-only
+  crashes. The queued-input diagnostics-only change compiled and its focused
+  test passed (`/tmp/cmux-queued-input-diagnostics-check.log`).
+
+No new Nightly/TestFlight has been cut. Complete the concrete failure clusters
+and candidate/device gates above before claiming release readiness.
+
 - CI run `33951214221`, source `6d46ff5f97`: Swift package timeout-isolation
   callback wait failed; SSH anchor fixture failed; app-host shard 1 had five
   Swift Testing issues and XCTest post-test crashes. Shard 2 also failed with
