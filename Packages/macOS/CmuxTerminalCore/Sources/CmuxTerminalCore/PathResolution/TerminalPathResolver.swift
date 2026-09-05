@@ -17,15 +17,22 @@ public import Foundation
 /// ``TerminalLinkRouter``'s injected `BrowserHostNormalizing` seam.
 public struct TerminalPathResolver: Sendable {
     private let fileExists: @Sendable (String) -> Bool
+    private let isDirectory: @Sendable (String) -> Bool
 
     /// Creates a resolver that probes candidate paths through `fileExists`.
     ///
     /// - Parameter fileExists: The file-existence capability; defaults to the
-    ///   real file system.
+    ///   real file system. `isDirectory` excludes directories from reconstructed
+    ///   multiline file candidates and defaults to the real file system.
     public init(
-        fileExists: @escaping @Sendable (String) -> Bool = { FileManager.default.fileExists(atPath: $0) }
+        fileExists: @escaping @Sendable (String) -> Bool = { FileManager.default.fileExists(atPath: $0) },
+        isDirectory: @escaping @Sendable (String) -> Bool = { path in
+            var directory: ObjCBool = false
+            return FileManager.default.fileExists(atPath: path, isDirectory: &directory) && directory.boolValue
+        }
     ) {
         self.fileExists = fileExists
+        self.isDirectory = isDirectory
     }
 
     /// Resolves raw terminal text to an existing file path for QuickLook.
@@ -90,6 +97,67 @@ public struct TerminalPathResolver: Sendable {
             }
         }
         return nil
+    }
+
+    /// Resolves the clicked row first, then a rooted path hard-wrapped after
+    /// a slash onto at most two indented continuation rows. Filesystem evidence
+    /// is required; independent roots, schemes, and unrelated prose stay separate.
+    public func resolveVisiblePath(
+        _ lines: [String],
+        row: Int,
+        column: Int,
+        cwd: String
+    ) -> (rawToken: String, path: String)? {
+        guard lines.indices.contains(row) else { return nil }
+        if let result = resolveVisibleLinePath(lines[row], column: column, cwd: cwd) {
+            return result
+        }
+        let maximumRows = 3
+        for startRow in max(0, row - maximumRows + 1)...row {
+            let firstLine = Array(lines[startRow])
+            // A rooted suffix may follow prose or an opening Markdown delimiter.
+            for start in firstLine.indices where firstLine[start] == "/" {
+                guard start == 0 || firstLine[start - 1].isWhitespace || "([<\"'`".contains(firstLine[start - 1]) else { continue }
+                let root = String(firstLine[start...]).trimmingCharacters(in: .whitespaces)
+                guard root.hasSuffix("/"), !root.contains(where: \.isWhitespace) else { continue }
+                var candidate = root
+                var clickedToken: String?
+                if row == startRow, column >= start, column < start + root.count {
+                    clickedToken = root
+                }
+                let lastRow = min(lines.count - 1, startRow + maximumRows - 1)
+                guard startRow < lastRow else { continue }
+                for nextRow in (startRow + 1)...lastRow {
+                    guard candidate.hasSuffix("/") else { break }
+                    let characters = Array(lines[nextRow])
+                    let indentation = characters.prefix { $0 == " " || $0 == "\t" }.count
+                    guard (1...16).contains(indentation) else { break }
+                    let token = String(characters.dropFirst(indentation).prefix { !$0.isWhitespace })
+                    guard !token.isEmpty,
+                          !token.hasPrefix("/"), !token.hasPrefix("./"),
+                          !token.hasPrefix("../"), !token.hasPrefix("~/"),
+                          !token.hasPrefix("$"), URL(string: token)?.scheme == nil else { break }
+                    candidate += token
+                    if row == nextRow, column >= indentation, column < indentation + token.count {
+                        clickedToken = token
+                    }
+                    guard nextRow >= row, let clickedToken,
+                          let path = resolveQuicklookPath(candidate, cwd: cwd),
+                          !isDirectory(path) else { continue }
+                    return (clickedToken, path)
+                }
+            }
+        }
+        return nil
+    }
+
+    /// Only a matching scheme-less runtime fragment can use the file observed
+    /// at click time. Explicit hyperlink destinations always keep their identity.
+    public static func openURLMatchesVisibleToken(_ rawValue: String, token: String) -> Bool {
+        let value = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !value.isEmpty, URL(string: value)?.scheme == nil else { return false }
+        return value.trimmingTrailingTerminalPunctuation() ==
+            token.trimmingCharacters(in: .whitespacesAndNewlines).trimmingTrailingTerminalPunctuation()
     }
 
     /// Resolves an open-URL request payload to an existing file path.

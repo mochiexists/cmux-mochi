@@ -3476,7 +3476,7 @@ class GhosttyApp {
                 workingDirectory: surfaceView.currentDirectoryActionDispatcher.directorySnapshot()
             )
             return performOnMain {
-                TerminalLinkOpenCoordinator().open(request)
+                surfaceView.openRuntimeTerminalLink(request)
             }
         default:
             return false
@@ -3640,6 +3640,31 @@ class GhosttyNSView: NSView, NSUserInterfaceValidations {
         let path: String
         let source: WordPathResolutionSource
         let rawToken: String
+    }
+
+    private var pendingCommandClickResolution: WordPathResolution?
+    private var handlingCommandClickRelease = false
+    private var runtimeHandledCommandClick = false
+
+    fileprivate func openRuntimeTerminalLink(_ request: TerminalLinkOpenRequest) -> Bool {
+        var resolvedRequest = request
+        var openedResolution: WordPathResolution?
+        if let resolution = pendingCommandClickResolution,
+           TerminalPathResolver.openURLMatchesVisibleToken(request.rawValue, token: resolution.rawToken) {
+            openedResolution = resolution
+            resolvedRequest = TerminalLinkOpenRequest(
+                rawValue: resolution.path,
+                sourceWorkspaceId: request.sourceWorkspaceId,
+                sourcePanelId: request.sourcePanelId,
+                workingDirectory: request.workingDirectory
+            )
+        }
+        let handled = TerminalLinkOpenCoordinator().open(resolvedRequest)
+        if handlingCommandClickRelease, handled {
+            runtimeHandledCommandClick = true
+            pendingCommandClickResolution = openedResolution
+        }
+        return handled
     }
 
     private func makeWordPathResolution(
@@ -6592,11 +6617,38 @@ class GhosttyNSView: NSView, NSUserInterfaceValidations {
     func completePendingLeftMouseRelease(with event: NSEvent) -> Bool {
         guard hasPendingLeftMouseRelease else { return false }
         hasPendingLeftMouseRelease = false
-        guard let surface else { return false }
+        guard surface != nil else { return false }
         let point = convert(event.locationInWindow, from: nil)
-        let consumed = ghostty_surface_mouse_button(surface, GHOSTTY_MOUSE_RELEASE, GHOSTTY_MOUSE_LEFT, mouseModsFromEvent(event))
-        _ = handleCommandClickRelease(at: point, modifierFlags: event.modifierFlags, ghosttyConsumed: consumed)
+        _ = releaseLeftMouseButton(at: point, modifierFlags: event.modifierFlags)
         return true
+    }
+
+    private func releaseLeftMouseButton(
+        at point: NSPoint,
+        modifierFlags: NSEvent.ModifierFlags
+    ) -> (consumed: Bool, resolution: WordPathResolution?) {
+        guard let surface else { return (false, nil) }
+        // Ghostty invokes open_url while holding its renderer mutex. Snapshot
+        // before entering it; callback routing must never query the terminal.
+        if modifierFlags.contains(.command), !shouldSuppressCommandPathHover(for: modifierFlags) {
+            pendingCommandClickResolution = resolveWordUnderCursorPath(at: point)
+        }
+        handlingCommandClickRelease = true
+        runtimeHandledCommandClick = false
+        defer {
+            pendingCommandClickResolution = nil
+            handlingCommandClickRelease = false
+            runtimeHandledCommandClick = false
+        }
+        let consumed = ghostty_surface_mouse_button(
+            surface, GHOSTTY_MOUSE_RELEASE, GHOSTTY_MOUSE_LEFT, mouseModsFromFlags(modifierFlags)
+        )
+        if runtimeHandledCommandClick {
+            return (consumed, pendingCommandClickResolution)
+        }
+        return (consumed, handleCommandClickRelease(
+            at: point, modifierFlags: modifierFlags, ghosttyConsumed: consumed
+        ))
     }
 
     /// Attempt to open the word under the mouse cursor as a file path, resolved
@@ -6877,8 +6929,9 @@ class GhosttyNSView: NSView, NSUserInterfaceValidations {
         guard visibleRow >= 0, visibleRow < visibleLines.count else { return nil }
 
         let column = max(0, min(cols - 1, viewportOffsetStart % cols))
-        guard let resolution = TerminalPathResolver().resolveVisibleLinePath(
-            visibleLines[visibleRow],
+        guard let resolution = TerminalPathResolver().resolveVisiblePath(
+            visibleLines,
+            row: visibleRow,
             column: column,
             cwd: cwd
         ) else {
@@ -6928,8 +6981,9 @@ class GhosttyNSView: NSView, NSUserInterfaceValidations {
         guard visibleRow >= 0, visibleRow < visibleLines.count else { return nil }
 
         let column = max(0, min(cols - 1, Int((point.x - xInset) / resolvedCellWidth)))
-        guard let resolution = TerminalPathResolver().resolveVisibleLinePath(
-            visibleLines[visibleRow],
+        guard let resolution = TerminalPathResolver().resolveVisiblePath(
+            visibleLines,
+            row: visibleRow,
             column: column,
             cwd: cwd
         ) else {
@@ -7188,18 +7242,13 @@ class GhosttyNSView: NSView, NSUserInterfaceValidations {
         window?.makeFirstResponder(self)
         ghostty_surface_mouse_pos(surface, clampedPoint.x, bounds.height - clampedPoint.y, mods)
         let pressHandled = ghostty_surface_mouse_button(surface, GHOSTTY_MOUSE_PRESS, GHOSTTY_MOUSE_LEFT, mods)
-        let releaseConsumed = ghostty_surface_mouse_button(surface, GHOSTTY_MOUSE_RELEASE, GHOSTTY_MOUSE_LEFT, mods)
-        let resolution = handleCommandClickRelease(
-            at: clampedPoint,
-            modifierFlags: flags,
-            ghosttyConsumed: releaseConsumed
-        )
+        let release = releaseLeftMouseButton(at: clampedPoint, modifierFlags: flags)
 
         var payload: [String: Any] = [
             "pressHandled": pressHandled ? "1" : "0",
-            "releaseConsumed": releaseConsumed ? "1" : "0",
+            "releaseConsumed": release.consumed ? "1" : "0",
         ]
-        if let resolution {
+        if let resolution = release.resolution {
             payload["openedPath"] = resolution.path
             payload["resolutionSource"] = resolution.source.rawValue
             payload["rawToken"] = resolution.rawToken
@@ -7232,12 +7281,12 @@ class GhosttyNSView: NSView, NSUserInterfaceValidations {
         ghostty_surface_mouse_pos(surface, clampedPoint.x, bounds.height - clampedPoint.y, noMods)
         flagsChanged(with: cmdDown)
         let pressHandled = ghostty_surface_mouse_button(surface, GHOSTTY_MOUSE_PRESS, GHOSTTY_MOUSE_LEFT, commandMods)
-        let releaseConsumed = ghostty_surface_mouse_button(surface, GHOSTTY_MOUSE_RELEASE, GHOSTTY_MOUSE_LEFT, commandMods)
+        let release = releaseLeftMouseButton(at: clampedPoint, modifierFlags: flags)
         flagsChanged(with: cmdUp)
 
         return [
             "pressHandled": pressHandled ? "1" : "0",
-            "releaseConsumed": releaseConsumed ? "1" : "0",
+            "releaseConsumed": release.consumed ? "1" : "0",
         ]
     }
 
