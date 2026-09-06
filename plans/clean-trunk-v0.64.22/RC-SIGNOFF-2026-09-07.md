@@ -123,3 +123,64 @@ and a real network, so none of it is covered by anything automated above.
 - No TestFlight build exists for this candidate.
 - `tests/test_ci_universal_release_settings.sh` passes but is not invoked by any
   workflow, and is not executable. Dormant guard, worth wiring up later.
+
+## Triage of the app-host test failures
+
+Scale first, because it reframes everything: shard 2 alone recorded **122 issues
+across 31 suites**. Swift Testing in that shard has effectively never been enforced.
+When the worst cluster ran, **about 90 suites were open concurrently in one
+process**. That single fact explains most of what follows.
+
+### Remote tmux rect publication — 19 issues, ONE cause, fixed
+
+Not a product bug and not timing. The suite is synchronous message injection and
+finishes in 0.042 seconds.
+
+`stagePendingLayout` subscribes to `pane-border-status` before issuing the rects
+fetch, and that subscribe goes onto the same positional command FIFO that results
+are correlated against. Real tmux answers it with its own empty block, so
+production is correct. The test's fake stream never fed that block, so every rects
+reply was consumed by the subscription's slot and discarded. Hence `windowsByID`
+nil everywhere. The giveaway is one assertion expecting 2 queued commands and
+seeing 4, exactly two extra subscribes for two windows.
+
+Broken since 2026-07-15 by the commit that added the subscription without updating
+the fake stream. Newly visible only because Swift Testing stopped being cut off.
+
+The fix teaches the fake stream to answer fire-and-forget commands the way tmux
+does. Test-only; no production code touched. Same cause very likely explains three
+more failures in the mirror targeting tests.
+
+### Fork conversation context menu — 25 issues, four causes
+
+- **Spin-waits with no wall-clock deadline** (5 tests). They loop a fixed number of
+  `Task.yield()` calls waiting on work that hops to a detached utility task. Under
+  ~90 concurrent suites the loop can exhaust before that task is ever scheduled. In
+  one case nothing had started after two full waits. Ordering is asserted correctly;
+  the code was just later than the loop allowed.
+- **Production's 3-second fail-closed probe budgets firing under load** (6 tests).
+  These spawn real shell fixtures. The decisive evidence is a test that loops 130
+  times and recorded exactly one issue. That is a flake, not a broken contract. Two
+  fixtures also busy-wait at 100% CPU, which makes them lose their own race.
+- **Two stale expectations** that contradict the current production contract. One
+  asserts no verdict is recorded where the code deliberately records a rejection,
+  contradicted by a sibling test that passes. The other requires a timeout that
+  cannot happen, because same-process-group pipe holders are killed by design.
+  Both need an owner decision, so they were left alone.
+- **One suspected genuine fork-local regression**, the only one found in this
+  cluster: the direct OpenCode context menu reconciliation, from a fork-local commit
+  on 2026-07-27. Low confidence, needs a targeted single-test run.
+
+Also found, latent and not the cause of any failure here: a candidate-snapshot
+helper hard-codes the process-wide shared agent index, silently bypassing the
+injected index and coupling those tests to global state.
+
+### What this means for the release candidate
+
+The overwhelming majority of these failures are test-harness and load artefacts on a
+runner executing far too much in one process. That is reassuring for the product and
+damning for the gate. One suspected product regression is worth a look; nothing else
+here points at shipped behaviour.
+
+Fixing the rest is a substantial piece of work and was deliberately not attempted
+against an RC hours before signoff.
