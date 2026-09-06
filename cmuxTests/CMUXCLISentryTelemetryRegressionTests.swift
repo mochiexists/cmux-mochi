@@ -226,7 +226,11 @@ private final class CMUXCLISentryTelemetryBundleToken {}
         }
 
         let exitSignal = DispatchSemaphore(value: 0)
-        DispatchQueue.global(qos: .userInitiated).async {
+        // A dedicated thread, not DispatchQueue.global: blocking mock socket
+        // servers elsewhere in this test process can exhaust the global pool,
+        // which previously made this helper report timedOut == true for a
+        // child that had already exited with its full output captured.
+        Thread.detachNewThread {
             process.waitUntilExit()
             exitSignal.signal()
         }

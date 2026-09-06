@@ -130,8 +130,15 @@ extension CLINotifyProcessIntegrationRegressionTests {
     ) -> XCTestExpectation {
         let handled = expectation(description: "cli mock socket handled")
         let fulfillmentGate = MockSocketFulfillmentGate()
+        // Each connection slot parks a thread in a blocking accept(), so these
+        // must not run on a libdispatch global queue. connectionCount reaches
+        // 128 at some call sites, which exhausts the width-limited global pool
+        // and starves every other DispatchQueue.global work item in the test
+        // process - including runProcess()'s exit waiter, which then reports a
+        // bogus timeout for a child that has already exited. Dedicated threads
+        // are not pool limited.
         for _ in 0..<max(1, connectionCount) {
-            DispatchQueue.global(qos: .userInitiated).async {
+            Thread.detachNewThread {
                 func fulfillOnce() {
                     fulfillmentGate.fulfill(handled)
                 }
@@ -194,8 +201,15 @@ extension CLINotifyProcessIntegrationRegressionTests {
         socketPassword: String = CLIMockSocketAuthentication.password,
         handler: @escaping @Sendable (String) -> String
     ) {
+        // Each connection slot parks a thread in a blocking accept(), so these
+        // must not run on a libdispatch global queue. connectionCount reaches
+        // 128 at some call sites, which exhausts the width-limited global pool
+        // and starves every other DispatchQueue.global work item in the test
+        // process - including runProcess()'s exit waiter, which then reports a
+        // bogus timeout for a child that has already exited. Dedicated threads
+        // are not pool limited.
         for _ in 0..<max(1, connectionCount) {
-            DispatchQueue.global(qos: .userInitiated).async {
+            Thread.detachNewThread {
                 var clientAddr = sockaddr_un()
                 var clientAddrLen = socklen_t(MemoryLayout<sockaddr_un>.size)
                 let clientFD = withUnsafeMutablePointer(to: &clientAddr) { ptr in
