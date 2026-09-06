@@ -12,8 +12,13 @@ stale. The checkout now lives at
 | Branch | `mochi/transport-hive-foundation` |
 | Nightly built from | `d46692c36ddc0943cbe1e3d6f6a58301c5382977` |
 | Nightly run | 34062197107 |
-| Expected build number | 3406219710701 |
-| Expected artifact | `cmux-nightly-d46692c` (contains `cmux-nightly-macos-3406219710701.dmg`) |
+| Nightly run result | SUCCESS, signed and notarized |
+| Marketing version | `0.64.207-nightly.3406219710701` |
+| Build number | 3406219710701 |
+| Artifact | `cmux-nightly-d46692c`, 326 MB |
+| Disk image | `cmux-nightly-macos-3406219710701.dmg` |
+| Architectures | universal, arm64 and x86_64 |
+| Notarization | stapled and validated |
 | iOS beta for this candidate | NOT BUILT — see "TestFlight" below |
 
 Download the Mac review build with:
@@ -270,3 +275,23 @@ also exercises the two test-harness fixes that the cancelled run predated.
 Note for whoever reads the runs list: `tests` and `ci-status` are pure aggregators.
 They fail whenever anything they gate on fails, so they never carry independent
 information.
+
+## Nightly result, confirmed
+
+Run 34062197107 completed successfully at 23:55 UTC on 2026-09-06. Every step in the
+sign-and-notarize job passed, including these worth calling out:
+
+- **Notarize app ticket through final DMG** — the log confirms the staple and
+  validate action worked, so Gatekeeper will accept it offline.
+- **Verify nightly binary architectures** — universal, arm64 and x86_64.
+- **Verify isolated Release force-quit continuity** — a real runtime check against
+  the signed Release build, not a Debug one. This covers part of manual checklist
+  item 1 automatically.
+- **Upload branch nightly artifacts** — as designed, the Sparkle publication steps
+  were skipped because this is a branch build.
+
+No version number was bumped by hand. The base marketing version remains 0.64.207
+and the workflow derived the nightly suffix itself.
+
+A replacement CI run, 34068253036, was dispatched automatically on the current
+commit and is running. It exercises release-build plus both test-harness fixes.
