@@ -9,8 +9,13 @@ import sys
 from pathlib import Path
 
 
+# xcodebuild inserts "with N tests skipped and" before the failure count whenever
+# the run skipped anything, so a pattern that demands "with <count> failures"
+# straight after the test count silently misses the real aggregate summary and
+# falls through to some small trailing per-suite line instead.
 XCTEST_SUMMARY = re.compile(
-    r"Executed \d+ tests?, with \d+ failures? \((\d+) unexpected\)"
+    r"Executed \d+ tests?, with (?:\d+ tests? skipped and )?\d+ failures? "
+    r"\((\d+) unexpected\)"
 )
 SWIFT_TESTING_FAILURES = (
     re.compile(r"\brecorded an issue\b", re.IGNORECASE),
@@ -37,8 +42,11 @@ def main() -> int:
             print("Swift Testing failure detected", file=sys.stderr)
             return 1
 
-    summaries = XCTEST_SUMMARY.findall(output)
-    if summaries and int(summaries[-1]) == 0:
+    # Every summary has to be clean, not just the last one printed. Trailing
+    # per-suite summaries are frequently empty and would otherwise mask an
+    # aggregate that reported unexpected failures earlier in the run.
+    summaries = [int(count) for count in XCTEST_SUMMARY.findall(output)]
+    if summaries and not any(summaries):
         print("All XCTest failures are expected, treating as pass")
         return 0
 

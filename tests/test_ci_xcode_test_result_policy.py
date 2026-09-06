@@ -65,6 +65,42 @@ class XcodeTestResultPolicyTests(unittest.TestCase):
         )
         self.assertNotEqual(result.returncode, 0)
 
+    def test_unexpected_failure_in_a_skipping_summary_is_rejected(self) -> None:
+        # Real shape from CI: the aggregate carries "with 1 test skipped and",
+        # which the original pattern could not match, so the run was waved
+        # through on a small trailing per-suite summary instead.
+        result = self.evaluate(
+            65,
+            "\n".join(
+                [
+                    "Executed 900 tests, with 1 test skipped and 191 failures "
+                    "(9 unexpected) in 309.234 (309.589) seconds",
+                    "Executed 17 tests, with 0 failures (0 unexpected) in 0.298 seconds",
+                ]
+            ),
+        )
+        self.assertNotEqual(result.returncode, 0)
+
+    def test_expected_failures_in_a_skipping_summary_still_pass(self) -> None:
+        result = self.evaluate(
+            65,
+            "Executed 967 tests, with 1 test skipped and 104 failures "
+            "(0 unexpected) in 440.119 seconds",
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_a_clean_trailing_summary_cannot_mask_an_earlier_one(self) -> None:
+        result = self.evaluate(
+            65,
+            "\n".join(
+                [
+                    "Executed 40 tests, with 3 failures (2 unexpected) in 5.000 seconds",
+                    "Executed 4 tests, with 0 failures (0 unexpected) in 0.010 seconds",
+                ]
+            ),
+        )
+        self.assertNotEqual(result.returncode, 0)
+
     def test_nonzero_exit_without_a_summary_is_rejected(self) -> None:
         result = self.evaluate(65, "xcodebuild terminated without a test summary")
         self.assertNotEqual(result.returncode, 0)
