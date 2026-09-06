@@ -184,3 +184,67 @@ here points at shipped behaviour.
 
 Fixing the rest is a substantial piece of work and was deliberately not attempted
 against an RC hours before signoff.
+
+### CLI integration family — the biggest cluster of all, and it is a harness bug
+
+These tests fail across three shards, in one batch 47 of 53. The cause is thread
+pool starvation inside the test harness, not the app.
+
+The mock socket servers park up to 128 blocking `accept()` calls on the global
+concurrent dispatch queue, and the process helper submits its exit observer to that
+same width-limited pool. Once more blocked accepts are outstanding than the pool is
+wide, the observer never gets scheduled, so the helper declares a timeout for a
+child that already finished and then terminates it.
+
+The proof is a log line that is otherwise impossible: exit status 1, with the
+complete expected stdout captured, and the timed-out flag set. The child was never
+late. Raising timeouts would not have helped. It also explains the split perfectly:
+every failing Grok and Antigravity test uses a 128 or 80 connection mock, while the
+in-process ones pass in milliseconds.
+
+Fixed by moving the blocking accepts and the process observers onto detached
+threads, which are not pool limited. Test-only.
+
+Two further findings in the same family, neither fixed:
+
+- **Eleven Codex hook-stop tests are a half-finished fixture migration.** Their
+  mocks answer every request with an empty surface list, so the CLI correctly
+  declines to publish. One sibling was upgraded to a real protocol fixture on
+  2026-09-05 and now passes; the other eleven still use the old stub. Each needs its
+  own expectation updated.
+- **Codex hook scripts ignore `$HOME`.** `codexHookScriptsDirectory` resolves the
+  home directory from the passwd entry, so a test that points `HOME` at a temporary
+  directory still writes into the real `~/.cmux/hooks`, and stale scripts from
+  earlier runs then break a "collapse duplicates" assertion. Verified on disk: the
+  exact filenames from the CI failure are present locally, dated 15 and 20 August,
+  32 scripts in total.
+
+  Be careful with the framing here. Resolving home from the passwd entry is used
+  widely across the CLI and app, so this is not a lone outlier that is obviously
+  wrong. Whether the hook installer should prefer `$HOME` is a design call. What is
+  certain is that it makes those tests non-hermetic and lets stale state accumulate.
+
+### Corrected: the tmux close/detach failures are flakiness, not a defect
+
+Earlier reading called these three failures real. They are not. The same suite
+**passed in shard 2 and failed in shard 4 within the same CI run**, on the same
+commit and the same binary. The assertion polls for roughly two seconds for a file
+written by a deliberately fire-and-forget child process that nothing waits on. That
+is a wall-clock race by construction.
+
+## Verification status of tonight's test fixes
+
+The tmux and CLI harness fixes are committed and pushed, syntax-checked, and
+reasoned from evidence, but **neither has been type-checked or executed**. No local
+build was possible: this machine was running another session's Xcode build at a load
+average above 400, and the CI runner was busy with the nightly.
+
+They are test-only and land on shards that are already failing, so the downside is
+bounded. If either fails to compile, revert with:
+
+```sh
+git revert 637726f153 75dd3b3b4a
+```
+
+The CI run dispatched tonight predates both commits, so it validates the workflow
+fixes but not these. A follow-up run is needed to confirm them.
