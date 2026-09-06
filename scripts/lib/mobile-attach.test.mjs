@@ -219,6 +219,7 @@ async function ensureMacAfterRelaunch() {
         [
           'source "$1"',
           'cmux_attach_enable_pairing_host() { :; }',
+          'cmux_attach_wait_for_pairing_host_port() { :; }',
           'cmux_attach_socket_path() { printf "%s" "$CMUX_TEST_SOCKET"; }',
           'cmux_attach_mac_app_path() { printf "%s" "$CMUX_TEST_APP"; }',
           'cmux_attach__slug() { printf "ready"; }',
@@ -255,6 +256,63 @@ async function ensureMacAfterRelaunch() {
     return result;
   } finally {
     await new Promise((resolve) => server.close(resolve));
+    fs.rmSync(tempRoot, { recursive: true, force: true });
+  }
+}
+
+function waitForPairingHostPort(hostStatuses) {
+  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "cmux-mobile-port-ready-test-"));
+  const scriptsDir = path.join(tempRoot, "scripts");
+  const statusDirectory = path.join(tempRoot, "statuses");
+  const callCounterPath = path.join(tempRoot, "call-count");
+  fs.mkdirSync(scriptsDir);
+  fs.mkdirSync(statusDirectory);
+  hostStatuses.forEach((hostService, index) => {
+    fs.writeFileSync(
+      path.join(statusDirectory, String(index + 1)),
+      JSON.stringify({ host_service: hostService }),
+    );
+  });
+  const fakeCLI = path.join(scriptsDir, "cmux-debug-cli.sh");
+  fs.writeFileSync(
+    fakeCLI,
+    [
+      "#!/usr/bin/env bash",
+      'count="$(cat "$CMUX_TEST_CALL_COUNTER" 2>/dev/null || printf 0)"',
+      'count="$((count + 1))"',
+      'printf "%s" "$count" > "$CMUX_TEST_CALL_COUNTER"',
+      'cat "$CMUX_TEST_STATUS_DIRECTORY/$count"',
+      "",
+    ].join("\n"),
+  );
+  fs.chmodSync(fakeCLI, 0o755);
+
+  try {
+    const result = run(
+      "bash",
+      [
+        "-c",
+        [
+          'source "$1"',
+          'cmux_attach_configured_pairing_port() { printf "46372"; }',
+          'sleep() { :; }',
+          'cmux_attach_wait_for_pairing_host_port "ready" "$2" "$3"',
+        ].join("\n"),
+        "mobile-attach-test",
+        validator,
+        tempRoot,
+        String(hostStatuses.length),
+      ],
+      {
+        CMUX_TEST_CALL_COUNTER: callCounterPath,
+        CMUX_TEST_STATUS_DIRECTORY: statusDirectory,
+      },
+    );
+    result.callCount = fs.existsSync(callCounterPath)
+      ? Number.parseInt(fs.readFileSync(callCounterPath, "utf8"), 10)
+      : 0;
+    return result;
+  } finally {
     fs.rmSync(tempRoot, { recursive: true, force: true });
   }
 }
@@ -665,6 +723,26 @@ test("physical-device mint retries transient empty responses", async () => {
 
 test("Mac readiness is revalidated after a tagged relaunch", async () => {
   const result = await ensureMacAfterRelaunch();
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.callCount, 2);
+});
+
+test("pairing readiness waits for the live listener to adopt the configured port", () => {
+  const result = waitForPairingHostPort([
+    {
+      is_running: true,
+      port: 58467,
+      configured_port: 46372,
+      uses_ephemeral_fallback: false,
+    },
+    {
+      is_running: true,
+      port: 46372,
+      configured_port: 46372,
+      uses_ephemeral_fallback: false,
+    },
+  ]);
+
   assert.equal(result.status, 0, result.stderr);
   assert.equal(result.callCount, 2);
 });

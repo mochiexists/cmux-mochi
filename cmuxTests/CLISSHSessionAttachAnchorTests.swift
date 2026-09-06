@@ -150,11 +150,10 @@ struct CLISSHSessionAttachAnchorTests {
         environment["CMUX_CLI_SENTRY_DISABLED"] = "1"
         environment["CMUX_CLAUDE_HOOK_SENTRY_DISABLED"] = "1"
         environment.removeValue(forKey: "CMUX_SOCKET")
-        environment.removeValue(forKey: "CMUX_SOCKET_PASSWORD")
         environment.removeValue(forKey: "CMUX_WINDOW_ID")
         environment["CMUX_WORKSPACE_ID"] = Self.callerWorkspaceId
         environment["CMUX_SURFACE_ID"] = Self.callerSurfaceId
-        return environment
+        return CLIMockSocketAuthentication.environment(environment)
     }
 
     private static let callerWorkspaceId = "11111111-1111-1111-1111-111111111111"
@@ -296,8 +295,13 @@ struct CLISSHSessionAttachAnchorTests {
                     let lineData = pending.subdata(in: 0..<newlineRange.lowerBound)
                     pending.removeSubrange(0...newlineRange.lowerBound)
                     guard let line = String(data: lineData, encoding: .utf8) else { continue }
-                    state.record(line)
-                    let response = handler(line) + "\n"
+                    let response: String
+                    if let authenticationResponse = CLIMockSocketAuthentication.response(to: line) {
+                        response = authenticationResponse
+                    } else {
+                        state.record(line)
+                        response = handler(line) + "\n"
+                    }
                     _ = response.withCString { pointer in
                         Darwin.write(clientFD, pointer, strlen(pointer))
                     }

@@ -60,6 +60,14 @@ public struct SSHForegroundAuthenticationRetryPolicy: Sendable {
         ].joined(separator: "|")
     }
 
+    /// Masks teardown signals after a signal handler commits to retiring an
+    /// authentication process tree. This keeps a secondary signal from killing
+    /// the handler before it reaps the authentication root and exits with the
+    /// original signal status.
+    public func signalDrivenCleanupMaskShellCommand() -> String {
+        "trap '' HUP INT TERM"
+    }
+
     /// Builds the shell helper that terminates a foreground-authentication process tree.
     ///
     /// The immediate authentication PID is a shell wrapper whose descendants own
@@ -74,6 +82,10 @@ public struct SSHForegroundAuthenticationRetryPolicy: Sendable {
     /// isolated child process group is terminated as one unit before recursion.
     /// The caller supplies the authentication root's known wrapper PID so root
     /// validation is not inferred from a potentially reused candidate PID.
+    /// Once signal-driven cleanup is committed, the caller must ignore HUP, INT,
+    /// and TERM until this helper returns. Stopped process-group teardown can
+    /// otherwise deliver a secondary signal before the caller reaps the root and
+    /// retires with the original signal status.
     ///
     /// - Returns: A shell function named `cmux_ssh_terminate_auth_process_tree`.
     public func processTreeTerminationShellFunction() -> String {
@@ -85,16 +97,63 @@ public struct SSHForegroundAuthenticationRetryPolicy: Sendable {
             [ "$cmux_ssh_auth_cleanup_now" -lt "$cmux_ssh_auth_cleanup_deadline" ]
           )
 
+          # Freeze the root, snapshot its descendant closure, freeze every discovered member,
+          # then rescan until the frozen closure stops growing. A descendant can fork between
+          # the first process-table read and its own STOP, so a single snapshot is not an
+          # authoritative tree boundary. Once a pass freezes every PID it found, the next pass
+          # captures that race without per-node `pgrep` forks. Keep the number of process-table
+          # reads bounded for a hostile or fork-starved tree; the later recursive sweep remains
+          # a best-effort supplement to this fork-free PID backstop.
+          cmux_ssh_snapshot_auth_tree() (
+            cmux_ssh_auth_snapshot_root="$1"
+            kill -STOP "$cmux_ssh_auth_snapshot_root" >/dev/null 2>&1 || true
+            cmux_ssh_auth_snapshot_all=" $cmux_ssh_auth_snapshot_root "
+            cmux_ssh_auth_snapshot_passes_remaining=8
+            while [ "$cmux_ssh_auth_snapshot_passes_remaining" -gt 0 ]; do
+              cmux_ssh_auth_snapshot_table=$(/bin/ps -axo pid=,ppid= 2>/dev/null) || break
+              cmux_ssh_auth_snapshot_grew=0
+              # Repeatedly fold children of already-collected PIDs into the set until this
+              # one table snapshot is closed. Each fold is pure shell work.
+              cmux_ssh_auth_snapshot_folded=1
+              while [ "$cmux_ssh_auth_snapshot_folded" = 1 ]; do
+                cmux_ssh_auth_snapshot_folded=0
+                # shellcheck disable=SC2086
+                set -- $cmux_ssh_auth_snapshot_table
+                while [ "$#" -ge 2 ]; do
+                  cmux_ssh_auth_snapshot_child="$1"
+                  cmux_ssh_auth_snapshot_parent="$2"
+                  shift 2
+                  case "$cmux_ssh_auth_snapshot_all" in
+                    *" $cmux_ssh_auth_snapshot_child "*) continue ;;
+                  esac
+                  case "$cmux_ssh_auth_snapshot_all" in
+                    *" $cmux_ssh_auth_snapshot_parent "*)
+                      cmux_ssh_auth_snapshot_all="$cmux_ssh_auth_snapshot_all$cmux_ssh_auth_snapshot_child "
+                      cmux_ssh_auth_snapshot_grew=1
+                      cmux_ssh_auth_snapshot_folded=1
+                      ;;
+                  esac
+                done
+              done
+              for cmux_ssh_auth_snapshot_pid in $cmux_ssh_auth_snapshot_all; do
+                kill -STOP "$cmux_ssh_auth_snapshot_pid" >/dev/null 2>&1 || true
+              done
+              if [ "$cmux_ssh_auth_snapshot_grew" = 0 ]; then break; fi
+              cmux_ssh_auth_snapshot_passes_remaining=$((cmux_ssh_auth_snapshot_passes_remaining - 1))
+            done
+            printf '%s' "$cmux_ssh_auth_snapshot_all"
+          )
+
           cmux_ssh_terminate_auth_process_group() (
             cmux_ssh_auth_process_group="$1"
             if [ -z "$cmux_ssh_auth_process_group" ]; then exit 0; fi
-            /bin/kill -TERM -- "-$cmux_ssh_auth_process_group" >/dev/null 2>&1 || true
-            while /bin/kill -0 -- "-$cmux_ssh_auth_process_group" >/dev/null 2>&1 \
+            kill -TERM -- "-$cmux_ssh_auth_process_group" >/dev/null 2>&1 || true
+            while kill -0 -- "-$cmux_ssh_auth_process_group" >/dev/null 2>&1 \
               && cmux_ssh_auth_cleanup_has_time; do
               /bin/sleep 0.02
             done
-            if /bin/kill -0 -- "-$cmux_ssh_auth_process_group" >/dev/null 2>&1; then
-              /bin/kill -KILL -- "-$cmux_ssh_auth_process_group" >/dev/null 2>&1 || true
+            if kill -0 -- "-$cmux_ssh_auth_process_group" >/dev/null 2>&1; then
+              kill -KILL -- "-$cmux_ssh_auth_process_group" >/dev/null 2>&1 || true
             fi
           )
 
@@ -105,7 +164,7 @@ public struct SSHForegroundAuthenticationRetryPolicy: Sendable {
             set -- $cmux_ssh_auth_process_snapshot
             if [ "$#" -lt 2 ] || [ "$1" != "$cmux_ssh_auth_process_parent_pid" ]; then exit 1; fi
             case "$2" in *Z*) exit 1 ;; esac
-            /bin/kill -0 "$cmux_ssh_auth_process_pid" >/dev/null 2>&1
+            kill -0 "$cmux_ssh_auth_process_pid" >/dev/null 2>&1
           )
 
           cmux_ssh_terminate_auth_process() (
@@ -115,12 +174,12 @@ public struct SSHForegroundAuthenticationRetryPolicy: Sendable {
               exit 0
             fi
             if ! cmux_ssh_auth_cleanup_has_time; then
-              /bin/kill -KILL "$cmux_ssh_auth_tree_pid" >/dev/null 2>&1 || true
+              kill -KILL "$cmux_ssh_auth_tree_pid" >/dev/null 2>&1 || true
               exit 0
             fi
-            if ! /bin/kill -STOP "$cmux_ssh_auth_tree_pid" >/dev/null 2>&1; then exit 0; fi
+            if ! kill -STOP "$cmux_ssh_auth_tree_pid" >/dev/null 2>&1; then exit 0; fi
             if ! cmux_ssh_auth_process_is_original "$cmux_ssh_auth_tree_pid" "$cmux_ssh_auth_tree_parent_pid"; then
-              /bin/kill -CONT "$cmux_ssh_auth_tree_pid" >/dev/null 2>&1 || true
+              kill -CONT "$cmux_ssh_auth_tree_pid" >/dev/null 2>&1 || true
               exit 0
             fi
             cmux_ssh_auth_tree_process_group=$(/bin/ps -o pgid= -p "$cmux_ssh_auth_tree_pid" 2>/dev/null | /usr/bin/tr -d '[:space:]')
@@ -140,7 +199,7 @@ public struct SSHForegroundAuthenticationRetryPolicy: Sendable {
                 ;;
             esac
             if [ -n "$cmux_ssh_auth_tree_isolated_process_group" ]; then
-              /bin/kill -CONT "$cmux_ssh_auth_tree_pid" >/dev/null 2>&1 || true
+              kill -CONT "$cmux_ssh_auth_tree_pid" >/dev/null 2>&1 || true
               cmux_ssh_terminate_auth_process_group "$cmux_ssh_auth_tree_isolated_process_group"
               exit 0
             fi
@@ -148,13 +207,13 @@ public struct SSHForegroundAuthenticationRetryPolicy: Sendable {
               cmux_ssh_terminate_auth_process "$cmux_ssh_auth_tree_child" "$cmux_ssh_auth_tree_pid"
             done
             if ! cmux_ssh_auth_cleanup_has_time; then
-              /bin/kill -KILL "$cmux_ssh_auth_tree_pid" >/dev/null 2>&1 || true
-              /bin/kill -CONT "$cmux_ssh_auth_tree_pid" >/dev/null 2>&1 || true
+              kill -KILL "$cmux_ssh_auth_tree_pid" >/dev/null 2>&1 || true
+              kill -CONT "$cmux_ssh_auth_tree_pid" >/dev/null 2>&1 || true
               exit 0
             fi
 
-            /bin/kill -TERM "$cmux_ssh_auth_tree_pid" >/dev/null 2>&1 || true
-            /bin/kill -CONT "$cmux_ssh_auth_tree_pid" >/dev/null 2>&1 || true
+            kill -TERM "$cmux_ssh_auth_tree_pid" >/dev/null 2>&1 || true
+            kill -CONT "$cmux_ssh_auth_tree_pid" >/dev/null 2>&1 || true
             while cmux_ssh_auth_process_is_original "$cmux_ssh_auth_tree_pid" "$cmux_ssh_auth_tree_parent_pid" \
               && cmux_ssh_auth_cleanup_has_time; do
               /bin/sleep 0.02
@@ -163,25 +222,25 @@ public struct SSHForegroundAuthenticationRetryPolicy: Sendable {
               exit 0
             fi
             if ! cmux_ssh_auth_cleanup_has_time; then
-              /bin/kill -KILL "$cmux_ssh_auth_tree_pid" >/dev/null 2>&1 || true
+              kill -KILL "$cmux_ssh_auth_tree_pid" >/dev/null 2>&1 || true
               exit 0
             fi
 
-            if ! /bin/kill -STOP "$cmux_ssh_auth_tree_pid" >/dev/null 2>&1; then
+            if ! kill -STOP "$cmux_ssh_auth_tree_pid" >/dev/null 2>&1; then
               exit 0
             fi
             if ! cmux_ssh_auth_process_is_original "$cmux_ssh_auth_tree_pid" "$cmux_ssh_auth_tree_parent_pid"; then
-              /bin/kill -CONT "$cmux_ssh_auth_tree_pid" >/dev/null 2>&1 || true
+              kill -CONT "$cmux_ssh_auth_tree_pid" >/dev/null 2>&1 || true
               exit 0
             fi
             for cmux_ssh_auth_tree_child in $(/usr/bin/pgrep -P "$cmux_ssh_auth_tree_pid" . 2>/dev/null || true); do
               cmux_ssh_terminate_auth_process "$cmux_ssh_auth_tree_child" "$cmux_ssh_auth_tree_pid"
             done
             if cmux_ssh_auth_process_is_original "$cmux_ssh_auth_tree_pid" "$cmux_ssh_auth_tree_parent_pid"; then
-              /bin/kill -KILL "$cmux_ssh_auth_tree_pid" >/dev/null 2>&1 || true
-              /bin/kill -CONT "$cmux_ssh_auth_tree_pid" >/dev/null 2>&1 || true
+              kill -KILL "$cmux_ssh_auth_tree_pid" >/dev/null 2>&1 || true
+              kill -CONT "$cmux_ssh_auth_tree_pid" >/dev/null 2>&1 || true
             else
-              /bin/kill -CONT "$cmux_ssh_auth_tree_pid" >/dev/null 2>&1 || true
+              kill -CONT "$cmux_ssh_auth_tree_pid" >/dev/null 2>&1 || true
             fi
           )
 
@@ -190,10 +249,30 @@ public struct SSHForegroundAuthenticationRetryPolicy: Sendable {
           case "$cmux_ssh_auth_tree_root_pid:$cmux_ssh_auth_tree_root_parent" in
             *[!0-9:]*|:*|*:) exit 0 ;;
           esac
-          cmux_ssh_auth_cleanup_started_at=$(/bin/date +%s 2>/dev/null) || exit 0
-          case "$cmux_ssh_auth_cleanup_started_at" in ''|*[!0-9]*) exit 0 ;; esac
-          cmux_ssh_auth_cleanup_deadline=$((cmux_ssh_auth_cleanup_started_at + 2))
+          if ! cmux_ssh_auth_process_is_original "$cmux_ssh_auth_tree_root_pid" "$cmux_ssh_auth_tree_root_parent"; then
+            exit 0
+          fi
+          # Freeze and close the tree snapshot first, before the graceful walk can alter it.
+          # Liveness then depends on the closed snapshot plus the fork-free builtin kill
+          # backstop below, not on the recursive walk or the clock succeeding.
+          cmux_ssh_auth_tree_snapshot=$(cmux_ssh_snapshot_auth_tree "$cmux_ssh_auth_tree_root_pid")
+          # The clock is best-effort: if `date` cannot fork on a starved host, treat the
+          # deadline as already lapsed so the walk skips the graceful phase and kills.
+          cmux_ssh_auth_cleanup_started_at=$(/bin/date +%s 2>/dev/null)
+          case "$cmux_ssh_auth_cleanup_started_at" in
+            ''|*[!0-9]*) cmux_ssh_auth_cleanup_deadline=0 ;;
+            *) cmux_ssh_auth_cleanup_deadline=$((cmux_ssh_auth_cleanup_started_at + 2)) ;;
+          esac
           cmux_ssh_terminate_auth_process "$cmux_ssh_auth_tree_root_pid" "$cmux_ssh_auth_tree_root_parent"
+          # Backstop: every member of the frozen original tree that the ordered, deadline-
+          # bounded walk did not already reap is force-killed. Signal each PID separately:
+          # a large batch can be interrupted by the resulting SIGCHLD burst on a saturated
+          # runner, preventing the function from returning so its caller can reap the root.
+          # The loop and builtin `kill` remain fork-free, and the frozen snapshot means a
+          # reparent during the walk cannot hide a descendant.
+          for cmux_ssh_auth_snapshot_pid in $cmux_ssh_auth_tree_snapshot; do
+            kill -KILL "$cmux_ssh_auth_snapshot_pid" >/dev/null 2>&1 || true
+          done
         )
         """
     }

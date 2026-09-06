@@ -353,6 +353,51 @@ struct PortScanPublicationBufferTests {
 @MainActor
 @Suite("Port scanner agent publication integration")
 struct PortScannerAgentPublicationIntegrationTests {
+    @Test("Applied delivery is remembered after its lifecycle revision changes")
+    func appliedDeliveryIsAcknowledgedAfterRevisionChange() async throws {
+        let scanner = PortScanner()
+        let workspaceID = UUID()
+        let deliveredPorts = [4200]
+        let publication = AgentPortScanPublication(
+            workspaceId: workspaceID,
+            ports: deliveredPorts,
+            revision: 1,
+            requestID: 1,
+            removesLifecycle: false
+        )
+
+        let claimedPublication = try #require(scanner.queue.sync { () -> AgentPortScanPublication? in
+            scanner.agentRevisionByWorkspace[workspaceID] = publication.revision
+            let shouldPublish = scanner.agentPublicationHistory.shouldPublish(
+                workspaceId: workspaceID,
+                ports: deliveredPorts,
+                requestID: publication.requestID,
+                forced: false
+            )
+            guard shouldPublish else { return nil }
+            _ = scanner.publicationBuffer.enqueue(agentPublications: [publication])
+            let batch = scanner.publicationBuffer.takePendingBatch()
+            scanner.agentRevisionByWorkspace[workspaceID] = publication.revision + 1
+            return batch?.agentPublicationsByWorkspace[workspaceID]
+        })
+
+        _ = await scanner.acknowledgeAgentResults(
+            [claimedPublication],
+            appliedWorkspaceIds: [workspaceID]
+        )
+
+        let publishesRemoval = scanner.queue.sync {
+            scanner.agentPublicationHistory.shouldPublish(
+                workspaceId: workspaceID,
+                ports: [],
+                requestID: publication.requestID + 1,
+                forced: false
+            )
+        }
+
+        #expect(publishesRemoval)
+    }
+
     @Test(
         "Last-root removal publishes empty before an in-flight scan finishes",
         .timeLimit(.minutes(1))
@@ -416,6 +461,13 @@ struct PortScannerAgentPublicationIntegrationTests {
 
         await withCheckedContinuation { continuation in
             scanner.queue.async { continuation.resume() }
+        }
+        let lifecycleCompletionDeadline = ContinuousClock.now + .seconds(1)
+        while scanner.publicationState.isCurrentAgentRevision(
+            removalRevision,
+            workspaceId: workspaceID
+        ), ContinuousClock.now < lifecycleCompletionDeadline {
+            await Task.yield()
         }
         #expect(scanner.publicationState.isCurrentAgentRevision(
             removalRevision,

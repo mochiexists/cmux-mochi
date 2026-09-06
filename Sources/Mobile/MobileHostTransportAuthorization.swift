@@ -1,19 +1,15 @@
 import CMUXMobileCore
 import CmuxAgentChat
-import CmuxAuthRuntime
 import CmuxIrohTransport
 import CmuxMobileTransport
 import CmuxSettings
 import CmuxTerminalCore
-import CryptoKit
 import Foundation
 @preconcurrency import Network
 import OSLog
-import StackAuth
 import os
 
 enum MobileHostConnectionAuthorizationContext: Equatable, Sendable {
-    case stackBearer
     case irohAdmission(CmxIrohAdmittedPeer)
     /// Fork (cmux Mochi): a device that completed mutual TLS with a key in this
     /// Mac's authorized-devices table. Like ``irohAdmission``, the transport
@@ -23,14 +19,6 @@ enum MobileHostConnectionAuthorizationContext: Equatable, Sendable {
     /// enrollment window is open. Its RPC surface is the enrollment verb and
     /// nothing else.
     case enrollmentCandidate(fingerprint: String)
-}
-
-extension MobileHostConnectionAuthorizationContext {
-    /// One policy authority for transports accepted by the legacy
-    /// private-network listener. Keeping this separate from Iroh admission
-    /// makes version-skew coverage exercise the same authorization choice as
-    /// the production listener.
-    static let legacyPrivateNetworkListener: Self = .stackBearer
 }
 
 /// Immutable trust context carried from transport admission into RPC dispatch.
@@ -95,6 +83,21 @@ final class MobileHostConnectionRegistry: @unchecked Sendable {
         return connections.count
     }
 
+    /// Number of live DeviceLink connections authenticated with a durable
+    /// paired-device identity. Enrollment candidates are deliberately excluded:
+    /// they can reach the Mac before the phone has persisted its new identity,
+    /// so treating one as paired makes the Mac report success while the phone
+    /// is still capable of rejecting the pairing.
+    var pairedDeviceCount: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return connections.values.reduce(into: 0) { count, entry in
+            if case .pairedDevice = entry.authorization {
+                count += 1
+            }
+        }
+    }
+
     func insert(
         _ connection: MobileHostConnection,
         id: UUID,
@@ -155,12 +158,6 @@ final class MobileHostConnectionRegistry: @unchecked Sendable {
         return values
     }
 
-    func removeStackBearerConnections() -> [MobileHostConnection] {
-        removeConnections { authorization in
-            authorization == .stackBearer
-        }
-    }
-
     func removeIrohConnections(bindingID: String) -> [MobileHostConnection] {
         removeConnections { authorization in
             guard case let .irohAdmission(peer) = authorization else {
@@ -189,6 +186,19 @@ final class MobileHostConnectionRegistry: @unchecked Sendable {
                 return true
             }
             return false
+        }
+    }
+
+    /// Removes connections owned by the DeviceLink listener while preserving
+    /// independent transports such as Iroh.
+    func removeAllDeviceLinkConnections() -> [MobileHostConnection] {
+        removeConnections { authorization in
+            switch authorization {
+            case .pairedDevice, .enrollmentCandidate:
+                return true
+            case .irohAdmission:
+                return false
+            }
         }
     }
 

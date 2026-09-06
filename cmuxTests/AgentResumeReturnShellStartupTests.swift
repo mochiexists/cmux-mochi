@@ -78,7 +78,26 @@ struct AgentResumeReturnShellStartupTests {
             ),
         ]
 
-        for snapshot in snapshots {
+        for var snapshot in snapshots {
+            #expect(snapshot.resumeStartupInput() == nil)
+            #expect(snapshot.resumeStartupInput(useLocalRestoreVerb: false) == nil)
+
+            // Selector escaping is only relevant once the stored agent has a
+            // usable resume recipe. Keep the untrusted identifiers intact.
+            snapshot.registration = CmuxVaultAgentRegistration(
+                id: snapshot.kind.rawValue,
+                name: "Custom Agent",
+                detect: CmuxVaultAgentDetectRule(processName: "custom-agent"),
+                sessionIdSource: .argvOption("--session"),
+                resumeCommand: "{{executable}} --session {{sessionId}}"
+            )
+            #expect(
+                snapshot.preparedResumeArguments(
+                    launchCommand: snapshot.launchCommand,
+                    workingDirectory: nil,
+                    observedPermissionMode: nil
+                ) == ["custom-agent", "--session", snapshot.sessionId]
+            )
             #expect(
                 snapshot.resumeStartupInput()
                     == " \(AgentRestoreLaunch.cliStartupExecutableToken) restore --surface\n"

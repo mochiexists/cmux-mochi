@@ -37,5 +37,32 @@ struct MobileAuthenticatedShellPresentationTests {
             hasHiddenComputers: false
         ) == .workspace)
     }
+
+    @Test func firstReconnectBlocksWorkspaceNavigation() {
+        #expect(MobileReconnectPresentation.shouldBlockWorkspaceNavigation(
+            connectionState: .disconnected,
+            isReconnectingStoredMac: true,
+            isMacSwitchInFlight: false,
+            didFinishStoredMacReconnectAttempt: false
+        ))
+    }
+
+    @Test func automaticBackoffDoesNotFlashReconnectOverlayAfterFirstAttempt() {
+        #expect(!MobileReconnectPresentation.shouldBlockWorkspaceNavigation(
+            connectionState: .disconnected,
+            isReconnectingStoredMac: true,
+            isMacSwitchInFlight: false,
+            didFinishStoredMacReconnectAttempt: true
+        ))
+    }
+
+    @Test func explicitMacSwitchStillBlocksAfterEarlierReconnectCompleted() {
+        #expect(MobileReconnectPresentation.shouldBlockWorkspaceNavigation(
+            connectionState: .disconnected,
+            isReconnectingStoredMac: true,
+            isMacSwitchInFlight: true,
+            didFinishStoredMacReconnectAttempt: true
+        ))
+    }
 }
 #endif

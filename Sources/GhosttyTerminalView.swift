@@ -3476,7 +3476,7 @@ class GhosttyApp {
                 workingDirectory: surfaceView.currentDirectoryActionDispatcher.directorySnapshot()
             )
             return performOnMain {
-                TerminalLinkOpenCoordinator().open(request)
+                surfaceView.openRuntimeTerminalLink(request)
             }
         default:
             return false
@@ -3640,6 +3640,31 @@ class GhosttyNSView: NSView, NSUserInterfaceValidations {
         let path: String
         let source: WordPathResolutionSource
         let rawToken: String
+    }
+
+    private var pendingCommandClickResolution: WordPathResolution?
+    private var handlingCommandClickRelease = false
+    private var runtimeHandledCommandClick = false
+
+    fileprivate func openRuntimeTerminalLink(_ request: TerminalLinkOpenRequest) -> Bool {
+        var resolvedRequest = request
+        var openedResolution: WordPathResolution?
+        if let resolution = pendingCommandClickResolution,
+           TerminalPathResolver.openURLMatchesVisibleToken(request.rawValue, token: resolution.rawToken) {
+            openedResolution = resolution
+            resolvedRequest = TerminalLinkOpenRequest(
+                rawValue: resolution.path,
+                sourceWorkspaceId: request.sourceWorkspaceId,
+                sourcePanelId: request.sourcePanelId,
+                workingDirectory: request.workingDirectory
+            )
+        }
+        let handled = TerminalLinkOpenCoordinator().open(resolvedRequest)
+        if handlingCommandClickRelease, handled {
+            runtimeHandledCommandClick = true
+            pendingCommandClickResolution = openedResolution
+        }
+        return handled
     }
 
     private func makeWordPathResolution(
@@ -4684,7 +4709,8 @@ class GhosttyNSView: NSView, NSUserInterfaceValidations {
         return performed
     }
 
-    private func keyboardCopyModeGridMetrics(surface: ghostty_surface_t) -> KeyboardCopyModeGridMetrics? {
+    fileprivate func terminalGridMetrics() -> KeyboardCopyModeGridMetrics? {
+        guard let surface else { return nil }
         var native = ghostty_surface_grid_metrics_s()
         guard ghostty_surface_grid_metrics(surface, &native),
               native.cell_width.isFinite,
@@ -4761,7 +4787,7 @@ class GhosttyNSView: NSView, NSUserInterfaceValidations {
         keyboardCopyModeCursor = resolved.cursor
         syncKeyboardCopyModeSelectionKind(surface: surface)
         guard !keyboardCopyModeVisualActive,
-              let metrics = keyboardCopyModeGridMetrics(surface: surface) else {
+              let metrics = terminalGridMetrics() else {
             keyboardCopyModeCursorOverlayView.isHidden = true
             return
         }
@@ -6592,11 +6618,38 @@ class GhosttyNSView: NSView, NSUserInterfaceValidations {
     func completePendingLeftMouseRelease(with event: NSEvent) -> Bool {
         guard hasPendingLeftMouseRelease else { return false }
         hasPendingLeftMouseRelease = false
-        guard let surface else { return false }
+        guard surface != nil else { return false }
         let point = convert(event.locationInWindow, from: nil)
-        let consumed = ghostty_surface_mouse_button(surface, GHOSTTY_MOUSE_RELEASE, GHOSTTY_MOUSE_LEFT, mouseModsFromEvent(event))
-        _ = handleCommandClickRelease(at: point, modifierFlags: event.modifierFlags, ghosttyConsumed: consumed)
+        _ = releaseLeftMouseButton(at: point, modifierFlags: event.modifierFlags)
         return true
+    }
+
+    private func releaseLeftMouseButton(
+        at point: NSPoint,
+        modifierFlags: NSEvent.ModifierFlags
+    ) -> (consumed: Bool, resolution: WordPathResolution?) {
+        guard let surface else { return (false, nil) }
+        // Ghostty invokes open_url while holding its renderer mutex. Snapshot
+        // before entering it; callback routing must never query the terminal.
+        if modifierFlags.contains(.command), !shouldSuppressCommandPathHover(for: modifierFlags) {
+            pendingCommandClickResolution = resolveWordUnderCursorPath(at: point)
+        }
+        handlingCommandClickRelease = true
+        runtimeHandledCommandClick = false
+        defer {
+            pendingCommandClickResolution = nil
+            handlingCommandClickRelease = false
+            runtimeHandledCommandClick = false
+        }
+        let consumed = ghostty_surface_mouse_button(
+            surface, GHOSTTY_MOUSE_RELEASE, GHOSTTY_MOUSE_LEFT, mouseModsFromFlags(modifierFlags)
+        )
+        if runtimeHandledCommandClick {
+            return (consumed, pendingCommandClickResolution)
+        }
+        return (consumed, handleCommandClickRelease(
+            at: point, modifierFlags: modifierFlags, ghosttyConsumed: consumed
+        ))
     }
 
     /// Attempt to open the word under the mouse cursor as a file path, resolved
@@ -6866,29 +6919,14 @@ class GhosttyNSView: NSView, NSUserInterfaceValidations {
         let size = ghostty_surface_size(surface)
         let rows = max(Int(size.rows), 1)
         let cols = max(Int(size.columns), 1)
-        let visibleText = TerminalController.shared.readTerminalTextForSnapshot(
-            terminalPanel: panel,
-            lineLimit: max(200, rows * 4)
-        ) ?? ""
-        let visibleLines = visibleText.visibleLines(rows: rows)
-        let rowOffset = max(0, rows - visibleLines.count)
         let rowFromTop = max(0, min(rows - 1, viewportOffsetStart / cols))
-        let visibleRow = rowFromTop - rowOffset
-        guard visibleRow >= 0, visibleRow < visibleLines.count else { return nil }
-
         let column = max(0, min(cols - 1, viewportOffsetStart % cols))
-        guard let resolution = TerminalPathResolver().resolveVisibleLinePath(
-            visibleLines[visibleRow],
+        return resolveVisibleGridPath(
+            row: rowFromTop,
             column: column,
-            cwd: cwd
-        ) else {
-            return nil
-        }
-
-        return makeWordPathResolution(
-            path: resolution.path,
-            source: .snapshot,
-            rawToken: resolution.rawToken
+            rows: rows,
+            cwd: cwd,
+            panel: panel
         )
     }
 
@@ -6909,27 +6947,46 @@ class GhosttyNSView: NSView, NSUserInterfaceValidations {
         let size = ghostty_surface_size(surface)
         let rows = max(Int(size.rows), 1)
         let cols = max(Int(size.columns), 1)
-        let resolvedCellWidth = cellSize.width > 0 ? cellSize.width : CGFloat(size.cell_width_px)
-        let resolvedCellHeight = cellSize.height > 0 ? cellSize.height : CGFloat(size.cell_height_px)
-        guard resolvedCellWidth > 0, resolvedCellHeight > 0 else { return nil }
+        // Mouse locations are AppKit points; cellSize and surface_size expose
+        // backing pixels. Use the renderer's logical grid, including padding.
+        guard let metrics = terminalGridMetrics() else { return nil }
+        let resolvedCellWidth = metrics.cellWidth
+        let resolvedCellHeight = metrics.cellHeight
 
-        let visibleText = TerminalController.shared.readTerminalTextForSnapshot(
-            terminalPanel: panel,
-            lineLimit: max(200, rows * 4)
-        ) ?? ""
-        let visibleLines = visibleText.visibleLines(rows: rows)
-        let rowOffset = max(0, rows - visibleLines.count)
-        let xInset = max(0, (bounds.width - (CGFloat(cols) * resolvedCellWidth)) / 2)
-        let yInset = max(0, (bounds.height - (CGFloat(rows) * resolvedCellHeight)) / 2)
+        let xInset = metrics.xInset
+        let yInset = metrics.yInset
 
         let yFromTop = bounds.height - point.y
         let rowFromTop = max(0, min(rows - 1, Int((yFromTop - yInset) / resolvedCellHeight)))
-        let visibleRow = rowFromTop - rowOffset
-        guard visibleRow >= 0, visibleRow < visibleLines.count else { return nil }
-
         let column = max(0, min(cols - 1, Int((point.x - xInset) / resolvedCellWidth)))
-        guard let resolution = TerminalPathResolver().resolveVisibleLinePath(
-            visibleLines[visibleRow],
+        return resolveVisibleGridPath(
+            row: rowFromTop,
+            column: column,
+            rows: rows,
+            cwd: cwd,
+            panel: panel
+        )
+    }
+
+    private func resolveVisibleGridPath(
+        row: Int,
+        column: Int,
+        rows: Int,
+        cwd: String,
+        panel: TerminalPanel
+    ) -> WordPathResolution? {
+        // Bound native reads to the context the resolver can use, not the
+        // entire viewport on every pointer update.
+        let adjacentRows = TerminalPathResolver.maximumWrappedPathRows - 1
+        let startRow = max(0, row - adjacentRows)
+        let endRow = min(rows, row + adjacentRows + 1)
+        guard let visibleLines = TerminalController.shared.readTerminalViewportGridRows(
+            terminalPanel: panel,
+            rowRange: startRow..<endRow
+        ) else { return nil }
+        guard let resolution = TerminalPathResolver().resolveVisiblePath(
+            visibleLines,
+            row: row - startRow,
             column: column,
             cwd: cwd
         ) else {
@@ -7188,18 +7245,13 @@ class GhosttyNSView: NSView, NSUserInterfaceValidations {
         window?.makeFirstResponder(self)
         ghostty_surface_mouse_pos(surface, clampedPoint.x, bounds.height - clampedPoint.y, mods)
         let pressHandled = ghostty_surface_mouse_button(surface, GHOSTTY_MOUSE_PRESS, GHOSTTY_MOUSE_LEFT, mods)
-        let releaseConsumed = ghostty_surface_mouse_button(surface, GHOSTTY_MOUSE_RELEASE, GHOSTTY_MOUSE_LEFT, mods)
-        let resolution = handleCommandClickRelease(
-            at: clampedPoint,
-            modifierFlags: flags,
-            ghosttyConsumed: releaseConsumed
-        )
+        let release = releaseLeftMouseButton(at: clampedPoint, modifierFlags: flags)
 
         var payload: [String: Any] = [
             "pressHandled": pressHandled ? "1" : "0",
-            "releaseConsumed": releaseConsumed ? "1" : "0",
+            "releaseConsumed": release.consumed ? "1" : "0",
         ]
-        if let resolution {
+        if let resolution = release.resolution {
             payload["openedPath"] = resolution.path
             payload["resolutionSource"] = resolution.source.rawValue
             payload["rawToken"] = resolution.rawToken
@@ -7232,12 +7284,12 @@ class GhosttyNSView: NSView, NSUserInterfaceValidations {
         ghostty_surface_mouse_pos(surface, clampedPoint.x, bounds.height - clampedPoint.y, noMods)
         flagsChanged(with: cmdDown)
         let pressHandled = ghostty_surface_mouse_button(surface, GHOSTTY_MOUSE_PRESS, GHOSTTY_MOUSE_LEFT, commandMods)
-        let releaseConsumed = ghostty_surface_mouse_button(surface, GHOSTTY_MOUSE_RELEASE, GHOSTTY_MOUSE_LEFT, commandMods)
+        let release = releaseLeftMouseButton(at: clampedPoint, modifierFlags: flags)
         flagsChanged(with: cmdUp)
 
         return [
             "pressHandled": pressHandled ? "1" : "0",
-            "releaseConsumed": releaseConsumed ? "1" : "0",
+            "releaseConsumed": release.consumed ? "1" : "0",
         ]
     }
 
@@ -8431,8 +8483,8 @@ final class GhosttySurfaceScrollView: NSView {
         surfaceView.terminalSurface?.id
     }
 
-    var debugCellSize: CGSize {
-        surfaceView.cellSize
+    var debugGridMetrics: KeyboardCopyModeGridMetrics? {
+        surfaceView.terminalGridMetrics()
     }
 
     private func debugPointInSurface(_ point: NSPoint) -> NSPoint {

@@ -60,13 +60,25 @@ private struct StubHostNormalizer: BrowserHostNormalizing {
         }
     }
 
-    @Test(arguments: ["example.com/docs/README.md", "localhost/docs/README.md"])
-    func markdownPathOnWebHostStillResolvesAsEmbeddedBrowser(_ rawValue: String) throws {
+    @Test(arguments: ["Documents/Github/test-project/report.html", "docs/report.htm"])
+    func relativeHTMLPathDoesNotInventWebHost(_ rawValue: String) throws {
+        let target = try #require(router.resolveOpenURLTarget(rawValue))
+        #expect(target.url.scheme == nil)
+        #expect(target.url.absoluteString == rawValue)
+    }
+
+    @Test(arguments: ["example.com/docs/README.md", "localhost/docs/README.md", "example.com/docs/report.html", "localhost/docs/report.htm"])
+    func documentPathOnWebHostStillResolvesAsEmbeddedBrowser(_ rawValue: String) throws {
         let target = try #require(router.resolveOpenURLTarget(rawValue))
         guard case .embeddedBrowser = target else {
             Issue.record("Expected Markdown path on a web host to remain browser-routable")
             return
         }
+    }
+
+    @Test func explicitHTMLURLPreservesItsDestination() throws {
+        let rawValue = "https://documents/Github/report.html"
+        #expect(try #require(router.resolveOpenURLTarget(rawValue)).url.absoluteString == rawValue)
     }
 
     @Test func resolvesFileSchemeAsExternal() throws {

@@ -48,8 +48,7 @@ struct NotificationDismissSyncTests {
             MobileHostRPCRequest(
                 id: "dismiss",
                 method: "notification.dismiss",
-                params: ["notification_id": target.id.uuidString],
-                auth: nil
+                params: ["notification_id": target.id.uuidString]
             )
         )
 
@@ -95,8 +94,7 @@ struct NotificationDismissSyncTests {
                         UUID().uuidString, // unknown id, ignored by markRead
                         second.id.uuidString,
                     ]
-                ],
-                auth: nil
+                ]
             )
         )
 
@@ -136,8 +134,7 @@ struct NotificationDismissSyncTests {
                         target.id.uuidString,
                         target.id.uuidString,
                     ]
-                ],
-                auth: nil
+                ]
             )
         )
 
@@ -156,8 +153,7 @@ struct NotificationDismissSyncTests {
             MobileHostRPCRequest(
                 id: "dismiss-bad",
                 method: "notification.dismiss",
-                params: ["notification_id": "not-a-uuid"],
-                auth: nil
+                params: ["notification_id": "not-a-uuid"]
             )
         )
 
@@ -214,8 +210,7 @@ struct NotificationDismissSyncTests {
                         removed.id.uuidString,
                         foreignId.uuidString,
                     ]
-                ],
-                auth: nil
+                ]
             )
         )
 
@@ -248,8 +243,7 @@ struct NotificationDismissSyncTests {
             MobileHostRPCRequest(
                 id: "reconcile-empty",
                 method: "notification.reconcile",
-                params: ["delivered_ids": [String]()],
-                auth: nil
+                params: ["delivered_ids": [String]()]
             )
         )
 

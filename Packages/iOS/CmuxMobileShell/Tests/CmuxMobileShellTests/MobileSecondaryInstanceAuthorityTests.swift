@@ -50,7 +50,6 @@ import Testing
             runtime: runtime,
             route: route,
             ticket: ticket,
-            allowsStackAuthFallback: true
         )
         let clock = ControlPoolManualClock()
         let shell = MobileShellComposite(
@@ -165,7 +164,6 @@ import Testing
             runtime: runtime,
             route: route,
             ticket: ticket,
-            allowsStackAuthFallback: true
         )
         let foregroundTicket = try CmxAttachTicket(
             workspaceID: "foreground-workspace",
@@ -179,7 +177,6 @@ import Testing
             runtime: runtime,
             route: route,
             ticket: foregroundTicket,
-            allowsStackAuthFallback: true
         )
         let shell = MobileShellComposite(
             runtime: runtime,
@@ -306,7 +303,6 @@ import Testing
             runtime: runtime,
             route: route,
             ticket: targetTicket,
-            allowsStackAuthFallback: true
         )
         _ = try await targetClient.sendRequest(
             MobileCoreRPCClient.requestData(
@@ -326,7 +322,6 @@ import Testing
             runtime: runtime,
             route: foregroundRoute,
             ticket: foregroundTicket,
-            allowsStackAuthFallback: true
         )
         let shell = MobileShellComposite(
             runtime: runtime,
@@ -455,7 +450,6 @@ import Testing
             runtime: runtime,
             route: route,
             ticket: ticket,
-            allowsStackAuthFallback: true
         )
         let shell = MobileShellComposite(
             runtime: runtime,
@@ -572,7 +566,6 @@ import Testing
             runtime: runtime,
             route: route,
             ticket: ticket,
-            allowsStackAuthFallback: true
         )
         let shell = MobileShellComposite(
             runtime: runtime,
@@ -665,7 +658,6 @@ import Testing
             runtime: runtime,
             route: route,
             ticket: ticket,
-            allowsStackAuthFallback: true
         )
         _ = try await client.sendRequest(
             MobileCoreRPCClient.requestData(
@@ -814,13 +806,11 @@ import Testing
             runtime: targetRuntime,
             route: route,
             ticket: targetTicket,
-            allowsStackAuthFallback: true
         )
         let oldClient = MobileCoreRPCClient(
             runtime: oldRuntime,
             route: route,
             ticket: oldTicket,
-            allowsStackAuthFallback: true
         )
         let shell = MobileShellComposite(
             runtime: targetRuntime,
@@ -1072,13 +1062,11 @@ import Testing
             runtime: anonymousRuntime,
             route: route,
             ticket: anonymousTicket,
-            allowsStackAuthFallback: true
         )
         let targetClient = MobileCoreRPCClient(
             runtime: targetRuntime,
             route: route,
             ticket: targetTicket,
-            allowsStackAuthFallback: true
         )
         _ = try await anonymousClient.sendRequest(
             MobileCoreRPCClient.requestData(
@@ -1171,7 +1159,6 @@ import Testing
             runtime: runtime,
             route: route,
             ticket: ticket,
-            allowsStackAuthFallback: true
         )
         let shell = MobileShellComposite(
             runtime: runtime,
@@ -1267,7 +1254,6 @@ import Testing
             runtime: runtime,
             route: route,
             ticket: ticket,
-            allowsStackAuthFallback: true
         )
         let shell = MobileShellComposite(
             runtime: runtime,

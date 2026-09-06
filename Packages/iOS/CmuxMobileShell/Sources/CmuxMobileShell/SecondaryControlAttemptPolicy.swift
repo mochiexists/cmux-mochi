@@ -11,6 +11,7 @@ func secondaryControlAttemptIsTransient(_ error: any Error) -> Bool {
         case .emptyHost, .invalidPort, .invalidMaximumReceiveLength,
              .unsupportedRouteKind, .unsupportedEndpoint,
              .authorizationIntentRequired, .unsupportedAuthorizationMode,
+             .deviceLinkAuthorizationUnavailable,
              .tailscaleAuthorizationUnavailable:
             return false
         case .notConnected, .alreadyClosed, .receiveAlreadyInProgress,

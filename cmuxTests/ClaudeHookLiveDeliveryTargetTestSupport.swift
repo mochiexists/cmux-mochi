@@ -1,6 +1,63 @@
 import Darwin
 import Dispatch
 import Foundation
+import Testing
+
+func cliTestProcessTimedOut(
+    _ process: Process,
+    exitSignal: DispatchSemaphore,
+    timeout: TimeInterval
+) -> Bool {
+    // Notification delivery can lag behind the actual exit under executor
+    // pressure. Only a child still running at the deadline has timed out.
+    exitSignal.wait(timeout: .now() + timeout) == .timedOut && process.isRunning
+}
+
+@Suite
+struct CLIProcessCompletionDeadlineTests {
+    @Test(arguments: [0, 7])
+    func exitedChildDoesNotTimeOutWhenCompletionDeliveryIsDelayed(exitCode: Int32) throws {
+        let process = Process()
+        let output = Pipe()
+        process.executableURL = URL(fileURLWithPath: "/bin/sh")
+        process.arguments = ["-c", "printf '{}'; exit \(exitCode)"]
+        process.standardOutput = output
+        let exitSignal = DispatchSemaphore(value: 0)
+        let releaseObserver = DispatchSemaphore(value: 0)
+        let observerQueue = DispatchQueue(label: "com.cmux.tests.delayed-process-observer")
+        observerQueue.async { releaseObserver.wait() }
+        defer { releaseObserver.signal() }
+
+        try process.run()
+        observerQueue.async {
+            process.waitUntilExit()
+            exitSignal.signal()
+        }
+        process.waitUntilExit()
+
+        #expect(!cliTestProcessTimedOut(process, exitSignal: exitSignal, timeout: 0.05))
+        #expect(process.terminationStatus == exitCode)
+        #expect(output.fileHandleForReading.readDataToEndOfFile() == Data("{}".utf8))
+    }
+
+    @Test
+    func runningChildStillTimesOutAtItsDeadline() throws {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/sleep")
+        process.arguments = ["10"]
+        let exitSignal = DispatchSemaphore(value: 0)
+        process.terminationHandler = { _ in exitSignal.signal() }
+        try process.run()
+        defer {
+            if process.isRunning {
+                process.terminate()
+            }
+            process.waitUntilExit()
+        }
+
+        #expect(cliTestProcessTimedOut(process, exitSignal: exitSignal, timeout: 0.05))
+    }
+}
 
 /// Shared harness for the issue-7939 live delivery-target CLI regression
 /// tests: a mock cmux control server that can answer (or refuse) the
@@ -224,6 +281,8 @@ enum ClaudeHookLiveDeliveryHarness {
         process.standardInput = stdinPipe
         process.standardOutput = stdoutPipe
         process.standardError = stderrPipe
+        let exitSignal = DispatchSemaphore(value: 0)
+        process.terminationHandler = { _ in exitSignal.signal() }
 
         do {
             try process.run()
@@ -233,12 +292,7 @@ enum ClaudeHookLiveDeliveryHarness {
         stdinPipe.fileHandleForWriting.write(Data(standardInput.utf8))
         try? stdinPipe.fileHandleForWriting.close()
 
-        let exitSignal = DispatchSemaphore(value: 0)
-        DispatchQueue.global(qos: .userInitiated).async {
-            process.waitUntilExit()
-            exitSignal.signal()
-        }
-        let timedOut = exitSignal.wait(timeout: .now() + 10) == .timedOut
+        let timedOut = cliTestProcessTimedOut(process, exitSignal: exitSignal, timeout: 10)
         if timedOut {
             process.terminate()
             if exitSignal.wait(timeout: .now() + 1) == .timedOut {

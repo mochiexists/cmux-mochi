@@ -3,7 +3,7 @@ import CmuxMobileShellModel
 import CmuxMobileSupport
 import SwiftUI
 
-/// The Auto-Connect vs Tailscale choice on the onboarding connect page.
+/// The Auto-Connect vs secure-pairing choice on the onboarding connect page.
 /// Selection persists through the shared connection-method store, so the
 /// Settings picker shows the same value afterward.
 struct OnboardingConnectionMethodPicker: View {
@@ -29,11 +29,11 @@ struct OnboardingConnectionMethodPicker: View {
                 .tailscale,
                 title: L10n.string(
                     "mobile.onboarding.connect.method.tailscale",
-                    defaultValue: "Tailscale"
+                    defaultValue: "Secure Pairing"
                 ),
                 subtitle: L10n.string(
                     "mobile.onboarding.connect.method.tailscaleDetail",
-                    defaultValue: "Uses your Tailscale network. Scan the pairing code on your Mac."
+                    defaultValue: "Scan once, then connect over local network or Tailscale."
                 ),
                 systemImage: "qrcode",
                 accessibilityIdentifier: "MobileOnboardingConnectionMethodTailscale"

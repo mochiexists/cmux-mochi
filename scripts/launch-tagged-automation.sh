@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Fork identity (app name and bundle id). Generated from fork-identity.json.
+# shellcheck source=scripts/fork-identity.env
+source "$SCRIPT_DIR/fork-identity.env"
+
 usage() {
   cat <<'EOF'
 Usage: ./scripts/launch-tagged-automation.sh <tag> [options]
@@ -17,7 +22,7 @@ EOF
 sanitize_bundle() {
   local raw="$1"
   local cleaned
-  cleaned="$(echo "$raw" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/./g; s/^\\.+//; s/\\.+$//; s/\\.+/./g')"
+  cleaned="$(echo "$raw" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/./g; s/^\.+//; s/\.+$//; s/\.+/./g')"
   if [[ -z "$cleaned" ]]; then
     cleaned="agent"
   fi
@@ -106,8 +111,10 @@ fi
 
 TAG_ID="$(sanitize_bundle "$TAG")"
 TAG_SLUG="$(sanitize_path "$TAG")"
-APP="$HOME/Library/Developer/Xcode/DerivedData/cmux-${TAG_SLUG}/Build/Products/Debug/cmux DEV ${TAG}.app"
-BID="com.cmux-mochi.debug.${TAG_ID}"
+BASE_APP_NAME="${CMUX_FORK_APP_NAME} DEV"
+APP_NAME="${BASE_APP_NAME} ${TAG_SLUG}"
+APP="$HOME/Library/Developer/Xcode/DerivedData/cmux-${TAG_SLUG}/Build/Products/Debug/${APP_NAME}.app"
+BID="${CMUX_FORK_BUNDLE_ID}.debug.${TAG_ID}"
 SOCK="/tmp/cmux-debug-${TAG_SLUG}.sock"
 DSOCK="$HOME/Library/Application Support/cmux/cmuxd-dev-${TAG_SLUG}.sock"
 LOG="/tmp/cmux-debug-${TAG_SLUG}.log"
@@ -119,7 +126,7 @@ fi
 
 /usr/bin/osascript -e "tell application id \"${BID}\" to quit" >/dev/null 2>&1 || true
 sleep 0.5
-pkill -f "cmux DEV ${TAG}.app/Contents/MacOS/cmux DEV" || true
+pkill -f "${APP_NAME}.app/Contents/MacOS/${BASE_APP_NAME}" || true
 rm -f "$SOCK" "$DSOCK"
 sleep 0.5
 

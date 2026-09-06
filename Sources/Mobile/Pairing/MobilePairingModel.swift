@@ -3,7 +3,7 @@ import Foundation
 import Observation
 
 /// Drives the account-free iPhone pairing window. It turns on the DeviceLink
-/// host, requires a non-loopback Tailscale route, and mints the single QR code
+/// host, requires a non-loopback DeviceLink route, and mints the single QR code
 /// used to enroll the phone. The displayed code is regenerated only when the
 /// user requests a refresh.
 @MainActor
@@ -17,10 +17,12 @@ final class MobilePairingModel {
         case preparing
         /// A ticket is ready to display.
         case ready(Ready)
-        /// A phone has attached to the listener; show a paired/success state
-        /// instead of the QR + spinner.
+        /// The displayed one-time enrollment ticket reached its deadline.
+        case expired(Ready)
+        /// A phone has reconnected with its newly persisted paired identity;
+        /// show a paired/success state instead of the QR + spinner.
         case connected(Ready)
-        /// No non-loopback Tailscale route is available yet.
+        /// No non-loopback DeviceLink route is available yet.
         case needsReachableTransport
         /// The listener could not be started or no ticket could be minted.
         case failed(String)
@@ -30,23 +32,35 @@ final class MobilePairingModel {
     struct Ready: Equatable {
         /// The DeviceLink URL encoded into the QR code.
         let attachURL: String
+        /// Reachable private-LAN `host:port` routes represented by the code.
+        let localNetworkLines: [String]
         /// Reachable Tailscale `host:port` routes represented by the code.
         let tailscaleLines: [String]
-
-        /// Whether at least one Tailscale route resolved.
-        var reachableViaTailscale: Bool { !tailscaleLines.isEmpty }
+        /// The deadline enforced by the DeviceLink enrollment-ticket store.
+        let expiresAt: Date
     }
 
     struct PairingRoutePlan: Equatable, Sendable {
+        /// Private-LAN endpoints eligible for the DeviceLink QR.
+        let localNetworkLines: [String]
         /// The Tailscale endpoints eligible for the DeviceLink QR.
         let tailscaleLines: [String]
 
+        var deviceLinkLines: [String] { localNetworkLines + tailscaleLines }
+
         static func make(routes: [CmxAttachRoute]) -> PairingRoutePlan? {
-            let tailscaleLines = routes.compactMap(
-                MobilePairingModel.phoneReachableTailscaleLine
+            let ordered = routes.sorted { $0.priority < $1.priority }
+            let localNetworkLines = ordered.compactMap {
+                MobilePairingModel.phoneReachableLine($0, kind: .localNetwork)
+            }
+            let tailscaleLines = ordered.compactMap {
+                MobilePairingModel.phoneReachableLine($0, kind: .tailscale)
+            }
+            guard !localNetworkLines.isEmpty || !tailscaleLines.isEmpty else { return nil }
+            return PairingRoutePlan(
+                localNetworkLines: localNetworkLines,
+                tailscaleLines: tailscaleLines
             )
-            guard !tailscaleLines.isEmpty else { return nil }
-            return PairingRoutePlan(tailscaleLines: tailscaleLines)
         }
     }
 
@@ -58,6 +72,9 @@ final class MobilePairingModel {
     /// Observes host status while a code is shown and tracks new connections.
     /// Cancelled on each refresh.
     private var connectionObservationTask: Task<Void, Never>?
+    /// Moves an unused displayed QR into an explicit expired state at the same
+    /// deadline enforced by the host. Cancelled on refresh or window close.
+    private var expirationTask: Task<Void, Never>?
     /// Bumped on each ``refresh()`` so a slower in-flight run (the UI fires
     /// refresh from several places) can't overwrite a newer result with a stale
     /// ticket. Each run captures its value and bails after an `await` if superseded.
@@ -83,6 +100,8 @@ final class MobilePairingModel {
     func refresh() async {
         connectionObservationTask?.cancel()
         connectionObservationTask = nil
+        expirationTask?.cancel()
+        expirationTask = nil
         refreshGeneration &+= 1
         let generation = refreshGeneration
         state = .preparing
@@ -111,19 +130,25 @@ final class MobilePairingModel {
             // un-enrolled phone scanning an attach URL dials the routes and then
             // stalls in the handshake — the pairing code is the only payload a
             // first-time phone can actually redeem.
+            let expiresAt = Date().addingTimeInterval(ticketTTL)
             let pairingURL = try await MobileHostDeviceLink.shared.makePairingURL(lifetime: ticketTTL)
             guard generation == refreshGeneration else { return }
             state = .ready(
                 Ready(
                     attachURL: pairingURL.absoluteString,
-                    tailscaleLines: routePlan.tailscaleLines
+                    localNetworkLines: routePlan.localNetworkLines,
+                    tailscaleLines: routePlan.tailscaleLines,
+                    expiresAt: expiresAt
                 )
             )
             observeConnections()
+            observeExpiration(at: expiresAt)
         } catch MobileHostDeviceLinkPairingError.noRoutes {
+            guard generation == refreshGeneration else { return }
             state = .needsReachableTransport
             observeRouteAvailability()
         } catch {
+            guard generation == refreshGeneration else { return }
             state = .failed(
                 String(
                     localized: "mobile.pairing.error.noTicket",
@@ -135,33 +160,29 @@ final class MobilePairingModel {
 
     /// Cancels the connection observation. Call when the window closes.
     ///
-    /// There is deliberately no timer to cancel: the displayed code never
-    /// expires and is never regenerated behind the user's back. If a
-    /// endpoint or private-network address changes while the window sits open,
-    /// the Refresh Code button re-mints on demand.
     func stopObserving() {
         connectionObservationTask?.cancel()
         connectionObservationTask = nil
+        expirationTask?.cancel()
+        expirationTask = nil
     }
 
     /// Watches the mobile host's connection status while a code is displayed and
-    /// flips `.ready` (QR shown, waiting) to `.connected` once a phone has
-    /// attached. Success stays latched until an explicit refresh or window close;
-    /// enrollment briefly reconnects while it installs the durable device identity,
-    /// and letting that transport churn restore the QR makes a successful scan look
-    /// like it failed. Cancelled and superseded on each ``refresh()`` via the generation
-    /// guard, and on ``stopObserving()``.
+    /// flips `.ready` (QR shown, waiting) to `.connected` only after a phone has
+    /// persisted its paired identity and reconnected with it. Success stays latched
+    /// until an explicit refresh or window close. Cancelled and superseded on each
+    /// ``refresh()`` via the generation guard, and on ``stopObserving()``.
     private func observeConnections() {
         connectionObservationTask?.cancel()
         let generation = refreshGeneration
-        // Connections already present when this code is displayed (another phone
-        // is attached, or we are pairing an additional device). Only a NEW
-        // connection above this baseline means "this freshly minted QR was
-        // scanned"; without the baseline, opening the window while a phone is
-        // already connected would falsely jump to "connected" before the new
-        // ticket is ever used, which also makes pairing an additional device
-        // impossible (the QR would hide immediately).
-        let baseline = host.statusSnapshot().activeConnectionCount
+        // Durable paired-device connections already present when this code is
+        // displayed (another phone is attached, or we are pairing an additional
+        // device). Only a NEW connection above this baseline means the scanned
+        // ticket was saved successfully; without the baseline, opening the window
+        // while a phone is already connected would falsely jump to "connected"
+        // before the new ticket is ever used, which also makes pairing an
+        // additional device impossible (the QR would hide immediately).
+        let baseline = host.statusSnapshot().pairedDeviceConnectionCount
         connectionObservationTask = Task { [weak self] in
             guard let self else { return }
             for await status in self.host.statusUpdates() {
@@ -169,10 +190,26 @@ final class MobilePairingModel {
                 guard generation == self.refreshGeneration else { return }
                 self.state = Self.connectionTransition(
                     from: self.state,
-                    activeConnectionCount: status.activeConnectionCount,
-                    baselineConnectionCount: baseline
+                    pairedDeviceConnectionCount: status.pairedDeviceConnectionCount,
+                    baselinePairedDeviceConnectionCount: baseline
                 )
             }
+        }
+    }
+
+    /// Matches the visible QR lifecycle to the host-enforced ticket deadline.
+    /// We never regenerate behind the user's back: expiry removes the stale QR
+    /// and asks for an explicit refresh, avoiding a scan that can only fail.
+    private func observeExpiration(at expiresAt: Date) {
+        expirationTask?.cancel()
+        let generation = refreshGeneration
+        let delay = max(0, expiresAt.timeIntervalSinceNow)
+        expirationTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(delay))
+            guard !Task.isCancelled,
+                  let self,
+                  generation == self.refreshGeneration else { return }
+            self.state = Self.expirationTransition(from: self.state, now: Date())
         }
     }
 
@@ -197,19 +234,18 @@ final class MobilePairingModel {
         }
     }
 
-    /// Computes the next render state from a connection-count change, relative to
-    /// the `baselineConnectionCount` captured when the code was displayed. A
-    /// connection *above* the baseline (a phone that attached after the QR was
-    /// shown) flips a displayed ticket from `.ready` to `.connected`. Once shown,
-    /// success is monotonic for that ticket; only ``refresh()`` may display a QR
-    /// again. All other states pass through unchanged. Pure, so the transition is
-    /// unit tested without a live host.
+    /// Computes the next render state from a durable paired-device count change,
+    /// relative to the baseline captured when the code was displayed. A persisted
+    /// identity reconnecting above that baseline flips a displayed ticket from
+    /// `.ready` to `.connected`. Once shown, success is monotonic for that ticket;
+    /// only ``refresh()`` may display a QR again. All other states pass through
+    /// unchanged. Pure, so the transition is unit tested without a live host.
     static func connectionTransition(
         from current: State,
-        activeConnectionCount: Int,
-        baselineConnectionCount: Int
+        pairedDeviceConnectionCount: Int,
+        baselinePairedDeviceConnectionCount: Int
     ) -> State {
-        let connected = activeConnectionCount > baselineConnectionCount
+        let connected = pairedDeviceConnectionCount > baselinePairedDeviceConnectionCount
         switch current {
         case let .ready(ready) where connected:
             return .connected(ready)
@@ -218,16 +254,26 @@ final class MobilePairingModel {
         }
     }
 
+    /// Expires only an unused displayed code. A successful pairing remains
+    /// latched even after the original enrollment deadline passes.
+    static func expirationTransition(from current: State, now: Date) -> State {
+        guard case let .ready(ready) = current, now >= ready.expiresAt else {
+            return current
+        }
+        return .expired(ready)
+    }
+
     private func enablePairingHost() {
         UserDefaults.standard.set(true, forKey: MobileHostService.listeningEnabledDefaultsKey)
     }
 
-    /// Formats a phone-reachable Tailscale route for the DeviceLink status UI.
+    /// Formats a phone-reachable route for the DeviceLink status UI.
     /// Iroh and loopback endpoints are deliberately excluded.
-    private nonisolated static func phoneReachableTailscaleLine(
-        _ route: CmxAttachRoute
+    private nonisolated static func phoneReachableLine(
+        _ route: CmxAttachRoute,
+        kind: CmxAttachTransportKind
     ) -> String? {
-        guard route.kind == .tailscale,
+        guard route.kind == kind,
               !CmxLoopbackHost().matches(route),
               case let .hostPort(host, port) = route.endpoint
         else {

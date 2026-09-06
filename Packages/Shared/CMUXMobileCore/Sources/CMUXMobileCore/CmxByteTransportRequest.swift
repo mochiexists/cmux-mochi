@@ -1,33 +1,9 @@
-/// The authorization already established before application bytes are sent.
+/// The authenticated transport boundary established before application bytes
+/// are sent.
 public enum CmxTransportAuthorizationMode: Equatable, Sendable {
-    /// RPC requests must add a Stack bearer on an approved transport.
-    case stackBearer
-    /// A pairing established before Iroh may send a Stack bearer only to the
-    /// exact Tailscale peer captured by this persisted compatibility grant.
-    case legacyTailscaleBearer(CmxLegacyTailscaleAuthorizationEvidence)
-    /// A user-entered compatibility code may send a Stack bearer only to the
-    /// exact Tailscale peer address it named. The device identity a code may
-    /// claim is self-reported and adds no authority; the entry of the code in
-    /// the pairing UI is the authorization event, and the value never outlives
-    /// that pairing dial.
-    case userAuthorizedTailscalePairing(CmxUserTailscalePairingAuthorization)
-    /// The transport handshake admitted this exact peer and account binding.
+    /// The transport handshake admitted the exact peer. Application requests
+    /// never carry an account bearer or attach token in the Mochi fork.
     case transportAdmission
-    /// Fork (cmux Mochi): RPC requests carry ONLY a short-lived attach token
-    /// minted by, and scoped to, one Mac — never an account bearer.
-    ///
-    /// This exists to distinguish "no account credential is at risk on this
-    /// connection" from ``stackBearer``. Upstream refuses plaintext Tailscale
-    /// routes outright (`CmxNetworkByteTransportFactory`) because
-    /// Network.framework cannot prove a generic packet tunnel really is
-    /// Tailscale, so a Stack bearer sent over it could reach an impostor. That
-    /// reasoning is sound for an account credential and does not transfer to an
-    /// attach token: it authorizes exactly one Mac, expires in an hour, is
-    /// revoked when the ticket is dropped, and the Mac host independently
-    /// refuses any connection that is not tailnet-to-tailnet
-    /// (`MobileHostService.isTailnetConnection`). Worst case for a spoofed
-    /// tunnel is a token that opens nothing but the Mac that issued it.
-    case attachTicket
 }
 
 /// Route plus peer intent required to build a transport without substitution.
@@ -36,6 +12,8 @@ public struct CmxByteTransportRequest: Equatable, Sendable {
     public let route: CmxAttachRoute
     /// The authenticated peer device expected on the route, when known.
     public let expectedPeerDeviceID: String?
+    /// The exact build-scoped Mac instance expected on the route, when known.
+    public let expectedPeerInstanceTag: String?
     /// The authorization evidence permitted on the transport.
     public let authorizationMode: CmxTransportAuthorizationMode
     /// The local owner whose network path this request represents.
@@ -45,11 +23,13 @@ public struct CmxByteTransportRequest: Equatable, Sendable {
     public init(
         route: CmxAttachRoute,
         expectedPeerDeviceID: String?,
+        expectedPeerInstanceTag: String? = nil,
         authorizationMode: CmxTransportAuthorizationMode,
         sessionPurpose: CmxTransportSessionPurpose = .foregroundControl
     ) {
         self.route = route
         self.expectedPeerDeviceID = expectedPeerDeviceID
+        self.expectedPeerInstanceTag = expectedPeerInstanceTag
         self.authorizationMode = authorizationMode
         self.sessionPurpose = sessionPurpose
     }
@@ -61,6 +41,7 @@ public struct CmxByteTransportRequest: Equatable, Sendable {
         Self(
             route: route,
             expectedPeerDeviceID: expectedPeerDeviceID,
+            expectedPeerInstanceTag: expectedPeerInstanceTag,
             authorizationMode: authorizationMode,
             sessionPurpose: sessionPurpose
         )

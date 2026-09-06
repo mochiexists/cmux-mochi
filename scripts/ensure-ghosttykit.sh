@@ -81,6 +81,7 @@ GHOSTTYKIT_CRASH_REPORT_SUBDIR="${CMUX_GHOSTTYKIT_CRASH_REPORT_SUBDIR:-cmux/cras
 # native Sentry as well creates a second global crash handler and starts its
 # environment-reading init thread during Ghostty locale mutation.
 GHOSTTYKIT_BUILD_FLAVOR="crashsubdir-$(printf '%s' "$GHOSTTYKIT_CRASH_REPORT_SUBDIR" | tr '/=' '--')-sentry-off-v1"
+GHOSTTYKIT_RELEASE_REPO="${CMUX_GHOSTTYKIT_RELEASE_REPO:-mochiexists/ghostty}"
 GHOSTTY_CLEAN_KEY="${GHOSTTY_SHA}-${GHOSTTYKIT_BUILD_FLAVOR}"
 GHOSTTY_KEY="$GHOSTTY_CLEAN_KEY"
 UNTRACKED_FILES="$(git -C ghostty ls-files --others --exclude-standard)"
@@ -146,7 +147,7 @@ try_fetch_prebuilt_xcframework() {
     return 1
   fi
 
-  local url="https://github.com/manaflow-ai/ghostty/releases/download/xcframework-${GHOSTTY_CLEAN_KEY}/GhosttyKit.xcframework.tar.gz"
+  local url="https://github.com/$GHOSTTYKIT_RELEASE_REPO/releases/download/xcframework-${GHOSTTY_CLEAN_KEY}/GhosttyKit.xcframework.tar.gz"
   if [[ ! -f "$GHOSTTYKIT_CHECKSUMS_FILE" ]]; then
     echo "==> Missing GhosttyKit checksum manifest; falling back to local build." >&2
     return 1

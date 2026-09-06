@@ -6,6 +6,30 @@ private func existsIn(_ existingPaths: Set<String>) -> @Sendable (String) -> Boo
     { path in existingPaths.contains((path as NSString).standardizingPath) }
 }
 
+@Suite struct TerminalBulletPathResolutionTests {
+    @Test(arguments: [
+        "Standard - Consultant Agreement - Form of Consulting Agreement.docx",
+        "(NINTENDO) BOTW Guardian Sound Effect.mkv",
+    ])
+    func resolvesFullFilenameAfterBullet(filename: String) {
+        let expected = "/tmp/files/\(filename)"
+        let resolver = TerminalPathResolver(fileExists: existsIn([expected, "/tmp/files/Agreement.docx"]))
+        let line = "  - \(filename)"
+        for column in 4..<line.count {
+            #expect(resolver.resolveVisibleLinePath(line, column: column, cwd: "/tmp/files")?.path == expected)
+        }
+        for column in 0..<4 {
+            #expect(resolver.resolveVisibleLinePath(line, column: column, cwd: "/tmp/files") == nil)
+        }
+    }
+
+    @Test func literalDashFilenameWinsWhenItExists() {
+        let literal = "/tmp/files/- report notes.md"
+        let resolver = TerminalPathResolver(fileExists: existsIn([literal, "/tmp/files/report notes.md"]))
+        #expect(resolver.resolveVisibleLinePath("- report notes.md", column: 4, cwd: "/tmp/files")?.path == literal)
+    }
+}
+
 @Suite struct TerminalPathTrailingPunctuationTests {
     @Test func trimsTrailingPeriodAfterMarkdownFile() {
         #expect(
@@ -203,6 +227,57 @@ private func existsIn(_ existingPaths: Set<String>) -> @Sendable (String) -> Boo
 }
 
 @Suite struct TerminalVisibleLineResolutionTests {
+    private let reportPath = "/Users/dev/Documents/Github/test-project/docs/audits/report.html"
+
+    @Test func resolvesIndentedAbsoluteReportContinuationWithUnrelatedCWD() throws {
+        let lines = ["Open report (/Users/dev/", "  Documents/Github/test-project/docs/audits/report.html), which tracks requirements."]
+        let resolver = TerminalPathResolver(fileExists: existsIn([reportPath]))
+        for (row, column) in [(0, 18), (1, 10)] {
+            let result = try #require(resolver.resolveVisiblePath(lines, row: row, column: column, cwd: "/tmp"))
+            #expect(result.path == reportPath)
+        }
+    }
+
+    @Test func existingSingleLineTargetWinsOverPossibleContinuation() throws {
+        let localPath = "/tmp/Documents/Github/test-project/docs/audits/report.html"
+        let lines = ["/Users/dev/", "  Documents/Github/test-project/docs/audits/report.html"]
+        let resolver = TerminalPathResolver(fileExists: existsIn([reportPath, localPath]))
+        let result = try #require(resolver.resolveVisiblePath(lines, row: 1, column: 10, cwd: "/tmp"))
+        #expect(result.path == localPath)
+    }
+
+    @Test func rejectsMissingFileAndUnrelatedPointerPosition() {
+        let lines = ["Open report (/Users/dev/", "  Documents/Github/test-project/docs/audits/report.html) other"]
+        #expect(TerminalPathResolver(fileExists: { _ in false }).resolveVisiblePath(lines, row: 1, column: 10, cwd: "/tmp") == nil)
+        let resolver = TerminalPathResolver(fileExists: existsIn([reportPath]))
+        #expect(resolver.resolveVisiblePath(lines, row: 1, column: 60, cwd: "/tmp") == nil)
+        #expect(resolver.resolveVisiblePath(lines, row: 0, column: 1, cwd: "/tmp") == nil)
+    }
+
+    @Test(arguments: ["  /Documents/report.html", "  ./Documents/report.html", "  https://Documents/report.html", "Documents/report.html", "                 Documents/report.html"])
+    func doesNotJoinIndependentOrUnindentedRows(_ continuation: String) {
+        let resolver = TerminalPathResolver(fileExists: existsIn(["/Users/dev/Documents/report.html"]))
+        #expect(resolver.resolveVisiblePath(["/Users/dev/", continuation], row: 1, column: 4, cwd: "/tmp") == nil)
+    }
+
+    @Test func callbackRequiresMatchingSchemelessVisibleFragment() {
+        let token = "Documents/Github/report.html),"
+        #expect(TerminalPathResolver.openURLMatchesVisibleToken("Documents/Github/report.html", token: token))
+        for rawValue in ["https://Documents/Github/report.html", "file:///tmp/report.html", "other/report.html"] {
+            #expect(!TerminalPathResolver.openURLMatchesVisibleToken(rawValue, token: token))
+        }
+    }
+
+    @Test func boundsContinuationToThreeRowsAndRequiresFile() throws {
+        let resolver = TerminalPathResolver(fileExists: existsIn([reportPath]))
+        let threeRows = ["/Users/dev/", "  Documents/Github/", "  test-project/docs/audits/report.html"]
+        #expect(try #require(resolver.resolveVisiblePath(threeRows, row: 2, column: 8, cwd: "/tmp")).path == reportPath)
+        let fourRows = ["/Users/dev/", "  Documents/", "  Github/", "  test-project/docs/audits/report.html"]
+        #expect(resolver.resolveVisiblePath(fourRows, row: 3, column: 8, cwd: "/tmp") == nil)
+        let directoryResolver = TerminalPathResolver(fileExists: existsIn([reportPath]), isDirectory: { _ in true })
+        #expect(directoryResolver.resolveVisiblePath(threeRows, row: 2, column: 8, cwd: "/tmp") == nil)
+    }
+
     @Test func visibleLinesKeepsTrailingRowsOnly() {
         let text = "one\ntwo\nthree\nfour"
         #expect(text.visibleLines(rows: 2) == ["three", "four"])

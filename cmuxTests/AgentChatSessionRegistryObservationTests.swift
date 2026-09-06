@@ -252,6 +252,8 @@ struct AgentChatSessionRegistryObservationTests {
         let workspaceID = UUID()
         let surfaceID = UUID()
         let sessionID = "018ff5fe-3f91-79d0-99aa-a6a2d7c17b22"
+        let previousSessionID = "018ff5fe-3f91-79d0-99aa-a6a2d7c17b23"
+        let launchWorkingDirectory = "/Users/example/project"
         let rolloutPath = "/Users/example/.codex/sessions/2026/06/29/rollout-2026-06-29T12-00-00-\(sessionID).jsonl"
         let snapshot = CmuxTopProcessSnapshot(
             processes: [
@@ -270,22 +272,33 @@ struct AgentChatSessionRegistryObservationTests {
         var detailReadCount = 0
         let observed = AgentChatSessionRegistry.scanObservedAgentSessions(
             in: snapshot,
-            processArgumentsAndEnvironment: { _ in
+            processArgumentsAndEnvironment: { pid in
+                #expect(pid == 202)
                 detailReadCount += 1
-                return nil
+                return CmuxTopProcessArguments(
+                    arguments: ["codex", "--resume", previousSessionID],
+                    environment: [
+                        "CMUX_AGENT_LAUNCH_KIND": "codex",
+                        "CMUX_AGENT_LAUNCH_CWD": launchWorkingDirectory,
+                        "PWD": "/Users/example/.codex/memories",
+                    ]
+                )
             },
             codexRolloutPaths: { pid in pid == 202 ? [rolloutPath] : [] }
         )
 
         let session = try #require(observed.first)
         #expect(observed.count == 1)
-        #expect(detailReadCount == 0)
+        // Direct executable recognition still loads launch metadata once;
+        // the open rollout, not an old resume argument, owns session identity.
+        #expect(detailReadCount == 1)
         #expect(session.sessionID == sessionID)
         #expect(session.agentKind == .codex)
         #expect(session.workspaceID == workspaceID.uuidString)
         #expect(session.surfaceID == surfaceID.uuidString)
         #expect(session.pid == 202)
         #expect(session.transcriptPath == rolloutPath)
+        #expect(session.workingDirectory == launchWorkingDirectory)
     }
 
     @Test func mobileChatObserverIgnoresClaudeChildProcessWithInheritedEnvironment() {

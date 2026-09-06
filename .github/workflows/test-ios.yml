@@ -178,6 +178,18 @@ jobs:
         run: |
           swift test --package-path Packages/iOS/CmuxMobilePairedMac
 
+      - name: Run CmuxMobileRPC package tests
+        run: |
+          # Transport admission and RPC credential serialization live here.
+          # These tests must be executable before removing legacy bearer paths.
+          swift test --package-path Packages/iOS/CmuxMobileRPC
+
+      - name: Run CmuxMobileTransport package tests
+        run: |
+          # Network route authorization and DeviceLink TLS fail-closed behavior
+          # live in this package rather than the app-host test target.
+          swift test --package-path Packages/iOS/CmuxMobileTransport
+
       - name: Run CmuxMobileShell package tests
         run: |
           # iOS shell replay/liveness regressions live in this package target.
@@ -190,6 +202,12 @@ jobs:
           # Pure shell-model queue and ordering regressions live in this package.
           # Keep them beside the shell package gate so input framing stays covered.
           swift test --package-path Packages/iOS/CmuxMobileShellModel
+
+      - name: Run CmuxMobileWorkspace package tests
+        run: |
+          # Account-free root gating must stay covered while Stack transport
+          # authentication is removed from the product composition.
+          swift test --package-path Packages/iOS/CmuxMobileWorkspace
 
   ios-simulator:
     needs: detect-ios-changes

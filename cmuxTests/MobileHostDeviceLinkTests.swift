@@ -1,5 +1,7 @@
 import CMUXMobileCore
+import CmuxIrohTransport
 import DeviceLinkKit
+import Dispatch
 import Foundation
 import Testing
 #if canImport(cmux_DEV)
@@ -13,8 +15,149 @@ import Testing
 /// These are the properties that stop being obvious the moment someone adds a
 /// verb to the wrong switch, which is exactly how a management interface leaks
 /// onto the network.
-@Suite("DeviceLink host boundaries")
+@Suite("DeviceLink host boundaries", .serialized)
 struct MobileHostDeviceLinkTests {
+    @MainActor
+    @Test func identityKeychainLoaderNeverRunsOnMainThread() async throws {
+        let material = try DeviceIdentityMaterial.generate(commonName: "cmux-test")
+        let threadProbe = IdentityLoaderThreadProbe()
+        let link = MobileHostDeviceLink(
+            scope: KeychainScope(bundleIdentifier: "dev.cmux.identity-loader-test"),
+            identityMaterialLoader: {
+                threadProbe.record(Thread.isMainThread)
+                return material
+            }
+        )
+
+        let fingerprint = try await link.hostFingerprintOrThrow()
+
+        #expect(fingerprint == material.fingerprint)
+        #expect(threadProbe.wasMainThread == false)
+        #expect(threadProbe.callCount == 1)
+    }
+
+    @MainActor
+    @Test func concurrentIdentityRequestsShareOneKeychainLoad() async throws {
+        let material = try DeviceIdentityMaterial.generate(commonName: "cmux-coalescing-test")
+        let threadProbe = IdentityLoaderThreadProbe()
+        let releaseLoader = DispatchSemaphore(value: 0)
+        let link = MobileHostDeviceLink(
+            scope: KeychainScope(bundleIdentifier: "dev.cmux.identity-coalescing-test"),
+            identityMaterialLoader: {
+                threadProbe.record(Thread.isMainThread)
+                releaseLoader.wait()
+                return material
+            }
+        )
+
+        async let first = link.hostFingerprintOrThrow()
+        async let second = link.hostFingerprintOrThrow()
+        try await waitForLoaderCall(threadProbe)
+        try await waitForIdentityWaiterCount(link, expected: 2)
+        releaseLoader.signal()
+
+        let fingerprints = try await (first, second)
+        #expect(fingerprints.0 == material.fingerprint)
+        #expect(fingerprints.1 == material.fingerprint)
+        #expect(threadProbe.callCount == 1)
+    }
+
+    @MainActor
+    @Test func cancelledIdentityWaiterCachesMaterialForReplacementStart() async throws {
+        let material = try DeviceIdentityMaterial.generate(commonName: "cmux-cancellation-test")
+        let threadProbe = IdentityLoaderThreadProbe()
+        let releaseLoader = DispatchSemaphore(value: 0)
+        let link = MobileHostDeviceLink(
+            scope: KeychainScope(bundleIdentifier: "dev.cmux.identity-cancellation-test"),
+            identityMaterialLoader: {
+                threadProbe.record(Thread.isMainThread)
+                releaseLoader.wait()
+                return material
+            }
+        )
+
+        let cancelledRequest = Task { @MainActor in
+            try await link.hostFingerprintOrThrow()
+        }
+        try await waitForLoaderCall(threadProbe)
+        cancelledRequest.cancel()
+        releaseLoader.signal()
+
+        do {
+            _ = try await cancelledRequest.value
+            Issue.record("cancelled identity request unexpectedly succeeded")
+        } catch is CancellationError {
+            // Expected: cancellation affects this caller, not the shared cache.
+        }
+
+        let replacementFingerprint = try await link.hostFingerprintOrThrow()
+        #expect(replacementFingerprint == material.fingerprint)
+        #expect(threadProbe.callCount == 1)
+    }
+
+    @MainActor
+    @Test func timedOutIdentityWaitKeepsOneTransactionForRetry() async throws {
+        let material = try DeviceIdentityMaterial.generate(commonName: "cmux-timeout-test")
+        let threadProbe = IdentityLoaderThreadProbe()
+        let releaseLoader = DispatchSemaphore(value: 0)
+        defer { releaseLoader.signal() }
+        let link = MobileHostDeviceLink(
+            scope: KeychainScope(bundleIdentifier: "dev.cmux.identity-timeout-test"),
+            identityMaterialLoader: {
+                threadProbe.record(Thread.isMainThread)
+                releaseLoader.wait()
+                return material
+            },
+            identityLoadTimeout: .milliseconds(40)
+        )
+
+        do {
+            _ = try await link.hostFingerprintOrThrow()
+            Issue.record("blocked identity request unexpectedly beat its deadline")
+        } catch is CancellationError {
+            Issue.record("identity deadline was misreported as caller cancellation")
+        } catch {
+            #expect(String(describing: error).contains("deadline"))
+        }
+
+        releaseLoader.signal()
+        let replacementFingerprint = try await link.hostFingerprintOrThrow()
+        #expect(replacementFingerprint == material.fingerprint)
+        #expect(threadProbe.callCount == 1)
+    }
+
+    @MainActor
+    @Test func retryAfterTimedOutIdentityFailureStartsFreshLoadImmediately() async throws {
+        struct ExpectedFirstLoadFailure: Error {}
+
+        let material = try DeviceIdentityMaterial.generate(commonName: "cmux-timeout-failure-retry-test")
+        let loader = RetryingIdentityLoader(
+            firstError: ExpectedFirstLoadFailure(),
+            replacement: material
+        )
+        let link = MobileHostDeviceLink(
+            scope: KeychainScope(bundleIdentifier: "dev.cmux.identity-timeout-failure-retry-test"),
+            identityMaterialLoader: { try loader.load() },
+            identityLoadTimeout: .milliseconds(40)
+        )
+
+        do {
+            _ = try await link.hostFingerprintOrThrow()
+            Issue.record("blocked identity request unexpectedly beat its deadline")
+        } catch is CancellationError {
+            Issue.record("identity deadline was misreported as caller cancellation")
+        } catch {
+            #expect(String(describing: error).contains("deadline"))
+        }
+
+        loader.releaseFirstLoad()
+        try await waitForCompletedIdentityFailure(link)
+
+        let replacementFingerprint = try await link.hostFingerprintOrThrow()
+        #expect(replacementFingerprint == material.fingerprint)
+        #expect(loader.callCount == 2)
+    }
+
     // MARK: - authorization contexts
 
     @Test func testEnrollmentCandidateMayOnlyEnroll() async {
@@ -23,8 +166,7 @@ struct MobileHostDeviceLinkTests {
 
         let enroll = await MobileHostService.connectionAuthorizationError(
             for: makeRequest(method: "mobile.pairing.device.enroll"),
-            authorization: authorization,
-            stackAuthorization: { _ in nil }
+            authorization: authorization
         )
         #expect(enroll == nil, "an enrolling device must be able to complete enrollment")
 
@@ -36,8 +178,7 @@ struct MobileHostDeviceLinkTests {
         ] {
             let result = await MobileHostService.connectionAuthorizationError(
                 for: makeRequest(method: method),
-                authorization: authorization,
-                stackAuthorization: { _ in nil }
+                authorization: authorization
             )
             guard case .failure = result else {
                 Issue.record("unenrolled device was allowed to call \(method)")
@@ -52,15 +193,13 @@ struct MobileHostDeviceLinkTests {
 
         let input = await MobileHostService.connectionAuthorizationError(
             for: makeRequest(method: "mobile.terminal.input"),
-            authorization: authorization,
-            stackAuthorization: { _ in nil }
+            authorization: authorization
         )
         #expect(input == nil, "a paired device must be able to drive its Mac")
 
         let enroll = await MobileHostService.connectionAuthorizationError(
             for: makeRequest(method: "mobile.pairing.device.enroll"),
-            authorization: authorization,
-            stackAuthorization: { _ in nil }
+            authorization: authorization
         )
         #expect(
             enroll == nil,
@@ -96,10 +235,10 @@ struct MobileHostDeviceLinkTests {
     }
 
     @MainActor
-    @Test func testSelfRevokeRejectsNonDeviceLinkAuthorization() async {
+    @Test func selfRevokeRejectsEnrollmentCandidate() async {
         let recorder = SelfRevokeRecorder()
         let result = await MobileHostService.deviceLinkSelfRevocationResult(
-            authorization: .stackBearer,
+            authorization: .enrollmentCandidate(fingerprint: String(repeating: "e", count: 64)),
             connectionID: UUID(),
             revoke: { fingerprint, connectionID in
                 recorder.record(fingerprint: fingerprint, connectionID: connectionID)
@@ -108,7 +247,7 @@ struct MobileHostDeviceLinkTests {
         )
 
         guard case let .failure(error) = result else {
-            Issue.record("a bearer caller must not revoke any DeviceLink pairing")
+            Issue.record("an enrollment candidate must not revoke any DeviceLink pairing")
             return
         }
         #expect(error.code == "unauthorized")
@@ -151,10 +290,10 @@ struct MobileHostDeviceLinkTests {
         #expect(await closeRecorder.ids == [connectionID])
     }
 
-    @Test func testStackBearerCannotReachEnrollment() async {
+    @Test func irohAdmissionCannotReachDeviceLinkEnrollment() async throws {
         let result = await MobileHostService.deviceLinkEnrollmentResult(
             for: makeRequest(method: "mobile.pairing.device.enroll", params: ["ticket": "whatever"]),
-            authorization: .stackBearer
+            authorization: try irohAdmissionContext()
         )
         guard case let .failure(error) = result else {
             Issue.record("enrollment must require a DeviceLink connection")
@@ -182,13 +321,17 @@ struct MobileHostDeviceLinkTests {
     /// A paired phone that could enumerate and revoke its siblings would turn
     /// one compromised device into control over every device — the property
     /// per-device revocation exists to prevent.
-    @Test func testDeviceManagementVerbsAreNotOnTheNetworkDispatch() throws {
-        let source = try networkDispatchSource()
+    @MainActor
+    @Test func testDeviceManagementVerbsAreNotOnTheNetworkDispatch() async {
         for verb in ["mobile.pairing.device.list", "mobile.pairing.device.revoke"] {
-            #expect(
-                !source.contains("case \"\(verb)\""),
-                "\(verb) must stay on the local control socket, never mobileHostHandleRPC"
+            let result = await TerminalController.shared.mobileHostHandleRPC(
+                makeRequest(method: verb)
             )
+            guard case let .failure(error) = result else {
+                Issue.record("\(verb) must stay on the local control socket")
+                continue
+            }
+            #expect(error.code == "method_not_found")
         }
     }
 
@@ -200,23 +343,24 @@ struct MobileHostDeviceLinkTests {
     }
 
     @Test func testEnrollmentResponseCarriesMacIdentityWithoutSecondCandidateRPC() throws {
-        let source = try deviceLinkHostSource()
-        guard let methodStart = source.range(of: "deviceLinkEnrollmentResult("),
-              let nextExtension = source.range(
-                  of: "extension MobileHostService {",
-                  range: methodStart.upperBound ..< source.endIndex
-              )
-        else {
-            throw DispatchGuardError.enrollmentHandlerNotFound
-        }
-        let handler = source[methodStart.lowerBound ..< nextExtension.lowerBound]
+        let fingerprint = try #require(DeviceFingerprint(hex: String(repeating: "f", count: 64)))
+        let now = Date()
+        let device = AuthorizedDevice(
+            fingerprint: fingerprint,
+            label: "Test iPhone",
+            createdAt: now,
+            lastSeenAt: now
+        )
+        let response = MobileHostService.deviceLinkEnrollmentResponse(
+            device: device,
+            wasAlreadyEnrolled: false
+        )
 
-        for key in ["mac_device_id", "mac_instance_tag", "mac_display_name"] {
-            #expect(
-                handler.contains("\"\(key)\""),
-                "enrollment must return \(key); the candidate connection cannot make a second status RPC"
-            )
-        }
+        #expect(response["mac_device_id"] as? String == MobileHostIdentity.deviceID())
+        #expect(response["mac_instance_tag"] as? String == MobileHostIdentity.instanceTag())
+        #expect(response["mac_display_name"] as? String == MobileHostIdentity.instanceDisplayName())
+        #expect(response["device_label"] as? String == "Test iPhone")
+        #expect(response["fingerprint"] as? String == fingerprint.hex)
     }
 
     // MARK: - helpers
@@ -225,41 +369,21 @@ struct MobileHostDeviceLinkTests {
         method: String,
         params: [String: Any] = [:]
     ) -> MobileHostRPCRequest {
-        MobileHostRPCRequest(id: "1", method: method, params: params, auth: nil)
+        MobileHostRPCRequest(id: "1", method: method, params: params)
     }
 
-    /// Reads the network RPC dispatch so the assertion is about the shipping
-    /// switch rather than a copy of it that could drift.
-    private func networkDispatchSource() throws -> String {
-        let thisFile = URL(fileURLWithPath: #filePath)
-        let repositoryRoot = thisFile.deletingLastPathComponent().deletingLastPathComponent()
-        let controller = repositoryRoot
-            .appendingPathComponent("Sources")
-            .appendingPathComponent("TerminalController.swift")
-        let source = try String(contentsOf: controller, encoding: .utf8)
-        guard let range = source.range(of: "func mobileHostHandleRPC") else {
-            throw DispatchGuardError.dispatchNotFound
-        }
-        return String(source[range.lowerBound...])
-    }
-
-    private func deviceLinkHostSource() throws -> String {
-        let thisFile = URL(fileURLWithPath: #filePath)
-        let repositoryRoot = thisFile.deletingLastPathComponent().deletingLastPathComponent()
-        return try String(
-            contentsOf: repositoryRoot
-                .appendingPathComponent("Sources")
-                .appendingPathComponent("Mobile")
-                .appendingPathComponent("MobileHostService+DeviceLink.swift"),
-            encoding: .utf8
+    private func irohAdmissionContext() throws -> MobileHostConnectionAuthorizationContext {
+        let endpointID = try CmxIrohPeerIdentity(
+            endpointID: String(repeating: "a", count: 64)
         )
-    }
-
-    /// Raised when the dispatch this guard inspects has been renamed. Failing
-    /// loudly beats a guard that silently stops guarding.
-    private enum DispatchGuardError: Error {
-        case dispatchNotFound
-        case enrollmentHandlerNotFound
+        return .irohAdmission(CmxIrohAdmittedPeer(peer: CmxIrohGrantPeer(
+            bindingID: "123e4567-e89b-42d3-a456-426614174001",
+            deviceID: "123e4567-e89b-42d3-a456-426614174002",
+            tag: "ios-test",
+            platform: .ios,
+            endpointID: endpointID,
+            identityGeneration: 1
+        )))
     }
 
     @MainActor
@@ -274,11 +398,104 @@ struct MobileHostDeviceLinkTests {
     }
 }
 
+@MainActor
+private func waitForLoaderCall(_ probe: IdentityLoaderThreadProbe) async throws {
+    let clock = ContinuousClock()
+    let deadline = clock.now.advanced(by: .seconds(2))
+    while probe.callCount == 0, clock.now < deadline {
+        try await clock.sleep(for: .milliseconds(10))
+    }
+    #expect(probe.callCount == 1)
+}
+
+@MainActor
+private func waitForIdentityWaiterCount(
+    _ link: MobileHostDeviceLink,
+    expected: Int
+) async throws {
+    let clock = ContinuousClock()
+    let deadline = clock.now.advanced(by: .seconds(2))
+    while link.debugIdentityLoadWaiterCount < expected, clock.now < deadline {
+        try await clock.sleep(for: .milliseconds(10))
+    }
+    #expect(link.debugIdentityLoadWaiterCount == expected)
+}
+
+@MainActor
+private func waitForCompletedIdentityFailure(_ link: MobileHostDeviceLink) async throws {
+    let clock = ContinuousClock()
+    let deadline = clock.now.advanced(by: .seconds(2))
+    while !link.debugIdentityLoadHasCompletedFailure, clock.now < deadline {
+        try await clock.sleep(for: .milliseconds(10))
+    }
+    #expect(link.debugIdentityLoadHasCompletedFailure)
+}
+
+private final class IdentityLoaderThreadProbe: @unchecked Sendable {
+    private let lock = NSLock()
+    private var values: [Bool] = []
+
+    var wasMainThread: Bool? {
+        lock.lock()
+        defer { lock.unlock() }
+        return values.last
+    }
+
+    var callCount: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return values.count
+    }
+
+    func record(_ wasMainThread: Bool) {
+        lock.lock()
+        values.append(wasMainThread)
+        lock.unlock()
+    }
+}
+
+private final class RetryingIdentityLoader: @unchecked Sendable {
+    private let lock = NSLock()
+    private let firstLoadGate = DispatchSemaphore(value: 0)
+    private let firstError: any Error
+    private let replacement: DeviceIdentityMaterial
+    private var calls = 0
+
+    init(firstError: any Error, replacement: DeviceIdentityMaterial) {
+        self.firstError = firstError
+        self.replacement = replacement
+    }
+
+    var callCount: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return calls
+    }
+
+    func releaseFirstLoad() {
+        firstLoadGate.signal()
+    }
+
+    func load() throws -> DeviceIdentityMaterial {
+        lock.lock()
+        calls += 1
+        let call = calls
+        lock.unlock()
+
+        if call == 1 {
+            firstLoadGate.wait()
+            throw firstError
+        }
+        return replacement
+    }
+}
+
 private actor SelfRevokeResponseTransport: CmxByteTransport {
     private var firstFrame: Data?
     private var receiveWaiter: CheckedContinuation<Data?, Never>?
     private var sentFrames: [Data] = []
     private var sentWaiters: [CheckedContinuation<Data, Never>] = []
+    private var isClosed = false
     private(set) var closeCount = 0
 
     init(firstFrame: Data) {
@@ -291,6 +508,9 @@ private actor SelfRevokeResponseTransport: CmxByteTransport {
         if let firstFrame {
             self.firstFrame = nil
             return firstFrame
+        }
+        if isClosed {
+            return nil
         }
         return await withTaskCancellationHandler {
             await withCheckedContinuation { continuation in
@@ -314,6 +534,7 @@ private actor SelfRevokeResponseTransport: CmxByteTransport {
 
     func close() async {
         closeCount += 1
+        isClosed = true
         finishReceive()
     }
 

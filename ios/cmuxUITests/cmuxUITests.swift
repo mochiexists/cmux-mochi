@@ -1,4 +1,5 @@
 import CMUXMobileCore
+import DeviceLinkKit
 import Network
 import UIKit
 import XCTest
@@ -11,17 +12,70 @@ final class cmuxUITests: XCTestCase {
     func testMockHostInstanceTagFollowsTargetBuildScope() {
         XCTAssertEqual(
             mockHostInstanceTag(
-                testBundleIdentifier: "dev.cmux.ios.spark"
+                testBundleIdentifier: "dev.cmux.ios.spark",
+                environment: [:]
             ),
             "spark"
         )
         XCTAssertEqual(
             mockHostInstanceTag(
-                testBundleIdentifier: "dev.cmux.ios.uitests"
+                testBundleIdentifier: "dev.cmux.ios.uitests",
+                environment: [:]
+            ),
+            "dev"
+        )
+        XCTAssertEqual(
+            mockHostInstanceTag(
+                testBundleIdentifier: "com.cmux-mochi.ios.uitests",
+                environment: [:]
+            ),
+            "dev"
+        )
+        XCTAssertEqual(
+            mockHostInstanceTag(
+                testBundleIdentifier: "com.cmux-mochi.ios.uitests",
+                environment: ["CMUX_UITEST_HOST_INSTANCE_TAG": "device-link-gate"]
+            ),
+            "device-link-gate"
+        )
+        XCTAssertEqual(
+            mockHostInstanceTag(
+                testBundleIdentifier: "com.cmux-mochi.ios.uitests",
+                environment: ["CMUX_UITEST_HOST_INSTANCE_TAG": "   "]
             ),
             "dev"
         )
         XCTAssertNotEqual(mockHostInstanceTag(), "uitests")
+    }
+
+    func testMockHostTrustEnforcesOneUseEnrollmentAndAuthenticatedReconnect() throws {
+        let trust = MobileSyncMockHostTrust(enrollmentTicket: "one-use-ticket")
+        let enrolledFingerprint = try XCTUnwrap(
+            DeviceFingerprint(hex: String(repeating: "a", count: 64))
+        )
+        let unknownFingerprint = try XCTUnwrap(
+            DeviceFingerprint(hex: String(repeating: "b", count: 64))
+        )
+
+        XCTAssertTrue(trust.authorize(enrolledFingerprint))
+        XCTAssertFalse(trust.isEnrolled(enrolledFingerprint))
+        XCTAssertEqual(
+            trust.redeem(ticket: "wrong-ticket", fingerprint: enrolledFingerprint),
+            .refused
+        )
+        XCTAssertEqual(
+            trust.redeem(ticket: "one-use-ticket", fingerprint: enrolledFingerprint),
+            .enrolled
+        )
+        XCTAssertTrue(trust.isEnrolled(enrolledFingerprint))
+        XCTAssertTrue(trust.authorize(enrolledFingerprint))
+        XCTAssertFalse(trust.authorize(unknownFingerprint))
+        XCTAssertEqual(
+            trust.redeem(ticket: "one-use-ticket", fingerprint: unknownFingerprint),
+            .refused
+        )
+        XCTAssertEqual(trust.enrollmentCount, 1)
+        XCTAssertEqual(trust.authenticatedReconnectCount, 1)
     }
 
     /// Exercises the account-free first-run path without a Mac, camera hardware,
@@ -139,9 +193,9 @@ final class cmuxUITests: XCTestCase {
 
         let connectScene = element("MobileOnboardingConnectScene")
         assertPageVisible(connectScene)
-        XCTAssertTrue(app.staticTexts["Connect over Tailscale"].exists)
+        XCTAssertTrue(app.staticTexts["Pair securely"].exists)
         XCTAssertTrue(app.staticTexts[
-            "Connect over your Tailscale network. Scan the pairing code shown on your Mac."
+            "Scan the pairing code shown on your Mac. cmux uses your local network when available and Tailscale when you're away."
         ].exists)
         XCTAssertFalse(element("MobileOnboardingSignInBridge").exists)
         XCTAssertFalse(app.buttons["signin.apple"].exists)
@@ -216,12 +270,12 @@ final class cmuxUITests: XCTestCase {
         func text(_ label: String) -> XCUIElement {
             app.staticTexts.matching(NSPredicate(format: "label == %@", label)).firstMatch
         }
-        XCTAssertTrue(text("cmux Mochi connects without an account. Keep cmux and Tailscale running, then scan the Pair iPhone QR code shown on your computer. Your current step is marked below.").exists)
+        XCTAssertTrue(text("cmux Mochi connects without an account. Keep cmux running, then scan the Pair a Device QR code shown on your computer. Use the same local network or Tailscale. Your current step is marked below.").exists)
         XCTAssertTrue(app.staticTexts["Get Tailscale for iPhone"].exists)
         XCTAssertTrue(app.staticTexts["Get Tailscale for Mac"].exists)
         setupHelp.swipeUp()
         setupHelp.swipeUp()
-        XCTAssertTrue(text("No cmux account or sign-in is required. The pairing QR and Tailscale connection are the trust boundary.").waitForExistence(timeout: 3))
+        XCTAssertTrue(text("No cmux account or sign-in is required. The pairing QR installs the mutual-TLS identity used on both local-network and Tailscale routes.").waitForExistence(timeout: 3))
         XCTAssertFalse(app.staticTexts.matching(NSPredicate(format: "label CONTAINS[c] %@", "same account")).firstMatch.exists)
         XCTAssertFalse(app.buttons["signin.apple"].exists)
     }
@@ -267,33 +321,37 @@ final class cmuxUITests: XCTestCase {
         let port = try await server.start()
         defer { server.stop() }
 
-        let app = try launchConnectedApp(port: port)
+        let app = try launchConnectedApp(server: server, port: port)
 
         try openSelectedWorkspaceIfNeeded(app)
         XCTAssertTrue(app.otherElements["MobileTerminalSurface"].waitForExistence(timeout: 6))
         assertTerminalRow(0, label: "$ cmux ios status", in: app)
         assertTerminalRow(1, label: "Mobile Core: connected", in: app)
         assertTerminalRow(2, label: "host: UI Test Mac", in: app)
+        XCTAssertEqual(server.enrollmentCount, 1)
+        XCTAssertGreaterThanOrEqual(server.authenticatedReconnectCount, 1)
     }
 
     @MainActor
-    func testDeleteComputersVerifierPasses() throws {
+    func testHideComputersVerifierPasses() throws {
         let app = launchApp(mockData: false, environment: [
-            "CMUX_DELETE_COMPUTERS_VERIFIER": "1",
+            "CMUX_HIDE_COMPUTERS_VERIFIER": "1",
         ])
         defer { app.terminate() }
 
-        let status = app.staticTexts["DeleteComputersVerifierStatus"]
+        let status = app.staticTexts["HideComputersVerifierStatus"]
         XCTAssertTrue(status.waitForExistence(timeout: 10))
         let pass = NSPredicate(format: "label == %@", "PASS")
         expectation(for: pass, evaluatedWith: status)
         waitForExpectations(timeout: 10)
         XCTAssertEqual(status.label, "PASS")
-        XCTAssertTrue(app.staticTexts["halfRemovedAbsent=true"].exists)
+        XCTAssertTrue(app.staticTexts["halfHiddenAbsent=true"].exists)
         XCTAssertTrue(app.staticTexts["halfRemainingPresent=true"].exists)
         XCTAssertTrue(app.staticTexts["halfNoDisconnectedBanner=true"].exists)
         XCTAssertTrue(app.staticTexts["refreshPreservedHalfList=true"].exists)
-        XCTAssertTrue(app.staticTexts["allRemoved=true"].exists)
+        XCTAssertTrue(app.staticTexts["allHidden=true"].exists)
+        XCTAssertTrue(app.staticTexts["allHiddenKnownPairedMac=true"].exists)
+        XCTAssertTrue(app.staticTexts["allHiddenNormalEmpty=true"].exists)
         XCTAssertTrue(app.staticTexts["refreshPreservedEmptyList=true"].exists)
     }
 
@@ -2209,13 +2267,12 @@ final class cmuxUITests: XCTestCase {
     @MainActor
     func testTaskComposerCreatesAndSelectsConnectedWorkspace() async throws {
         let server = try MobileSyncMockHostServer(
-            supportsManualAttachTicket: true,
             workspaceCreateSelectsCreatedWorkspace: false
         )
         let port = try await server.start()
         defer { server.stop() }
 
-        let app = try launchConnectedAppViaManualPairing(port: port)
+        let app = try launchConnectedApp(server: server, port: port)
         defer { app.terminate() }
 
         let backButton = app.buttons["MobileWorkspaceBackButton"]
@@ -2365,7 +2422,7 @@ final class cmuxUITests: XCTestCase {
         let port = try await server.start()
         defer { server.stop() }
 
-        let app = try launchConnectedApp(port: port)
+        let app = try launchConnectedApp(server: server, port: port)
         let surface = app.otherElements["MobileTerminalSurface"]
         XCTAssertTrue(surface.waitForExistence(timeout: 8))
 
@@ -2419,7 +2476,7 @@ final class cmuxUITests: XCTestCase {
         let port = try await server.start()
         defer { server.stop() }
 
-        let app = try launchConnectedApp(port: port)
+        let app = try launchConnectedApp(server: server, port: port)
         let surface = app.otherElements["MobileTerminalSurface"]
         XCTAssertTrue(surface.waitForExistence(timeout: 8))
 
@@ -2562,7 +2619,7 @@ final class cmuxUITests: XCTestCase {
         let port = try await server.start()
         defer { server.stop() }
 
-        let app = try launchConnectedApp(port: port)
+        let app = try launchConnectedApp(server: server, port: port)
         try openSelectedWorkspaceIfNeeded(app)
         XCTAssertTrue(app.buttons["MobileWorkspaceBackButton"].waitForExistence(timeout: 4))
         XCTAssertTrue(app.buttons["MobileWorkspaceTitleMenu"].waitForExistence(timeout: 4))
@@ -2745,7 +2802,7 @@ final class cmuxUITests: XCTestCase {
         let port = try await server.start()
         defer { server.stop() }
 
-        let app = try launchConnectedApp(port: port)
+        let app = try launchConnectedApp(server: server, port: port)
         try openSelectedWorkspaceIfNeeded(app)
 
         tap(app.buttons["MobileTerminalDropdown"], in: app)
@@ -2788,7 +2845,7 @@ final class cmuxUITests: XCTestCase {
         let port = try await server.start()
         defer { server.stop() }
 
-        let app = try launchConnectedApp(port: port)
+        let app = try launchConnectedApp(server: server, port: port)
         try openSelectedWorkspaceIfNeeded(app)
 
         tap(app.buttons["MobileTerminalDropdown"], in: app)
@@ -2810,7 +2867,7 @@ final class cmuxUITests: XCTestCase {
         let port = try await server.start()
         defer { server.stop() }
 
-        let app = try launchConnectedApp(port: port)
+        let app = try launchConnectedApp(server: server, port: port)
         defer { app.terminate() }
         try openSelectedWorkspaceIfNeeded(app)
         try await switchToTUITerminal(in: app, server: server)
@@ -2855,7 +2912,7 @@ final class cmuxUITests: XCTestCase {
         let port = try await server.start()
         defer { server.stop() }
 
-        let app = try launchConnectedApp(port: port)
+        let app = try launchConnectedApp(server: server, port: port)
         try openSelectedWorkspaceIfNeeded(app)
         try await switchToTUITerminal(in: app, server: server)
 
@@ -2900,7 +2957,7 @@ final class cmuxUITests: XCTestCase {
         let port = try await server.start()
         defer { server.stop() }
 
-        let app = try launchConnectedApp(port: port, assertStatusRows: false)
+        let app = try launchConnectedApp(server: server, port: port, assertStatusRows: false)
 
         let surface = app.otherElements["MobileTerminalSurface"]
         XCTAssertTrue(surface.waitForExistence(timeout: 8))
@@ -3062,7 +3119,7 @@ final class cmuxUITests: XCTestCase {
         let port = try await server.start()
         defer { server.stop() }
 
-        let app = try launchConnectedApp(port: port)
+        let app = try launchConnectedApp(server: server, port: port)
         try openSelectedWorkspaceIfNeeded(app)
 
         let surface = app.otherElements["MobileTerminalSurface"]
@@ -4150,8 +4207,12 @@ final class cmuxUITests: XCTestCase {
     }
 
     @MainActor
-    private func launchConnectedApp(port: UInt16, assertStatusRows: Bool = true) throws -> XCUIApplication {
-        let attachURL = try attachURL(port: port)
+    private func launchConnectedApp(
+        server: MobileSyncMockHostServer,
+        port: UInt16,
+        assertStatusRows: Bool = true
+    ) throws -> XCUIApplication {
+        let attachURL = try server.pairingURL(port: port)
         let app = launchApp(mockData: true, environment: [
             "CMUX_UITEST_ATTACH_URL": attachURL.absoluteString,
         ])
@@ -4162,89 +4223,6 @@ final class cmuxUITests: XCTestCase {
             assertTerminalRow(1, label: "Mobile Core: connected", in: app)
         }
         return app
-    }
-
-    @MainActor
-    private func launchConnectedAppViaManualPairing(port: UInt16) throws -> XCUIApplication {
-        let portText = String(port)
-        guard let finalPortDigit = portText.last else {
-            throw URLError(.badURL)
-        }
-        let app = launchApp(mockData: true, environment: [
-            "CMUX_UITEST_ADD_DEVICE_PORT": String(portText.dropLast()),
-            "CMUX_UITEST_SCANNER_PREVIEW": "1",
-        ], launchArguments: [
-            "-cmux.mobile.taskComposerEnabled", "YES",
-        ])
-        let scannerCancel = app.buttons["MobileScannerCancelButton"]
-        XCTAssertTrue(scannerCancel.waitForExistence(timeout: 8))
-        scannerCancel.tap()
-        let pairingForm = app.otherElements["MobileAddDeviceForm"]
-        XCTAssertTrue(pairingForm.waitForExistence(timeout: 8))
-
-        let hostField = app.textFields["MobileAddDeviceHostField"]
-        XCTAssertTrue(hostField.waitForExistence(timeout: 4))
-        hostField.tap()
-        hostField.typeText("127.0.0.1")
-
-        let portField = app.textFields["MobileAddDevicePortField"]
-        XCTAssertTrue(portField.waitForExistence(timeout: 4))
-        portField.tap()
-        portField.typeText(String(finalPortDigit))
-        XCTAssertEqual(hostField.value as? String, "127.0.0.1")
-        XCTAssertEqual(portField.value as? String, portText)
-
-        let pairButton = app.buttons["MobilePairButton"]
-        let pairReady = XCTNSPredicateExpectation(
-            predicate: NSPredicate(format: "enabled == true"),
-            object: pairButton
-        )
-        XCTAssertEqual(XCTWaiter.wait(for: [pairReady], timeout: 4), .completed)
-        XCTAssertTrue(pairButton.isHittable)
-        pairButton.tap()
-
-        XCTAssertTrue(
-            pairingForm.waitForNonExistence(timeout: 20),
-            "Successful manual loopback pairing must dismiss the Add Computer sheet"
-        )
-
-        waitForWorkspaceShell(in: app)
-        try openSelectedWorkspaceIfNeeded(app)
-        assertTerminalRow(0, label: "$ cmux ios status", in: app)
-        assertTerminalRow(1, label: "Mobile Core: connected", in: app)
-        return app
-    }
-
-    private func attachURL(port: UInt16) throws -> URL {
-        let route = try CmxAttachRoute(
-            id: "debug_loopback",
-            kind: .debugLoopback,
-            endpoint: .hostPort(host: "127.0.0.1", port: Int(port))
-        )
-        let ticket = try CmxAttachTicket(
-            workspaceID: "",
-            terminalID: nil,
-            macDeviceID: "ui-test-mac",
-            macDisplayName: "UI Test Mac",
-            macPairingCompatibilityVersion: CmxMobileDefaults.pairingCompatibilityVersion,
-            routes: [route],
-            expiresAt: Date(timeIntervalSinceNow: 60 * 60),
-            authToken: "ui-test-ticket"
-        )
-        let encoder = JSONEncoder()
-        encoder.dateEncodingStrategy = .iso8601
-        let payload = base64URLEncode(try encoder.encode(ticket))
-        guard let url = URL(string: "cmux-ios://attach?v=\(ticket.version)&payload=\(payload)") else {
-            throw URLError(.badURL)
-        }
-        return url
-    }
-
-    private func base64URLEncode(_ data: Data) -> String {
-        data.base64EncodedString()
-            .replacingOccurrences(of: "+", with: "-")
-            .replacingOccurrences(of: "/", with: "_")
-            .replacingOccurrences(of: "=", with: "")
     }
 
     @MainActor
@@ -6333,7 +6311,7 @@ final class cmuxUITests: XCTestCase {
         let port = try await server.start()
         defer { server.stop() }
 
-        let app = try launchConnectedApp(port: port)
+        let app = try launchConnectedApp(server: server, port: port)
         XCTAssertTrue(app.otherElements["MobileTerminalSurface"].waitForExistence(timeout: 8))
 
         // Baseline: the composer is OPEN BY DEFAULT for the selected terminal
@@ -6411,7 +6389,7 @@ final class cmuxUITests: XCTestCase {
         let port = try await server.start()
         defer { server.stop() }
 
-        let app = try launchConnectedApp(port: port)
+        let app = try launchConnectedApp(server: server, port: port)
         let surface = app.otherElements["MobileTerminalSurface"]
         XCTAssertTrue(surface.waitForExistence(timeout: 8))
 
@@ -6485,7 +6463,7 @@ final class cmuxUITests: XCTestCase {
         let port = try await server.start()
         defer { server.stop() }
 
-        let app = try launchConnectedApp(port: port)
+        let app = try launchConnectedApp(server: server, port: port)
         XCTAssertTrue(app.otherElements["MobileTerminalSurface"].waitForExistence(timeout: 8))
 
         let composeButton = app.buttons[Composer.composeButton]
@@ -6515,7 +6493,7 @@ final class cmuxUITests: XCTestCase {
         let port = try await server.start()
         defer { server.stop() }
 
-        let app = try launchConnectedApp(port: port)
+        let app = try launchConnectedApp(server: server, port: port)
         let surface = app.otherElements["MobileTerminalSurface"]
         XCTAssertTrue(surface.waitForExistence(timeout: 8))
 
@@ -6568,7 +6546,7 @@ final class cmuxUITests: XCTestCase {
         let port = try await server.start()
         defer { server.stop() }
 
-        let app = try launchConnectedApp(port: port)
+        let app = try launchConnectedApp(server: server, port: port)
         XCTAssertTrue(app.otherElements["MobileTerminalSurface"].waitForExistence(timeout: 8))
         let composeButton = app.buttons[Composer.composeButton]
         XCTAssertTrue(composeButton.waitForExistence(timeout: 6))
@@ -6658,9 +6636,11 @@ private final class MobileSyncMockHostServer: @unchecked Sendable {
     }
 
     private let listener: NWListener
+    private let macFingerprint: DeviceFingerprint
+    private let enrollmentTicket: String
+    private let trust: MobileSyncMockHostTrust
     private let queue = DispatchQueue(label: "dev.cmux.ios-ui-tests.mobile-sync-server")
     private let createdWorkspaceTerminalDelay: TimeInterval?
-    private let supportsManualAttachTicket: Bool
     private let workspaceCreateSelectsCreatedWorkspace: Bool
     private let macInstanceTag: String
     private var readyContinuation: CheckedContinuation<UInt16, Error>?
@@ -6724,13 +6704,22 @@ private final class MobileSyncMockHostServer: @unchecked Sendable {
         defaultTerminalLines: [String]? = nil,
         additionalMainTerminalCount: Int = 0,
         createdWorkspaceTerminalDelay: TimeInterval? = nil,
-        supportsManualAttachTicket: Bool = false,
         workspaceCreateSelectsCreatedWorkspace: Bool = true,
         macInstanceTag: String = mockHostInstanceTag()
     ) throws {
-        listener = try NWListener(using: .tcp, on: .any)
+        let material = try DeviceIdentityMaterial.generate(commonName: "cmux-ui-test-mac")
+        let identity = try SecIdentityFactory.makeIdentity(from: material)
+        let enrollmentTicket = UUID().uuidString
+        let trust = MobileSyncMockHostTrust(enrollmentTicket: enrollmentTicket)
+        let tlsOptions = DeviceLinkTLS.listenerOptions(identity: identity) { fingerprint in
+            trust.authorize(fingerprint)
+        }
+        let parameters = NWParameters(tls: tlsOptions)
+        listener = try NWListener(using: parameters, on: .any)
+        macFingerprint = material.fingerprint
+        self.enrollmentTicket = enrollmentTicket
+        self.trust = trust
         self.createdWorkspaceTerminalDelay = createdWorkspaceTerminalDelay
-        self.supportsManualAttachTicket = supportsManualAttachTicket
         self.workspaceCreateSelectsCreatedWorkspace = workspaceCreateSelectsCreatedWorkspace
         self.macInstanceTag = macInstanceTag
         appendMainTerminals(count: additionalMainTerminalCount)
@@ -6741,6 +6730,28 @@ private final class MobileSyncMockHostServer: @unchecked Sendable {
             workspaces[0].terminals[0].lines = lines
             workspaces[0].terminals[0].activeScreen = "primary"
         }
+    }
+
+    func pairingURL(port: UInt16) throws -> URL {
+        let payload = PairingPayload(
+            scheme: "cmux-ios",
+            routes: ["127.0.0.1:\(port)"],
+            macFingerprint: macFingerprint,
+            enrollmentTicket: enrollmentTicket,
+            macLabel: "UI Test Mac"
+        )
+        guard let url = PairingPayloadCoder.encode(payload) else {
+            throw serverError("Could not encode the DeviceLink pairing URL.")
+        }
+        return url
+    }
+
+    var enrollmentCount: Int {
+        trust.enrollmentCount
+    }
+
+    var authenticatedReconnectCount: Int {
+        trust.authenticatedReconnectCount
     }
 
     private func appendMainTerminals(count: Int) {
@@ -6969,7 +6980,7 @@ private final class MobileSyncMockHostServer: @unchecked Sendable {
 
     private func respond(to payload: Data, on connection: NWConnection, remainingBuffer: Data) {
         do {
-            let responseFrame = try makeResponseFrame(for: payload)
+            let responseFrame = try makeResponseFrame(for: payload, from: connection)
             connection.send(
                 content: responseFrame,
                 contentContext: .defaultMessage,
@@ -6989,7 +7000,7 @@ private final class MobileSyncMockHostServer: @unchecked Sendable {
         }
     }
 
-    private func makeResponseFrame(for payload: Data) throws -> Data {
+    private func makeResponseFrame(for payload: Data, from connection: NWConnection) throws -> Data {
         guard let request = try JSONSerialization.jsonObject(with: payload) as? [String: Any],
               let method = request["method"] as? String else {
             throw serverError("Invalid request.")
@@ -6997,44 +7008,41 @@ private final class MobileSyncMockHostServer: @unchecked Sendable {
 
         let id = request["id"] as? String ?? ""
         let params = request["params"] as? [String: Any] ?? [:]
-        if method == "mobile.attach_ticket.create", !supportsManualAttachTicket {
-            let envelope: [String: Any] = [
-                "id": id,
-                "ok": false,
-                "error": [
-                    "code": "method_not_found",
-                    "message": "Unknown method",
-                ],
-            ]
-            let responsePayload = try JSONSerialization.data(withJSONObject: envelope)
-            return Self.frame(responsePayload)
-        }
         let result: [String: Any]
 
         switch method {
-        case "mobile.attach_ticket.create":
-            result = try manualAttachTicketResult()
+        case "mobile.pairing.device.enroll":
+            return try enrollmentResponseFrame(id: id, params: params, connection: connection)
         case "mobile.workspace.list", "workspace.list":
+            try requireEnrolled(connection)
             result = workspaceListResult()
         case "workspace.create":
+            try requireEnrolled(connection)
             result = createWorkspaceResult(params: params)
         case "terminal.create":
+            try requireEnrolled(connection)
             result = createTerminalResult(params: params)
         case "mobile.events.subscribe":
+            try requireEnrolled(connection)
             result = ["stream_id": params["stream_id"] as? String ?? "events"]
         case "mobile.host.status":
+            try requireEnrolled(connection)
             result = mobileHostStatusResult()
         case "mobile.terminal.viewport", "terminal.viewport":
+            try requireEnrolled(connection)
             result = [
                 "columns": params["viewport_columns"] as? Int ?? 80,
                 "rows": params["viewport_rows"] as? Int ?? 24,
             ]
         case "mobile.terminal.replay", "terminal.replay":
+            try requireEnrolled(connection)
             result = terminalReplayResult(params: params)
         case "mobile.terminal.scroll":
+            try requireEnrolled(connection)
             terminalScrollRequestsReceived += 1
             result = [:]
         default:
+            try requireEnrolled(connection)
             result = [:]
         }
 
@@ -7045,6 +7053,60 @@ private final class MobileSyncMockHostServer: @unchecked Sendable {
         ]
         let responsePayload = try JSONSerialization.data(withJSONObject: envelope)
         return Self.frame(responsePayload)
+    }
+
+    private func enrollmentResponseFrame(
+        id: String,
+        params: [String: Any],
+        connection: NWConnection
+    ) throws -> Data {
+        let fingerprint = try peerFingerprint(of: connection)
+        let ticket = params["ticket"] as? String ?? ""
+        let redemption = trust.redeem(ticket: ticket, fingerprint: fingerprint)
+        switch redemption {
+        case .enrolled, .alreadyEnrolled:
+            let envelope: [String: Any] = [
+                "id": id,
+                "ok": true,
+                "result": [
+                    "enrolled": true,
+                    "already_enrolled": redemption == .alreadyEnrolled,
+                    "device_label": params["device_label"] as? String ?? "UI Test Phone",
+                    "fingerprint": fingerprint.hex,
+                    "mac_device_id": "ui-test-mac",
+                    "mac_instance_tag": macInstanceTag,
+                    "mac_display_name": "UI Test Mac",
+                ],
+            ]
+            return Self.frame(try JSONSerialization.data(withJSONObject: envelope))
+        case .refused:
+            let envelope: [String: Any] = [
+                "id": id,
+                "ok": false,
+                "error": [
+                    "code": "forbidden",
+                    "message": "This pairing code is no longer valid.",
+                ],
+            ]
+            return Self.frame(try JSONSerialization.data(withJSONObject: envelope))
+        }
+    }
+
+    private func requireEnrolled(_ connection: NWConnection) throws {
+        guard trust.isEnrolled(try peerFingerprint(of: connection)) else {
+            throw serverError("An unenrolled DeviceLink connection attempted an ordinary RPC.")
+        }
+    }
+
+    private func peerFingerprint(of connection: NWConnection) throws -> DeviceFingerprint {
+        guard let metadata = connection.metadata(definition: NWProtocolTLS.definition)
+            as? NWProtocolTLS.Metadata,
+            DeviceLinkTLS.negotiatedApplicationProtocol(from: metadata) == DeviceLinkTLS.applicationProtocol,
+            let fingerprint = DeviceLinkTLS.peerFingerprint(from: metadata)
+        else {
+            throw serverError("The DeviceLink TLS handshake did not expose an authenticated peer.")
+        }
+        return fingerprint
     }
 
     private func mobileHostStatusResult() -> [String: Any] {
@@ -7072,30 +7134,6 @@ private final class MobileSyncMockHostServer: @unchecked Sendable {
             "terminal_fidelity": "render_grid",
             "capabilities": capabilities,
         ]
-    }
-
-    private func manualAttachTicketResult() throws -> [String: Any] {
-        guard let port = listener.port?.rawValue else {
-            throw serverError("Listener has no port.")
-        }
-        let route = try CmxAttachRoute(
-            id: "debug_loopback",
-            kind: .debugLoopback,
-            endpoint: .hostPort(host: "127.0.0.1", port: Int(port))
-        )
-        let ticket = try CmxAttachTicket(
-            workspaceID: "",
-            terminalID: nil,
-            macDeviceID: "ui-test-mac",
-            macDisplayName: "UI Test Mac",
-            macPairingCompatibilityVersion: CmxMobileDefaults.pairingCompatibilityVersion,
-            routes: [route],
-            expiresAt: Date(timeIntervalSinceNow: 60 * 60),
-            authToken: "ui-test-ticket"
-        )
-        let encoder = JSONEncoder()
-        encoder.dateEncodingStrategy = .iso8601
-        return ["ticket": try JSONSerialization.jsonObject(with: encoder.encode(ticket))]
     }
 
     private func createWorkspaceResult(params: [String: Any]) -> [String: Any] {
@@ -7370,19 +7408,86 @@ private final class MobileSyncMockHostServer: @unchecked Sendable {
     }
 }
 
-/// Maps the XCUITest bundle back to the target app's tagged DEBUG build scope.
-/// Tagged builds override the test bundle identifier with the app identifier;
-/// ordinary UI tests retain their reserved `uitests` identifier and map to the
-/// production policy's `dev` fallback.
+private final class MobileSyncMockHostTrust: @unchecked Sendable {
+    enum Redemption: Equatable {
+        case enrolled
+        case alreadyEnrolled
+        case refused
+    }
+
+    private let enrollmentTicket: String
+    private let lock = NSLock()
+    private var enrolledFingerprints: Set<DeviceFingerprint> = []
+    private var ticketWasRedeemed = false
+    private var storedEnrollmentCount = 0
+    private var storedAuthenticatedReconnectCount = 0
+
+    var enrollmentCount: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return storedEnrollmentCount
+    }
+
+    var authenticatedReconnectCount: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return storedAuthenticatedReconnectCount
+    }
+
+    init(enrollmentTicket: String) {
+        self.enrollmentTicket = enrollmentTicket
+    }
+
+    func authorize(_ fingerprint: DeviceFingerprint) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        if enrolledFingerprints.contains(fingerprint) {
+            storedAuthenticatedReconnectCount += 1
+            return true
+        }
+        return !ticketWasRedeemed
+    }
+
+    func redeem(ticket: String, fingerprint: DeviceFingerprint) -> Redemption {
+        lock.lock()
+        defer { lock.unlock() }
+        if enrolledFingerprints.contains(fingerprint) {
+            return .alreadyEnrolled
+        }
+        guard !ticketWasRedeemed, ticket == enrollmentTicket else {
+            return .refused
+        }
+        enrolledFingerprints.insert(fingerprint)
+        ticketWasRedeemed = true
+        storedEnrollmentCount += 1
+        return .enrolled
+    }
+
+    func isEnrolled(_ fingerprint: DeviceFingerprint) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return enrolledFingerprints.contains(fingerprint)
+    }
+}
+
+/// Maps the XCUITest runner to the target app's tagged DEBUG build scope.
+/// The shared scheme forwards `CMUX_DEV_TAG`; ordinary test runners retain their
+/// reserved `uitests` identifier and map to the production policy's `dev` fallback.
 private func mockHostInstanceTag(
-    testBundleIdentifier: String? = Bundle(for: cmuxUITests.self).bundleIdentifier
+    testBundleIdentifier: String? = Bundle(for: cmuxUITests.self).bundleIdentifier,
+    environment: [String: String] = ProcessInfo.processInfo.environment
 ) -> String {
+    if let explicitTag = environment["CMUX_UITEST_HOST_INSTANCE_TAG"]?
+        .trimmingCharacters(in: .whitespacesAndNewlines),
+       !explicitTag.isEmpty {
+        return explicitTag
+    }
     let runnerSuffix = ".xctrunner"
     guard let testBundleIdentifier else { return "dev" }
     let appBundleIdentifier = testBundleIdentifier.hasSuffix(runnerSuffix)
         ? String(testBundleIdentifier.dropLast(runnerSuffix.count))
         : testBundleIdentifier
-    guard appBundleIdentifier != "dev.cmux.ios.uitests" else { return "dev" }
+    guard !appBundleIdentifier.hasSuffix(".ios.uitests") else { return "dev" }
     return MobileIOSBuildScope.current(
         infoDictionary: nil,
         bundleIdentifier: appBundleIdentifier

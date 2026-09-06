@@ -51,6 +51,19 @@ extension MobileShellComposite {
         )
     }
 
+    /// Creates the local scope for a just-completed DeviceLink enrollment.
+    /// This is deliberately narrower than ``currentScopeSnapshot``: only the
+    /// persistence path calls it, after mutual TLS proved the pairing, while a
+    /// generic signed-out shell still cannot mint a readable scope.
+    func accountFreeEnrollmentScopeSnapshot() async -> MobileShellScopeSnapshot? {
+        guard !isSignedIn else { return nil }
+        return MobileShellScopeSnapshot(
+            userID: MobileLocalPairingScope.identifier(),
+            teamID: await teamIDProvider(),
+            generation: secondaryAggregationScopeGeneration
+        )
+    }
+
     func pairedMacScopeKey(_ scope: MobileShellScopeSnapshot) -> String {
         makePairedMacScopeKey(userID: scope.userID, teamID: scope.teamID)
     }

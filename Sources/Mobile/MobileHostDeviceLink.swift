@@ -20,6 +20,95 @@ func logDeviceLinkHost(_ message: String) {
     #endif
 }
 
+private struct MobileHostIdentityLoadTimeoutError: Error, CustomStringConvertible {
+    var description: String {
+        "The login keychain did not answer before the pairing identity deadline."
+    }
+}
+
+/// Fan-out for one uncancellable Security.framework request. Waiters have their
+/// own cancellation and deadline, while the underlying load remains single and
+/// can eventually satisfy a retry without opening a concurrent generate.
+private final class MobileHostIdentityMaterialLoadState: @unchecked Sendable {
+    private let lock = NSLock()
+    private var result: Result<DeviceIdentityMaterial, any Error>?
+    private var waiters: [UUID: CheckedContinuation<DeviceIdentityMaterial, any Error>] = [:]
+
+    var hasCompletedFailure: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        guard case .failure = result else { return false }
+        return true
+    }
+
+    func finish(_ result: Result<DeviceIdentityMaterial, any Error>) {
+        lock.lock()
+        guard self.result == nil else {
+            lock.unlock()
+            return
+        }
+        self.result = result
+        let continuations = Array(waiters.values)
+        waiters.removeAll()
+        lock.unlock()
+        continuations.forEach { $0.resume(with: result) }
+    }
+
+    func value(timeout: Duration) async throws -> DeviceIdentityMaterial {
+        let waiterID = UUID()
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                lock.lock()
+                if let result {
+                    lock.unlock()
+                    continuation.resume(with: result)
+                    return
+                }
+                if Task.isCancelled {
+                    lock.unlock()
+                    continuation.resume(throwing: CancellationError())
+                    return
+                }
+                waiters[waiterID] = continuation
+                // Cancellation may have raced the first check and run its
+                // handler before this waiter was inserted. Re-check while the
+                // lock still orders insertion against resolveWaiter().
+                if Task.isCancelled {
+                    let cancelled = waiters.removeValue(forKey: waiterID)
+                    lock.unlock()
+                    cancelled?.resume(throwing: CancellationError())
+                    return
+                }
+                lock.unlock()
+
+                Task {
+                    do {
+                        try await ContinuousClock().sleep(for: timeout)
+                        self.resolveWaiter(
+                            waiterID,
+                            with: .failure(MobileHostIdentityLoadTimeoutError())
+                        )
+                    } catch {
+                        // Cancellation is delivered by the handler below.
+                    }
+                }
+            }
+        } onCancel: {
+            self.resolveWaiter(waiterID, with: .failure(CancellationError()))
+        }
+    }
+
+    private func resolveWaiter(
+        _ waiterID: UUID,
+        with result: Result<DeviceIdentityMaterial, any Error>
+    ) {
+        lock.lock()
+        let continuation = waiters.removeValue(forKey: waiterID)
+        lock.unlock()
+        continuation?.resume(with: result)
+    }
+}
+
 /// The Mac's DeviceLink state: its own TLS identity, the authorized-devices
 /// table, and the coordinator that serializes admission against revocation.
 ///
@@ -52,19 +141,49 @@ final class MobileHostDeviceLink {
     /// looks exactly like an unreachable Mac. This snapshot is refreshed
     /// whenever the table or the enrollment window changes.
     private let admissionSnapshot = MobileHostDeviceLinkAdmissionSnapshot()
-    private let identityStore: KeychainDeviceIdentityStore
+    typealias IdentityMaterialLoader = @Sendable () throws -> DeviceIdentityMaterial
+    private let identityMaterialLoader: IdentityMaterialLoader
+    private let identityLoadTimeout: Duration
+    private var identityLoadTask: (
+        id: UUID,
+        state: MobileHostIdentityMaterialLoadState
+    )?
     private var cachedIdentity: (material: DeviceIdentityMaterial, secIdentity: SecIdentity)?
     private var didLoad = false
+    #if DEBUG
+    private(set) var debugIdentityLoadWaiterCount = 0
+    var debugIdentityLoadHasCompletedFailure: Bool {
+        identityLoadTask?.state.hasCompletedFailure ?? false
+    }
+    #endif
 
     /// Identity slot for the Mac's own listener certificate. The Mac presents
     /// one identity to every phone (it is the identified party); phones keep a
     /// distinct identity per Mac.
-    private static let hostIdentitySlot = "host"
+    nonisolated private static let hostIdentitySlot = "host"
 
-    private init() {
-        let scope = Self.keychainScope
+    private convenience init() {
+        self.init(scope: Self.keychainScope)
+    }
+
+    /// Internal injection point for proving that a slow Security.framework
+    /// read never runs on the main actor. Production passes no loader and owns
+    /// the scoped Keychain store below.
+    init(
+        scope: KeychainScope,
+        identityMaterialLoader: IdentityMaterialLoader? = nil,
+        identityLoadTimeout: Duration = MobileHostPairingDeadlines.identityLoad
+    ) {
         coordinator = DeviceLinkCoordinator(store: KeychainAuthorizedDeviceStore(scope: scope))
-        identityStore = KeychainDeviceIdentityStore(scope: scope)
+        self.identityLoadTimeout = identityLoadTimeout
+        if let identityMaterialLoader {
+            self.identityMaterialLoader = identityMaterialLoader
+        } else {
+            let store = KeychainDeviceIdentityStore(scope: scope)
+            self.identityMaterialLoader = {
+                try Self.loadOrCreateIdentityMaterial(in: store)
+            }
+        }
     }
 
     /// Loads the authorized-devices table.
@@ -98,16 +217,16 @@ final class MobileHostDeviceLink {
     }
 
     /// This Mac's SPKI fingerprint, for the pairing QR.
-    func hostFingerprint() -> DeviceFingerprint? {
-        try? hostIdentity().material.fingerprint
+    func hostFingerprint() async -> DeviceFingerprint? {
+        try? await hostIdentity().material.fingerprint
     }
 
     /// Same as ``hostFingerprint()`` but surfaces why it failed.
     ///
     /// Identity setup touches the keychain, which fails in ways worth naming
     /// (locked, unentitled, corrupt) rather than collapsing to "unavailable".
-    func hostFingerprintOrThrow() throws -> DeviceFingerprint {
-        try hostIdentity().material.fingerprint
+    func hostFingerprintOrThrow() async throws -> DeviceFingerprint {
+        try await hostIdentity().material.fingerprint
     }
 
     /// TLS options for the pairing listener.
@@ -116,8 +235,8 @@ final class MobileHostDeviceLink {
     /// coordinator, so table reads are ordered against revocations. An unknown
     /// key is admitted **only** while an enrollment window is open, and even
     /// then the connection is restricted to the enrollment verb.
-    func listenerOptions() throws -> NWProtocolTLS.Options {
-        let identity = try hostIdentity().secIdentity
+    func listenerOptions() async throws -> NWProtocolTLS.Options {
+        let identity = try await hostIdentity().secIdentity
         let snapshot = admissionSnapshot
         // Load the table into the snapshot the moment the listener exists.
         // Without this the snapshot starts empty and stays empty until
@@ -254,12 +373,97 @@ final class MobileHostDeviceLink {
     /// the identity simply lives under a different account on such Macs.
     /// Healthy Macs never touch this slot, so their identities (and their
     /// phones' pinned fingerprints) are unaffected.
-    private static let hostIdentityFallbackSlot = "host.v2"
+    nonisolated private static let hostIdentityFallbackSlot = "host.v2"
 
-    /// Loads or creates this Mac's TLS identity.
-    private func hostIdentity() throws -> (material: DeviceIdentityMaterial, secIdentity: SecIdentity) {
-        if let cachedIdentity { return cachedIdentity }
+    /// Loads or creates this Mac's TLS identity without ever asking
+    /// Security.framework to read the login keychain on the main actor.
+    private func hostIdentity() async throws -> (material: DeviceIdentityMaterial, secIdentity: SecIdentity) {
+        if let cachedIdentity {
+            try Task.checkCancellation()
+            return cachedIdentity
+        }
 
+        // A timed-out caller leaves the uncancellable Security.framework task
+        // alive. If that task subsequently failed, discard the completed
+        // failure before joining so the very next retry starts a fresh load
+        // instead of replaying a stale error once.
+        if identityLoadTask?.state.hasCompletedFailure == true {
+            identityLoadTask = nil
+        }
+
+        let loadID: UUID
+        let loadState: MobileHostIdentityMaterialLoadState
+        if let identityLoadTask {
+            loadID = identityLoadTask.id
+            loadState = identityLoadTask.state
+        } else {
+            let loader = identityMaterialLoader
+            loadID = UUID()
+            loadState = MobileHostIdentityMaterialLoadState()
+            Task.detached(priority: .userInitiated) {
+                let result = Result { try loader() }
+                loadState.finish(result)
+            }
+            identityLoadTask = (loadID, loadState)
+        }
+
+        let material: DeviceIdentityMaterial
+        do {
+            #if DEBUG
+            debugIdentityLoadWaiterCount += 1
+            defer { debugIdentityLoadWaiterCount -= 1 }
+            #endif
+            material = try await loadState.value(timeout: identityLoadTimeout)
+        } catch is CancellationError {
+            // Cancellation belongs to this waiter. The shared keychain task may
+            // still complete and must remain available to a replacement start.
+            throw CancellationError()
+        } catch is MobileHostIdentityLoadTimeoutError {
+            // Security.framework calls cannot be cancelled safely. Keep the
+            // single task so a later retry can observe its eventual result
+            // without opening a concurrent identity-generation transaction.
+            throw MobileHostIdentityLoadTimeoutError()
+        } catch {
+            if identityLoadTask?.id == loadID {
+                identityLoadTask = nil
+            }
+            try Task.checkCancellation()
+            throw error
+        }
+
+        // Another coalesced waiter may have populated the cache while this
+        // actor job was suspended. Reuse it rather than rebuilding SecIdentity.
+        if let cachedIdentity {
+            try Task.checkCancellation()
+            return cachedIdentity
+        }
+
+        let secIdentity: SecIdentity
+        do {
+            secIdentity = try SecIdentityFactory.makeIdentity(from: material)
+        } catch {
+            if identityLoadTask?.id == loadID {
+                identityLoadTask = nil
+            }
+            throw error
+        }
+        let resolved = (material, secIdentity)
+        cachedIdentity = resolved
+        if identityLoadTask?.id == loadID {
+            identityLoadTask = nil
+        }
+        // Preserve the successfully-loaded identity for a replacement start,
+        // but still let a deliberately cancelled caller exit as cancelled.
+        try Task.checkCancellation()
+        return resolved
+    }
+
+    /// Synchronous keychain work isolated behind ``hostIdentity()``'s detached
+    /// task. Keeping the whole read-generate-save transaction on one worker
+    /// preserves its fallback semantics without blocking UI or app startup.
+    private nonisolated static func loadOrCreateIdentityMaterial(
+        in identityStore: KeychainDeviceIdentityStore
+    ) throws -> DeviceIdentityMaterial {
         let material: DeviceIdentityMaterial
         if let existing = try identityStore.identity(forPairingID: Self.hostIdentitySlot) {
             material = existing
@@ -280,10 +484,7 @@ final class MobileHostDeviceLink {
             deviceLinkLog.info("devicelink: generated host identity \(material.fingerprint.shortForm, privacy: .public)")
         }
 
-        let secIdentity = try SecIdentityFactory.makeIdentity(from: material)
-        let resolved = (material, secIdentity)
-        cachedIdentity = resolved
-        return resolved
+        return material
     }
 }
 

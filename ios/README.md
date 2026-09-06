@@ -69,12 +69,12 @@ Info.plist value.
 
 ## TestFlight beta (cloud lane)
 
-`ios/scripts/cloud-testflight.sh` is the turnkey lane for cutting a TestFlight
+`ios/scripts/cloud-testflight.sh` is the turnkey helper for cutting a TestFlight
 beta. It builds the heavy GhosttyKit + Swift Release compile on a leased fleet
 Mac (same maclease pool as the device cloud reload, m1ultra excluded), so the
 build stays off this Mac's CPU. The fleet produces an UNSIGNED Release archive
-for the beta bundle id `dev.cmux.app.beta` (no signing material ever lands on
-the shared Macs), downloads it locally, then hands it to
+for the fork beta bundle id `com.cmux-mochi.ios` (no signing material ever lands
+on the shared Macs), downloads it locally, then hands it to
 `ios/scripts/upload-testflight.sh --archive-path`, which does the local export,
 re-sign with the Apple Distribution cert (re-adding `aps-environment=production`),
 strict codesign verification, and TestFlight upload.
@@ -85,58 +85,38 @@ ios/scripts/cloud-testflight.sh --no-upload
 
 # Full lane: build on the fleet and upload to TestFlight (internal "cmux beta" group)
 ios/scripts/cloud-testflight.sh
-
-# Also make the build eligible for external testers
-ios/scripts/cloud-testflight.sh --external
 ```
 
 A standalone cmux clone with no cmuxterm-hq checkout transparently falls back to
 a LOCAL Release archive (`--local` forces it), then takes the same export path.
 
-Internal testers (the `cmux beta` group) get every uploaded build instantly with
-no review. An `--external` build is different: the FIRST external build of a new
-`MARKETING_VERSION` must pass a one-time Apple Beta App Review (~24h) before any
-external tester can install it. Subsequent external builds of the same version
-ship without re-review. External cuts reuse
-`CMUX_IOS_BETA_MARKETING_VERSION` from `ios/Config/Shared.xcconfig`; bump it
-only when you want a fresh Beta App Review cycle. The upload path assigns the
-processed build to both the Founder's Edition and Pro external beta groups. It
-uses `CMUX_TESTFLIGHT_EXTERNAL_GROUP_ID` /
-`CMUX_TESTFLIGHT_EXTERNAL_GROUP_NAME` for the primary group and
-`CMUX_TESTFLIGHT_PRO_GROUP_ID` for Pro. GitHub Actions maps the repository
-variables `IOS_TESTFLIGHT_EXTERNAL_GROUP_ID`,
-`IOS_TESTFLIGHT_EXTERNAL_GROUP_NAME`, and `IOS_TESTFLIGHT_PRO_GROUP_ID` to those
-script inputs. When Apple reports the build as `READY_FOR_BETA_SUBMISSION`, the
-same lane also creates the beta app review submission automatically so a new
-`MARKETING_VERSION` is not left stuck at "Ready to Submit".
-
-If CI is moved back from a pending higher version to the last approved version,
-external testers are unblocked because they could not install the pending build.
-Internal testers who already installed that higher internal-only build will not
-see lower-version builds as updates in TestFlight. They need a one-time app
-reinstall, or operators need to cut an internal-only build on the higher version.
+Internal testers get every uploaded build immediately, with no Beta App Review.
+The inherited upload helper still contains external-distribution support, but
+the fork's official GitHub Actions lane does not provision or publish an
+external audience. Do not use `--external` for a fork release unless that
+audience and its signing/distribution contract are deliberately restored first.
 
 ## TestFlight GitHub Actions signing
 
 `.github/workflows/ios-testflight.yml` uses manual export signing because Xcode's
 automatic App Store Connect export has produced IPAs whose signed app
 entitlements omit `aps-environment=production`. That upload is intentionally
-blocked because TestFlight push would silently fail. Scheduled `main` uploads
-ship only to the internal TestFlight group. A manual run with
-`marketing_version_override` switches to the external beta bundle, installs its
-provisioning profile, and assigns the processed build to both the Founder's
-Edition and Pro groups. That external override reuses an already approved
-marketing version and auto-submits the first build when Apple reports that Beta
-App Review is required.
+blocked because TestFlight push would silently fail. The workflow is manual-only,
+publishes only from `main`, signs `com.cmux-mochi.ios` with Atlas Codes team
+`599WAZ6282`, exports with `testFlightInternalTestingOnly=YES`, and assigns the
+processed build to the internal TestFlight group. The inherited
+`marketing_version_override` input is explicitly rejected because this fork has
+no external TestFlight lane.
 
 Required GitHub secrets:
 
 - `ASC_API_KEY_ID`
 - `ASC_API_ISSUER_ID`
 - `ASC_API_KEY_P8_BASE64`
-- `IOS_DISTRIBUTION_CERTIFICATE_BASE64` (base64-encoded `.p12` for an Apple Distribution certificate on team `7WLXT3NR37`)
+- `IOS_DISTRIBUTION_CERTIFICATE_BASE64` (base64-encoded `.p12` for an Apple Distribution certificate on team `599WAZ6282`)
 - `IOS_DISTRIBUTION_CERTIFICATE_PASSWORD`
-- `IOS_BETA_PROVISIONING_PROFILE_BASE64` (base64-encoded App Store profile for `dev.cmux.app.beta`, with `aps-environment=production`)
+- `IOS_BETA_PROVISIONING_PROFILE_INTERNAL_BASE64` (preferred; base64-encoded App Store profile for `com.cmux-mochi.ios`, with `aps-environment=production`)
+- `IOS_BETA_PROVISIONING_PROFILE_BASE64` (fallback name for the same `com.cmux-mochi.ios` profile)
 
 ## App Store production lane
 

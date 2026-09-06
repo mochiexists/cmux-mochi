@@ -40,6 +40,8 @@ public enum CmxNetworkByteTransportError: Error, Equatable, Sendable {
     case authorizationIntentRequired
     /// The request's authorization mode cannot be served by plaintext TCP.
     case unsupportedAuthorizationMode(CmxTransportAuthorizationMode)
+    /// No DeviceLink identity could be resolved for this authenticated request.
+    case deviceLinkAuthorizationUnavailable
     /// The exact legacy peer, live Tailscale-range tunnel, and effective
     /// connection endpoints could not all be proven.
     case tailscaleAuthorizationUnavailable
@@ -72,6 +74,12 @@ public actor CmxNetworkByteTransport: CmxByteTransport {
     public static let defaultMaximumReceiveLength = 64 * 1024
     /// Default connect deadline, after which ``connect()`` fails as timed out.
     public static let defaultConnectTimeoutNanoseconds: UInt64 = 15 * 1_000_000_000
+    /// Direct LAN candidates should either answer promptly or yield to the
+    /// durable tailnet fallback. A phone hotspot can advertise the tethered
+    /// Mac's address while isolating phone-to-client TCP; Network.framework
+    /// leaves that connection pending rather than reporting it unreachable.
+    public static let defaultLocalNetworkConnectTimeoutNanoseconds: UInt64 =
+        2 * 1_000_000_000
 
     private enum TransportState {
         case idle
@@ -690,7 +698,7 @@ public actor CmxNetworkByteTransport: CmxByteTransport {
         guard tailscaleBinding != nil, !isTerminal else { return }
         tailscalePathRevision = tailscalePathRevision == .max ? 1 : tailscalePathRevision + 1
         do {
-            try await validateTailscaleAuthorization(path: path)
+            try await validateTailscaleAuthorization(path: path, phase: .pathUpdate)
         } catch {
             tailscaleAuthorizationInvalidated = true
             failTransport(.tailscaleAuthorizationUnavailable)
@@ -703,7 +711,7 @@ public actor CmxNetworkByteTransport: CmxByteTransport {
             throw CmxNetworkByteTransportError.tailscaleAuthorizationUnavailable
         }
         let revision = tailscalePathRevision
-        try await validateTailscaleAuthorization(path: path)
+        try await validateTailscaleAuthorization(path: path, phase: .established)
         // The authority call yields this actor. Reject any connection-path
         // update that interleaved before the synchronous send boundary.
         guard revision == tailscalePathRevision else {
@@ -711,7 +719,10 @@ public actor CmxNetworkByteTransport: CmxByteTransport {
         }
     }
 
-    private func validateTailscaleAuthorization(path: NWPath) async throws {
+    private func validateTailscaleAuthorization(
+        path: NWPath,
+        phase: CmxTailscaleRouteValidationPhase
+    ) async throws {
         guard let binding = tailscaleBinding else { return }
         guard !tailscaleAuthorizationInvalidated,
               binding.request == binding.preparedRoute.proof.request,
@@ -721,7 +732,8 @@ public actor CmxNetworkByteTransport: CmxByteTransport {
         do {
             try await binding.authority.validate(
                 proof: binding.preparedRoute.proof,
-                connectionPath: path
+                connectionPath: path,
+                phase: phase
             )
         } catch {
             throw CmxNetworkByteTransportError.tailscaleAuthorizationUnavailable

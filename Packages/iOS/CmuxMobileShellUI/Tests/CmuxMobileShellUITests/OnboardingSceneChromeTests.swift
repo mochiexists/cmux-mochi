@@ -135,7 +135,7 @@ import UIKit
         let label = OnboardingBalancedText.makeLabel()
         OnboardingBalancedText.configure(
             label,
-            text: "Connect over your Tailscale network. Scan the pairing code shown on your Mac.",
+            text: "Scan the pairing code shown on your Mac. cmux uses your local network when available and Tailscale when you're away.",
             role: .body,
             alignment: .center,
             maximumNumberOfLines: 2

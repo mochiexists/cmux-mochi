@@ -53,7 +53,7 @@ enum CmuxSurfaceTabBarBuiltInAction: String, Codable, Sendable, CaseIterable, Ha
         case .cloudVM:
             return (String(localized: "command.cloudVM.title", defaultValue: "Open Base"), ["base", "cloud", "vm", "virtual", "machine", "remote"])
         case .mobileConnect:
-            return (String(localized: "command.mobileConnect.title", defaultValue: "Connect iPhone/iPad"), ["iphone", "ipad", "mobile", "phone", "pair", "connect"])
+            return (String(localized: "command.mobileConnect.title", defaultValue: "Pair a Device"), ["iphone", "ipad", "mobile", "phone", "pair", "connect"])
         case .newTerminal:
             return (String(localized: "command.newTerminalTab.title", defaultValue: "New Terminal Tab"), ["new", "terminal", "tab", "surface"])
         case .newBrowser:

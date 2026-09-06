@@ -14,6 +14,7 @@ DRC_HELPER_LOG=""
 DRC_XCODEBUILD_LOG=""
 DRC_HELPER_PID=""
 DRC_START_SIGNAL_PID=""
+DRC_APP_PID=""
 DRC_DISPLAY_LOCK_DIR=""
 DRC_DISPLAY_LOCK_TOKEN=""
 
@@ -49,7 +50,11 @@ cleanup_display_churn() {
   release_lock "$DRC_DISPLAY_LOCK_DIR" "$DRC_DISPLAY_LOCK_TOKEN"
   DRC_DISPLAY_LOCK_DIR=""
   DRC_DISPLAY_LOCK_TOKEN=""
-  pkill -x "cmux DEV" 2>/dev/null || true
+  if [ -n "${DRC_APP_PID:-}" ]; then
+    kill "$DRC_APP_PID" 2>/dev/null || true
+    wait "$DRC_APP_PID" 2>/dev/null || true
+    DRC_APP_PID=""
+  fi
   rm -f "$DRC_DIAG_PATH" "$DRC_DISPLAY_READY" "$DRC_DISPLAY_ID_PATH" "$DRC_DISPLAY_START" "$DRC_DISPLAY_DONE" "$DRC_HELPER_LOG" "$DRC_XCODEBUILD_LOG"
   rm -f /tmp/cmux-ui-test-prelaunch.json /tmp/cmux-ui-test-display-harness.json
 }
@@ -90,7 +95,7 @@ enable_xctest_automation_mode() {
 }
 
 find_app_binary() {
-  find "$CMUX_DERIVED_DATA_PATH" -path "*/Build/Products/Debug/cmux DEV.app/Contents/MacOS/cmux DEV" -print -quit 2>/dev/null || true
+  python3 scripts/ci/find-built-debug-app.py "$CMUX_DERIVED_DATA_PATH" --executable
 }
 
 run_display_resolution_churn() {
@@ -176,6 +181,7 @@ run_display_resolution_churn() {
       CMUX_TAG="ui-tests-display-resolution" \
       "$app_binary" > /tmp/cmux-ui-test-app.log 2>&1 &
     app_pid=$!
+    DRC_APP_PID="$app_pid"
     echo "App launched: PID=$app_pid"
 
     echo "Waiting for app diagnostics..."
@@ -197,7 +203,7 @@ run_display_resolution_churn() {
 
     if [ "$app_ready" != "true" ]; then
       echo "Attempt $attempt: App not ready after 15s"
-      pkill -x "cmux DEV" 2>/dev/null || true
+      kill "$app_pid" 2>/dev/null || true
       kill "$DRC_HELPER_PID" 2>/dev/null || true
       if [ "$attempt" -eq 2 ]; then
         echo "Display resolution UI regression failed after 2 attempts" >&2
@@ -363,6 +369,7 @@ run_browser_find_focus() {
     -destination "platform=macOS" \
     -maximum-test-execution-time-allowance 180 \
     -only-testing:cmuxUITests/BrowserPaneNavigationKeybindUITests/testCmdFOpensBrowserFindAfterCmdDCmdLNavigation \
+    -only-testing:cmuxUITests/TerminalCmdClickUITests \
     test-without-building
 }
 

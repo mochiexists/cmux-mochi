@@ -42,8 +42,9 @@ public struct CmxAttachTicketInput {
            version > CmxPairingQRCode.version {
             throw MobileSyncPairingPayloadError.unrecognizedURLVersion(version)
         }
-        // The plain pairing grammars: v2 carries bare Tailscale routes and v3
-        // carries one Iroh EndpointID. v1 carries a base64 JSON payload.
+        // The plain pairing grammars: v2 carries legacy Tailscale routes and v3
+        // carries DeviceLink network routes plus its pinned Mac identity. v1
+        // carries a base64 JSON payload.
         if CmxPairingQRCode().isPairingCodeURL(components) {
             return try CmxPairingQRCode().decode(components)
         }

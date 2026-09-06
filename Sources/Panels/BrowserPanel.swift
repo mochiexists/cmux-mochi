@@ -4055,9 +4055,10 @@ final class BrowserPanel: Panel, ObservableObject {
             BrowserToolbarAccessorySpacingDebugSettings.key: BrowserToolbarAccessorySpacingDebugSettings.defaultSpacing,
             BrowserProfilePopoverDebugSettings.horizontalPaddingKey: BrowserProfilePopoverDebugSettings.defaultHorizontalPadding,
             BrowserProfilePopoverDebugSettings.verticalPaddingKey: BrowserProfilePopoverDebugSettings.defaultVerticalPadding,
-            BrowserThemeSettings.modeKey: BrowserThemeSettings.defaultMode.rawValue,
         ])
 
+        // The theme reader supplies its own fallback. Registering the new key
+        // would hide an unset value and prevent migration of the legacy bool.
         let resolvedThemeMode = BrowserThemeSettings.mode(defaults: defaults)
         let currentThemeRaw = defaults.string(forKey: BrowserThemeSettings.modeKey)
             ?? BrowserThemeSettings.defaultMode.rawValue
@@ -4385,6 +4386,7 @@ final class BrowserPanel: Panel, ObservableObject {
             hiddenWebViewDiscardManager.updateRestoredSessionRenderIntent(nil)
             currentURL = initialRequest.url
             shouldRenderWebView = renderInitialNavigation
+            refreshWebViewLifecycleState()
             guard renderInitialNavigation else { return }
             if let url = initialRequest.url,
                insecureHTTPBypassHostOnce == nil,
@@ -4404,6 +4406,7 @@ final class BrowserPanel: Panel, ObservableObject {
             hiddenWebViewDiscardManager.updateRestoredSessionRenderIntent(nil)
             currentURL = url
             shouldRenderWebView = renderInitialNavigation
+            refreshWebViewLifecycleState()
             guard renderInitialNavigation else { return }
             if adoptedPrewarmedWebView {
                 // Already navigated while hidden; record for recovery paths.

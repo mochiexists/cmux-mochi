@@ -10,10 +10,13 @@ concurrency:
 jobs:
   build-ghosttykit:
     runs-on: ${{ vars.MACOS_RUNNER_15 || 'blacksmith-6vcpu-macos-15' }}
-    timeout-minutes: 20
+    # A cold universal build reached 19m38s on the hosted macOS 15 runner.
+    # Leave enough room for transient Zig download retries plus artifact upload.
+    timeout-minutes: 35
     env:
       GHOSTTYKIT_CRASH_REPORT_SUBDIR: cmux/crash
       GHOSTTYKIT_BUILD_FLAVOR: crashsubdir-cmux-crash-sentry-off-v1
+      GHOSTTYKIT_RELEASE_REPO: mochiexists/ghostty
     steps:
       - name: Clear stale git locks (self-hosted reused workspace)
         shell: bash
@@ -45,7 +48,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           TAG="xcframework-${{ steps.ghostty-sha.outputs.sha }}-${GHOSTTYKIT_BUILD_FLAVOR}"
-          if gh release view "$TAG" --repo manaflow-ai/ghostty >/dev/null 2>&1; then
+          if gh release view "$TAG" --repo "$GHOSTTYKIT_RELEASE_REPO" >/dev/null 2>&1; then
             echo "exists=true" >> "$GITHUB_OUTPUT"
             echo "Release $TAG already exists, skipping build"
           else
@@ -106,6 +109,15 @@ jobs:
           COPYFILE_DISABLE=1 tar czf GhosttyKit.xcframework.tar.gz GhosttyKit.xcframework
           python3 scripts/validate-xcframework-archive.py GhosttyKit.xcframework.tar.gz
 
+      - name: Retain validated xcframework archive
+        if: steps.check-release.outputs.exists == 'false'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ghosttykit-${{ steps.ghostty-sha.outputs.sha }}-${{ env.GHOSTTYKIT_BUILD_FLAVOR }}
+          path: GhosttyKit.xcframework.tar.gz
+          if-no-files-found: error
+          retention-days: 7
+
       - name: Upload xcframework release
         if: steps.check-release.outputs.exists == 'false'
         env:
@@ -118,7 +130,7 @@ jobs:
           fi
           TAG="xcframework-${{ steps.ghostty-sha.outputs.sha }}-${GHOSTTYKIT_BUILD_FLAVOR}"
           gh release create "$TAG" \
-            --repo manaflow-ai/ghostty \
+            --repo "$GHOSTTYKIT_RELEASE_REPO" \
             --target "${{ steps.ghostty-sha.outputs.sha }}" \
             --title "GhosttyKit xcframework (${{ steps.ghostty-sha.outputs.sha }}, ${GHOSTTYKIT_BUILD_FLAVOR})" \
             --notes "Pre-built GhosttyKit.xcframework for commit ${{ steps.ghostty-sha.outputs.sha }} with crash-report-subdir=${GHOSTTYKIT_CRASH_REPORT_SUBDIR} and sentry=false" \

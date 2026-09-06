@@ -2,6 +2,18 @@ import CmuxFoundation
 import CmuxSettings
 import SwiftUI
 
+/// Resolves the port shown in the editable field without confusing the
+/// catalog's Stable seed with the host's installed-channel default.
+enum MobilePairingPortFieldValue {
+    static func resolve(
+        editedPort: Int?,
+        persistedPort: Int,
+        statusConfiguredPort: Int?
+    ) -> Int {
+        editedPort ?? statusConfiguredPort ?? persistedPort
+    }
+}
+
 /// **Mobile** section — Mac-side controls for pairing and syncing with
 /// cmux on iOS: the pairing-host toggle, the preferred listener port (with a
 /// live bound-port indicator), an optional display-name override, and
@@ -55,9 +67,16 @@ public struct MobileSection: View {
     }
 
     /// The value shown in the field: the user's edit if any, otherwise the
-    /// persisted port (which updates once it loads).
+    /// host-resolved configured port. The host value is important when no
+    /// explicit override exists: the catalog seed is Stable's `58465`, while
+    /// installed Nightly uses `58466` and tagged development builds derive a
+    /// separate deterministic port.
     private var draftPort: Int {
-        editedPort ?? port.current
+        MobilePairingPortFieldValue.resolve(
+            editedPort: editedPort,
+            persistedPort: port.current,
+            statusConfiguredPort: status.current?.configuredPort
+        )
     }
 
     /// The port currently in effect: the bound port when running, otherwise the
@@ -187,7 +206,12 @@ public struct MobileSection: View {
             applyResult = result
             // Keep the field on the attempted value (with its warning) when the
             // port is in use; otherwise let it track the persisted value again.
-            if case .portInUse = result {} else { editedPort = nil }
+            switch result {
+            case .applied, .savedForLater:
+                editedPort = nil
+            case .portInUse, .invalid, .failed:
+                break
+            }
             isApplying = false
         }
     }
@@ -227,6 +251,11 @@ public struct MobileSection: View {
                     systemImage: "checkmark.circle.fill"
                 )
                 .foregroundStyle(.secondary)
+            }
+        } else if case let .failed(message) = applyResult {
+            statusCaption {
+                Label(message, systemImage: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.red)
             }
         } else if iOSPairingHost.current, let snapshot = status.current {
             statusCaption { boundPortStatusText(snapshot) }

@@ -132,7 +132,6 @@ import Testing
             runtime: runtime,
             route: route,
             ticket: ticket,
-            allowsStackAuthFallback: true,
             retiresOnPersistentEventTransportInvalidation:
                 retiresOnPersistentEventTransportInvalidation
         )

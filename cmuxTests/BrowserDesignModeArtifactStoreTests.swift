@@ -216,8 +216,18 @@ struct BrowserDesignModeArtifactStoreTests {
             artifactPaths: [replacement.path],
             operation: 0
         ))
-        #expect(try handoffMarkerNames(in: directory).count == 1)
-        #expect(try handoffMarkerNames(in: directory)[0].hasSuffix(replacement.lastPathComponent))
+        // Successful replacement commits synchronously, but releases the old
+        // lease in a Task so clipboard delivery never waits on filesystem I/O.
+        let cleanupDeadline = ContinuousClock.now.advanced(by: .seconds(1))
+        var markersAfterReplacement = try handoffMarkerNames(in: directory)
+        while markersAfterReplacement.contains(where: { $0.hasSuffix(first.lastPathComponent) }),
+              ContinuousClock.now < cleanupDeadline {
+            try await Task.sleep(for: .milliseconds(10))
+            markersAfterReplacement = try handoffMarkerNames(in: directory)
+        }
+        #expect(!markersAfterReplacement.contains(where: { $0.hasSuffix(first.lastPathComponent) }))
+        #expect(markersAfterReplacement.count == 1)
+        #expect(markersAfterReplacement.first?.hasSuffix(replacement.lastPathComponent) == true)
     }
 
     @Test @MainActor func successfulClipboardWriteCommitsHandoffBeforeInvalidation() async throws {

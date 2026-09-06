@@ -1379,8 +1379,7 @@ final class TerminalOffscreenStartupTests: XCTestCase {
                     "workspace_id": workspace.id.uuidString,
                     "surface_id": panel.id.uuidString,
                     "text": "echo dropped\r",
-                ],
-                auth: nil
+                ]
             )
         )
 
@@ -1396,8 +1395,7 @@ final class TerminalOffscreenStartupTests: XCTestCase {
             MobileHostRPCRequest(
                 id: "status",
                 method: "mobile.host.status",
-                params: [:],
-                auth: nil
+                params: [:]
             )
         )
 
@@ -1426,10 +1424,6 @@ final class TerminalOffscreenStartupTests: XCTestCase {
         let badWorkspaceID = "workspace:not-a-uuid"
         let requests: [(method: String, params: [String: Any])] = [
             (
-                method: "mobile.attach_ticket.create",
-                params: ["workspace_id": badWorkspaceID]
-            ),
-            (
                 method: "terminal.create",
                 params: ["workspace_id": badWorkspaceID]
             ),
@@ -1448,8 +1442,7 @@ final class TerminalOffscreenStartupTests: XCTestCase {
                 MobileHostRPCRequest(
                     id: request.method,
                     method: request.method,
-                    params: request.params,
-                    auth: nil
+                    params: request.params
                 )
             )
 
@@ -1477,8 +1470,7 @@ final class TerminalOffscreenStartupTests: XCTestCase {
             MobileHostRPCRequest(
                 id: "workspace-list-missing-workspace",
                 method: "workspace.list",
-                params: ["workspace_id": missingWorkspaceID.uuidString],
-                auth: nil
+                params: ["workspace_id": missingWorkspaceID.uuidString]
             )
         )
         guard case let .failure(missingWorkspaceError) = missingWorkspaceResponse else {
@@ -1494,8 +1486,7 @@ final class TerminalOffscreenStartupTests: XCTestCase {
                 params: [
                     "workspace_id": workspace.id.uuidString,
                     "surface_id": missingTerminalID.uuidString,
-                ],
-                auth: nil
+                ]
             )
         )
         guard case let .failure(missingTerminalError) = missingTerminalResponse else {
@@ -1503,132 +1494,6 @@ final class TerminalOffscreenStartupTests: XCTestCase {
             return
         }
         XCTAssertEqual(missingTerminalError.code, "not_found")
-    }
-
-    func testMobileAttachTicketCreateWithoutTerminalStaysWorkspaceScoped() async throws {
-        let previousManager = TerminalController.shared.activeTabManagerForCallerNotification()
-        let manager = TabManager()
-        TerminalController.shared.setActiveTabManager(manager)
-        defer {
-            TerminalController.shared.setActiveTabManager(previousManager)
-        }
-
-        MobileHostService.shared.start()
-        defer {
-            MobileHostService.shared.stop()
-        }
-        guard await waitForMobileHostRoutesForTesting() else {
-            XCTFail("Expected mobile host to publish routes before creating attach ticket")
-            return
-        }
-        let workspace = try XCTUnwrap(manager.selectedWorkspace)
-
-        let response = await TerminalController.shared.mobileHostHandleRPC(
-            MobileHostRPCRequest(
-                id: "attach-ticket",
-                method: "mobile.attach_ticket.create",
-                params: ["workspace_id": workspace.id.uuidString],
-                auth: nil
-            )
-        )
-
-        guard case let .ok(rawPayload) = response,
-              let payload = rawPayload as? [String: Any],
-              let ticket = payload["ticket"] as? [String: Any] else {
-            XCTFail("Expected workspace-scoped attach ticket payload")
-            return
-        }
-        XCTAssertNil(ticket["terminalID"])
-    }
-
-    func testMobileAttachTicketCreateResolvesTerminalIDAcrossWorkspaces() async throws {
-        let previousManager = TerminalController.shared.activeTabManagerForCallerNotification()
-        let manager = TabManager()
-        TerminalController.shared.setActiveTabManager(manager)
-        defer {
-            TerminalController.shared.setActiveTabManager(previousManager)
-        }
-
-        MobileHostService.shared.start()
-        defer {
-            MobileHostService.shared.stop()
-        }
-        guard await waitForMobileHostRoutesForTesting() else {
-            XCTFail("Expected mobile host to publish routes before creating attach ticket")
-            return
-        }
-
-        let selectedWorkspace = try XCTUnwrap(manager.selectedWorkspace)
-        let backgroundWorkspace = manager.addWorkspace(
-            title: "Mobile Background",
-            select: false,
-            eagerLoadTerminal: false
-        )
-        let backgroundTerminal = try XCTUnwrap(backgroundWorkspace.focusedTerminalPanel)
-        XCTAssertEqual(manager.selectedWorkspace?.id, selectedWorkspace.id)
-        XCTAssertNotEqual(selectedWorkspace.id, backgroundWorkspace.id)
-
-        let response = await TerminalController.shared.mobileHostHandleRPC(
-            MobileHostRPCRequest(
-                id: "attach-ticket",
-                method: "mobile.attach_ticket.create",
-                params: ["terminal_id": backgroundTerminal.id.uuidString],
-                auth: nil
-            )
-        )
-
-        guard case let .ok(rawPayload) = response,
-              let payload = rawPayload as? [String: Any],
-              let ticket = payload["ticket"] as? [String: Any] else {
-            XCTFail("Expected terminal-scoped attach ticket payload")
-            return
-        }
-        XCTAssertEqual(ticket["workspaceID"] as? String, backgroundWorkspace.id.uuidString)
-        XCTAssertEqual(ticket["terminalID"] as? String, backgroundTerminal.id.uuidString)
-    }
-
-    func testMobileAttachTicketCreateCanFilterRoutesForQRPairing() async throws {
-        let previousManager = TerminalController.shared.activeTabManagerForCallerNotification()
-        let manager = TabManager()
-        TerminalController.shared.setActiveTabManager(manager)
-        defer {
-            TerminalController.shared.setActiveTabManager(previousManager)
-        }
-
-        MobileHostService.shared.start()
-        defer {
-            MobileHostService.shared.stop()
-        }
-        guard await waitForMobileHostRoutesForTesting() else {
-            XCTFail("Expected mobile host to publish routes before creating attach ticket")
-            return
-        }
-        let workspace = try XCTUnwrap(manager.selectedWorkspace)
-
-        let response = await TerminalController.shared.mobileHostHandleRPC(
-            MobileHostRPCRequest(
-                id: "attach-ticket",
-                method: "mobile.attach_ticket.create",
-                params: [
-                    "workspace_id": workspace.id.uuidString,
-                    "route_id": "debug_loopback",
-                ],
-                auth: nil
-            )
-        )
-
-        guard case let .ok(rawPayload) = response,
-              let payload = rawPayload as? [String: Any],
-              let ticket = payload["ticket"] as? [String: Any],
-              let routes = ticket["routes"] as? [[String: Any]] else {
-            XCTFail("Expected route-filtered attach ticket payload")
-            return
-        }
-        XCTAssertFalse(routes.isEmpty)
-        XCTAssertTrue(routes.allSatisfy { $0["id"] as? String == "debug_loopback" })
-        let topLevelRoutes = try XCTUnwrap(payload["routes"] as? [[String: Any]])
-        XCTAssertEqual(topLevelRoutes.count, routes.count)
-        XCTAssertTrue(topLevelRoutes.allSatisfy { $0["id"] as? String == "debug_loopback" })
     }
 
     func testMobileTerminalCreateReturnsBeforeStartingGhostty() async throws {
@@ -1644,8 +1509,7 @@ final class TerminalOffscreenStartupTests: XCTestCase {
             MobileHostRPCRequest(
                 id: "terminal-create",
                 method: "terminal.create",
-                params: ["workspace_id": workspace.id.uuidString],
-                auth: nil
+                params: ["workspace_id": workspace.id.uuidString]
             )
         )
 
@@ -1688,8 +1552,7 @@ final class TerminalOffscreenStartupTests: XCTestCase {
             MobileHostRPCRequest(
                 id: "workspace-create",
                 method: "workspace.create",
-                params: ["title": "Created From iOS"],
-                auth: nil
+                params: ["title": "Created From iOS"]
             )
         )
 
@@ -1733,8 +1596,7 @@ final class TerminalOffscreenStartupTests: XCTestCase {
             MobileHostRPCRequest(
                 id: "terminal-create",
                 method: "terminal.create",
-                params: ["workspace_id": mobileWorkspace.id.uuidString],
-                auth: nil
+                params: ["workspace_id": mobileWorkspace.id.uuidString]
             )
         )
 
@@ -1764,8 +1626,7 @@ final class TerminalOffscreenStartupTests: XCTestCase {
                 MobileHostRPCRequest(
                     id: "status",
                     method: "mobile.host.status",
-                    params: [:],
-                    auth: nil
+                    params: [:]
                 )
             )
             if case let .ok(rawPayload) = response,
@@ -2576,14 +2437,33 @@ struct TerminalKeyboardCopyModeCursorAppearanceTests {
 }
 
 final class GhosttyBackgroundThemeTests: XCTestCase {
+    private func assertCompositedColor(
+        _ actual: NSColor,
+        foreground: NSColor,
+        opacity: CGFloat,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        guard let actual = actual.usingColorSpace(.sRGB),
+              let foreground = foreground.usingColorSpace(.sRGB),
+              let backdrop = NSColor.windowBackgroundColor.usingColorSpace(.sRGB) else {
+            XCTFail("Expected sRGB-convertible colors", file: file, line: line)
+            return
+        }
+        XCTAssertEqual(actual.redComponent, foreground.redComponent * opacity + backdrop.redComponent * (1 - opacity), accuracy: 0.005, file: file, line: line)
+        XCTAssertEqual(actual.greenComponent, foreground.greenComponent * opacity + backdrop.greenComponent * (1 - opacity), accuracy: 0.005, file: file, line: line)
+        XCTAssertEqual(actual.blueComponent, foreground.blueComponent * opacity + backdrop.blueComponent * (1 - opacity), accuracy: 0.005, file: file, line: line)
+        XCTAssertEqual(actual.alphaComponent, 1, accuracy: 0.005, file: file, line: line)
+    }
+
     func testColorClampsOpacity() {
         let base = NSColor(srgbRed: 0.10, green: 0.20, blue: 0.30, alpha: 1.0)
 
         let lowerClamped = GhosttyBackgroundTheme.color(backgroundColor: base, opacity: -2.0)
-        XCTAssertEqual(lowerClamped.alphaComponent, 0.0, accuracy: 0.0001)
+        assertCompositedColor(lowerClamped, foreground: base, opacity: 0)
 
         let upperClamped = GhosttyBackgroundTheme.color(backgroundColor: base, opacity: 5.0)
-        XCTAssertEqual(upperClamped.alphaComponent, 1.0, accuracy: 0.0001)
+        assertCompositedColor(upperClamped, foreground: base, opacity: 1)
     }
 
     func testColorFromNotificationUsesBackgroundAndOpacity() {
@@ -2603,15 +2483,11 @@ final class GhosttyBackgroundThemeTests: XCTestCase {
             fallbackColor: fallbackColor,
             fallbackOpacity: fallbackOpacity
         )
-        guard let srgb = actual.usingColorSpace(.sRGB) else {
-            XCTFail("Expected sRGB-convertible color")
-            return
-        }
-
-        XCTAssertEqual(srgb.redComponent, 0.18, accuracy: 0.005)
-        XCTAssertEqual(srgb.greenComponent, 0.29, accuracy: 0.005)
-        XCTAssertEqual(srgb.blueComponent, 0.44, accuracy: 0.005)
-        XCTAssertEqual(srgb.alphaComponent, 0.57, accuracy: 0.005)
+        assertCompositedColor(
+            actual,
+            foreground: NSColor(srgbRed: 0.18, green: 0.29, blue: 0.44, alpha: 1),
+            opacity: 0.57
+        )
     }
 
     func testColorFromNotificationFallsBackWhenPayloadMissing() {
@@ -2624,15 +2500,7 @@ final class GhosttyBackgroundThemeTests: XCTestCase {
             fallbackColor: fallbackColor,
             fallbackOpacity: fallbackOpacity
         )
-        guard let srgb = actual.usingColorSpace(.sRGB) else {
-            XCTFail("Expected sRGB-convertible color")
-            return
-        }
-
-        XCTAssertEqual(srgb.redComponent, 0.12, accuracy: 0.005)
-        XCTAssertEqual(srgb.greenComponent, 0.34, accuracy: 0.005)
-        XCTAssertEqual(srgb.blueComponent, 0.56, accuracy: 0.005)
-        XCTAssertEqual(srgb.alphaComponent, 0.42, accuracy: 0.005)
+        assertCompositedColor(actual, foreground: fallbackColor, opacity: CGFloat(fallbackOpacity))
     }
 }
 
@@ -2647,7 +2515,8 @@ final class PanelAppearanceBackgroundTests: XCTestCase {
 
         XCTAssertTrue(appearance.usesClearContentBackground)
         XCTAssertFalse(appearance.drawsContentBackground)
-        XCTAssertEqual(appearance.backgroundColor.alphaComponent, 0.42, accuracy: 0.0001)
+        // Semantic chrome color is composited; the local content fill stays clear.
+        XCTAssertEqual(appearance.backgroundColor.alphaComponent, 1.0, accuracy: 0.0001)
         XCTAssertEqual(appearance.contentBackgroundColor.alphaComponent, 0.0, accuracy: 0.0001)
     }
 
@@ -5787,6 +5656,11 @@ final class TerminalWindowPortalLifecycleTests: XCTestCase {
         )
         TerminalWindowPortalRegistry.synchronizeForAnchor(anchor)
         realizeWindowLayout(window)
+        let surfaceReadyTimeout: TimeInterval = 5
+        XCTAssertTrue(
+            waitUntil(timeout: surfaceReadyTimeout) { surface.debugCurrentPixelSize().width > 0 },
+            "Expected the terminal to initialize before measuring resize geometry"
+        )
         let initialPixelSize = surface.debugCurrentPixelSize()
         XCTAssertGreaterThan(initialPixelSize.width, 0)
 
@@ -5805,8 +5679,15 @@ final class TerminalWindowPortalLifecycleTests: XCTestCase {
 
         TerminalWindowPortalRegistry.endInteractiveGeometryResize(in: window)
         interactionIsActive = false
-        drainMainQueue()
-        drainMainQueue()
+        // Coalescing can need more than two main-queue hops when a previous
+        // geometry generation is pending. Observe the actual resize instead.
+        let finalResizeTimeout: TimeInterval = 0.5
+        XCTAssertTrue(
+            waitUntil(timeout: finalResizeTimeout) {
+                surface.debugCurrentPixelSize().width < initialPixelSize.width
+            },
+            "Expected the final resize to settle within the bounded deadline"
+        )
 
         XCTAssertLessThan(
             surface.debugCurrentPixelSize().width,

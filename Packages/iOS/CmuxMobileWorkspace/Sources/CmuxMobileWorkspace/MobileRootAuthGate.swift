@@ -1,106 +1,21 @@
-internal import CMUXMobileCore
 public import CmuxMobileShellModel
-public import Foundation
 
 /// Pure authentication-gating policy for the mobile root scene.
 ///
-/// Combines Stack auth and temporary attach-ticket auth into the booleans the root
-/// scene branches on (authenticated, restoring, attach-URL recognition, and whether
-/// stale attach auth should be cleared or a stored Mac reconnected). All members are
-/// pure functions so the root scene's gating logic can be tested without a store.
+/// Combines optional Stack auth and durable DeviceLink identity into the
+/// booleans the root scene branches on. Transport admission is deliberately
+/// absent: DeviceLink owns it per Mac and per app instance.
 public struct MobileRootAuthGate {
     private init() {}
 
-    /// Whether the user is authenticated by either Stack auth or an attach ticket.
-    /// - Parameters:
-    ///   - stackAuthenticated: Whether Stack auth is established.
-    ///   - attachTicketAuthenticated: Whether a temporary attach ticket grants access. Defaults to `false`.
-    /// - Returns: `true` when either source authenticates the user.
-    /// Fork (cmux Mochi): a device paired through DeviceLink holds a private key
-    /// and the Mac's pin. That is a durable credential — more durable than an
-    /// attach ticket, which expires — so it authenticates the root view just as
-    /// an account session does. Without it a device that paired successfully
-    /// still rendered the sign-in screen, and an account-free pairing could
-    /// never reach the workspace it had just earned access to.
+    /// Whether the root may show the authenticated shell. A Stack account can
+    /// unlock account services, while a DeviceLink key can unlock its paired
+    /// Macs; neither is converted into transport authority for the other.
     public static func isAuthenticated(
         stackAuthenticated: Bool,
-        attachTicketAuthenticated: Bool = false,
         pairedDeviceAuthenticated: Bool = false
     ) -> Bool {
-        stackAuthenticated || attachTicketAuthenticated || pairedDeviceAuthenticated
-    }
-
-    /// Whether the restoring-session UI should be shown.
-    /// - Parameters:
-    ///   - stackAuthenticated: Whether Stack auth is established.
-    ///   - attachTicketAuthenticated: Whether a temporary attach ticket grants access. Defaults to `false`.
-    ///   - isRestoringSession: Whether a session restore is in progress.
-    /// - Returns: `true` only while restoring and not yet authenticated.
-    public static func shouldShowRestoringSession(
-        stackAuthenticated: Bool,
-        attachTicketAuthenticated: Bool = false,
-        isRestoringSession: Bool
-    ) -> Bool {
-        isRestoringSession && !isAuthenticated(
-            stackAuthenticated: stackAuthenticated,
-            attachTicketAuthenticated: attachTicketAuthenticated
-        )
-    }
-
-    /// Whether a URL is a cmux attach deep link (a `<scheme>://attach` URL in
-    /// any channel's pairing scheme; see ``CmxPairingURLScheme``).
-    /// - Parameter url: The URL to classify.
-    /// - Returns: `true` when the URL is an attach deep link.
-    public static func isAttachURL(_ url: URL) -> Bool {
-        guard CmxPairingURLScheme.isPairingScheme(url.scheme) else {
-            return false
-        }
-        return url.host?.caseInsensitiveCompare("attach") == .orderedSame
-    }
-
-    /// Whether stale temporary attach-ticket authentication should be cleared.
-    /// - Parameters:
-    ///   - pairingResult: The result of the most recent pairing-URL connection.
-    ///   - connectionState: The current connection state.
-    ///   - hasActiveUnexpiredTicket: Whether a non-expired attach ticket is still active.
-    /// - Returns: `true` when the attach auth is no longer backed by a live, ticketed connection.
-    public static func shouldClearAttachTicketAuthentication(
-        pairingResult: MobilePairingURLConnectionResult,
-        connectionState: MobileConnectionState,
-        hasActiveUnexpiredTicket: Bool
-    ) -> Bool {
-        switch pairingResult {
-        case .connected:
-            return connectionState != .connected || !hasActiveUnexpiredTicket
-        case .failed:
-            return true
-        case .needsUserApproval:
-            return false
-        case .superseded:
-            return connectionState != .connected || !hasActiveUnexpiredTicket
-        }
-    }
-
-    /// Whether a previously stored Mac should be reconnected automatically.
-    /// - Parameters:
-    ///   - stackAuthenticated: Whether Stack auth is established.
-    ///   - attachTicketAuthenticated: Whether a temporary attach ticket grants access.
-    ///   - isRestoringSession: Whether cached auth is still being validated or recreated.
-    ///   - connectionState: The current connection state.
-    /// - Returns: `true` when Stack-authenticated, auth restore is complete, no temporary ticket is active, and the Mac is not yet connected.
-    public static func shouldReconnectStoredMac(
-        stackAuthenticated: Bool,
-        attachTicketAuthenticated: Bool,
-        isRestoringSession: Bool,
-        connectionState: MobileConnectionState
-    ) -> Bool {
-        shouldReconnectStoredMac(
-            stackAuthenticated: stackAuthenticated,
-            hasPairedDeviceIdentity: false,
-            attachTicketAuthenticated: attachTicketAuthenticated,
-            isRestoringSession: isRestoringSession,
-            connectionState: connectionState
-        )
+        stackAuthenticated || pairedDeviceAuthenticated
     }
 
     /// Whether a previously stored Mac should be reconnected automatically.
@@ -111,27 +26,15 @@ public struct MobileRootAuthGate {
     /// a Stack session — this is the gate that used to make account-free
     /// pairings unable to survive a cold launch.
     ///
-    /// - Parameters:
-    ///   - stackAuthenticated: Whether Stack auth is established.
-    ///   - hasPairedDeviceIdentity: Whether this device holds a usable identity
-    ///     and pin for the stored Mac. A locked keychain must report `false`
-    ///     only in the sense of "not now" — callers distinguish that from
-    ///     "never paired" so a temporary lock never triggers re-pairing.
-    ///   - attachTicketAuthenticated: Whether a temporary attach ticket grants access.
-    ///   - isRestoringSession: Whether cached auth is still being validated.
-    ///   - connectionState: The current connection state.
-    /// - Returns: `true` when some durable credential exists, restore is
-    ///   complete, no temporary ticket is active, and the Mac is not connected.
+    /// DeviceLink is the only transport credential. Stack authentication may
+    /// keep account-backed services alive, but it never authorizes a socket or
+    /// starts a stored-Mac dial.
     public static func shouldReconnectStoredMac(
-        stackAuthenticated: Bool,
         hasPairedDeviceIdentity: Bool,
-        attachTicketAuthenticated: Bool,
         isRestoringSession: Bool,
         connectionState: MobileConnectionState
     ) -> Bool {
-        (stackAuthenticated || hasPairedDeviceIdentity)
-            && !isRestoringSession
-            && !attachTicketAuthenticated
+        hasPairedDeviceIdentity && !isRestoringSession
             && connectionState != .connected
     }
 

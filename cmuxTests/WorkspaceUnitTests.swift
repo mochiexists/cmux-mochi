@@ -1933,7 +1933,7 @@ final class KeyboardShortcutSettingsFileStoreTests: XCTestCase {
         XCTAssertNil(store.override(for: .newTab))
 
         let contents = try String(contentsOf: settingsFileURL, encoding: .utf8)
-        XCTAssertTrue(contents.contains(#""$schema": "https://raw.githubusercontent.com/manaflow-ai/cmux/main/web/data/cmux.schema.json""#))
+        XCTAssertTrue(contents.contains(#""$schema": "https://raw.githubusercontent.com/mochiexists/cmux-mochi/main/web/data/cmux.schema.json""#))
         XCTAssertTrue(contents.contains(#""schemaVersion": 1,"#))
         XCTAssertTrue(contents.contains(#"//   "app" : {"#))
         XCTAssertTrue(contents.contains(#"//     "colors" : {"#))
@@ -6976,6 +6976,28 @@ final class WorkspacePanelGitBranchTests: XCTestCase {
             entriesWhenRightLooksFocused.map(\.directory),
             [leftLiveDirectory, rightRequestedDirectory]
         )
+    }
+
+    func testSidebarFinderDirectoryPrefersFocusedLocalPanel() throws {
+        let workspace = Workspace()
+        let homeDirectory = "/Users/cmux"
+        let projectDirectory = "/Users/cmux/project"
+
+        let homePanelId = try XCTUnwrap(workspace.focusedPanelId)
+        let paneId = try XCTUnwrap(workspace.paneId(forPanelId: homePanelId))
+        let projectPanel = try XCTUnwrap(workspace.newTerminalSurface(
+            inPane: paneId,
+            focus: false
+        ))
+
+        workspace.updatePanelDirectory(panelId: homePanelId, directory: homeDirectory)
+        workspace.updatePanelDirectory(panelId: projectPanel.id, directory: projectDirectory)
+
+        workspace.focusPanel(projectPanel.id)
+        XCTAssertEqual(workspace.sidebarFinderDirectory(), projectDirectory)
+
+        workspace.focusPanel(homePanelId)
+        XCTAssertEqual(workspace.sidebarFinderDirectory(), homeDirectory)
     }
 
     func testRemoteSidebarDirectoryCanonicalizationDedupesTildeAndAbsoluteHomePaths() {

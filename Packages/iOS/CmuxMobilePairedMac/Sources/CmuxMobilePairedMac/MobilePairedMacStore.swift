@@ -446,13 +446,9 @@ public actor MobilePairedMacStore: MobilePairedMacStoring {
         try exec("CREATE INDEX IF NOT EXISTS idx_routes_device ON mac_routes(mac_device_id, owner_key);")
     }
 
-    /// v8: preserve only the exact raw Tailscale destinations that this local
-    /// installation used before Iroh shipped. The table is deliberately absent
-    /// from account backup, so a new install, a second phone, or a restored row
-    /// cannot acquire this bearer-carrying compatibility capability.
-    ///
-    /// Rows that already contain Iroh are excluded. Once Iroh is persisted,
-    /// ``upsertRecord`` deletes any remaining grants and never recreates them.
+    /// v8 compatibility schema. Current builds never read or create these
+    /// grants; the table remains so databases written by older builds migrate
+    /// without destructive schema surgery.
     private func migrateToV8() throws {
         try exec("""
             CREATE TABLE legacy_tailscale_route_grants (
@@ -467,38 +463,12 @@ public actor MobilePairedMacStore: MobilePairedMacStoring {
             );
         """)
         try exec("""
-            INSERT OR IGNORE INTO legacy_tailscale_route_grants (
-                mac_device_id, owner_key, endpoint_json
-            )
-            SELECT routes.mac_device_id, routes.owner_key, routes.endpoint_json
-            FROM mac_routes routes
-            WHERE routes.kind = 'tailscale'
-              AND EXISTS (
-                SELECT 1 FROM paired_macs macs
-                WHERE macs.mac_device_id = routes.mac_device_id
-                  AND macs.owner_key = routes.owner_key
-                  AND macs.stack_user_id IS NOT NULL
-                  AND macs.stack_user_id <> ''
-              )
-              AND NOT EXISTS (
-                SELECT 1 FROM mac_routes iroh
-                WHERE iroh.mac_device_id = routes.mac_device_id
-                  AND iroh.owner_key = routes.owner_key
-                  AND iroh.kind = 'iroh'
-              );
-        """)
-        try exec("""
             CREATE INDEX idx_legacy_tailscale_grants_device
             ON legacy_tailscale_route_grants(mac_device_id, owner_key);
         """)
     }
 
-    /// v9: record where each Tailscale compatibility grant came from. The v8
-    /// migration rows keep the `'migration'` origin and its lifecycle (deleted
-    /// forever once Iroh is persisted). `'user'` rows are created when the user
-    /// explicitly enters a Tailscale pairing code from their Mac and survive
-    /// Iroh persistence, because the user chose Tailscale on purpose and may
-    /// keep dialing it while the preference says so.
+    /// v9 compatibility column retained for databases written by older builds.
     private func migrateToV9() throws {
         let columns = try tableColumns("legacy_tailscale_route_grants")
         guard !columns.contains("origin") else { return }
@@ -610,57 +580,6 @@ public actor MobilePairedMacStore: MobilePairedMacStoring {
             onlyIfOlder: false,
             routeWriteCondition: condition
         )
-    }
-
-    /// Persist `'user'`-origin Tailscale compatibility grants for routes the
-    /// user entered as a pairing code. Upgrades an existing `'migration'` grant
-    /// for the same destination to `'user'`, so a deliberate re-scan is not
-    /// silently revoked when Iroh is later persisted.
-    public func authorizeUserTailscaleRoutes(
-        macDeviceID: String,
-        instanceTag: String?,
-        stackUserID: String?,
-        teamID: String?,
-        routes: [CmxAttachRoute]
-    ) throws {
-        try ensureReady()
-        let macDeviceID = cmxCanonicalDeviceID(macDeviceID)
-        let ownerKey = Self.ownerKey(
-            stackUserID: stackUserID,
-            teamID: teamID,
-            instanceTag: instanceTag
-        )
-        let grantRoutes = routes.filter { route in
-            guard route.kind == .tailscale,
-                  case .hostPort = route.endpoint else { return false }
-            return true
-        }
-        guard !grantRoutes.isEmpty else { return }
-        try transaction {
-            guard try fetchMacRow(
-                macDeviceID: macDeviceID,
-                ownerKey: ownerKey
-            ) != nil else {
-                // The grant table references the scoped row; authorizing an
-                // unknown row would strand an unowned bearer capability.
-                return
-            }
-            for route in grantRoutes {
-                let encoded = try Self.encodeRoute(route)
-                try exec("""
-                    INSERT INTO legacy_tailscale_route_grants (
-                        mac_device_id, owner_key, endpoint_json, origin
-                    )
-                    VALUES (?, ?, ?, 'user')
-                    ON CONFLICT (mac_device_id, owner_key, endpoint_json)
-                    DO UPDATE SET origin = 'user';
-                """, binding: [
-                    .text(macDeviceID),
-                    .text(ownerKey),
-                    .text(encoded),
-                ])
-            }
-        }
     }
 
     private func upsertRecord(
@@ -824,19 +743,6 @@ public actor MobilePairedMacStore: MobilePairedMacStoring {
                 lastSeenAt: now,
                 isActive: shouldMarkActive
             )
-            if routesToPersist.contains(where: { $0.kind == .iroh }) {
-                // Only the staggered-update migration capability dies on Iroh
-                // arrival. A user-entered pairing-code grant is a deliberate
-                // Tailscale choice and remains available for preference-ordered
-                // dials until its row is removed.
-                try exec(
-                    """
-                    DELETE FROM legacy_tailscale_route_grants
-                    WHERE mac_device_id = ? AND owner_key = ? AND origin = 'migration';
-                    """,
-                    binding: [.text(macDeviceID), .text(ownerKey)]
-                )
-            }
             if existing != nil, let selectedUnclaimed,
                selectedUnclaimed.ownerKey != ownerKey {
                 try exec(

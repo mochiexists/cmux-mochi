@@ -604,7 +604,7 @@ extension RemoteTmuxWindowMirror: BonsplitDelegate {
     func splitTabBarDividerDragDidBegin(_ controller: BonsplitController) {
         TerminalWindowPortalRegistry.beginInteractiveGeometryResize(
             owner: controller,
-            in: NSApp.currentEvent?.window ?? visibleHostingContext()?.window
+            in: visibleHostingContext()?.window ?? NSApp.currentEvent?.window
         )
         dividerResizeSentSinceDragBegan = false
         // An imposition that moved a divider parks its baseline at nil,

@@ -14,7 +14,9 @@ struct MobilePairingConnectionTransitionTests {
     private func makeReady() -> MobilePairingModel.Ready {
         MobilePairingModel.Ready(
             attachURL: "cmux-ios://pair?v=3&r=100.64.0.1:7777",
-            tailscaleLines: ["100.64.0.1:7777"]
+            localNetworkLines: [],
+            tailscaleLines: ["100.64.0.1:7777"],
+            expiresAt: Date(timeIntervalSince1970: 2_000_000_000)
         )
     }
 
@@ -23,8 +25,8 @@ struct MobilePairingConnectionTransitionTests {
         let ready = makeReady()
         let next = MobilePairingModel.connectionTransition(
             from: .ready(ready),
-            activeConnectionCount: 1,
-            baselineConnectionCount: 0
+            pairedDeviceConnectionCount: 1,
+            baselinePairedDeviceConnectionCount: 0
         )
         #expect(next == .connected(ready))
     }
@@ -34,8 +36,8 @@ struct MobilePairingConnectionTransitionTests {
         let ready = makeReady()
         let next = MobilePairingModel.connectionTransition(
             from: .ready(ready),
-            activeConnectionCount: 0,
-            baselineConnectionCount: 0
+            pairedDeviceConnectionCount: 0,
+            baselinePairedDeviceConnectionCount: 0
         )
         #expect(next == .ready(ready))
     }
@@ -47,15 +49,15 @@ struct MobilePairingConnectionTransitionTests {
         // count must keep showing the QR so a second device can still pair.
         let stillWaiting = MobilePairingModel.connectionTransition(
             from: .ready(ready),
-            activeConnectionCount: 1,
-            baselineConnectionCount: 1
+            pairedDeviceConnectionCount: 1,
+            baselinePairedDeviceConnectionCount: 1
         )
         #expect(stillWaiting == .ready(ready))
         // A second device attaches (count rises above the baseline) -> connected.
         let connected = MobilePairingModel.connectionTransition(
             from: .ready(ready),
-            activeConnectionCount: 2,
-            baselineConnectionCount: 1
+            pairedDeviceConnectionCount: 2,
+            baselinePairedDeviceConnectionCount: 1
         )
         #expect(connected == .connected(ready))
     }
@@ -65,8 +67,8 @@ struct MobilePairingConnectionTransitionTests {
         let ready = makeReady()
         let next = MobilePairingModel.connectionTransition(
             from: .connected(ready),
-            activeConnectionCount: 1,
-            baselineConnectionCount: 1
+            pairedDeviceConnectionCount: 1,
+            baselinePairedDeviceConnectionCount: 1
         )
         #expect(next == .connected(ready))
     }
@@ -76,8 +78,8 @@ struct MobilePairingConnectionTransitionTests {
         let ready = makeReady()
         let next = MobilePairingModel.connectionTransition(
             from: .connected(ready),
-            activeConnectionCount: 2,
-            baselineConnectionCount: 1
+            pairedDeviceConnectionCount: 2,
+            baselinePairedDeviceConnectionCount: 1
         )
         #expect(next == .connected(ready))
     }
@@ -86,10 +88,30 @@ struct MobilePairingConnectionTransitionTests {
     func preparingIsUnaffected() {
         let next = MobilePairingModel.connectionTransition(
             from: .preparing,
-            activeConnectionCount: 1,
-            baselineConnectionCount: 0
+            pairedDeviceConnectionCount: 1,
+            baselinePairedDeviceConnectionCount: 0
         )
         #expect(next == .preparing)
+    }
+
+    @Test("An unused pairing code becomes visibly expired at its deadline")
+    func readyExpiresAtDeadline() {
+        let ready = makeReady()
+        let next = MobilePairingModel.expirationTransition(
+            from: .ready(ready),
+            now: ready.expiresAt
+        )
+        #expect(next == .expired(ready))
+    }
+
+    @Test("A successful pairing remains latched after the enrollment deadline")
+    func connectedDoesNotExpire() {
+        let ready = makeReady()
+        let next = MobilePairingModel.expirationTransition(
+            from: .connected(ready),
+            now: ready.expiresAt.addingTimeInterval(1)
+        )
+        #expect(next == .connected(ready))
     }
 
     @Test("A mixed route set selects only the Tailscale DeviceLink endpoint")
@@ -101,6 +123,23 @@ struct MobilePairingConnectionTransitionTests {
         let plan = try #require(MobilePairingModel.PairingRoutePlan.make(routes: routes))
 
         #expect(plan.tailscaleLines == ["100.64.0.1:7777"])
+    }
+
+    @Test("A mixed DeviceLink route set prefers local network and retains Tailscale fallback")
+    func mixedDeviceLinkRoutesPreferLocalNetwork() throws {
+        let local = try CmxAttachRoute(
+            id: "local-network",
+            kind: .localNetwork,
+            endpoint: .hostPort(host: "192.168.1.20", port: 7777),
+            priority: 5
+        )
+        let plan = try #require(MobilePairingModel.PairingRoutePlan.make(
+            routes: [tailscaleRoute(), local]
+        ))
+
+        #expect(plan.localNetworkLines == ["192.168.1.20:7777"])
+        #expect(plan.tailscaleLines == ["100.64.0.1:7777"])
+        #expect(plan.deviceLinkLines == ["192.168.1.20:7777", "100.64.0.1:7777"])
     }
 
     @Test("A Tailscale route produces the DeviceLink route plan")

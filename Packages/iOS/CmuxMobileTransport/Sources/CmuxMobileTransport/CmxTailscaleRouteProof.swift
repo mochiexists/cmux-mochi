@@ -139,6 +139,15 @@ struct CmxTailscaleRouteProof: Equatable, Sendable {
     let generation: UInt64
 }
 
+/// Which facts a connection-path validation may assert. Network.framework can
+/// publish a path update before the socket has bound its endpoints, so that
+/// early callback may only prove route-level facts. Ready and write boundaries
+/// still require the exact local and remote endpoints from the route proof.
+enum CmxTailscaleRouteValidationPhase: Sendable {
+    case pathUpdate
+    case established
+}
+
 struct CmxTailscaleRouteProofValidator {
     func prepare(
         request: CmxByteTransportRequest,
@@ -150,39 +159,9 @@ struct CmxTailscaleRouteProofValidator {
         guard case let .hostPort(host, port) = request.route.endpoint else {
             throw CmxTailscaleRouteProofError.unsupportedEndpoint
         }
-        switch request.authorizationMode {
-        case let .legacyTailscaleBearer(evidence):
-            guard evidence.authorizes(
-                macDeviceID: request.expectedPeerDeviceID,
-                host: host,
-                port: port
-            ) else {
-                throw CmxTailscaleRouteProofError.authorizationEvidenceMismatch
-            }
-        case let .userAuthorizedTailscalePairing(authorization):
-            // A user-entered code authorizes only its exact destination; any
-            // device identity it claims is self-reported and grants nothing.
-            guard authorization.authorizes(host: host, port: port) else {
-                throw CmxTailscaleRouteProofError.authorizationEvidenceMismatch
-            }
-        case .attachTicket:
-            // Fork (cmux Mochi): the ticket authorizes the dial itself, and the
-            // checks below still pin the destination to a real Tailscale peer
-            // address reachable over a single Tailscale interface.
-            break
-        case .transportAdmission:
-            // Fork (cmux Mochi): a DeviceLink dial is mutually authenticated by
-            // this device's key against the Mac's pinned fingerprint, so it
-            // authorizes itself exactly as the ticket above does. The checks
-            // below still pin the destination to a real Tailscale peer.
-            //
-            // This is the gate that made a paired *phone* unable to reconnect
-            // while the simulator worked: the simulator dials loopback, which
-            // never reaches this proof.
-            break
-        case .stackBearer:
-            throw CmxTailscaleRouteProofError.unsupportedAuthorizationMode
-        }
+        // The transport factory has already required an exact DeviceLink TLS
+        // identity. The proof below is solely about keeping the socket on the
+        // real Tailscale interface and pinned peer address.
         guard let peerAddress = CmxTailscaleIPAddress(host) else {
             throw CmxTailscaleRouteProofError.nonNumericPeer
         }
@@ -217,7 +196,8 @@ struct CmxTailscaleRouteProofValidator {
     func validate(
         proof: CmxTailscaleRouteProof,
         authoritySnapshot: CmxTailscaleAuthoritySnapshot,
-        connectionPath: CmxTailscaleConnectionPathSnapshot
+        connectionPath: CmxTailscaleConnectionPathSnapshot,
+        phase: CmxTailscaleRouteValidationPhase
     ) throws {
         guard authoritySnapshot.generation == proof.generation else {
             throw CmxTailscaleRouteProofError.routeGenerationChanged
@@ -236,6 +216,7 @@ struct CmxTailscaleRouteProofValidator {
               connectionPath.availableInterfaces.contains(proof.interface) else {
             throw CmxTailscaleRouteProofError.connectionPathUnavailable
         }
+        guard phase == .established else { return }
         guard let localAddress = connectionPath.localAddress,
               proof.selfAddresses.contains(localAddress) else {
             throw CmxTailscaleRouteProofError.localEndpointMismatch

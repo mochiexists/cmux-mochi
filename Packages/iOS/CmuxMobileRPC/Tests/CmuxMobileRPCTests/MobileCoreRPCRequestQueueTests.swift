@@ -24,7 +24,6 @@ import Testing
             runtime: runtime,
             route: route,
             ticket: ticket,
-            allowsStackAuthFallback: true
         )
         let firstRequest = try MobileCoreRPCClient.requestData(
             method: "terminal.input",
@@ -101,7 +100,6 @@ import Testing
             runtime: runtime,
             route: route,
             ticket: ticket,
-            allowsStackAuthFallback: true
         )
         let timedOut = try MobileCoreRPCClient.requestData(
             method: "terminal.input",
@@ -158,7 +156,6 @@ import Testing
             runtime: runtime,
             route: route,
             ticket: ticket,
-            allowsStackAuthFallback: true
         )
         let request = try MobileCoreRPCClient.requestData(
             method: "terminal.input",

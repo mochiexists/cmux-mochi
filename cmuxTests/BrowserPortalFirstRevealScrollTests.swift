@@ -35,6 +35,8 @@ struct BrowserPortalFirstRevealScrollTests {
             backing: .buffered,
             defer: false
         )
+        window.isReleasedWhenClosed = false
+        window.animationBehavior = .none
         window.contentView = contentView
         let anchor = NSView(frame: anchorFrame)
         contentView.addSubview(anchor)
@@ -77,6 +79,7 @@ struct BrowserPortalFirstRevealScrollTests {
             defer: false
         )
         window.isReleasedWhenClosed = false
+        window.animationBehavior = .none
         window.alphaValue = 0
         let contentView = NSView(frame: hostFrame)
         let webView = RecordingWebView(frame: contentView.bounds, configuration: WKWebViewConfiguration())

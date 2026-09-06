@@ -783,7 +783,6 @@ import Testing
             runtime: runtime,
             route: route,
             ticket: ticket,
-            allowsStackAuthFallback: true
         )
         let clock = ControlPoolManualClock()
         let shell = MobileShellComposite(
@@ -1312,7 +1311,6 @@ import Testing
                 runtime: runtime,
                 route: route,
                 ticket: ticket,
-                allowsStackAuthFallback: true
             )
             return (
                 SecondaryMacSubscription(
@@ -1547,7 +1545,6 @@ import Testing
                         runtime: runtime,
                         route: route,
                         ticket: ticket,
-                        allowsStackAuthFallback: true
                     ),
                     route: route,
                     ticket: ticket,
@@ -1633,7 +1630,6 @@ import Testing
                     runtime: runtime,
                     route: route,
                     ticket: ticket,
-                    allowsStackAuthFallback: true
                 ),
                 route: route,
                 ticket: ticket,
@@ -2074,7 +2070,6 @@ import Testing
             runtime: runtime,
             route: route,
             ticket: ticket,
-            allowsStackAuthFallback: true
         )
         _ = try await client.sendRequest(
             MobileCoreRPCClient.requestData(
@@ -2312,7 +2307,6 @@ import Testing
                 runtime: runtime,
                 route: route,
                 ticket: ticket,
-                allowsStackAuthFallback: true
             ),
             route: route,
             ticket: ticket,
@@ -2384,7 +2378,6 @@ import Testing
             runtime: runtime,
             route: route,
             ticket: ticket,
-            allowsStackAuthFallback: true
         )
         let focused = MacConnection(
             macDeviceID: "mac-provisional",
@@ -2572,7 +2565,7 @@ import Testing
         #expect(shell.secondaryMacSubscriptions[MacPairingKey(macDeviceID: "mac-transient", instanceTag: "transient-tag")] == nil)
     }
 
-    @Test func identityFreeStatusRunsAuthenticatedRepairBeforeRetrying() async throws {
+    @Test func identityFreeStatusFailsClosedWithoutAccountRepair() async throws {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
         try FileManager.default.createDirectory(
@@ -2605,16 +2598,11 @@ import Testing
             displayName: "Auth Mac"
         )
         await router.omitNextHostStatusIdentities()
-        let tokenRequests = PoolTransportAttemptCounter()
         let runtime = LivenessTestRuntime(
             transportFactory: LivenessTransportFactory(
                 router: router,
                 box: TransportBox()
             ),
-            stackAccessTokenProvider: {
-                tokenRequests.increment()
-                return "fresh-stack-token"
-            },
             now: { Date() }
         )
         let shell = MobileShellComposite(
@@ -2640,20 +2628,16 @@ import Testing
             )
         )
 
-        #expect(try await pollUntil {
-            shell.secondaryMacSubscriptions[MacPairingKey(macDeviceID: "mac-auth", instanceTag: "auth-tag")] != nil
-        })
-        #expect(await router.count(of: "mobile.host.status") == 2)
-        #expect(tokenRequests.count > 0)
+        #expect(await router.waitForCount(of: "mobile.host.status", atLeast: 1))
+        #expect(shell.secondaryMacSubscriptions[MacPairingKey(
+            macDeviceID: "mac-auth",
+            instanceTag: "auth-tag"
+        )] == nil)
+        #expect(await router.count(of: "mobile.host.status") == 1)
         #expect(shell.secondaryAggregationRetryTask == nil)
-        if let subscription = shell.secondaryMacSubscriptions[MacPairingKey(macDeviceID: "mac-auth", instanceTag: "auth-tag")] {
-            subscription.cancel()
-            shell.secondaryMacSubscriptions[MacPairingKey(macDeviceID: "mac-auth", instanceTag: "auth-tag")] = nil
-            await subscription.client.disconnect()
-        }
     }
 
-    @Test func identityFreeLegacyTailscaleStatusUsesValidatedRepair()
+    @Test func identityFreeTailscaleStatusFailsClosedWithoutAccountRepair()
         async throws {
         let route = try CmxAttachRoute(
             id: "legacy-identity-repair",
@@ -2669,8 +2653,7 @@ import Testing
             isActive: false,
             stackUserID: "user-1",
             teamID: "team-1",
-            instanceTag: "legacy-tag",
-            legacyTailscaleRoutes: [route]
+            instanceTag: "legacy-tag"
         )
         let router = LivenessHostRouter()
         await router.setHostIdentity(
@@ -2679,35 +2662,27 @@ import Testing
             displayName: "Legacy Mac"
         )
         await router.omitNextHostStatusIdentities()
-        let tokenRequests = PoolTransportAttemptCounter()
         let runtime = LivenessTestRuntime(
             transportFactory: LivenessTransportFactory(
                 router: router,
                 box: TransportBox()
             ),
-            stackAccessTokenProvider: {
-                tokenRequests.increment()
-                return "fresh-stack-token"
-            },
             now: { Date() },
             supportedRouteKinds: [.tailscale]
         )
         let shell = MobileShellComposite(runtime: runtime, isSignedIn: true)
 
         switch await shell.makeSecondaryClient(for: mac) {
-        case let .connected(handle):
-            #expect(handle.storedInstanceTag == "legacy-tag")
-            #expect(handle.authenticatedInstanceTag == "legacy-tag")
-            await handle.client.disconnect()
+        case .connected:
+            Issue.record("identity-free Tailscale route was accepted")
         case .superseded:
-            Issue.record("validated legacy route was superseded")
+            Issue.record("identity-free Tailscale route was superseded")
         case .transientFailure:
-            Issue.record("validated legacy route failed transiently")
+            Issue.record("identity-free Tailscale route failed transiently")
         case .permanentFailure:
-            Issue.record("validated legacy route skipped authenticated repair")
+            break
         }
-        #expect(await router.count(of: "mobile.host.status") == 2)
-        #expect(tokenRequests.count > 0)
+        #expect(await router.count(of: "mobile.host.status") == 1)
     }
 
     @Test func controlEventTaskDoesNotRetainShellStore() throws {
@@ -2736,7 +2711,6 @@ import Testing
             runtime: runtime,
             route: route,
             ticket: ticket,
-            allowsStackAuthFallback: true
         )
         let subscription = SecondaryMacSubscription(
             macDeviceID: "mac-retain",
@@ -2789,7 +2763,6 @@ import Testing
             runtime: runtime,
             route: route,
             ticket: ticket,
-            allowsStackAuthFallback: true
         )
         let connection = MacConnection(
             macDeviceID: "mac-a",
@@ -2886,13 +2859,11 @@ import Testing
             runtime: runtime,
             route: route,
             ticket: oldTicket,
-            allowsStackAuthFallback: true
         )
         let newClient = MobileCoreRPCClient(
             runtime: runtime,
             route: route,
             ticket: newTicket,
-            allowsStackAuthFallback: true
         )
         let shell = MobileShellComposite(runtime: runtime, isSignedIn: true)
         shell.remoteClient = oldClient
@@ -2938,7 +2909,6 @@ import Testing
                 runtime: runtime,
                 route: route,
                 ticket: ticket,
-                allowsStackAuthFallback: true
             )
         }
         let focusedClient = client()
@@ -3025,7 +2995,6 @@ import Testing
             runtime: runtime,
             route: route,
             ticket: ticket,
-            allowsStackAuthFallback: true
         )
         let stale = MacConnection(
             macDeviceID: "mac-a",
@@ -3114,7 +3083,6 @@ import Testing
             runtime: runtime,
             route: route,
             ticket: ticket,
-            allowsStackAuthFallback: true
         )
         let generation = UUID()
         let connection = MacConnection(
@@ -3179,7 +3147,6 @@ import Testing
             runtime: runtime,
             route: route,
             ticket: ticket,
-            allowsStackAuthFallback: true
         )
         let focusedGeneration = UUID()
         let connection = MacConnection(
@@ -3305,7 +3272,6 @@ import Testing
             runtime: runtime,
             route: route,
             ticket: ticket,
-            allowsStackAuthFallback: true
         )
         let shell = MobileShellComposite(runtime: runtime, isSignedIn: true)
         let subscription = SecondaryMacSubscription(
@@ -3366,7 +3332,6 @@ import Testing
             runtime: runtime,
             route: route,
             ticket: ticket,
-            allowsStackAuthFallback: true
         )
         let shell = MobileShellComposite(
             runtime: runtime,
@@ -3455,7 +3420,6 @@ import Testing
                     runtime: runtime,
                     route: route,
                     ticket: ticket,
-                    allowsStackAuthFallback: true
                 ),
                 route: route,
                 ticket: ticket,
@@ -3582,7 +3546,6 @@ import Testing
             runtime: runtime,
             route: route,
             ticket: ticket,
-            allowsStackAuthFallback: true
         )
         let subscription = SecondaryMacSubscription(
             macDeviceID: "mac-b",
@@ -3709,7 +3672,6 @@ import Testing
             runtime: runtime,
             route: route,
             ticket: ticket,
-            allowsStackAuthFallback: true
         )
         let subscription = SecondaryMacSubscription(
             macDeviceID: "mac-b",
@@ -3809,7 +3771,6 @@ import Testing
             runtime: runtime,
             route: route,
             ticket: ticket,
-            allowsStackAuthFallback: true
         )
         let subscription = SecondaryMacSubscription(
             macDeviceID: "mac-b",
@@ -3920,7 +3881,6 @@ import Testing
             runtime: runtime,
             route: route,
             ticket: ticket,
-            allowsStackAuthFallback: true
         )
         let subscription = SecondaryMacSubscription(
             macDeviceID: "mac-b",
@@ -4056,7 +4016,6 @@ import Testing
             runtime: runtime,
             route: route,
             ticket: ticket,
-            allowsStackAuthFallback: true
         )
         let subscription = SecondaryMacSubscription(
             macDeviceID: "mac-b",
@@ -4117,7 +4076,6 @@ import Testing
             runtime: runtime,
             route: route,
             ticket: ticket,
-            allowsStackAuthFallback: true
         )
         let shell = MobileShellComposite(runtime: runtime, isSignedIn: true)
         let subscription = SecondaryMacSubscription(
@@ -4191,7 +4149,6 @@ import Testing
             runtime: runtime,
             route: route,
             ticket: ticket,
-            allowsStackAuthFallback: true
         )
         let subscription = SecondaryMacSubscription(
             macDeviceID: "mac-b",
@@ -4264,7 +4221,6 @@ import Testing
                     runtime: runtime,
                     route: route,
                     ticket: ticket,
-                    allowsStackAuthFallback: true
                 ),
                 route: route,
                 ticket: ticket,
@@ -4353,7 +4309,6 @@ import Testing
                     runtime: runtime,
                     route: route,
                     ticket: ticket,
-                    allowsStackAuthFallback: true
                 ),
                 route: route,
                 ticket: ticket,
@@ -4474,13 +4429,11 @@ import Testing
             runtime: runtime,
             route: oldRoute,
             ticket: oldTicket,
-            allowsStackAuthFallback: true
         )
         let displacedControlClient = MobileCoreRPCClient(
             runtime: runtime,
             route: targetRoute,
             ticket: targetTicket,
-            allowsStackAuthFallback: true
         )
         let shell = MobileShellComposite(
             runtime: runtime,
@@ -4560,7 +4513,6 @@ import Testing
                         runtime: runtime,
                         route: fillerRoute,
                         ticket: fillerTicket,
-                        allowsStackAuthFallback: true
                     ),
                     route: fillerRoute,
                     ticket: fillerTicket,
@@ -4584,7 +4536,6 @@ import Testing
         let connectTask = Task { @MainActor in
             try await shell.connect(
                 ticket: targetTicket,
-                allowsStackAuthFallback: true,
                 pairedMacDeviceID: "mac-b",
                 instanceTagExpectation: .require("mmpool")
             )
@@ -4673,7 +4624,6 @@ import Testing
             runtime: runtime,
             route: route,
             ticket: anonymousTicket,
-            allowsStackAuthFallback: true
         )
         let shell = MobileShellComposite(
             runtime: runtime,
@@ -4726,7 +4676,6 @@ import Testing
 
         _ = try await shell.connect(
             ticket: anonymousTicket,
-            allowsStackAuthFallback: true
         )
 
         #expect(shell.connectionState == .connected)
@@ -4780,7 +4729,6 @@ import Testing
             runtime: runtime,
             route: route,
             ticket: controlTicket,
-            allowsStackAuthFallback: true,
             connectAttemptRegistry: shell.connectAttemptRegistry
         )
         let control = SecondaryMacSubscription(
@@ -4803,7 +4751,6 @@ import Testing
 
         _ = try await shell.connect(
             ticket: targetTicket,
-            allowsStackAuthFallback: true
         )
 
         #expect(control.isTransitioningToFocus)
@@ -4828,7 +4775,8 @@ import Testing
         let shell = MobileShellComposite.preview(runtime: runtime)
         shell.signIn()
         let ticket = try makeTicket(clock: clock)
-        #expect(await shell.connectPairingURL(try attachURL(for: ticket)))
+        _ = try await shell.connect(ticket: ticket)
+        #expect(shell.connectionState == .connected)
         let originalClient = try #require(shell.remoteClient)
         let initialWorkspaceRequests = await router.count(
             of: "workspace.list"
@@ -4837,7 +4785,6 @@ import Testing
         let redial = Task { @MainActor in
             try await shell.connect(
                 ticket: ticket,
-                allowsStackAuthFallback: true,
                 pairedMacDeviceID: ticket.macDeviceID
             )
         }
@@ -4862,72 +4809,6 @@ import Testing
         #expect(shell.remoteClient !== originalClient)
         await closeGate.release()
         _ = try? await redial.value
-    }
-
-    @Test func manualSameRouteRepairProbesBeforeReplacingForeground()
-        async throws {
-        let router = LivenessHostRouter()
-        let shell = try await makeConnectedStore(
-            router: router,
-            box: TransportBox(),
-            clock: TestClock()
-        )
-        let originalClient = try #require(shell.remoteClient)
-
-        await shell.connectManualHost(
-            name: "Test Mac",
-            host: "127.0.0.1",
-            port: 56_584,
-            pairedMacDeviceID: "test-mac"
-        )
-
-        #expect(shell.connectionState == .connected)
-        #expect(shell.connectionError == nil)
-        #expect(shell.remoteClient != nil)
-        #expect(shell.remoteClient !== originalClient)
-        #expect(shell.foregroundMacDeviceIDForTesting() == "test-mac")
-        #expect(await router.count(of: "mobile.attach_ticket.create") == 1)
-    }
-
-    @Test func failedManualSameRouteProbePreservesForeground()
-        async throws {
-        let router = LivenessHostRouter()
-        let shell = try await makeConnectedStore(
-            router: router,
-            box: TransportBox(),
-            clock: TestClock()
-        )
-        let originalClient = try #require(shell.remoteClient)
-        let originalForegroundMacDeviceID =
-            shell.foregroundMacDeviceIDForTesting()
-        await router.failNextAttachTicketRequests()
-
-        await shell.connectManualHost(
-            name: "Test Mac",
-            host: "127.0.0.1",
-            port: 56_584,
-            pairedMacDeviceID: "test-mac"
-        )
-
-        #expect(shell.connectionState == .connected)
-        #expect(shell.remoteClient === originalClient)
-        #expect(
-            shell.foregroundMacDeviceIDForTesting()
-                == originalForegroundMacDeviceID
-        )
-        #expect(await router.count(of: "mobile.attach_ticket.create") == 1)
-        let hostStatusRequestsBeforeProof = await router.count(
-            of: "mobile.host.status"
-        )
-        let proofRequest = try MobileCoreRPCClient.requestData(
-            method: "mobile.host.status",
-            params: [:]
-        )
-        _ = try await originalClient.sendRequest(proofRequest)
-        #expect(
-            await router.count(of: "mobile.host.status")
-                == hostStatusRequestsBeforeProof + 1
-        )
     }
 
     @Test func rejectedAnonymousIdentityPreservesAuthenticatedControlOwner()
@@ -4985,13 +4866,11 @@ import Testing
             runtime: runtime,
             route: route,
             ticket: anonymousTicket,
-            allowsStackAuthFallback: true
         )
         let controlClient = MobileCoreRPCClient(
             runtime: runtime,
             route: route,
             ticket: claimedTicket,
-            allowsStackAuthFallback: true
         )
         _ = try await controlClient.sendRequest(
             MobileCoreRPCClient.requestData(
@@ -5075,7 +4954,6 @@ import Testing
             runtime: runtime,
             route: route,
             ticket: previousTicket,
-            allowsStackAuthFallback: true
         )
         let anonymousTicket = try CmxAttachTicket(
             workspaceID: "",
@@ -5108,7 +4986,6 @@ import Testing
 
         _ = try await shell.connect(
             ticket: anonymousTicket,
-            allowsStackAuthFallback: true
         )
 
         #expect(shell.foregroundMacDeviceID == nil)
@@ -5166,7 +5043,6 @@ import Testing
             runtime: runtime,
             route: route,
             ticket: ticket,
-            allowsStackAuthFallback: true
         )
         let shell = MobileShellComposite(
             runtime: runtime,

@@ -137,8 +137,7 @@ extension MobileHostAuthorizationTests {
                     "stream_id": "events",
                     "topics": ["terminal.updated"],
                     "event_transport": "iroh_server_events_v1",
-                ],
-                auth: nil
+                ]
             )
         )
         guard case let .ok(payload)? = result else {
@@ -210,8 +209,7 @@ extension MobileHostAuthorizationTests {
                     "stream_id": "events",
                     "topics": ["mobile.sync.delta"],
                     "event_transport": "iroh_server_events_v1",
-                ],
-                auth: nil
+                ]
             )
         )
 
@@ -264,8 +262,7 @@ extension MobileHostAuthorizationTests {
                 "stream_id": "events",
                 "topics": ["terminal.updated"],
                 "event_transport": "iroh_server_events_v1",
-            ],
-            auth: nil
+            ]
         )
         _ = await session.debugHandleSubscriptionRPCForTesting(subscribe)
         guard case let .ok(payload)? = await session.debugHandleSubscriptionRPCForTesting(subscribe) else {
@@ -385,7 +382,15 @@ extension MobileHostAuthorizationTests {
                 MobileHostConnectionRegistry.shared.remove(id: id)
             }
         )
-        #expect(registry.insert(session, id: connectionID, authorization: .stackBearer, limit: 10))
+        #expect(registry.insert(
+            session,
+            id: connectionID,
+            authorization: .pairedDevice(
+                fingerprint: String(repeating: "a", count: 64),
+                label: "Test iPhone"
+            ),
+            limit: 10
+        ))
         await session.subscribe(streamID: "events", topics: ["terminal.render_grid"])
 
         for sequence in 0..<600 {
@@ -615,8 +620,7 @@ extension MobileHostAuthorizationTests {
                 "stream_id": "events",
                 "topics": ["terminal.updated"],
                 "event_transport": "iroh_server_events_v1",
-            ],
-            auth: nil
+            ]
         )
         _ = await session.debugHandleSubscriptionRPCForTesting(subscribe)
         #expect(

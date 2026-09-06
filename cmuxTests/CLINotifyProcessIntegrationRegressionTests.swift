@@ -4592,7 +4592,7 @@ final class CLINotifyProcessIntegrationRegressionTests: XCTestCase {
         environment["CMUX_SOCKET_PATH"] = socketPath
         environment["CMUX_CLI_SENTRY_DISABLED"] = "1"
         environment["CMUX_TERMINAL_LIFECYCLE_ID"] = surfaceId
-        process.environment = environment
+        process.environment = CLIMockSocketAuthentication.environment(environment)
         process.standardInput = FileHandle.nullDevice
         process.standardOutput = slaveHandle
         process.standardError = stderrPipe
@@ -4789,7 +4789,7 @@ final class CLINotifyProcessIntegrationRegressionTests: XCTestCase {
         environment["CMUX_CLI_SENTRY_DISABLED"] = "1"
         environment["CMUX_TERMINAL_LIFECYCLE_ID"] = surfaceId
         environment["CMUX_SSH_ATTEMPT_ID"] = "44444444-4444-4444-4444-444444444444"
-        process.environment = environment
+        process.environment = CLIMockSocketAuthentication.environment(environment)
         process.standardInput = FileHandle.nullDevice
         process.standardOutput = stdoutPipe
         process.standardError = stderrPipe
@@ -4993,7 +4993,7 @@ final class CLINotifyProcessIntegrationRegressionTests: XCTestCase {
         environment["CMUX_CLI_SENTRY_DISABLED"] = "1"
         environment["CMUX_TERMINAL_LIFECYCLE_ID"] = surfaceId
         environment["CMUX_SSH_ATTEMPT_ID"] = "44444444-4444-4444-4444-444444444444"
-        process.environment = environment
+        process.environment = CLIMockSocketAuthentication.environment(environment)
         process.standardInput = FileHandle.nullDevice
         process.standardOutput = stdoutPipe
         process.standardError = stderrPipe

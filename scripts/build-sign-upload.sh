@@ -67,6 +67,7 @@ NOTARY_PROFILE="${NOTARY_PROFILE:-cmux-mochi-notary}"
 ENTITLEMENTS="cmux.release.entitlements"
 APP_PATH="build/Build/Products/Release/cmux Mochi.app"
 GHOSTTYKIT_CRASH_REPORT_SUBDIR="cmux/crash"
+GHOSTTYKIT_BUILD_FLAVOR="crashsubdir-cmux-crash-sentry-off-v1"
 
 # --- Pre-flight ---
 # Fork secrets file (Sparkle keys). Falls back to the legacy upstream name.
@@ -96,14 +97,14 @@ if [[ "${CMUX_BUILD_GHOSTTYKIT:-}" == "1" ]]; then
   rm -rf GhosttyKit.xcframework ghostty/macos/GhosttyKit.xcframework
   (
     cd ghostty
-    zig build -Dcrash-report-subdir="$GHOSTTYKIT_CRASH_REPORT_SUBDIR" -Demit-xcframework=true -Demit-macos-app=false -Dxcframework-target=universal -Doptimize=ReleaseFast
+    zig build -Dcrash-report-subdir="$GHOSTTYKIT_CRASH_REPORT_SUBDIR" -Dsentry=false -Demit-xcframework=true -Demit-macos-app=false -Dxcframework-target=universal -Doptimize=ReleaseFast
   )
   cp -R ghostty/macos/GhosttyKit.xcframework GhosttyKit.xcframework
-elif [[ -d "$HOME/.cache/cmux/ghosttykit/$(git -C ghostty rev-parse HEAD)-crashsubdir-cmux-crash-v1/GhosttyKit.xcframework" ]]; then
+elif [[ -d "$HOME/.cache/cmux/ghosttykit/$(git -C ghostty rev-parse HEAD)-$GHOSTTYKIT_BUILD_FLAVOR/GhosttyKit.xcframework" ]]; then
   # Reuse the locally cached xcframework for this exact ghostty SHA (what
   # reload.sh builds/downloads). Avoids a network fetch and works when the
   # xcframework release for this SHA has not been published yet.
-  CACHED_KIT="$HOME/.cache/cmux/ghosttykit/$(git -C ghostty rev-parse HEAD)-crashsubdir-cmux-crash-v1/GhosttyKit.xcframework"
+  CACHED_KIT="$HOME/.cache/cmux/ghosttykit/$(git -C ghostty rev-parse HEAD)-$GHOSTTYKIT_BUILD_FLAVOR/GhosttyKit.xcframework"
   echo "Using cached GhosttyKit: $CACHED_KIT"
   rm -rf GhosttyKit.xcframework ghostty/macos/GhosttyKit.xcframework
   mkdir -p ghostty/macos

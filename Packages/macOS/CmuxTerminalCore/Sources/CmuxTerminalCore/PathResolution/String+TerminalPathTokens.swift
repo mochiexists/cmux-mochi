@@ -170,6 +170,18 @@ extension String {
         }
 
         append(rawPathSegment(containingColumn: column))
+        // A literal filename beginning with "- " retains precedence. If it
+        // does not exist, a list bullet must not become part of the filename
+        // or make a clicked suffix outrank the complete spaced path.
+        let leadingSpaces = prefix { $0 == " " }.count
+        let content = dropFirst(leadingSpaces)
+        if content.hasPrefix("- ") {
+            let afterBullet = content.dropFirst(2)
+            let pathStart = leadingSpaces + 2 + afterBullet.prefix { $0 == " " }.count
+            if column >= pathStart {
+                append(String(dropFirst(pathStart)).rawPathSegment(containingColumn: column - pathStart))
+            }
+        }
         append(shellEscapedToken(containingColumn: column))
 
         return candidates

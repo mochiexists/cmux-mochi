@@ -4,10 +4,8 @@ import Foundation
 
 extension TerminalController {
     /// Mints a v3 pairing code: a Mac fingerprint plus a single-use enrollment
-    /// ticket. Unlike `mobile.attach_ticket.create`, the payload carries no
-    /// bearer token — the phone pins this Mac's TLS identity from the
-    /// fingerprint and redeems the ticket over mutual TLS, which is the only
-    /// route the fork's TLS-only listener accepts.
+    /// ticket. The payload carries no bearer token; the phone pins this Mac's
+    /// TLS identity from the fingerprint and redeems the ticket over mutual TLS.
     @MainActor
     func v2MobilePairingCodeCreate(params: [String: Any]) async -> V2CallResult {
         let lifetime = TimeInterval(

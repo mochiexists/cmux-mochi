@@ -120,7 +120,42 @@ extension CMUXCLI {
                 )
             )
         }
-        let requestedWorkingDirectory = requestedRestoreWorkingDirectory(for: record)
+        let verifiedCodexWorkingDirectory: String? = try {
+            guard mode == .resumeAgent,
+                  record.kind.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "codex",
+                  let checkpointID = record.checkpointID else {
+                return nil
+            }
+            var launchEnvironment = record.launchCommand?.environment ?? [:]
+            launchEnvironment.merge(record.environment) { _, restored in restored }
+            let fallbackHome = processEnvironment["HOME"] ?? NSHomeDirectory()
+            let verifier = CodexCheckpointVerifier()
+            let codexHome = verifier.codexHome(
+                launchEnvironment: launchEnvironment,
+                fallbackHomeDirectory: fallbackHome
+            )
+            switch verifier.verify(
+                sessionID: checkpointID,
+                codexHome: codexHome,
+                transcriptPath: nil
+            ) {
+            case .interactive(let evidence):
+                return evidence.workingDirectory
+            case .legacyUnindexed:
+                return nil
+            case .rejected:
+                throw loggedRestoreError(
+                    stage: "record.codex-checkpoint",
+                    detail: checkpointID,
+                    message: String(
+                        localized: "cli.restore.error.noRecord",
+                        defaultValue: "restore: this session has nothing to restore. Start the agent again in this terminal."
+                    )
+                )
+            }
+        }()
+        let requestedWorkingDirectory = verifiedCodexWorkingDirectory
+            ?? requestedRestoreWorkingDirectory(for: record)
         let appliedWorkingDirectory = try applyRestoreWorkingDirectory(
             requestedWorkingDirectory
         )

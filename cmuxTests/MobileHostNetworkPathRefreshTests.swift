@@ -93,6 +93,65 @@ import Testing
         #expect(addresses.allSatisfy { !$0.contains(":") })
     }
 
+    @Test func localNetworkRoutePublicationRequiresRunningPhysicalInterface() {
+        #expect(MobileHostNetworkPathMonitor.localNetworkInterfaceIsEligible(
+            name: "en11",
+            isUp: true,
+            isRunning: true,
+            isLoopback: false
+        ))
+        #expect(!MobileHostNetworkPathMonitor.localNetworkInterfaceIsEligible(
+            name: "en11",
+            isUp: true,
+            isRunning: false,
+            isLoopback: false
+        ))
+        #expect(!MobileHostNetworkPathMonitor.localNetworkInterfaceIsEligible(
+            name: "vnic0",
+            isUp: true,
+            isRunning: true,
+            isLoopback: false
+        ))
+        #expect(!MobileHostNetworkPathMonitor.localNetworkInterfaceIsEligible(
+            name: "bridge100",
+            isUp: true,
+            isRunning: true,
+            isLoopback: false
+        ))
+        #expect(!MobileHostNetworkPathMonitor.localNetworkInterfaceIsEligible(
+            name: "en11",
+            isUp: true,
+            isRunning: true,
+            isLoopback: false,
+            isTethered: true
+        ))
+        #expect(MobileHostNetworkPathMonitor.personalHotspotServiceName("iPhone USB"))
+        #expect(!MobileHostNetworkPathMonitor.personalHotspotServiceName("USB 10/100/1000 LAN"))
+        #expect(MobileHostNetworkPathMonitor.personalHotspotIPv4Configuration(
+            addresses: ["172.20.10.12"],
+            router: "172.20.10.1"
+        ))
+        #expect(!MobileHostNetworkPathMonitor.personalHotspotIPv4Configuration(
+            addresses: ["192.168.1.20"],
+            router: "192.168.1.1"
+        ))
+        #expect(!MobileHostNetworkPathMonitor.personalHotspotIPv4Configuration(
+            addresses: ["172.20.11.12"],
+            router: "172.20.10.1"
+        ))
+    }
+
+    @Test func tetherOnlyHostDoesNotPublishMDNSAsAFalseLANFallback() {
+        #expect(MobileRouteResolver.localNetworkRouteHosts(
+            localIPv4Addresses: [],
+            hostName: "timapple-m5"
+        ).isEmpty)
+        #expect(MobileRouteResolver.localNetworkRouteHosts(
+            localIPv4Addresses: ["192.168.1.20"],
+            hostName: "timapple-m5"
+        ) == ["192.168.1.20", "timapple-m5.local"])
+    }
+
     // MARK: - Republish policy
 
     @Test func firstObservationRepublishes() {
@@ -122,6 +181,27 @@ import Testing
         ) == true)
     }
 
+    @Test func initialPathObservationKeepsAReadyListener() {
+        #expect(!MobileHostService.shouldRestartListenerForPathChange(
+            isInitialObservation: true,
+            listenerReady: true
+        ))
+    }
+
+    @Test func changedPathObservationRebindsAReadyListener() {
+        #expect(MobileHostService.shouldRestartListenerForPathChange(
+            isInitialObservation: false,
+            listenerReady: true
+        ))
+    }
+
+    @Test func changedPathDuringBindDoesNotStartASecondListener() {
+        #expect(!MobileHostService.shouldRestartListenerForPathChange(
+            isInitialObservation: false,
+            listenerReady: false
+        ))
+    }
+
     // MARK: - Resolver cache invalidation
 
     private func tailscaleHosts(in snapshot: MobileHostRouteSnapshot) -> [String] {
@@ -135,18 +215,18 @@ import Testing
 
     @Test func invalidateDropsCachedResolvedHosts() async {
         let resolver = MobileRouteResolver()
-        // Seed the cache through the awaited resolution path. MagicDNS may be
-        // retained as resolver metadata, but only the numeric tailnet address
-        // may be published to a plaintext compatibility client.
+        // Seed the cache through the awaited resolution path. The authenticated
+        // route set retains both the numeric fast path and durable MagicDNS
+        // fallback.
         let seeded = await resolver.routesResolvingTailscaleDNS(
             port: 51000,
             resolveHosts: { ["old-net.tail1234.ts.net", "100.64.0.1"] }
         )
-        #expect(tailscaleHosts(in: seeded) == ["100.64.0.1"])
+        #expect(tailscaleHosts(in: seeded) == ["100.64.0.1", "old-net.tail1234.ts.net"])
 
         // The cache serves the seeded hosts while fresh.
         let cached = resolver.routes(port: 51000, now: Date(), immediateHosts: { [] })
-        #expect(tailscaleHosts(in: cached) == ["100.64.0.1"])
+        #expect(tailscaleHosts(in: cached) == ["100.64.0.1", "old-net.tail1234.ts.net"])
 
         // After invalidation (the network changed), the old-network hosts are
         // gone and only live interface-scan hosts remain.
