@@ -248,3 +248,25 @@ git revert 637726f153 75dd3b3b4a
 
 The CI run dispatched tonight predates both commits, so it validates the workflow
 fixes but not these. A follow-up run is needed to confirm them.
+
+## CI run history for this candidate, and why one run was cancelled
+
+The first CI run against the fixed workflow (34062825739) went green on all eleven
+non-macOS jobs, including the new fork app-path guard. Shard 2 then failed as
+expected under the corrected gate.
+
+I cancelled the remainder deliberately. Its three remaining shards plus release-build
+would have held the single self-hosted runner for roughly three hours, and the
+nightly's sign-and-notarize job was queued behind them. The nightly is the actual
+deliverable, and the only thing those shards would have demonstrated, that the
+corrected gate turns previously-green shards red, was already proven directly by
+running the fixed policy against the archived shard 1 and shard 3 logs. Both return
+failure.
+
+A replacement CI run is dispatched automatically once the nightly releases the
+runner. That run sits on a later commit and is strictly more informative, because it
+also exercises the two test-harness fixes that the cancelled run predated.
+
+Note for whoever reads the runs list: `tests` and `ci-status` are pure aggregators.
+They fail whenever anything they gate on fails, so they never carry independent
+information.
