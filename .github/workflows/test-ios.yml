@@ -161,6 +161,23 @@ jobs:
           export DEVELOPER_DIR="$XCODE_DIR"
           xcodebuild -version
 
+      - name: Prepare an unlocked test keychain
+        run: |
+          # Package tests exercise the real keychain (DeviceLink identities,
+          # forget/re-pair). The runner's login keychain is locked and no UI is
+          # allowed, so SecItem calls fail with errSecInteractionNotAllowed
+          # (-25308). Give the job its own unlocked throwaway keychain instead.
+          set -euo pipefail
+          KEYCHAIN_PASSWORD="$(uuidgen)"
+          KEYCHAIN_PATH="$RUNNER_TEMP/cmux-package-tests.keychain-db"
+          security delete-keychain "$KEYCHAIN_PATH" >/dev/null 2>&1 || true
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security list-keychains -d user -s "$KEYCHAIN_PATH"
+          security default-keychain -d user -s "$KEYCHAIN_PATH"
+          echo "CMUX_TEST_KEYCHAIN_PATH=$KEYCHAIN_PATH" >> "$GITHUB_ENV"
+
       - name: Run CMUXMobileCore package tests
         run: |
           swift test --package-path Packages/Shared/CMUXMobileCore
@@ -211,6 +228,13 @@ jobs:
           # Account-free root gating must stay covered while Stack transport
           # authentication is removed from the product composition.
           swift test --package-path Packages/iOS/CmuxMobileWorkspace
+
+      - name: Remove the test keychain
+        if: ${{ always() }}
+        run: |
+          if [ -n "${CMUX_TEST_KEYCHAIN_PATH:-}" ]; then
+            security delete-keychain "$CMUX_TEST_KEYCHAIN_PATH" >/dev/null 2>&1 || true
+          fi
 
   ios-simulator:
     needs: detect-ios-changes
