@@ -24,7 +24,6 @@ import Testing
             runtime: runtime,
             route: route,
             ticket: ticket,
-            allowsStackAuthFallback: true
         )
         let request = try MobileCoreRPCClient.requestData(
             method: "terminal.input",
@@ -68,7 +67,6 @@ import Testing
             runtime: runtime,
             route: route,
             ticket: ticket,
-            allowsStackAuthFallback: true,
             abandonedConnectCleanupTimeoutNanoseconds: 1_000_000
         )
         let first = try MobileCoreRPCClient.requestData(
@@ -136,7 +134,6 @@ import Testing
             runtime: runtime,
             route: route,
             ticket: ticket,
-            allowsStackAuthFallback: true
         )
         let first = try MobileCoreRPCClient.requestData(
             method: "terminal.input",
@@ -192,7 +189,6 @@ import Testing
             runtime: runtime,
             route: route,
             ticket: ticket,
-            allowsStackAuthFallback: true
         )
 
         for id in ["stuck-connect-1", "stuck-connect-2", "stuck-connect-3"] {
@@ -239,7 +235,6 @@ import Testing
             runtime: runtime,
             route: route,
             ticket: ticket,
-            allowsStackAuthFallback: true
         )
 
         let cancelledRequest = try MobileCoreRPCClient.requestData(
@@ -309,7 +304,6 @@ import Testing
             runtime: runtime,
             route: route,
             ticket: ticket,
-            allowsStackAuthFallback: true
         )
         let request = try MobileCoreRPCClient.requestData(
             method: "terminal.input",
@@ -1130,7 +1124,6 @@ import Testing
             runtime: runtime,
             route: route,
             ticket: ticket,
-            allowsStackAuthFallback: true
         )
         let request = try MobileCoreRPCClient.requestData(
             method: "terminal.input",

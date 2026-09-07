@@ -59,9 +59,8 @@ import Testing
             clock: clock
         )
 
-        let connected = await shell.connectPairingURL(
-            try attachURL(for: makeTicket(clock: clock))
-        )
+        _ = try? await shell.connect(ticket: makeTicket(clock: clock))
+        let connected = shell.connectionState == .connected
 
         #expect(!connected)
         let mac = try #require(await pairedStore.activeMac(
@@ -89,9 +88,8 @@ import Testing
             clock: clock
         )
 
-        let connected = await shell.connectPairingURL(
-            try attachURL(for: makeTicket(clock: clock))
-        )
+        _ = try await shell.connect(ticket: makeTicket(clock: clock))
+        let connected = shell.connectionState == .connected
 
         #expect(connected)
         let mac = try #require(await pairedStore.activeMac(
@@ -100,6 +98,7 @@ import Testing
         #expect(mac.instanceTag == nil)
         #expect(mac.displayName == "Legacy Studio")
         #expect(!mac.routes.isEmpty)
+        await shell.loadPairedMacs()
         #expect(shell.displayPairedMacs.map(\.macDeviceID) == ["test-mac"])
     }
 
@@ -170,18 +169,16 @@ import Testing
             instanceTag: "default",
             displayName: "Studio"
         )
-        let stableConnected = await shell.connectPairingURL(
-            try attachURL(for: makeTicket(clock: clock))
-        )
+        _ = try await shell.connect(ticket: makeTicket(clock: clock))
+        let stableConnected = shell.connectionState == .connected
 
         await router.setHostIdentity(
             deviceID: "test-mac",
             instanceTag: "nightly",
             displayName: "Studio"
         )
-        let nightlyConnected = await shell.connectPairingURL(
-            try attachURL(for: makeTicket(clock: clock))
-        )
+        _ = try await shell.connect(ticket: makeTicket(clock: clock))
+        let nightlyConnected = shell.connectionState == .connected
 
         #expect(stableConnected)
         #expect(nightlyConnected)
@@ -244,9 +241,8 @@ import Testing
             clock: clock
         )
 
-        let connected = await shell.connectPairingURL(
-            try attachURL(for: makeTicket(clock: clock))
-        )
+        _ = try await shell.connect(ticket: makeTicket(clock: clock))
+        let connected = shell.connectionState == .connected
 
         #expect(connected)
         let userB = try #require(await pairedStore.activeMac(

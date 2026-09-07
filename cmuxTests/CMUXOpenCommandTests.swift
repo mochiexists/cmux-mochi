@@ -139,6 +139,7 @@ final class CMUXOpenCommandTests: XCTestCase {
         let listenerFD = try bindUnixSocket(at: socketPath)
         let state = MockSocketServerState()
         let windowID = UUID().uuidString.lowercased()
+        let workspaceID = UUID().uuidString.lowercased()
         let surfaceID = UUID().uuidString.lowercased()
         defer {
             Darwin.close(listenerFD)
@@ -151,9 +152,28 @@ final class CMUXOpenCommandTests: XCTestCase {
                   let method = payload["method"] as? String else {
                 return Self.v2Response(id: "unknown", ok: false, error: ["code": "unexpected"])
             }
-            return Self.v2Response(id: id, ok: true, result: [
-                "completed": method == "simulator.tap",
-            ])
+            let params = payload["params"] as? [String: Any] ?? [:]
+            XCTAssertEqual(params["window_id"] as? String, windowID)
+            switch method {
+            case "window.focus":
+                return Self.v2Response(id: id, ok: true, result: [:])
+            case "workspace.list":
+                return Self.v2Response(id: id, ok: true, result: [
+                    "workspaces": [["id": workspaceID]],
+                ])
+            case "surface.list":
+                XCTAssertEqual(params["workspace_id"] as? String, workspaceID)
+                return Self.v2Response(id: id, ok: true, result: [
+                    "surfaces": [["id": surfaceID]],
+                ])
+            case "simulator.tap":
+                return Self.v2Response(id: id, ok: true, result: ["completed": true])
+            default:
+                XCTFail("Unexpected method: \(method)")
+                return Self.v2Response(id: id, ok: false, error: [
+                    "code": "unexpected", "message": "Unexpected method: \(method)",
+                ])
+            }
         }
 
         let result = runCLI(
@@ -249,6 +269,10 @@ final class CMUXOpenCommandTests: XCTestCase {
                 return Self.v2Response(id: "unknown", ok: false, error: ["code": "unexpected"])
             }
             switch method {
+            case "window.focus":
+                let params = payload["params"] as? [String: Any] ?? [:]
+                XCTAssertEqual(params["window_id"] as? String, windowID)
+                return Self.v2Response(id: id, ok: true, result: [:])
             case "workspace.current":
                 return Self.v2Response(id: id, ok: true, result: [
                     "workspace_id": selectedWorkspaceID,
@@ -259,7 +283,10 @@ final class CMUXOpenCommandTests: XCTestCase {
                     "surfaces": [],
                 ])
             default:
-                return Self.v2Response(id: id, ok: false, error: ["code": "unexpected"])
+                XCTFail("Unexpected method: \(method)")
+                return Self.v2Response(id: id, ok: false, error: [
+                    "code": "unexpected", "message": "Unexpected method: \(method)",
+                ])
             }
         }
 

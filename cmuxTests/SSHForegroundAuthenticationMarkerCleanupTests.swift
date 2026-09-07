@@ -11,6 +11,27 @@ import Testing
 
 @Suite(.serialized)
 struct SSHForegroundAuthenticationMarkerCleanupTests {
+    @Test func restoredAttachMasksSecondarySignalsBeforeAuthenticationTreeCleanup() {
+        let command = SSHPTYAttachStartupCommandBuilder.command(
+            sessionID: "ssh-test-session",
+            foregroundAuth: SSHPTYAttachStartupCommandBuilder.ForegroundAuth(
+                destination: "signal-mask.example.test",
+                port: nil,
+                identityFile: nil,
+                sshOptions: ["ControlMaster=no"],
+                token: "foreground-auth-token"
+            )
+        )
+
+        // The builder shell-quotes the complete script, so the empty trap action
+        // is escaped in the returned command. The adjacent signal list and
+        // cleanup call remain a stable assertion of the required ordering.
+        #expect(command.contains("trap "))
+        #expect(command.contains(
+            "HUP INT TERM; cmux_ssh_terminate_auth_process_tree"
+        ))
+    }
+
     @Test func restoredAttachSignalTerminatesForegroundAuthenticationProcessTree() throws {
         let fileManager = FileManager.default
         let root = fileManager.temporaryDirectory

@@ -26,7 +26,6 @@ extension MobileShellComposite {
         _ ticket: CmxAttachTicket,
         instanceTagUpdate: PairedMacInstanceTagUpdate = .preserve,
         displayNameOverride: String? = nil,
-        userAuthorizedTailscaleRoutes: [CmxAttachRoute] = [],
         ifStillCurrent: (() -> Bool)? = nil
     ) async -> Bool {
         guard let pairedMacStore,
@@ -37,7 +36,17 @@ extension MobileShellComposite {
         // scope rather than nil. A nil scope is unreadable by aggregation (which
         // refuses nil to avoid reading every account's Macs), so Macs saved that way
         // could never be listed together — each new pairing displaced the last.
-        let scope = await currentScopeSnapshot(userID: identityProvider?.currentUserID)
+        // A first account-free DeviceLink enrollment has not written the
+        // known-pairing hint yet, so ordinary scope resolution intentionally
+        // returns nil. The completed mutual-TLS enrollment is the authority to
+        // create the install-local scope; it must not masquerade as account
+        // sign-in merely to make this write possible.
+        var scope = await currentScopeSnapshot(
+            userID: identityProvider?.currentUserID
+        )
+        if scope == nil {
+            scope = await accountFreeEnrollmentScopeSnapshot()
+        }
         let stackUserID = scope?.userID ?? identityProvider?.currentUserID
         let ticketDisplayName = displayNameOverride ?? ticket.macDisplayName
         // Starts false and is earned by an actual write. It was initialised to
@@ -163,24 +172,6 @@ extension MobileShellComposite {
                             """
                         )
                         return
-                    }
-                }
-                if !userAuthorizedTailscaleRoutes.isEmpty {
-                    // The user just proved control of this Mac by entering its
-                    // pairing code; record the device-local grant so later
-                    // preference-ordered dials use the evidence path.
-                    do {
-                        try await pairedMacStore.authorizeUserTailscaleRoutes(
-                            macDeviceID: ticket.macDeviceID,
-                            instanceTag: instanceTag,
-                            stackUserID: stackUserID,
-                            teamID: scope?.teamID,
-                            routes: userAuthorizedTailscaleRoutes
-                        )
-                    } catch {
-                        pairedMacPersistenceLog.error(
-                            "user tailscale grant persist failed: \(String(describing: error), privacy: .public)"
-                        )
                     }
                 }
                 await self.clearHiddenMacDeviceID(

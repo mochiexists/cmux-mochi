@@ -237,14 +237,15 @@ struct MobileDeviceLinkForgetTests {
         client.rememberPairing(macDeviceID: macA, pairingID: pairingA)
         client.rememberPairing(macDeviceID: macB, pairingID: pairingB)
 
-        // Point the next dial at A, then delete A — the ordering that used to
-        // leave a live dial target aimed at a destroyed identity.
-        client.setActiveDialTarget(macDeviceID: macA)
         client.forgetPairing(macDeviceID: macA)
 
-        // B is still dialable, and asking for A's pairing finds nothing.
+        // B is still dialable, and an exact request for A finds nothing.
         #expect(client.pin(forPairingID: pairingA) == nil)
         #expect(client.hasUsableCredential(forPairingID: pairingB))
+        #expect(client.pairingTLSOptions(
+            forMacDeviceID: macA,
+            instanceTag: nil
+        ) == nil)
     }
 
     @Test("an explicit unmapped target never borrows a sibling credential")
@@ -266,19 +267,17 @@ struct MobileDeviceLinkForgetTests {
             pairingID: pairing
         )
 
-        client.setActiveDialTarget(
-            macDeviceID: macWithoutCredential,
-            instanceTag: "nightly"
-        )
-
         // An explicit target is authoritative. Falling through to the only
         // stored pin would present Stable's key while dialing Nightly.
-        #expect(client.currentPairingTLSOptions() == nil)
+        #expect(client.pairingTLSOptions(
+            forMacDeviceID: macWithoutCredential,
+            instanceTag: "nightly"
+        ) == nil)
     }
 
-    @Test("clearing a dial target never falls back to an arbitrary credential")
-    func clearedTargetFailsClosed() throws {
-        let client = makeClient("cleared-target-fails-closed")
+    @Test("a request without a Mac id never falls back to an arbitrary credential")
+    func missingRequestTargetFailsClosed() throws {
+        let client = makeClient("missing-target-fails-closed")
         let mac = "CCCC0000-0000-0000-0000-000000000011"
         let pin = fingerprint(0x72)
         let pairing = MobileDeviceLinkEnroller.pairingID(for: pin)
@@ -293,11 +292,13 @@ struct MobileDeviceLinkForgetTests {
             instanceTag: "nightly",
             pairingID: pairing
         )
-        client.setActiveDialTarget(macDeviceID: mac, instanceTag: "nightly")
-        #expect(client.currentPairingTLSOptions() != nil)
-
-        client.setActiveDialTarget(macDeviceID: nil)
-
-        #expect(client.currentPairingTLSOptions() == nil)
+        #expect(client.pairingTLSOptions(
+            forMacDeviceID: mac,
+            instanceTag: "nightly"
+        ) != nil)
+        #expect(client.pairingTLSOptions(
+            forMacDeviceID: nil,
+            instanceTag: "nightly"
+        ) == nil)
     }
 }

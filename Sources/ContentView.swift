@@ -7267,7 +7267,7 @@ struct ContentView: View {
             contributions.append(
                 CommandPaletteCommandContribution(
                     commandId: "palette.mobileConnect",
-                    title: constant(String(localized: "command.mobileConnect.title", defaultValue: "Connect iPhone/iPad")),
+                    title: constant(String(localized: "command.mobileConnect.title", defaultValue: "Pair a Device")),
                     subtitle: constant(String(localized: "command.mobileConnect.subtitle", defaultValue: "Mobile")),
                     keywords: Self.commandPaletteMobileConnectKeywords
                 )

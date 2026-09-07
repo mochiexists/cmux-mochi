@@ -6,14 +6,12 @@ public enum MobilePairingScannerPresentation: Equatable, Sendable {
     case scanning
     case connecting
     case failed(message: String, guidance: String?)
-    case versionWarning(message: String)
 
     public static func resolve(
         didScanCode: Bool,
         isPairing: Bool,
         error: String?,
-        guidance: String?,
-        versionWarning: String?
+        guidance: String?
     ) -> Self {
         guard didScanCode else { return .scanning }
 
@@ -21,9 +19,6 @@ public enum MobilePairingScannerPresentation: Equatable, Sendable {
         // message. The active attempt owns presentation until it resolves.
         if isPairing {
             return .connecting
-        }
-        if let versionWarning {
-            return .versionWarning(message: versionWarning)
         }
         if let error {
             return .failed(message: error, guidance: guidance)

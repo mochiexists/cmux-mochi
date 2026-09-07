@@ -31,6 +31,20 @@ check_macos_runner() {
   echo "PASS: $job in $(basename "$file") uses a paid macOS runner"
 }
 
+check_app_host_runner_routing() {
+  if ! awk '
+    /^  app-host-unit-tests:/ { in_job=1; next }
+    in_job && /^  [^[:space:]#][^:]*:[[:space:]]*(#.*)?$/ { in_job=0 }
+    in_job && /runs-on:.*vars\.MACOS_RUNNER_APP_HOST.*vars\.MACOS_RUNNER_15.*warp-macos-15-arm64-6x/ { saw_runner=1 }
+    END { exit !saw_runner }
+  ' "$CI_FILE"; then
+    echo "FAIL: app-host-unit-tests must prefer the dedicated GUI-capable MACOS_RUNNER_APP_HOST variable"
+    exit 1
+  fi
+
+  echo "PASS: app-host-unit-tests prefers the dedicated GUI-capable runner"
+}
+
 check_display_runner_identity_guard() {
   local file="$1" job="$2"
   if ! awk -v job="$job" '
@@ -1240,6 +1254,7 @@ check_no_self_hosted_fleet_runners() {
 # ci.yml jobs
 check_no_bare_github_hosted_runners
 check_no_self_hosted_fleet_runners
+check_app_host_runner_routing
 check_macos_runner "$CI_FILE" "app-host-unit-tests"
 check_macos_runner "$CI_FILE" "tests-build-and-lag"
 check_macos_runner "$CI_FILE" "release-build"

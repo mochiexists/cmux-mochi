@@ -21,7 +21,7 @@ extension MobileHostDeviceLink {
         await prepare()
         let fingerprint: DeviceFingerprint
         do {
-            fingerprint = try hostFingerprintOrThrow()
+            fingerprint = try await hostFingerprintOrThrow()
         } catch {
             throw MobileHostDeviceLinkPairingError.identityFailed(String(describing: error))
         }
@@ -60,10 +60,12 @@ extension MobileHostDeviceLink {
 
     /// Formats a route as `host:port`, skipping anything that is not a
     /// dialable endpoint (Iroh peers advertise identities, not addresses, and
-    /// DeviceLink is Tailscale-only by design).
+    /// DeviceLink accepts direct private-LAN and Tailscale host routes.
     private static func routeDescription(_ route: CmxAttachRoute) -> String? {
         guard case let .hostPort(host, port) = route.endpoint else { return nil }
-        guard route.kind == .tailscale || route.kind == .debugLoopback else { return nil }
+        guard route.kind == .localNetwork || route.kind == .tailscale || route.kind == .debugLoopback else {
+            return nil
+        }
         return "\(host):\(port)"
     }
 }

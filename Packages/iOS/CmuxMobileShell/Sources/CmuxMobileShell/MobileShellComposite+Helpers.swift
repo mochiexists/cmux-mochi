@@ -24,8 +24,7 @@ extension MobileShellComposite {
     }
 
     static func workspaceActionCapabilities(
-        from supportedHostCapabilities: Set<String>,
-        allowsMacScopedMutations: Bool
+        from supportedHostCapabilities: Set<String>
     ) -> MobileWorkspaceActionCapabilities {
         MobileWorkspaceActionCapabilities(
             supportsWorkspaceActions: supportedHostCapabilities.contains("workspace.actions.v1"),
@@ -33,13 +32,21 @@ extension MobileShellComposite {
                 && supportedHostCapabilities.contains(Self.workspaceMetadataCapability),
             supportsReadStateActions: supportedHostCapabilities.contains("workspace.read_state.v1"),
             supportsCloseActions: supportedHostCapabilities.contains("workspace.close.v1"),
-            supportsMoveActions: supportedHostCapabilities.contains("workspace.move.v1") && allowsMacScopedMutations,
-            supportsGroupActions: supportedHostCapabilities.contains("workspace.group_actions.v1") && allowsMacScopedMutations,
-            supportsGroupCreate: supportedHostCapabilities.contains("workspace.group_create.v1") && allowsMacScopedMutations
+            supportsMoveActions: supportedHostCapabilities.contains("workspace.move.v1"),
+            supportsGroupActions: supportedHostCapabilities.contains("workspace.group_actions.v1"),
+            supportsGroupCreate: supportedHostCapabilities.contains("workspace.group_create.v1")
         )
     }
 
     static func routeSortsBefore(_ left: CmxAttachRoute, _ right: CmxAttachRoute) -> Bool {
+        // Rank every kind before comparing priority. This keeps the comparator
+        // transitive while ensuring authenticated LAN precedes Tailscale even
+        // when fresh and persisted routes use different priority scales.
+        let leftRank = deviceLinkRouteRank(left.kind)
+        let rightRank = deviceLinkRouteRank(right.kind)
+        if leftRank != rightRank {
+            return leftRank < rightRank
+        }
         if left.priority == right.priority {
             return left.id < right.id
         }

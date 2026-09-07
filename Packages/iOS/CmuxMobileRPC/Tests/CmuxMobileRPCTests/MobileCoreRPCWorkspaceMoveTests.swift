@@ -4,12 +4,11 @@ import Testing
 @testable import CmuxMobileRPC
 
 @Suite struct MobileCoreRPCWorkspaceMoveTests {
-    @Test func workspaceMoveCarriesMacWideAttachTicketContext() async throws {
+    @Test func workspaceMoveUsesTransportAdmissionOnly() async throws {
         let route = try hostPortRoute(kind: .debugLoopback, host: "127.0.0.1", port: 58465)
         let transport = QueuedCancellationProbeTransport()
         let runtime = TestMobileSyncRuntime(
             transportFactory: QueuedCancellationProbeTransportFactory(transport: transport),
-            stackAccessToken: "test-stack-token"
         )
         let ticket = try CmxAttachTicket(
             workspaceID: "",
@@ -24,7 +23,6 @@ import Testing
             runtime: runtime,
             route: route,
             ticket: ticket,
-            allowsStackAuthFallback: true
         )
         let request = try MobileCoreRPCClient.requestData(
             method: "workspace.move",
@@ -42,8 +40,6 @@ import Testing
         let frame = try #require(sent.first)
         #expect(frame.method == "workspace.move")
         #expect(frame.workspaceID == "workspace-main")
-        #expect(frame.attachToken == "ticket-secret")
-        #expect(frame.stackAccessToken == "test-stack-token")
-        #expect(frame.hasAuth)
+        #expect(frame.hasAuth == false)
     }
 }

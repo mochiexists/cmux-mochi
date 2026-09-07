@@ -261,7 +261,7 @@ struct SSHPTYAttachRetryScriptBuilderTests {
         ]) { _, override in override }
         process.standardInput = standardInput
         process.standardOutput = transcriptHandle
-        process.standardError = FileHandle.nullDevice
+        process.standardError = transcriptHandle
 
         try process.run()
         let enteredBackoff = waitForFile(
@@ -270,7 +270,10 @@ struct SSHPTYAttachRetryScriptBuilderTests {
             while: process,
             timeout: 3
         )
-        #expect(enteredBackoff)
+        #expect(
+            enteredBackoff,
+            "PTY startup transcript: \((try? String(contentsOf: transcriptURL, encoding: .utf8)) ?? "<missing>")"
+        )
         if enteredBackoff {
             try standardInput.fileHandleForWriting.write(contentsOf: Data("queued-input\n".utf8))
         }
@@ -280,7 +283,10 @@ struct SSHPTYAttachRetryScriptBuilderTests {
             while: process,
             timeout: 3
         )
-        #expect(queuedInputReachedAttach)
+        #expect(
+            queuedInputReachedAttach,
+            "PTY transcript: \((try? String(contentsOf: transcriptURL, encoding: .utf8)) ?? "<missing>"); attach log: \((try? String(contentsOf: logURL, encoding: .utf8)) ?? "<missing>")"
+        )
         try? standardInput.fileHandleForWriting.close()
         if process.isRunning {
             process.terminate()

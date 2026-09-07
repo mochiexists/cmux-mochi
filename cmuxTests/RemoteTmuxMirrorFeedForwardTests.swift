@@ -418,11 +418,9 @@ import Testing
             lines: ["@1 f92f,80x24,0,0,0 f92f,80x24,0,0,0 [] one"],
             isError: false
         ))
-        connection.handleMessageForTesting(.commandResult(
-            commandNumber: 0,
-            lines: ["%0 0 0 80 23 1 bottom :0 \"ejc3-mac\""],
-            isError: false
-        ))
+        connection.drainAllPendingCommandResults { _ in
+            ["%0 0 0 80 23 1 bottom :0 \"ejc3-mac\""]
+        }
 
         // Bottom placement changes where tmux draws the row, not whether the
         // pane loses one grid row to that chrome.

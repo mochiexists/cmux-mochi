@@ -5510,6 +5510,14 @@ final class Workspace: Identifiable, ObservableObject {
                 && !isRemoteTerminalSurface($0)
                 && !pendingRemoteTerminalChildExitSurfaceIds.contains($0)
         }
+        if let focusedPanelId,
+           localPanelIds.contains(focusedPanelId),
+           let focusedDirectory = sidebarFilesystemDirectoriesInDisplayOrder(
+               orderedPanelIds: [focusedPanelId],
+               includeFallback: false
+           ).first {
+            return focusedDirectory
+        }
         return sidebarFilesystemDirectoriesInDisplayOrder(
             orderedPanelIds: localPanelIds,
             includeFallback: panelIds.isEmpty || localPanelIds.count == panelIds.count

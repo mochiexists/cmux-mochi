@@ -123,7 +123,6 @@ struct ControlCommandCoordinatorMobileHostTests {
         for method in [
             "mobile.chat.sessions",
             "dogfood.feedback.submit",
-            "mobile.attach_ticket.create",
             "workspace.action",
             "workspace.create",
             "workspace.close",

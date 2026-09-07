@@ -1,276 +1,46 @@
 import CMUXMobileCore
 import Network
+import Synchronization
 import Testing
 @testable import CmuxMobileTransport
 
-private enum RejectingTailscaleAuthorityError: Error {
-    case rejected
-}
-
-private actor RejectingTailscaleAuthority: CmxTailscaleRouteAuthorizing {
-    private(set) var preparationCount = 0
-
-    func prepare(
-        request _: CmxByteTransportRequest
-    ) throws -> CmxPreparedTailscaleRoute {
-        preparationCount += 1
-        throw RejectingTailscaleAuthorityError.rejected
-    }
-
-    func validate(
-        proof _: CmxTailscaleRouteProof,
-        connectionPath _: NWPath
-    ) throws {
-        throw RejectingTailscaleAuthorityError.rejected
-    }
-}
-
-@Suite struct CmxTransportFactorySecurityTests {
-    @Test func buildsLoopbackTransportWithExplicitAuthorizationIntent() throws {
-        let route = try CmxAttachRoute(
-            id: "loopback",
-            kind: .debugLoopback,
-            endpoint: .hostPort(host: "127.0.0.1", port: 49831)
-        )
-        let request = CmxByteTransportRequest(
-            route: route,
-            expectedPeerDeviceID: "mac-1",
-            authorizationMode: .stackBearer
-        )
-
-        let transport = try CmxNetworkByteTransportFactory().makeTransport(for: request)
-
-        #expect(transport is CmxNetworkByteTransport)
-    }
-
-    @Test func rejectsTailscaleRouteWithoutAuthorizationIntent() throws {
-        let route = try CmxAttachRoute(
-            id: "tailscale",
-            kind: .tailscale,
-            endpoint: .hostPort(host: "100.64.1.2", port: 49831)
-        )
-
-        #expect(throws: (any Error).self) {
-            _ = try CmxNetworkByteTransportFactory().makeTransport(for: route)
-        }
-        #expect(throws: CmxNetworkByteTransportError.authorizationIntentRequired) {
-            _ = try CmxNetworkByteTransport(route: route)
-        }
-    }
-
-    @Test func rejectsRouteKindAuthorizationSubstitution() throws {
-        let route = try CmxAttachRoute(
-            id: "tailscale",
-            kind: .tailscale,
-            endpoint: .hostPort(host: "100.64.1.2", port: 49831)
-        )
-        let request = CmxByteTransportRequest(
-            route: route,
-            expectedPeerDeviceID: "mac-1",
-            authorizationMode: .transportAdmission
-        )
-
-        #expect(throws: (any Error).self) {
-            _ = try CmxNetworkByteTransportFactory().makeTransport(for: request)
-        }
-    }
-
-    @Test func rejectsMagicDNSBeforeDial() throws {
-        let route = try CmxAttachRoute(
-            id: "tailscale",
-            kind: .tailscale,
-            endpoint: .hostPort(host: "work-mac.tailnet.ts.net", port: 49831)
-        )
-        let request = CmxByteTransportRequest(
-            route: route,
-            expectedPeerDeviceID: "mac-1",
-            authorizationMode: .stackBearer
-        )
-
-        #expect(throws: (any Error).self) {
-            _ = try CmxNetworkByteTransportFactory().makeTransport(for: request)
-        }
-    }
-
-    @Test func rejectsTailscaleBearerWhenOnlyPacketTunnelHeuristicsAreAvailable() async throws {
-        let route = try CmxAttachRoute(
-            id: "tailscale",
-            kind: .tailscale,
-            endpoint: .hostPort(host: "100.64.1.2", port: 49831)
-        )
-        let request = CmxByteTransportRequest(
-            route: route,
-            expectedPeerDeviceID: "mac-1",
-            authorizationMode: .stackBearer
-        )
-        let factory = CmxNetworkByteTransportFactory()
-
-        #expect(throws: CmxNetworkByteTransportError.tailscaleAuthorizationUnavailable) {
-            _ = try factory.makeTransport(for: request)
-        }
-    }
-
-    @Test func preparesExactGrandfatheredTailscaleGrantAtConnectBoundary() async throws {
-        let request = try legacyTailscaleRequest()
-        let authority = RejectingTailscaleAuthority()
-        let factory = CmxNetworkByteTransportFactory(
-            tailscaleRouteAuthority: authority
-        )
-
-        let transport = try factory.makeTransport(for: request)
-        #expect(transport is CmxPreparingTailscaleByteTransport)
-        #expect(await authority.preparationCount == 0)
-
-        await #expect(throws: CmxNetworkByteTransportError.tailscaleAuthorizationUnavailable) {
-            try await transport.connect()
-        }
-        #expect(await authority.preparationCount == 1)
-    }
-
-    @Test func rejectsEveryGrandfatheredGrantSubstitutionBeforeDial() throws {
-        let validRequest = try legacyTailscaleRequest()
-        let validEvidence = try CmxLegacyTailscaleAuthorizationEvidence(
-            macDeviceID: "mac-1",
-            host: "100.71.210.41",
-            port: 58_465
-        )
-        let factory = CmxNetworkByteTransportFactory()
-
-        let deviceSubstitution = CmxByteTransportRequest(
-            route: validRequest.route,
-            expectedPeerDeviceID: "mac-2",
-            authorizationMode: .legacyTailscaleBearer(validEvidence)
-        )
-        #expect(throws: CmxNetworkByteTransportError.tailscaleAuthorizationUnavailable) {
-            _ = try factory.makeTransport(for: deviceSubstitution)
-        }
-
-        let hostSubstitution = CmxByteTransportRequest(
-            route: try CmxAttachRoute(
-                id: "tailscale",
-                kind: .tailscale,
-                endpoint: .hostPort(host: "100.71.210.42", port: 58_465)
-            ),
-            expectedPeerDeviceID: "mac-1",
-            authorizationMode: .legacyTailscaleBearer(validEvidence)
-        )
-        #expect(throws: CmxNetworkByteTransportError.tailscaleAuthorizationUnavailable) {
-            _ = try factory.makeTransport(for: hostSubstitution)
-        }
-
-        let portSubstitution = CmxByteTransportRequest(
-            route: try CmxAttachRoute(
-                id: "tailscale",
-                kind: .tailscale,
-                endpoint: .hostPort(host: "100.71.210.41", port: 58_466)
-            ),
-            expectedPeerDeviceID: "mac-1",
-            authorizationMode: .legacyTailscaleBearer(validEvidence)
-        )
-        #expect(throws: CmxNetworkByteTransportError.tailscaleAuthorizationUnavailable) {
-            _ = try factory.makeTransport(for: portSubstitution)
-        }
-    }
-
-    @Test func buildsUserAuthorizedPairingTransportForItsExactDestination() throws {
-        // The pairing window's tokenless v1 compatibility code carries a
-        // self-reported Mac identity, the bare-route v2 grammar carries none.
-        // The authorization anchors on the destination, so both dial.
-        for expectedPeerDeviceID in [nil, "", "mac-1"] {
-            let request = try userAuthorizedPairingRequest(
-                expectedPeerDeviceID: expectedPeerDeviceID
-            )
-            let transport = try CmxNetworkByteTransportFactory()
-                .makeTransport(for: request)
-            #expect(transport is CmxPreparingTailscaleByteTransport)
-        }
-    }
-
-    @Test func rejectsUserAuthorizedPairingDestinationSubstitution() throws {
-        let authorization = try CmxUserTailscalePairingAuthorization(
-            host: "100.71.210.41",
-            port: 58_465
-        )
-        let factory = CmxNetworkByteTransportFactory()
-
-        let hostSubstitution = CmxByteTransportRequest(
-            route: try CmxAttachRoute(
-                id: "tailscale",
-                kind: .tailscale,
-                endpoint: .hostPort(host: "100.71.210.42", port: 58_465)
-            ),
-            expectedPeerDeviceID: "",
-            authorizationMode: .userAuthorizedTailscalePairing(authorization)
-        )
-        #expect(throws: CmxNetworkByteTransportError.tailscaleAuthorizationUnavailable) {
-            _ = try factory.makeTransport(for: hostSubstitution)
-        }
-
-        let portSubstitution = CmxByteTransportRequest(
-            route: try CmxAttachRoute(
-                id: "tailscale",
-                kind: .tailscale,
-                endpoint: .hostPort(host: "100.71.210.41", port: 58_466)
-            ),
-            expectedPeerDeviceID: "",
-            authorizationMode: .userAuthorizedTailscalePairing(authorization)
-        )
-        #expect(throws: CmxNetworkByteTransportError.tailscaleAuthorizationUnavailable) {
-            _ = try factory.makeTransport(for: portSubstitution)
-        }
-    }
-}
-
-private func userAuthorizedPairingRequest(
-    expectedPeerDeviceID: String?
-) throws -> CmxByteTransportRequest {
-    let host = "100.71.210.41"
-    let port = 58_465
-    return CmxByteTransportRequest(
-        route: try CmxAttachRoute(
-            id: "tailscale",
-            kind: .tailscale,
-            endpoint: .hostPort(host: host, port: port)
-        ),
-        expectedPeerDeviceID: expectedPeerDeviceID,
-        authorizationMode: .userAuthorizedTailscalePairing(
-            try CmxUserTailscalePairingAuthorization(host: host, port: port)
-        )
-    )
-}
-
-private func legacyTailscaleRequest() throws -> CmxByteTransportRequest {
-    let host = "100.71.210.41"
-    let port = 58_465
-    return CmxByteTransportRequest(
-        route: try CmxAttachRoute(
-            id: "tailscale",
-            kind: .tailscale,
-            endpoint: .hostPort(host: host, port: port)
-        ),
-        expectedPeerDeviceID: "mac-1",
-        authorizationMode: .legacyTailscaleBearer(
-            try CmxLegacyTailscaleAuthorizationEvidence(
-                macDeviceID: "mac-1",
-                host: host,
-                port: port
-            )
-        )
-    )
-}
-
 // MARK: - DeviceLink admission
 
+@Test func localNetworkRoutesUseTheShortFallbackDeadline() async throws {
+    let factory = CmxNetworkByteTransportFactory(
+        supportedKinds: [.localNetwork],
+        connectTimeoutNanoseconds: 9_000_000_000,
+        localNetworkConnectTimeoutNanoseconds: 2_000_000_000,
+        deviceLinkTLSOptions: { _ in NWProtocolTLS.Options() }
+    )
+    let route = try CmxAttachRoute(
+        id: "local-network",
+        kind: .localNetwork,
+        endpoint: .hostPort(host: "192.168.1.20", port: 49_831)
+    )
+
+    let transport = try #require(
+        factory.makeTransport(
+            for: CmxByteTransportRequest(
+                route: route,
+                expectedPeerDeviceID: "mac-1",
+                authorizationMode: .transportAdmission
+            )
+        ) as? CmxNetworkByteTransport
+    )
+
+    #expect(await transport.connectTimeoutNanoseconds == 2_000_000_000)
+}
+
 /// A DeviceLink pairing admits itself through the mutual-TLS handshake: this
-/// device's key against the Mac's pinned fingerprint. That is stronger evidence
-/// than the bearer grants beside it, so `.transportAdmission` is accepted on the
-/// routes a paired device actually dials — but only when there is an identity to
+/// device's key against the Mac's pinned fingerprint. Transport admission is
+/// accepted on the routes a paired device actually dials, but only when there is an identity to
 /// offer, which is what keeps the fork's TLS-only listener reachable without
 /// weakening anything for a build that holds no pairing.
 @Test func acceptsTransportAdmissionWhenADeviceLinkIdentityExists() throws {
     let factory = CmxNetworkByteTransportFactory(
-        supportedKinds: [.debugLoopback, .tailscale],
-        deviceLinkTLSOptions: { NWProtocolTLS.Options() }
+        supportedKinds: [.debugLoopback, .localNetwork, .tailscale],
+        deviceLinkTLSOptions: { _ in NWProtocolTLS.Options() }
     )
 
     let tailscale = try CmxAttachRoute(
@@ -281,6 +51,32 @@ private func legacyTailscaleRequest() throws -> CmxByteTransportRequest {
     _ = try factory.makeTransport(
         for: CmxByteTransportRequest(
             route: tailscale,
+            expectedPeerDeviceID: "mac-1",
+            authorizationMode: .transportAdmission
+        )
+    )
+
+    let localNetwork = try CmxAttachRoute(
+        id: "local-network",
+        kind: .localNetwork,
+        endpoint: .hostPort(host: "192.168.1.20", port: 49831)
+    )
+    _ = try factory.makeTransport(
+        for: CmxByteTransportRequest(
+            route: localNetwork,
+            expectedPeerDeviceID: "mac-1",
+            authorizationMode: .transportAdmission
+        )
+    )
+
+    let mdnsLocalNetwork = try CmxAttachRoute(
+        id: "local-network-mdns",
+        kind: .localNetwork,
+        endpoint: .hostPort(host: "studio-mac.local", port: 49831)
+    )
+    _ = try factory.makeTransport(
+        for: CmxByteTransportRequest(
+            route: mdnsLocalNetwork,
             expectedPeerDeviceID: "mac-1",
             authorizationMode: .transportAdmission
         )
@@ -304,12 +100,13 @@ private func legacyTailscaleRequest() throws -> CmxByteTransportRequest {
 /// same request must be refused rather than falling back to plaintext.
 @Test func refusesTransportAdmissionWithoutADeviceLinkIdentity() throws {
     let factory = CmxNetworkByteTransportFactory(
-        supportedKinds: [.debugLoopback, .tailscale],
-        deviceLinkTLSOptions: { nil }
+        supportedKinds: [.debugLoopback, .localNetwork, .tailscale],
+        deviceLinkTLSOptions: { _ in nil }
     )
 
     for (id, kind, host) in [
         ("tailscale", CmxAttachTransportKind.tailscale, "100.64.1.2"),
+        ("local-network", CmxAttachTransportKind.localNetwork, "192.168.1.20"),
         ("loopback", CmxAttachTransportKind.debugLoopback, "127.0.0.1"),
     ] {
         let route = try CmxAttachRoute(
@@ -317,7 +114,7 @@ private func legacyTailscaleRequest() throws -> CmxByteTransportRequest {
             kind: kind,
             endpoint: .hostPort(host: host, port: 49831)
         )
-        #expect(throws: CmxNetworkByteTransportError.tailscaleAuthorizationUnavailable) {
+        #expect(throws: CmxNetworkByteTransportError.deviceLinkAuthorizationUnavailable) {
             _ = try factory.makeTransport(
                 for: CmxByteTransportRequest(
                     route: route,
@@ -327,6 +124,132 @@ private func legacyTailscaleRequest() throws -> CmxByteTransportRequest {
             )
         }
     }
+}
+
+/// Route kinds are trust claims, not permission to dial an arbitrary address.
+/// Even with a valid DeviceLink identity, the network factory must reject a
+/// public host mislabeled as LAN and a non-loopback host mislabeled as debug.
+@Test func rejectsHostsOutsideTheirDeclaredPrivateNetworkKind() throws {
+    let factory = CmxNetworkByteTransportFactory(
+        supportedKinds: [.debugLoopback, .localNetwork],
+        deviceLinkTLSOptions: { _ in NWProtocolTLS.Options() }
+    )
+
+    for (id, kind, host) in [
+        ("public-as-lan", CmxAttachTransportKind.localNetwork, "203.0.113.10"),
+        ("lan-as-loopback", CmxAttachTransportKind.debugLoopback, "192.168.1.20"),
+    ] {
+        let route = try CmxAttachRoute(
+            id: id,
+            kind: kind,
+            endpoint: .hostPort(host: host, port: 49_831)
+        )
+        #expect(throws: CmxNetworkByteTransportError.deviceLinkAuthorizationUnavailable) {
+            _ = try factory.makeTransport(
+                for: CmxByteTransportRequest(
+                    route: route,
+                    expectedPeerDeviceID: "mac-1",
+                    authorizationMode: .transportAdmission
+                )
+            )
+        }
+    }
+}
+
+/// Route-only probes carry no paired identity, so loopback is not allowed to
+/// become a plaintext authentication exception.
+@Test func routeOnlyDebugProbeRequiresAuthorizationIntent() throws {
+    let factory = CmxNetworkByteTransportFactory(supportedKinds: [.debugLoopback])
+    let route = try CmxAttachRoute(
+        id: "loopback-probe",
+        kind: .debugLoopback,
+        endpoint: .hostPort(host: "127.0.0.1", port: 49_831)
+    )
+
+    #expect(throws: CmxNetworkByteTransportError.authorizationIntentRequired) {
+        _ = try factory.makeTransport(for: route)
+    }
+}
+
+/// A transport request owns one immutable admission decision. Reading the
+/// credential source again after the fail-closed guard could turn a previously
+/// authorized request into a plaintext transport when credentials are removed
+/// or another connection changes the selected identity between reads.
+@available(macOS 15, *)
+@Test func resolvesDeviceLinkTLSOptionsOncePerRequest() throws {
+    // The synchronous `@Sendable` resolver needs a tiny thread-safe counter;
+    // it does not protect production or ongoing domain state.
+    let resolutionCount = Mutex(0)
+    let factory = CmxNetworkByteTransportFactory(
+        supportedKinds: [.debugLoopback],
+        deviceLinkTLSOptions: { _ in
+            resolutionCount.withLock { count in
+                count += 1
+                return count == 1 ? NWProtocolTLS.Options() : nil
+            }
+        }
+    )
+    let route = try CmxAttachRoute(
+        id: "loopback",
+        kind: .debugLoopback,
+        endpoint: .hostPort(host: "127.0.0.1", port: 49_831)
+    )
+
+    _ = try factory.makeTransport(
+        for: CmxByteTransportRequest(
+            route: route,
+            expectedPeerDeviceID: "mac-1",
+            authorizationMode: .transportAdmission
+        )
+    )
+
+    #expect(resolutionCount.withLock { $0 } == 1)
+}
+
+/// Concurrent foreground and background dials must never consult mutable
+/// process-wide target state. Each resolver invocation receives the immutable
+/// Mac identity carried by the transport request that owns the dial.
+@available(macOS 15, *)
+@Test func resolvesDeviceLinkTLSOptionsForEachExactMacInstance() throws {
+    let resolvedTargets = Mutex<[(String?, String?)]>([])
+    let factory = CmxNetworkByteTransportFactory(
+        supportedKinds: [.debugLoopback],
+        deviceLinkTLSOptions: { request in
+            resolvedTargets.withLock { targets in
+                targets.append((
+                    request.expectedPeerDeviceID,
+                    request.expectedPeerInstanceTag
+                ))
+            }
+            return NWProtocolTLS.Options()
+        }
+    )
+    let route = try CmxAttachRoute(
+        id: "loopback",
+        kind: .debugLoopback,
+        endpoint: .hostPort(host: "127.0.0.1", port: 49_831)
+    )
+
+    for (macDeviceID, instanceTag) in [
+        ("mac-stable", "stable"),
+        ("mac-nightly", "nightly"),
+    ] {
+        _ = try factory.makeTransport(
+            for: CmxByteTransportRequest(
+                route: route,
+                expectedPeerDeviceID: macDeviceID,
+                expectedPeerInstanceTag: instanceTag,
+                authorizationMode: .transportAdmission
+            )
+        )
+    }
+
+    let targets = resolvedTargets.withLock { $0 }
+    #expect(targets.count == 2)
+    #expect(targets[0].0 == "mac-stable")
+    #expect(targets[0].1 == "stable")
+    #expect(targets[1].0 == "mac-nightly")
+    #expect(targets[1].1 == "nightly")
 }
 
 // MARK: - MagicDNS route resolution

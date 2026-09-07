@@ -903,6 +903,9 @@ struct cmuxApp: App {
     @CommandsBuilder
     private var windowAndViewCommands: some Commands {
         CommandGroup(after: .windowArrangement) {
+            Button(String(localized: "menu.window.remoteMacs", defaultValue: "Remote Macs…")) {
+                appDelegate.hiveWorkspaceService.show(in: activeTabManager)
+            }
             Button(String(localized: "menu.window.taskManager", defaultValue: "Task Manager...")) {
                 TaskManagerWindowController.shared.show()
             }
@@ -1449,6 +1452,7 @@ private let cmuxAuxiliaryWindowIdentifiers: Set<String> = [
     "cmux.feedButtonStyleDebug",
     "cmux.feedPreview",
     "cmux.feedTextEditorDebug",
+    "cmux.hiveWorkspaceBrowser",
     "cmux.fileExplorerStyleDebug",
     "cmux.folderDragIcon",
     "cmux.pdfPreviewChromeDebug",

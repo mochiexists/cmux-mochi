@@ -37,7 +37,7 @@ import Testing
         #expect(store.supportsIrohArtifactLane)
     }
 
-    @Test func workspaceMutationCapabilitiesAreVersionAndTicketGated() async throws {
+    @Test func workspaceMutationCapabilitiesAreVersionGated() async throws {
         let oldMac = try await connectedStore(capabilities: [
             "events.v1",
             "terminal.render_grid.v1",
@@ -77,9 +77,9 @@ import Testing
         #expect(scoped.store.supportsWorkspaceMetadata)
         #expect(scoped.store.workspaces.first?.actionCapabilities.supportsWorkspaceMetadata == true)
         #expect(scoped.store.supportsWorkspaceReadStateActions && scoped.store.supportsWorkspaceCloseActions)
-        #expect(!scoped.store.supportsWorkspaceMoveActions && !scoped.store.supportsWorkspaceGroupActions)
-        #expect(!scoped.store.supportsWorkspaceCreateInGroup)
-        #expect(!scoped.store.supportsWorkspaceGroupCreate)
+        #expect(scoped.store.supportsWorkspaceMoveActions && scoped.store.supportsWorkspaceGroupActions)
+        #expect(scoped.store.supportsWorkspaceCreateInGroup)
+        #expect(scoped.store.supportsWorkspaceGroupCreate)
 
         let macWide = try await connectedStore(
             capabilities: currentCapabilities,
@@ -91,7 +91,7 @@ import Testing
         #expect(macWide.store.supportsWorkspaceGroupCreate)
     }
 
-    @Test func staleMacScopedMutationCapabilitiesFailClosedAfterTicketExpires() async throws {
+    @Test func transportAdmittedMutationsIgnoreLegacyTicketExpiry() async throws {
         let connected = try await connectedStore(
             capabilities: [
                 "events.v1",
@@ -110,62 +110,9 @@ import Testing
         let router = connected.router
         let clock = connected.clock
         let workspaceID = try #require(store.workspaces.first?.id)
-        #expect(store.workspaces.first?.actionCapabilities.supportsMoveActions == true)
-        store.workspaceGroups = [
-            MobileWorkspaceGroupPreview(id: "group-a", name: "Group A", anchorWorkspaceID: workspaceID),
-        ]
 
         clock.advance(by: 2)
 
-        guard case .failure(.authorizationFailed) = await store.moveWorkspace(
-            id: workspaceID,
-            toGroup: nil,
-            before: nil
-        ) else {
-            return #expect(Bool(false), "expired ticket should fail move before sending")
-        }
-        guard case .failure(.authorizationFailed) = await store.setWorkspaceGroupPinned(id: "group-a", true) else {
-            return #expect(Bool(false), "expired ticket should fail group action before sending")
-        }
-        guard case .failure(.authorizationFailed) = await store.createWorkspaceRequest(inGroup: "group-a") else {
-            return #expect(Bool(false), "expired ticket should fail create-in-group before sending")
-        }
-        guard case .failure(.authorizationFailed) = await store.createWorkspaceGroup() else {
-            return #expect(Bool(false), "expired ticket should fail group create before sending")
-        }
-        #expect(await router.count(of: "workspace.move") == 0)
-        #expect(await router.count(of: "workspace.group.action") == 0)
-        #expect(await router.count(of: "workspace.create") == 0)
-        #expect(await router.count(of: "workspace.group.create") == 0)
-    }
-
-    @Test func macScopedMutationsSurviveTicketExpiryOnAccountAuthHosts() async throws {
-        let connected = try await connectedStore(
-            capabilities: [
-                "events.v1",
-                "terminal.render_grid.v1",
-                "terminal.replay.v1",
-                "workspace.move.v1",
-                "workspace.group_actions.v1",
-                "workspace.create_in_group.v1",
-                "workspace.group_create.v1",
-                "workspace.mutations.account_auth.v1",
-            ],
-            ticketWorkspaceID: "",
-            ticketTerminalID: nil,
-            ticketLifetime: 1
-        )
-        let store = connected.store
-        let router = connected.router
-        let clock = connected.clock
-        let workspaceID = try #require(store.workspaces.first?.id)
-        #expect(store.workspaces.first?.actionCapabilities.supportsMoveActions == true)
-
-        clock.advance(by: 2)
-
-        // The pairing ticket has expired, but the host authorizes Mac-scoped
-        // mutations by the signed-in account: the affordances must stay on and
-        // the mutation RPCs must actually be sent.
         #expect(store.supportsWorkspaceMoveActions)
         #expect(store.supportsWorkspaceGroupActions)
         #expect(store.supportsWorkspaceCreateInGroup)
@@ -190,13 +137,13 @@ import Testing
         )
         let store = MobileShellComposite.preview(runtime: runtime)
         store.signIn()
-        let connected = await store.connectPairingURL(try attachURL(for: try ticket(
+        _ = try await store.connect(ticket: try ticket(
             clock: clock,
             workspaceID: ticketWorkspaceID,
             terminalID: ticketTerminalID,
             lifetime: ticketLifetime
-        )))
-        #expect(connected, "scripted connect must succeed")
+        ))
+        #expect(store.connectionState == .connected, "scripted connect must succeed")
         let expectedCapabilities = Set(capabilities)
         let resolved = try await pollUntil {
             store.supportedHostCapabilities == expectedCapabilities

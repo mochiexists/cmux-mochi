@@ -1382,10 +1382,6 @@ class TerminalController {
                 let outcome = try await BrowserImportAutomation.importCookies(params: request.params)
                 return outcome.socketPayload
             }
-        case "mobile.attach_ticket.create":
-            return v2AsyncResultCall(id: request.id, timeoutSeconds: 30) {
-                await self.v2MobileAttachTicketCreate(params: request.params)
-            }
         case "mobile.pairing.code.create":
             return v2AsyncResultCall(id: request.id, timeoutSeconds: 30) {
                 await self.v2MobilePairingCodeCreate(params: request.params)
@@ -2317,8 +2313,7 @@ class TerminalController {
         // mobileHostHandleRPC).
 
         // system.identify (forwards to the still-shared v2Identify), system.tree,
-        // auth.login, and the DEBUG-only mobile.dev_stack_auth.configure handled
-        // by ControlCommandCoordinator.
+        // auth.login handled by ControlCommandCoordinator.
 
         // Windows (`window.*`) are handled above by ControlCommandCoordinator.
 
@@ -2478,7 +2473,6 @@ class TerminalController {
             "system.top",
             "system.memory",
             "mobile.host.status",
-            "mobile.attach_ticket.create",
             "mobile.pairing.code.create",
             "mobile.terminal.set_font",
             "mobile.workspace.list",
@@ -5294,24 +5288,50 @@ class TerminalController {
         )
     }
 
-    private func readTerminalSelectionText(terminalPanel: TerminalPanel, pointTag: ghostty_point_tag_e) -> String? {
+    /// Physical viewport rows for pointer hit testing. Normal text export joins
+    /// soft-wrapped rows and therefore cannot be indexed by a screen row.
+    func readTerminalViewportGridRows(terminalPanel: TerminalPanel, rowRange: Range<Int>) -> [String]? {
+        guard let surface = terminalPanel.surface.surface else { return nil }
+        let size = ghostty_surface_size(surface)
+        guard size.columns > 0, rowRange.lowerBound >= 0, rowRange.upperBound <= Int(size.rows) else { return nil }
+        var lines: [String] = []
+        for row in rowRange {
+            // Even a rectangular multi-row export unwraps soft wraps. Reading
+            // one exact row at a time keeps the native grid identity intact.
+            guard let line = readTerminalSelectionText(
+                terminalPanel: terminalPanel,
+                pointTag: GHOSTTY_POINT_VIEWPORT,
+                rectangle: true,
+                row: row
+            ) else { return nil }
+            lines.append(line)
+        }
+        return lines
+    }
+
+    private func readTerminalSelectionText(
+        terminalPanel: TerminalPanel,
+        pointTag: ghostty_point_tag_e,
+        rectangle: Bool = false,
+        row: Int? = nil
+    ) -> String? {
         guard let surface = terminalPanel.surface.surface else { return nil }
         let topLeft = ghostty_point_s(
             tag: pointTag,
-            coord: GHOSTTY_POINT_COORD_TOP_LEFT,
+            coord: row == nil ? GHOSTTY_POINT_COORD_TOP_LEFT : GHOSTTY_POINT_COORD_EXACT,
             x: 0,
-            y: 0
+            y: UInt32(row ?? 0)
         )
         let bottomRight = ghostty_point_s(
             tag: pointTag,
-            coord: GHOSTTY_POINT_COORD_BOTTOM_RIGHT,
-            x: 0,
-            y: 0
+            coord: row == nil ? GHOSTTY_POINT_COORD_BOTTOM_RIGHT : GHOSTTY_POINT_COORD_EXACT,
+            x: row == nil ? 0 : UInt32(ghostty_surface_size(surface).columns - 1),
+            y: UInt32(row ?? 0)
         )
         let selection = ghostty_selection_s(
             top_left: topLeft,
             bottom_right: bottomRight,
-            rectangle: false
+            rectangle: rectangle
         )
 
         var text = ghostty_text_s()
@@ -14064,8 +14084,6 @@ class TerminalController {
         switch request.method {
         case "mobile.host.status":
             result = v2MobileHostStatus(params: request.params, includePrivateMetadata: false)
-        case "mobile.attach_ticket.create":
-            result = await v2MobileAttachTicketCreate(params: request.params)
         case "mobile.pairing.device.revoke_self":
             guard let executionContext else {
                 return .failure(MobileHostRPCError(

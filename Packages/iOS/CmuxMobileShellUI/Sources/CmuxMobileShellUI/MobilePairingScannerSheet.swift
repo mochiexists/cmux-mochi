@@ -12,12 +12,10 @@ struct MobilePairingScannerSheet: View {
     let isPairing: Bool
     let connectionError: String?
     let connectionErrorGuidance: String?
-    let versionWarning: String?
     let onCode: (String) -> Void
     let onCancel: (() -> Void)?
     let onEnterManually: (() -> Void)?
     let onRetry: () -> Void
-    let onAcceptVersionWarning: () -> Void
     @Environment(\.dismiss) private var dismiss
     @Environment(\.openURL) private var openURL
     @Environment(\.scenePhase) private var scenePhase
@@ -32,11 +30,9 @@ struct MobilePairingScannerSheet: View {
         isPairing: Bool,
         connectionError: String?,
         connectionErrorGuidance: String?,
-        versionWarning: String?,
         onCancel: (() -> Void)? = nil,
         onEnterManually: (() -> Void)? = nil,
         onRetry: @escaping () -> Void,
-        onAcceptVersionWarning: @escaping () -> Void,
         onCode: @escaping (String) -> Void
     ) {
         let authorization = CameraAuthorization()
@@ -45,11 +41,9 @@ struct MobilePairingScannerSheet: View {
         self.isPairing = isPairing
         self.connectionError = connectionError
         self.connectionErrorGuidance = connectionErrorGuidance
-        self.versionWarning = versionWarning
         self.onCancel = onCancel
         self.onEnterManually = onEnterManually
         self.onRetry = onRetry
-        self.onAcceptVersionWarning = onAcceptVersionWarning
         self.onCode = onCode
         _authorizationStatus = State(
             initialValue: previewEnabled ? .authorized : authorization.videoStatus
@@ -69,8 +63,6 @@ struct MobilePairingScannerSheet: View {
                         pairingProgress
                     case let .failed(message, guidance):
                         pairingFailure(message: message, guidance: guidance)
-                    case let .versionWarning(message):
-                        pairingVersionWarning(message: message)
                     }
                 }
             }
@@ -100,8 +92,7 @@ struct MobilePairingScannerSheet: View {
             didScanCode: didScanCode,
             isPairing: isPairing,
             error: connectionError,
-            guidance: connectionErrorGuidance,
-            versionWarning: versionWarning
+            guidance: connectionErrorGuidance
         )
     }
 
@@ -231,34 +222,6 @@ struct MobilePairingScannerSheet: View {
             scanAgainButton
         }
         .accessibilityIdentifier("MobilePairingScannerFailure")
-    }
-
-    private func pairingVersionWarning(message: String) -> some View {
-        ContentUnavailableView {
-            Label(
-                L10n.string(
-                    "mobile.pairing.versionWarningTitle",
-                    defaultValue: "Compatibility mismatch"
-                ),
-                systemImage: "exclamationmark.triangle.fill"
-            )
-        } description: {
-            Text(message)
-                .accessibilityIdentifier("MobilePairingScannerVersionWarning")
-        } actions: {
-            Button(role: .destructive) {
-                onAcceptVersionWarning()
-            } label: {
-                Text(L10n.string(
-                    "mobile.pairing.versionWarningContinue",
-                    defaultValue: "Continue anyway"
-                ))
-            }
-            .buttonStyle(.borderedProminent)
-            .accessibilityIdentifier("MobilePairingScannerVersionWarningContinueButton")
-            scanAgainButton
-        }
-        .accessibilityIdentifier("MobilePairingScannerVersionWarningView")
     }
 
     private var scanAgainButton: some View {

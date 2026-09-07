@@ -24,9 +24,14 @@ enum MobileReconnectPresentation {
     static func shouldBlockWorkspaceNavigation(
         connectionState: MobileConnectionState,
         isReconnectingStoredMac: Bool,
-        isMacSwitchInFlight: Bool
+        isMacSwitchInFlight: Bool,
+        didFinishStoredMacReconnectAttempt: Bool
     ) -> Bool {
-        connectionState != .connected
-            && (isReconnectingStoredMac || isMacSwitchInFlight)
+        guard connectionState != .connected else { return false }
+        if isMacSwitchInFlight { return true }
+        // The first/explicit reconnect owns a stable full-screen progress view.
+        // Once it resolves, automatic backoff retries remain in the disconnected
+        // workspace shell instead of flashing the overlay on every attempt.
+        return isReconnectingStoredMac && !didFinishStoredMacReconnectAttempt
     }
 }

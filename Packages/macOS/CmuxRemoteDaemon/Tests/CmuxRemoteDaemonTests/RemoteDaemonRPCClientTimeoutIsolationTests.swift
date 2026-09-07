@@ -1,13 +1,17 @@
 import Darwin
 import Foundation
+import os
 import Testing
 import CmuxCore
 @testable import CmuxRemoteDaemon
 
 @Suite("RemoteDaemonRPCClient timeout isolation")
 struct RemoteDaemonRPCClientTimeoutIsolationTests {
-    @Test("a timed-out PTY attach cancels remotely while preserving the transport and subscriptions")
-    func timedOutPTYAttachPreservesHealthyTransportState() throws {
+    @Test(
+        "a timed-out PTY attach cancels remotely while preserving the transport and subscriptions",
+        arguments: [false, true]
+    )
+    func timedOutPTYAttachPreservesHealthyTransportState(delayedObservation: Bool) async throws {
         let executable = try makeTransport()
         defer {
             try? FileManager.default.removeItem(
@@ -15,8 +19,14 @@ struct RemoteDaemonRPCClientTimeoutIsolationTests {
             )
         }
 
-        let existingPTYEvent = DispatchSemaphore(value: 0)
-        let unexpectedTermination = DispatchSemaphore(value: 0)
+        let existingPTYEvents = AsyncStream<Void>.makeStream(bufferingPolicy: .bufferingNewest(1))
+        defer { existingPTYEvents.continuation.finish() }
+        let eventReceivedAt = OSAllocatedUnfairLock<ContinuousClock.Instant?>(initialState: nil)
+        // The global queue can be occupied by neighbouring synchronous RPC
+        // tests. Use an owned delivery queue, as the PTY bridge does, so this
+        // measures subscription survival rather than unrelated worker pressure.
+        let attachmentEventQueue = DispatchQueue(label: "com.cmux.tests.remote-daemon.healthy-attachment-event")
+        let unexpectedTermination = OSAllocatedUnfairLock(initialState: false)
         let client = RemoteDaemonRPCClient(
             configuration: configuration(),
             remotePath: "/fake/cmuxd-remote",
@@ -25,7 +35,7 @@ struct RemoteDaemonRPCClientTimeoutIsolationTests {
                 missingRequiredFunctionality: "missing functionality"
             )
         ) { _ in
-            unexpectedTermination.signal()
+            unexpectedTermination.withLock { $0 = true }
         }
         defer { client.stop() }
         client.transportExecutableOverride = executable
@@ -38,10 +48,12 @@ struct RemoteDaemonRPCClientTimeoutIsolationTests {
             rows: 24,
             command: nil,
             requireExisting: true,
-            queue: .global()
+            queue: attachmentEventQueue
         ) { event in
             if case .data(let data) = event, data == Data("still-alive".utf8) {
-                existingPTYEvent.signal()
+                let receivedAt = ContinuousClock.now
+                eventReceivedAt.withLock { $0 = receivedAt }
+                existingPTYEvents.continuation.yield(())
             }
         }
         #expect(existingAttachment.replayByteCount == 11)
@@ -65,12 +77,36 @@ struct RemoteDaemonRPCClientTimeoutIsolationTests {
 
         let result = try client.call(method: "hello", params: [:], timeout: 1)
         #expect(result["transport"] as? String == "alive")
-        #expect(existingPTYEvent.wait(timeout: .now() + 1) == .success)
-        #expect(unexpectedTermination.wait(timeout: .now()) == .timedOut)
+        // Keep the one-second delivery deadline. The task may resume later on
+        // a busy executor, so assert callback receipt time, not which child
+        // task happens to finish first after both become runnable.
+        let eventDeadline = ContinuousClock.now.advanced(by: .seconds(1))
+        if delayedObservation {
+            // Exercise the CI ordering: an on-time event must still count when
+            // the test's observer is not scheduled until after the deadline.
+            try await Task.sleep(until: eventDeadline, clock: .continuous)
+        }
+        await withTaskGroup(of: Void.self) { group in
+            group.addTask {
+                for await _ in existingPTYEvents.stream { return }
+            }
+            group.addTask {
+                try? await Task.sleep(until: eventDeadline, clock: .continuous)
+            }
+            defer { group.cancelAll() }
+            await group.next()
+        }
+        let receivedAt = try #require(eventReceivedAt.withLock { $0 })
+        #expect(receivedAt <= eventDeadline)
+        #expect(!unexpectedTermination.withLock { $0 })
     }
 
     @Test("a timed-out PTY attach does not wait for a blocked cancellation write")
     func timedOutPTYAttachBoundsCancellationWrite() throws {
+        let setupTimeout: TimeInterval = 5
+        let callCompletionTimeout: TimeInterval = 6
+        let failureSafetyTimeout: TimeInterval = 12
+        let transportTerminationTimeout: TimeInterval = 2
         let executable = try makeTransport()
         defer {
             try? FileManager.default.removeItem(
@@ -79,6 +115,9 @@ struct RemoteDaemonRPCClientTimeoutIsolationTests {
         }
 
         let stalledAttachRead = DispatchSemaphore(value: 0)
+        let attachmentEventQueue = DispatchQueue(
+            label: "com.cmux.tests.remote-daemon.blocked-cancellation-attachment-event"
+        )
         let unexpectedTermination = DispatchSemaphore(value: 0)
         let client = RemoteDaemonRPCClient(
             configuration: configuration(),
@@ -101,7 +140,7 @@ struct RemoteDaemonRPCClientTimeoutIsolationTests {
             rows: 24,
             command: nil,
             requireExisting: true,
-            queue: .global()
+            queue: attachmentEventQueue
         ) { event in
             if case .data(let data) = event, data == Data("attach-read".utf8) {
                 stalledAttachRead.signal()
@@ -112,7 +151,7 @@ struct RemoteDaemonRPCClientTimeoutIsolationTests {
         let releaseWrite = DispatchSemaphore(value: 0)
         let writeBlockQueue = DispatchQueue(label: "com.cmux.tests.remote-daemon.block-cancellation-write")
         writeBlockQueue.async {
-            guard stalledAttachRead.wait(timeout: .now() + 2) == .success else {
+            guard stalledAttachRead.wait(timeout: .now() + setupTimeout) == .success else {
                 releaseWrite.signal()
                 return
             }
@@ -125,7 +164,7 @@ struct RemoteDaemonRPCClientTimeoutIsolationTests {
         // from stranding the test process; ordinary cleanup is deterministic.
         let cleanupFired = DispatchSemaphore(value: 0)
         let cleanupTimer = DispatchSource.makeTimerSource(queue: writeBlockQueue)
-        cleanupTimer.schedule(deadline: .now() + 5)
+        cleanupTimer.schedule(deadline: .now() + failureSafetyTimeout)
         cleanupTimer.setEventHandler {
             cleanupFired.signal()
             releaseWrite.signal()
@@ -163,12 +202,15 @@ struct RemoteDaemonRPCClientTimeoutIsolationTests {
             }
         }
 
-        #expect(writeBlockEntered.wait(timeout: .now() + 2) == .success)
-        #expect(callFinished.wait(timeout: .now() + 6) == .success)
+        let writeBlockResult = writeBlockEntered.wait(timeout: .now() + setupTimeout)
+        #expect(writeBlockResult == .success)
+        guard writeBlockResult == .success else { return }
+
+        #expect(callFinished.wait(timeout: .now() + callCompletionTimeout) == .success)
         #expect(callTimedOut.wait(timeout: .now()) == .success)
         #expect(unexpectedCallResult.wait(timeout: .now()) == .timedOut)
         #expect(cleanupFired.wait(timeout: .now()) == .timedOut)
-        #expect(unexpectedTermination.wait(timeout: .now() + 2) == .success)
+        #expect(unexpectedTermination.wait(timeout: .now() + transportTerminationTimeout) == .success)
     }
 
     private func configuration() -> WorkspaceRemoteConfiguration {

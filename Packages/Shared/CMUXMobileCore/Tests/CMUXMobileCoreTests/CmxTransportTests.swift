@@ -44,6 +44,11 @@ private func profile(
     )
     let routes = try [
         CmxAttachRoute(
+            id: "local-network",
+            kind: .localNetwork,
+            endpoint: .hostPort(host: "192.168.1.20", port: 49831)
+        ),
+        CmxAttachRoute(
             id: "tailscale",
             kind: .tailscale,
             endpoint: .hostPort(host: "100.64.1.2", port: 49831)
@@ -97,6 +102,26 @@ private func profile(
     let decoded = try decoder.decode(CmxAttachTicket.self, from: data)
 
     #expect(decoded == ticket)
+}
+
+@Test func localNetworkRouteRequiresAHostPortEndpoint() throws {
+    let route = try CmxAttachRoute(
+        id: "local-network",
+        kind: .localNetwork,
+        endpoint: .hostPort(host: "192.168.1.20", port: 49_831)
+    )
+    #expect(route.kind == .localNetwork)
+
+    #expect(throws: CmxAttachRouteError.endpointMismatch(
+        kind: .localNetwork,
+        endpoint: .url("https://192.168.1.20")
+    )) {
+        _ = try CmxAttachRoute(
+            id: "bad-local-network",
+            kind: .localNetwork,
+            endpoint: .url("https://192.168.1.20")
+        )
+    }
 }
 
 @Test func attachTicketRejectsEmptyAuthToken() throws {

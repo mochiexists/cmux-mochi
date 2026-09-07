@@ -4,12 +4,11 @@ import Testing
 @testable import CmuxMobileRPC
 
 @Suite struct MobileCoreRPCWorkspaceMutationAuthTests {
-    @Test func workspaceMoveCarriesWorkspaceScopedAttachTicketContext() async throws {
+    @Test func workspaceMoveUsesTransportAdmissionOnly() async throws {
         let route = try hostPortRoute(kind: .debugLoopback, host: "127.0.0.1", port: 58465)
         let transport = QueuedCancellationProbeTransport()
         let runtime = TestMobileSyncRuntime(
             transportFactory: QueuedCancellationProbeTransportFactory(transport: transport),
-            stackAccessToken: "test-stack-token"
         )
         let ticket = try CmxAttachTicket(
             workspaceID: "workspace-main",
@@ -24,7 +23,6 @@ import Testing
             runtime: runtime,
             route: route,
             ticket: ticket,
-            allowsStackAuthFallback: true
         )
         let request = try MobileCoreRPCClient.requestData(
             method: "workspace.move",
@@ -40,17 +38,14 @@ import Testing
 
         let frame = try #require(sent.first)
         #expect(frame.method == "workspace.move")
-        #expect(frame.attachToken == "ticket-secret")
-        #expect(frame.stackAccessToken == "test-stack-token")
-        #expect(frame.hasAuth)
+        #expect(frame.hasAuth == false)
     }
 
-    @Test func workspaceGroupActionCarriesWorkspaceScopedAttachTicketContext() async throws {
+    @Test func workspaceGroupActionUsesTransportAdmissionOnly() async throws {
         let route = try hostPortRoute(kind: .debugLoopback, host: "127.0.0.1", port: 58465)
         let transport = QueuedCancellationProbeTransport()
         let runtime = TestMobileSyncRuntime(
             transportFactory: QueuedCancellationProbeTransportFactory(transport: transport),
-            stackAccessToken: "test-stack-token"
         )
         let ticket = try CmxAttachTicket(
             workspaceID: "workspace-main",
@@ -65,7 +60,6 @@ import Testing
             runtime: runtime,
             route: route,
             ticket: ticket,
-            allowsStackAuthFallback: true
         )
         let request = try MobileCoreRPCClient.requestData(
             method: "workspace.group.action",
@@ -82,17 +76,14 @@ import Testing
 
         let frame = try #require(sent.first)
         #expect(frame.method == "workspace.group.action")
-        #expect(frame.attachToken == "ticket-secret")
-        #expect(frame.stackAccessToken == "test-stack-token")
-        #expect(frame.hasAuth)
+        #expect(frame.hasAuth == false)
     }
 
-    @Test func workspaceGroupActionCarriesMacWideAttachTicketContext() async throws {
+    @Test func macWideWorkspaceGroupActionUsesTransportAdmissionOnly() async throws {
         let route = try hostPortRoute(kind: .debugLoopback, host: "127.0.0.1", port: 58465)
         let transport = QueuedCancellationProbeTransport()
         let runtime = TestMobileSyncRuntime(
             transportFactory: QueuedCancellationProbeTransportFactory(transport: transport),
-            stackAccessToken: "test-stack-token"
         )
         let ticket = try CmxAttachTicket(
             workspaceID: "",
@@ -107,7 +98,6 @@ import Testing
             runtime: runtime,
             route: route,
             ticket: ticket,
-            allowsStackAuthFallback: true
         )
         let request = try MobileCoreRPCClient.requestData(
             method: "workspace.group.action",
@@ -124,17 +114,14 @@ import Testing
 
         let frame = try #require(sent.first)
         #expect(frame.method == "workspace.group.action")
-        #expect(frame.attachToken == "ticket-secret")
-        #expect(frame.stackAccessToken == "test-stack-token")
-        #expect(frame.hasAuth)
+        #expect(frame.hasAuth == false)
     }
 
-    @Test func workspaceGroupCreateCarriesWorkspaceScopedAttachTicketContext() async throws {
+    @Test func workspaceGroupCreateUsesTransportAdmissionOnly() async throws {
         let route = try hostPortRoute(kind: .debugLoopback, host: "127.0.0.1", port: 58465)
         let transport = QueuedCancellationProbeTransport()
         let runtime = TestMobileSyncRuntime(
             transportFactory: QueuedCancellationProbeTransportFactory(transport: transport),
-            stackAccessToken: "test-stack-token"
         )
         let ticket = try CmxAttachTicket(
             workspaceID: "workspace-main",
@@ -149,7 +136,6 @@ import Testing
             runtime: runtime,
             route: route,
             ticket: ticket,
-            allowsStackAuthFallback: true
         )
         let request = try MobileCoreRPCClient.requestData(
             method: "workspace.group.create",
@@ -164,8 +150,6 @@ import Testing
 
         let frame = try #require(sent.first)
         #expect(frame.method == "workspace.group.create")
-        #expect(frame.attachToken == "ticket-secret")
-        #expect(frame.stackAccessToken == "test-stack-token")
-        #expect(frame.hasAuth)
+        #expect(frame.hasAuth == false)
     }
 }

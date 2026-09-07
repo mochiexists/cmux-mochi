@@ -1,6 +1,29 @@
 import XCTest
 import Darwin
 
+enum CLIMockSocketAuthentication {
+    static let password = "cmux-cli-mock-socket-password"
+
+    static func environment(
+        _ environment: [String: String],
+        password: String = CLIMockSocketAuthentication.password
+    ) -> [String: String] {
+        var isolated = environment
+        // A nonempty explicit password wins over the developer's environment,
+        // password file, and Keychain, including in child hook processes.
+        isolated["CMUX_SOCKET_PASSWORD"] = password
+        return isolated
+    }
+
+    static func response(
+        to line: String,
+        password: String = CLIMockSocketAuthentication.password
+    ) -> String? {
+        guard line == "auth \(password)" else { return nil }
+        return "OK\n"
+    }
+}
+
 extension CLINotifyProcessIntegrationRegressionTests {
     struct ProcessRunResult {
         let status: Int32
@@ -146,7 +169,7 @@ extension CLINotifyProcessIntegrationRegressionTests {
 
     func startBridgeErrorServer(listenerFD: Int32, message: String) -> XCTestExpectation {
         let handled = expectation(description: "pty bridge error server handled")
-        DispatchQueue.global(qos: .userInitiated).async {
+        Thread.detachNewThread {
             defer { handled.fulfill() }
 
             var clientAddr = sockaddr_in()
@@ -196,7 +219,7 @@ extension CLINotifyProcessIntegrationRegressionTests {
 
     func startBridgeReadyThenCloseServer(listenerFD: Int32) -> XCTestExpectation {
         let handled = expectation(description: "pty bridge ready close server handled")
-        DispatchQueue.global(qos: .userInitiated).async {
+        Thread.detachNewThread {
             defer { handled.fulfill() }
 
             var clientAddr = sockaddr_in()
@@ -246,7 +269,7 @@ extension CLINotifyProcessIntegrationRegressionTests {
 
     func startBridgeReadyThenResetAfterClientEOFServer(listenerFD: Int32) -> XCTestExpectation {
         let handled = expectation(description: "pty bridge ready reset server handled")
-        DispatchQueue.global(qos: .userInitiated).async {
+        Thread.detachNewThread {
             defer { handled.fulfill() }
 
             var clientAddr = sockaddr_in()
@@ -373,7 +396,8 @@ extension CLINotifyProcessIntegrationRegressionTests {
         arguments: [String],
         environment: [String: String],
         standardInput: String? = nil,
-        timeout: TimeInterval
+        timeout: TimeInterval,
+        socketPassword: String = CLIMockSocketAuthentication.password
     ) -> ProcessRunResult {
         let process = Process()
         let stdoutPipe = Pipe()
@@ -381,7 +405,7 @@ extension CLINotifyProcessIntegrationRegressionTests {
         let stdinPipe = standardInput == nil ? nil : Pipe()
         process.executableURL = URL(fileURLWithPath: executablePath)
         process.arguments = arguments
-        process.environment = environment
+        process.environment = CLIMockSocketAuthentication.environment(environment, password: socketPassword)
         process.standardInput = stdinPipe ?? FileHandle.nullDevice
         process.standardOutput = stdoutPipe
         process.standardError = stderrPipe
@@ -396,13 +420,18 @@ extension CLINotifyProcessIntegrationRegressionTests {
             try? stdinPipe.fileHandleForWriting.close()
         }
 
+        // The blocking pipe reads and waitUntilExit() below run on dedicated
+        // threads rather than DispatchQueue.global. Mock socket servers park
+        // many threads in accept(); a starved global pool made this helper
+        // report empty stdout and timedOut == true for children that had
+        // already exited cleanly.
         let outputLock = NSLock()
         var stdoutData = Data()
         var stderrData = Data()
         let outputGroup = DispatchGroup()
 
         outputGroup.enter()
-        DispatchQueue.global(qos: .utility).async {
+        Thread.detachNewThread {
             let data = stdoutPipe.fileHandleForReading.readDataToEndOfFile()
             outputLock.lock()
             stdoutData = data
@@ -411,7 +440,7 @@ extension CLINotifyProcessIntegrationRegressionTests {
         }
 
         outputGroup.enter()
-        DispatchQueue.global(qos: .utility).async {
+        Thread.detachNewThread {
             let data = stderrPipe.fileHandleForReading.readDataToEndOfFile()
             outputLock.lock()
             stderrData = data
@@ -420,7 +449,7 @@ extension CLINotifyProcessIntegrationRegressionTests {
         }
 
         let exitSignal = DispatchSemaphore(value: 0)
-        DispatchQueue.global(qos: .userInitiated).async {
+        Thread.detachNewThread {
             process.waitUntilExit()
             exitSignal.signal()
         }

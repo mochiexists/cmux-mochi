@@ -256,7 +256,7 @@ struct DisconnectedWorkspaceShellView: View {
         } description: {
             Text(L10n.string(
                 "mobile.devices.emptyDescription",
-                defaultValue: "Open Pair iPhone in cmux on your computer, then scan its QR code. No account is required."
+                defaultValue: "Open Pair a Device in cmux on your computer, then scan its QR code. No account is required."
             ))
         } actions: {
             Button(action: showAddDevice) {
@@ -391,7 +391,7 @@ struct DisconnectedWorkspaceShellView: View {
                 savedMacs.isEmpty
                     ? L10n.string(
                         "mobile.devices.emptyDescription",
-                        defaultValue: "Open Pair iPhone in cmux on your computer, then scan its QR code. No account is required."
+                        defaultValue: "Open Pair a Device in cmux on your computer, then scan its QR code. No account is required."
                     )
                     : L10n.string("mobile.devices.savedDescription", defaultValue: "Tap a saved computer to reconnect, or add another.")
             )

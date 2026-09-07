@@ -6,6 +6,13 @@ import Testing
 
 @Suite(.serialized)
 struct SSHForegroundAuthenticationRetryPolicyTests {
+    @Test func signalDrivenCleanupMasksSecondarySignals() {
+        #expect(
+            SSHForegroundAuthenticationRetryPolicy().signalDrivenCleanupMaskShellCommand()
+                == "trap '' HUP INT TERM"
+        )
+    }
+
     @Test func mapsBootTimeTransportFailureToRetryableStatus() throws {
         let result = try run(
             "printf '%s\\n' 'ssh: connect to host example.test port 22: Network is unreachable' >&2; exit 255"
@@ -349,6 +356,7 @@ struct SSHForegroundAuthenticationRetryPolicyTests {
             .appendingPathComponent("cmux-ssh-auth-deadline-\(UUID().uuidString)", isDirectory: true)
         let chainScript = root.appendingPathComponent("chain.sh")
         let readyMarker = root.appendingPathComponent("ready")
+        let cleanupStartMarker = root.appendingPathComponent("cleanup-start")
         let pidLog = root.appendingPathComponent("pids")
         try fileManager.createDirectory(at: root, withIntermediateDirectories: true)
         defer { try? fileManager.removeItem(at: root) }
@@ -357,12 +365,16 @@ struct SSHForegroundAuthenticationRetryPolicyTests {
         #!/bin/sh
         trap '' HUP INT TERM
         printf '%s\\n' "$$" >> "$CMUX_TEST_PID_LOG"
+        /bin/sleep 30 &
+        cmux_test_sleep_pid=$!
+        printf '%s\\n' "$cmux_test_sleep_pid" >> "$CMUX_TEST_PID_LOG"
         cmux_test_depth="${CMUX_TEST_CHAIN_DEPTH:-0}"
         if [ "$cmux_test_depth" -gt 0 ]; then
           CMUX_TEST_CHAIN_DEPTH=$((cmux_test_depth - 1)) /bin/sh "$0" &
         else
           : > "$CMUX_TEST_READY_MARKER"
         fi
+        wait "$cmux_test_sleep_pid" 2>/dev/null || true
         while :; do /bin/sleep 30; done
         """.write(to: chainScript, atomically: true, encoding: .utf8)
         try fileManager.setAttributes([.posixPermissions: 0o700], ofItemAtPath: chainScript.path)
@@ -385,16 +397,30 @@ struct SSHForegroundAuthenticationRetryPolicyTests {
           cmux_test_ready_attempt=$((cmux_test_ready_attempt + 1))
         done
         test -f "$CMUX_TEST_READY_MARKER" || exit 98
+        cmux_test_cleanup_start_attempt=0
+        while [ ! -f "$CMUX_TEST_CLEANUP_START_MARKER" ] && [ "$cmux_test_cleanup_start_attempt" -lt 300 ]; do
+          /bin/sleep 0.01
+          cmux_test_cleanup_start_attempt=$((cmux_test_cleanup_start_attempt + 1))
+        done
+        test -f "$CMUX_TEST_CLEANUP_START_MARKER" || exit 96
+        echo "harness: sh=$BASH_VERSION maxproc=$(ulimit -u) pgid=$(/bin/ps -o pgid= -p $$) root=$cmux_test_auth_root self=$$ ppid=$PPID" >&2
+        \(SSHForegroundAuthenticationRetryPolicy().signalDrivenCleanupMaskShellCommand())
         cmux_ssh_terminate_auth_process_tree "$cmux_test_auth_root" "$$"
+        echo "harness: cleanup_rc=$?" >&2
+        /bin/ps -o pid= -o ppid= -o pgid= -o state= -o command= -p "$(/usr/bin/tr '\\n' ',' < "$CMUX_TEST_PID_LOG" | /usr/bin/sed 's/,$//')" >&2 || true
         wait "$cmux_test_auth_root" 2>/dev/null || true
         """
 
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/bin/sh")
-        process.arguments = ["-c", command]
+        // `-x`: the walk's trace lands in the captured stderr, which the status
+        // expectation below surfaces on failure. The walk is intermittently flaky on
+        // shared CI runners, and a bare exit status cannot say which step gave up.
+        process.arguments = ["-x", "-c", command]
         process.environment = ProcessInfo.processInfo.environment.merging([
             "CMUX_TEST_CHAIN_SCRIPT": chainScript.path,
             "CMUX_TEST_READY_MARKER": readyMarker.path,
+            "CMUX_TEST_CLEANUP_START_MARKER": cleanupStartMarker.path,
             "CMUX_TEST_PID_LOG": pidLog.path,
         ]) { _, override in override }
         process.standardInput = FileHandle.nullDevice
@@ -403,8 +429,15 @@ struct SSHForegroundAuthenticationRetryPolicyTests {
         defer { removeStandardErrorCapture(stderrCapture) }
         process.standardError = stderrCapture.handle
 
-        let startedAt = Date.now
         try process.run()
+        let readyDeadline = Date.now.addingTimeInterval(5)
+        while !fileManager.fileExists(atPath: readyMarker.path), Date.now < readyDeadline {
+            Thread.sleep(forTimeInterval: 0.01)
+        }
+        try #require(fileManager.fileExists(atPath: readyMarker.path), "Process tree did not become ready")
+
+        let startedAt = Date.now
+        try Data().write(to: cleanupStartMarker, options: .atomic)
         try waitForExit(process, stderrCapture: stderrCapture, timeout: 8)
         let elapsed = Date.now.timeIntervalSince(startedAt)
 
@@ -416,10 +449,21 @@ struct SSHForegroundAuthenticationRetryPolicyTests {
             Thread.sleep(forTimeInterval: 0.01)
         }
 
-        #expect(process.terminationStatus == 0)
-        #expect(processIDs.count == 25)
+        let capturedStderr = (try? String(contentsOf: stderrCapture.url, encoding: .utf8)) ?? ""
+        let stderrTail = capturedStderr.split(separator: "\n").suffix(400).joined(separator: "\n")
         #expect(
-            elapsed < 3,
+            process.terminationReason == .exit && process.terminationStatus == 0,
+            "terminator reason=\(process.terminationReason) status=\(process.terminationStatus) stderr:\n\(stderrTail)"
+        )
+        // Every shell starts and records its sleeper before launching the next shell.
+        // This makes the ready marker prove that both halves of the 25-level tree exist,
+        // and catches leaf processes that a single freeze/snapshot pass can miss.
+        #expect(processIDs.count == 50)
+        // The budget covers the single two-second grace deadline and bounded
+        // post-deadline sweep. Chain setup is synchronized outside this measurement;
+        // a per-level deadline regression would take roughly 50 seconds.
+        #expect(
+            elapsed < 5,
             "Foreground authentication cleanup took \(elapsed) seconds instead of one bounded deadline"
         )
         #expect(!processIDs.contains(where: { Darwin.kill($0, 0) == 0 }))

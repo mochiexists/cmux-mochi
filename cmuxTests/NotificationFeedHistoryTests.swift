@@ -781,8 +781,7 @@ struct NotificationFeedHistoryTests {
             MobileHostRPCRequest(
                 id: "feed-list",
                 method: "notification.feed.list",
-                params: [:],
-                auth: nil
+                params: [:]
             )
         )
         let encoded = MobileHostRPCEnvelope.encodeResponse(id: "feed-list", result: response)
@@ -822,8 +821,7 @@ struct NotificationFeedHistoryTests {
             MobileHostRPCRequest(
                 id: "feed-huge-row",
                 method: "notification.feed.list",
-                params: [:],
-                auth: nil
+                params: [:]
             )
         )
         let encoded = MobileHostRPCEnvelope.encodeResponse(id: "feed-huge-row", result: response)
@@ -934,8 +932,7 @@ struct NotificationFeedHistoryTests {
             MobileHostRPCRequest(
                 id: "feed-list",
                 method: "notification.feed.list",
-                params: [:],
-                auth: nil
+                params: [:]
             )
         )
         let listPayload = try responsePayload(listResponse)
@@ -949,8 +946,7 @@ struct NotificationFeedHistoryTests {
             MobileHostRPCRequest(
                 id: "feed-mark",
                 method: "notification.feed.mark_read",
-                params: ["notification_ids": [older.id.uuidString]],
-                auth: nil
+                params: ["notification_ids": [older.id.uuidString]]
             )
         )
         let markPayload = try responsePayload(markResponse)
@@ -962,8 +958,7 @@ struct NotificationFeedHistoryTests {
             MobileHostRPCRequest(
                 id: "feed-mark-all",
                 method: "notification.feed.mark_all_read",
-                params: [:],
-                auth: nil
+                params: [:]
             )
         )
         let markAllPayload = try responsePayload(markAllResponse)
@@ -979,8 +974,7 @@ struct NotificationFeedHistoryTests {
             MobileHostRPCRequest(
                 id: "feed-mark-unread",
                 method: "notification.feed.mark_unread",
-                params: ["notification_ids": [older.id.uuidString]],
-                auth: nil
+                params: ["notification_ids": [older.id.uuidString]]
             )
         )
         let markUnreadPayload = try responsePayload(markUnreadResponse)

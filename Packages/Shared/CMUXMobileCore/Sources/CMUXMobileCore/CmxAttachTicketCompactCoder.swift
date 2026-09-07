@@ -12,10 +12,8 @@ import Foundation
 /// expiry. It does keep non-secret pairing context: the Mac account email,
 /// shared pairing compatibility level, and app version/build, so the phone can
 /// fail fast on an account mismatch and warn before continuing across
-/// compatibility skew. A pairing QR never expires;
-/// the owner's Stack access token is the
-/// host's sole authorization gate (`MobileHostService.authorizationError(for:)`),
-/// so ticket age authorizes nothing.
+/// compatibility skew. Legacy account-backed tickets may omit expiry; current
+/// DeviceLink v3 enrollment QR codes use a separate single-use, expiring ticket.
 ///
 /// Compatibility:
 /// - New decoders accept both grammars: ``CmxAttachTicketInput`` routes a

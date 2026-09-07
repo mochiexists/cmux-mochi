@@ -426,12 +426,16 @@ final class HostSettingsActions: SettingsHostActions {
             return .savedForLater(port: port)
         case .invalid:
             return .invalid(requestedPort: port)
+        case let .failed(message):
+            return .failed(message: message)
         }
     }
 
     /// Localized transport label for a pairing route shown in diagnostics.
     private static func routeKindLabel(_ kind: CmxAttachTransportKind) -> String {
         switch kind {
+        case .localNetwork:
+            return String(localized: "settings.mobile.route.localNetwork", defaultValue: "Local Network")
         case .tailscale:
             return String(localized: "settings.mobile.route.tailscale", defaultValue: "Tailscale")
         case .debugLoopback:

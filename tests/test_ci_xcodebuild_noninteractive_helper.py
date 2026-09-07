@@ -17,7 +17,145 @@ HELPER = ROOT / "scripts" / "ci" / "xcodebuild_noninteractive.py"
 PROMPT = "Press space to interact, D to debug, or any other key to quit"
 
 
+def check_framework_completion() -> bool:
+    # Exercise the actual PTY wrapper: XCTest's summary precedes Swift Testing
+    # in app-host runs and must not terminate that still-running framework.
+    for xctest_result, swift_result, expected_exit in (
+        ("passed", "passed", 0),
+        ("passed", "failed", 125),
+        ("failed", "passed", 125),
+        (None, "passed", 0),
+    ):
+        child = textwrap.dedent(
+            f"""
+            import sys
+            import time
+
+            xctest_result = {xctest_result!r}
+            if xctest_result is not None:
+                print("Test Suite 'Selected tests' " + xctest_result + " at now", flush=True)
+            # Split a lifecycle marker across reads, like a real PTY can.
+            sys.stdout.write("◇ Test run sta")
+            sys.stdout.flush()
+            time.sleep(0.02)
+            print("rted.", flush=True)
+            for _ in range(8):
+                print("Swift Testing is still working", flush=True)
+                time.sleep(0.05)
+            print("✔ Test run with 2 tests in 1 suite {swift_result} after 0.4 seconds.", flush=True)
+            print("swift-finished", flush=True)
+            # No xcodebuild exit: the post-test guard must arm from the LAST
+            # framework summary, not be disabled for mixed-framework runs.
+            time.sleep(10)
+            """
+        )
+        result = subprocess.run(
+            [sys.executable, str(HELPER), sys.executable, "-c", child],
+            cwd=ROOT,
+            text=True,
+            capture_output=True,
+            check=False,
+            timeout=5,
+            env={
+                **os.environ,
+                "CMUX_XCODEBUILD_NONINTERACTIVE_POST_TEST_TIMEOUT_SECONDS": "0.2",
+                "CMUX_XCODEBUILD_NONINTERACTIVE_IDLE_TIMEOUT_SECONDS": "1",
+            },
+        )
+        if (
+            result.returncode != expected_exit
+            or "swift-finished" not in result.stdout
+            or "Post-test timed out after 0.2s" not in result.stderr
+        ):
+            print(result.stdout, end="")
+            print(result.stderr, end="", file=sys.stderr)
+            print(
+                f"FAIL: XCTest={xctest_result}, Swift Testing={swift_result}: "
+                f"expected complete Swift run then post-test exit {expected_exit}, "
+                f"got {result.returncode}"
+            )
+            return False
+
+    stalled_child = textwrap.dedent(
+        """
+        import time
+
+        print("Test Suite 'Selected tests' passed at now", flush=True)
+        print("◇ Test run started.", flush=True)
+        time.sleep(10)
+        """
+    )
+    result = subprocess.run(
+        [sys.executable, str(HELPER), sys.executable, "-c", stalled_child],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+        timeout=5,
+        env={
+            **os.environ,
+            "CMUX_XCODEBUILD_NONINTERACTIVE_POST_TEST_TIMEOUT_SECONDS": "0.2",
+            "CMUX_XCODEBUILD_NONINTERACTIVE_IDLE_TIMEOUT_SECONDS": "0.4",
+        },
+    )
+    if result.returncode != 124 or "Idle timed out after 0.4s" not in result.stderr:
+        print(result.stdout, end="")
+        print(result.stderr, end="", file=sys.stderr)
+        print("FAIL: an unfinished Swift Testing run must fail via the unchanged idle guard")
+        return False
+
+    for restart in (False, True):
+        child = textwrap.dedent(
+            f"""
+            import time
+
+            print("Test Suite 'Selected tests' passed at now", flush=True)
+            print("◇ Test run started.", flush=True)
+            if {restart!r}:
+                print("Restarting after unexpected exit, crash, or test timeout; summary will include totals from previous launches.", flush=True)
+                print("Test Suite 'Selected tests' started at now", flush=True)
+                print("Test Suite 'Selected tests' passed at now", flush=True)
+            print("◇ Test run started.", flush=True)
+            if not {restart!r}:
+                print("✔ Test run with 1 test passed after 0.001 seconds.", flush=True)
+            for _ in range(8):
+                print("remaining Swift run is active", flush=True)
+                time.sleep(0.05)
+            print("✔ Test run with 1 test passed after 0.4 seconds.", flush=True)
+            print("all-runs-finished", flush=True)
+            time.sleep(10)
+            """
+        )
+        result = subprocess.run(
+            [sys.executable, str(HELPER), sys.executable, "-c", child],
+            cwd=ROOT,
+            text=True,
+            capture_output=True,
+            check=False,
+            timeout=5,
+            env={
+                **os.environ,
+                "CMUX_XCODEBUILD_NONINTERACTIVE_POST_TEST_TIMEOUT_SECONDS": "0.2",
+                "CMUX_XCODEBUILD_NONINTERACTIVE_IDLE_TIMEOUT_SECONDS": "1",
+            },
+        )
+        expected_exit = 125 if restart else 0
+        if (
+            result.returncode != expected_exit
+            or "all-runs-finished" not in result.stdout
+            or "Post-test timed out after 0.2s" not in result.stderr
+        ):
+            print(result.stdout, end="")
+            print(result.stderr, end="", file=sys.stderr)
+            print(f"FAIL: restarted={restart}: did not wait for all active framework runs")
+            return False
+    return True
+
+
 def main() -> int:
+    if not check_framework_completion():
+        return 1
+
     child = textwrap.dedent(
         f"""
         import sys
@@ -229,7 +367,7 @@ def main() -> int:
             print("FAIL: helper did not write child output to log path")
             return 1
 
-    print("PASS: xcodebuild noninteractive helper dismisses crash prompts and idle-times out stuck children")
+    print("PASS: xcodebuild noninteractive helper guards framework completion, crash prompts, idle timeouts, and output")
     return 0
 
 

@@ -125,8 +125,8 @@ import Testing
         )
         let store = MobileShellComposite.preview(runtime: runtime)
         store.signIn()
-        let connected = await store.connectPairingURL(try attachURL(for: makeTicket(clock: clock)))
-        #expect(connected, "scripted connect must succeed")
+        _ = try await store.connect(ticket: makeTicket(clock: clock))
+        #expect(store.connectionState == .connected, "scripted connect must succeed")
         let metadataResolved = try await pollUntil {
             store.supportsWorkspaceMetadata
                 && store.workspaces.first?.actionCapabilities.supportsWorkspaceMetadata == true

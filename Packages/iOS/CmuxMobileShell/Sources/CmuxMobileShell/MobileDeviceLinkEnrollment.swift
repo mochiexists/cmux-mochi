@@ -1,5 +1,6 @@
 public import DeviceLinkKit
 public import Foundation
+internal import CMUXMobileCore
 internal import CmuxMobileTransport
 internal import Network
 
@@ -55,15 +56,21 @@ public struct MobileDeviceLinkEnroller: Sendable {
     private let client: MobileDeviceLinkClient
     private let deviceLabel: String
     private let connectTimeoutNanoseconds: UInt64
+    private let localNetworkConnectTimeoutNanoseconds: UInt64
 
     public init(
         client: MobileDeviceLinkClient = .shared,
         deviceLabel: String,
-        connectTimeoutNanoseconds: UInt64 = 10_000_000_000
+        connectTimeoutNanoseconds: UInt64 = 10_000_000_000,
+        localNetworkConnectTimeoutNanoseconds: UInt64 = 2_000_000_000
     ) {
         self.client = client
         self.deviceLabel = deviceLabel
-        self.connectTimeoutNanoseconds = connectTimeoutNanoseconds
+        self.connectTimeoutNanoseconds = max(1, connectTimeoutNanoseconds)
+        self.localNetworkConnectTimeoutNanoseconds = max(
+            1,
+            localNetworkConnectTimeoutNanoseconds
+        )
     }
 
     /// A pairing's stable local identity.
@@ -107,7 +114,7 @@ public struct MobileDeviceLinkEnroller: Sendable {
         }
 
         var lastError = MobileDeviceLinkEnrollmentError.unreachable
-        for route in payload.routes {
+        for route in Self.orderedRoutes(payload.routes) {
             guard let (host, port) = Self.splitHostPort(route) else { continue }
             // On a phone, loopback is the phone — never the Mac. The Mac
             // advertises it for the simulator, which shares the Mac's network
@@ -118,7 +125,12 @@ public struct MobileDeviceLinkEnroller: Sendable {
                     host: host,
                     port: port,
                     tlsOptions: tlsOptions,
-                    ticket: payload.enrollmentTicket
+                    ticket: payload.enrollmentTicket,
+                    connectTimeoutNanoseconds: Self.connectTimeoutNanoseconds(
+                        for: host,
+                        localNetwork: localNetworkConnectTimeoutNanoseconds,
+                        other: connectTimeoutNanoseconds
+                    )
                 )
                 return MobileDeviceLinkEnrollmentOutcome(
                     pairingID: pairingID,
@@ -168,7 +180,8 @@ public struct MobileDeviceLinkEnroller: Sendable {
         host: String,
         port: Int,
         tlsOptions: NWProtocolTLS.Options,
-        ticket: String
+        ticket: String,
+        connectTimeoutNanoseconds: UInt64
     ) async throws -> RouteOutcome {
         let transport = try CmxNetworkByteTransport(
             host: host,
@@ -219,6 +232,40 @@ public struct MobileDeviceLinkEnroller: Sendable {
         // request. Persisting it is what lets reconnect recognise this Mac.
         let identity = try Self.enrollmentIdentity(from: result)
         return RouteOutcome(wasAlreadyEnrolled: wasAlreadyEnrolled, identity: identity)
+    }
+
+    static func connectTimeoutNanoseconds(
+        for host: String,
+        localNetwork: UInt64,
+        other: UInt64
+    ) -> UInt64 {
+        CmxLocalNetworkHost().matches(host) ? localNetwork : other
+    }
+
+    /// Keep direct LAN first, then use the durable tailnet hostname before
+    /// numeric Tailscale snapshots. On iOS the MagicDNS lookup activates and
+    /// selects the VPN path more reliably than an unbound CGNAT connection;
+    /// reconnect later uses the route-aware factory to bind that path exactly.
+    static func orderedRoutes(_ routes: [String]) -> [String] {
+        routes.enumerated().sorted { left, right in
+            let leftPriority = enrollmentRoutePriority(left.element)
+            let rightPriority = enrollmentRoutePriority(right.element)
+            if leftPriority != rightPriority {
+                return leftPriority < rightPriority
+            }
+            return left.offset < right.offset
+        }.map(\.element)
+    }
+
+    private static func enrollmentRoutePriority(_ route: String) -> Int {
+        guard let (host, _) = splitHostPort(route) else { return 4 }
+        if isLoopbackHost(host) { return 0 }
+        if CmxLocalNetworkHost().matches(host) { return 1 }
+        let normalizedHost = host
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        if normalizedHost.hasSuffix(".ts.net") { return 2 }
+        return 3
     }
 
     static func enrollmentIdentity(from result: [String: Any]) throws -> MacIdentity {

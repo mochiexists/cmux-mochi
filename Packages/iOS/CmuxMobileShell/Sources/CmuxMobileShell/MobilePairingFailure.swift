@@ -271,7 +271,7 @@ extension MobilePairingFailureCategory {
         case .invalidCode:
             return L10n.string(
                 "mobile.pairing.invalidCode",
-                defaultValue: "This isn't a cmux pairing QR. Scan the code shown in the Pair iPhone window on your Mac."
+                defaultValue: "This isn't a cmux pairing QR. Scan the code shown in the Pair a Device window on your Mac."
             )
         case .unrecognizedVersion:
             return L10n.string(
@@ -286,7 +286,7 @@ extension MobilePairingFailureCategory {
         case .pairingNotSaved:
             return L10n.string(
                 "mobile.pairing.pairingNotSaved",
-                defaultValue: "This Mac paired, but the pairing could not be saved on this device, so it will not reconnect. This usually means the Mac and iPhone builds do not match {2014} check they are the same channel or dev tag."
+                defaultValue: "This Mac paired, but the pairing could not be saved on this device, so it will not reconnect. This usually means the Mac and iPhone builds do not match — check they are the same channel or dev tag."
             )
         case .macUpdateRequired:
             return L10n.string(
@@ -439,6 +439,8 @@ extension MobilePairingFailureCategory {
                 return .connectionDropped(host: host, port: port)
             case .tailscaleAuthorizationUnavailable:
                 return .tailscaleUnavailable(host: host, port: port)
+            case .deviceLinkAuthorizationUnavailable:
+                return .authFailed
             case .authorizationIntentRequired, .unsupportedAuthorizationMode:
                 return .unsupportedRoute
             case .emptyHost, .invalidPort, .invalidMaximumReceiveLength,

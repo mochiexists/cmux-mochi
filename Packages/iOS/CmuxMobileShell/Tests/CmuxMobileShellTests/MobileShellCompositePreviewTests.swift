@@ -223,7 +223,6 @@ import Testing
             runtime: PairingDeadlineRuntime(),
             route: route,
             ticket: ticket,
-            allowsStackAuthFallback: true
         )
 
         store.recoverMobileConnection(trigger: .networkChange)

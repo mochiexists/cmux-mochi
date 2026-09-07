@@ -25,6 +25,10 @@ public enum CmxRoutePingResult: Sendable, Equatable {
     case permissionDenied
     /// Any other failure; carries a short description for display/logging.
     case failed(description: String)
+    /// The route is valid, but probing it without its paired DeviceLink
+    /// identity would weaken authentication. Its live connection remains the
+    /// authoritative health signal.
+    case authenticationRequired
     /// The route carries no host/port endpoint this probe can dial.
     case unsupportedRoute
 }
@@ -39,7 +43,7 @@ extension CmxRoutePingResult {
         case .reachable, .refused:
             return true
         case .unreachable, .timedOut, .dnsFailed, .permissionDenied, .failed,
-             .unsupportedRoute:
+             .authenticationRequired, .unsupportedRoute:
             return false
         }
     }

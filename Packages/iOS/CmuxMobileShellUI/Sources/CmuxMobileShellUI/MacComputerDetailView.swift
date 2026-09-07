@@ -294,7 +294,9 @@ struct MacComputerDetailView: View {
     @ViewBuilder
     private var routesSection: some View {
         Section {
-            let routes = (pairedMac?.routes ?? []).sorted { $0.priority > $1.priority }
+            // Lower values are preferred by the dialer, so show the route the
+            // phone will try first at the top (normally LAN before Tailscale).
+            let routes = (pairedMac?.routes ?? []).sorted { $0.priority < $1.priority }
             if routes.isEmpty {
                 Text(L10n.string("mobile.computers.noRoute", defaultValue: "no route"))
                     .foregroundStyle(.secondary)

@@ -73,6 +73,8 @@ public struct CmxMobileDefaults {
 }
 
 public enum CmxAttachTransportKind: String, Codable, Sendable {
+    /// Direct TCP on a private local network, authenticated by DeviceLink mTLS.
+    case localNetwork = "local_network"
     case tailscale
     case iroh
     case websocket

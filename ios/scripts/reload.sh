@@ -24,7 +24,8 @@ without its Mac); when it is missing, the Mac tag is built first, and the reload
 refuses to ship a phone-only build if that fails.
 
 After install, the app is launched with no account and auto-paired to the
-tagged Mac through a v3 DeviceLink code over Tailscale. Opt out granularly:
+tagged Mac through a v3 DeviceLink code over the local network, with Tailscale
+as a fallback. Opt out granularly:
   --no-sign-in   compatibility no-op; no-account is already the default
   --no-attach    launch without pairing to the Mac
   --no-setup     plain install + launch
@@ -722,7 +723,7 @@ PY
       xcrun simctl launch "$SIM_ID" "$BUNDLE_ID" >/dev/null
     elif ! auto_setup_launch simulator "$SIM_ID"; then
       echo "error: installed $BUNDLE_ID, but DeviceLink setup failed; refusing an unpaired fallback launch" >&2
-      echo "error: repair the tagged Mac/Tailscale route, or pass --no-attach or --no-setup explicitly" >&2
+      echo "error: repair the tagged Mac LAN/Tailscale route, or pass --no-attach or --no-setup explicitly" >&2
       return 1
     fi
   fi
@@ -945,7 +946,7 @@ reload_device() {
       # while the matching tagged Iroh route is absent. Fail closed unless the
       # caller explicitly requested a plain launch above.
       echo "error: installed $BUNDLE_ID, but DeviceLink setup failed; refusing an unpaired fallback launch" >&2
-      echo "error: repair the tagged Mac/Tailscale route, or pass --no-attach or --no-setup explicitly" >&2
+      echo "error: repair the tagged Mac LAN/Tailscale route, or pass --no-attach or --no-setup explicitly" >&2
       return 1
     fi
   fi

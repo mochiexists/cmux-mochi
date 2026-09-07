@@ -17,7 +17,60 @@ SWIFT_CRASH_PROMPT = b"Press space to interact, D to debug, or any other key to 
 TIMEOUT_EXIT_CODE = 124
 POST_TEST_FAILED_EXIT_CODE = 125
 SELECTED_TESTS_DONE_RE = re.compile(rb"Test Suite 'Selected tests' (passed|failed) at ")
+SELECTED_TESTS_START = b"Test Suite 'Selected tests' started at "
+SWIFT_TESTS_START = b"Test run started."
+SWIFT_TESTS_DONE_RE = re.compile(rb"Test run with \d+ tests?\b[^\r\n]*? (passed|failed) after ")
+TEST_RUNNER_RESTART = b"Restarting after unexpected exit, crash, or test timeout;"
 SUCCESS_MARKER = b"** TEST SUCCEEDED **"
+
+
+class TestCompletion:
+    """Track framework lifecycles, not just XCTest's intermediate summary."""
+
+    def __init__(self, timeout: float | None) -> None:
+        self.timeout = timeout
+        self.deadline: float | None = None
+        self.xctest_running = False
+        self.swift_runs = 0
+        self.saw_failure = False
+        self.saw_summary = False
+
+    def observe(self, line: bytes) -> None:
+        if TEST_RUNNER_RESTART in line:
+            # A crashed host cannot emit its Swift Testing end marker. The
+            # replacement host starts a new lifecycle; retain the failure.
+            self.xctest_running = False
+            self.swift_runs = 0
+            self.saw_failure = True
+            self.deadline = None
+        if SELECTED_TESTS_START in line:
+            self.xctest_running = True
+            self.deadline = None
+        if SWIFT_TESTS_START in line:
+            self.swift_runs += 1
+            self.deadline = None
+
+        selected_match = SELECTED_TESTS_DONE_RE.search(line)
+        swift_match = SWIFT_TESTS_DONE_RE.search(line)
+        if selected_match:
+            self.xctest_running = False
+        if swift_match:
+            self.swift_runs = max(0, self.swift_runs - 1)
+        for match in (selected_match, swift_match):
+            if match:
+                self.saw_summary = True
+                self.saw_failure |= match.group(1) == b"failed"
+        if (
+            (selected_match or swift_match)
+            and not self.xctest_running
+            and self.swift_runs == 0
+            and self.timeout
+        ):
+            self.deadline = time.monotonic() + self.timeout
+        if SUCCESS_MARKER in line:
+            self.saw_summary = True
+            if self.timeout and self.deadline is None:
+                self.deadline = time.monotonic() + self.timeout
 
 
 def child_exit_code(status: int) -> int:
@@ -129,9 +182,7 @@ def main() -> int:
     timeout = idle_timeout_seconds()
     post_test_timeout = post_test_timeout_seconds()
     deadline = time.monotonic() + timeout if timeout else None
-    post_test_deadline: float | None = None
-    selected_tests_result: str | None = None
-    saw_passing_terminal_summary = False
+    completion = TestCompletion(post_test_timeout)
     log_path = os.environ.get("CMUX_XCODEBUILD_NONINTERACTIVE_LOG_PATH")
     log_file: BinaryIO | None = None
     if log_path:
@@ -166,6 +217,7 @@ def main() -> int:
         os.execvp(sys.argv[1], sys.argv[1:])
 
     prompt_window = b""
+    pending_line = b""
     timed_out = False
     post_test_timed_out = False
     while True:
@@ -176,8 +228,8 @@ def main() -> int:
                 timed_out = True
                 break
             select_timeout = min(1, remaining)
-        if post_test_deadline is not None:
-            remaining = post_test_deadline - time.monotonic()
+        if completion.deadline is not None:
+            remaining = completion.deadline - time.monotonic()
             if remaining <= 0:
                 post_test_timed_out = True
                 break
@@ -202,13 +254,13 @@ def main() -> int:
         write_child_output(chunk, log_file, stdout_fd)
         if timeout:
             deadline = time.monotonic() + timeout
+        # Consume each completed line once. Re-searching a rolling window can
+        # re-arm an old XCTest summary after Swift Testing has started.
+        lines = (pending_line + chunk).split(b"\n")
+        pending_line = lines.pop()[-4096:]
+        for line in lines:
+            completion.observe(line)
         prompt_window = (prompt_window + chunk)[-4096:]
-        selected_match = SELECTED_TESTS_DONE_RE.search(prompt_window)
-        if post_test_timeout and selected_match and post_test_deadline is None:
-            selected_tests_result = selected_match.group(1).decode("ascii")
-            post_test_deadline = time.monotonic() + post_test_timeout
-        if SUCCESS_MARKER in prompt_window:
-            saw_passing_terminal_summary = True
         if SWIFT_CRASH_PROMPT in prompt_window:
             # The Swift crash backtracer asks for one key. Send q to choose the
             # noninteractive quit path and let xcodebuild continue reporting.
@@ -230,17 +282,17 @@ def main() -> int:
         assert post_test_timeout is not None
         message = (
             f"Post-test timed out after {post_test_timeout:g}s; terminating "
-            f"xcodebuild after terminal XCTest summary"
+            f"xcodebuild after completed test framework summaries"
         )
         print(message, file=sys.stderr)
         if log_file is not None:
             log_file.write(f"{message}\n".encode())
             log_file.close()
         terminate_child(pid)
-        if selected_tests_result == "passed" or saw_passing_terminal_summary:
-            return 0
-        if selected_tests_result == "failed":
+        if completion.saw_failure:
             return POST_TEST_FAILED_EXIT_CODE
+        if completion.saw_summary:
+            return 0
         return TIMEOUT_EXIT_CODE
 
     _, status = os.waitpid(pid, 0)

@@ -268,7 +268,7 @@ private extension MobilePairedMac {
             reconnectRoutes,
             supportedKinds: supportedKinds,
             preferNonLoopback: preferNonLoopback
-        ), let normalizedHost = MobileShellRouteAuthPolicy.normalizedManualHost(host) else {
+        ), let normalizedHost = MobileShellRouteAuthPolicy.normalizedHost(host) else {
             return nil
         }
         return "host:\(normalizedHost.lowercased()):\(port):name:\(displayName.lowercased())"

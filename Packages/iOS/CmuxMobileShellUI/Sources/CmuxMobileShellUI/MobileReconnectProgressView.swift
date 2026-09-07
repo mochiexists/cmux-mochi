@@ -72,6 +72,8 @@ struct MobileReconnectProgressView: View {
 
     private var routeLabel: String {
         switch routeKind {
+        case .localNetwork:
+            return L10n.string("mobile.reconnect.transport.localNetwork", defaultValue: "Local Network")
         case .tailscale:
             return tailscaleLabel
         case .iroh:

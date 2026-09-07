@@ -113,7 +113,11 @@ extension ReconnectRouteSelectionTests {
         let clock = TestClock()
         let router = LivenessHostRouter()
         let box = TransportBox()
-        let factory = KindRecordingTransportFactory(router: router, box: box)
+        let factory = KindRecordingTransportFactory(
+            router: router,
+            box: box,
+            failingKinds: [.tailscale]
+        )
         let store = try await makeReconnectStore(
             routes: [try tailscale()],
             runtime: LivenessTestRuntime(
@@ -124,14 +128,18 @@ extension ReconnectRouteSelectionTests {
         )
 
         #expect(!(await store.reconnectActiveMacIfAvailable(stackUserID: "user-1")))
-        #expect(factory.attemptedKinds().isEmpty)
+        #expect(factory.attemptedKinds() == [.tailscale])
     }
 
-    @Test func preIrohPairingContinuesOverItsExactTailscaleRouteAfterIOSUpgrade() async throws {
+    @Test func preIrohPairingDoesNotReconnectWithoutDeviceLinkCredentialAfterUpgrade() async throws {
         let clock = TestClock()
         let router = LivenessHostRouter()
         let box = TransportBox()
-        let factory = KindRecordingTransportFactory(router: router, box: box)
+        let factory = KindRecordingTransportFactory(
+            router: router,
+            box: box,
+            failingKinds: [.tailscale]
+        )
         let runtime = LivenessTestRuntime(
             transportFactory: factory,
             now: { clock.now },
@@ -160,20 +168,11 @@ extension ReconnectRouteSelectionTests {
         )
         await store.loadPairedMacs()
 
-        #expect(await store.reconnectActiveMacIfAvailable(stackUserID: "user-1"))
-        #expect(store.connectionState == .connected)
+        #expect(!(await store.reconnectActiveMacIfAvailable(stackUserID: "user-1")))
+        #expect(store.connectionState == .disconnected)
         #expect(factory.attemptedKinds() == [.tailscale])
-        #expect(
-            factory.attemptedAuthorizationModes()
-                == [.legacyTailscaleBearer(
-                    try CmxLegacyTailscaleAuthorizationEvidence(
-                        macDeviceID: "test-mac",
-                        host: "100.82.214.112",
-                        port: 50_906
-                    )
-                )]
-        )
-        #expect(store.activeRoute?.kind == .tailscale)
+        #expect(factory.attemptedAuthorizationModes() == [.transportAdmission])
+        #expect(store.activeRoute == nil)
     }
 
     @Test func reconnectUsesSingleRegistrySnapshotToRescueNonActiveMacWithNoLocalRoutes() async throws {
@@ -181,7 +180,11 @@ extension ReconnectRouteSelectionTests {
         let router = LivenessHostRouter()
         await router.setHostIdentity(deviceID: "mac-b", instanceTag: "stable", displayName: "Mac B")
         let box = TransportBox()
-        let factory = KindRecordingTransportFactory(router: router, box: box)
+        let factory = KindRecordingTransportFactory(
+            router: router,
+            box: box,
+            failingKinds: [.tailscale]
+        )
         let runtime = LivenessTestRuntime(
             transportFactory: factory,
             now: { clock.now },
@@ -242,7 +245,7 @@ extension ReconnectRouteSelectionTests {
         #expect(await store.reconnectActiveMacIfAvailable(stackUserID: "user-1"))
         #expect(store.foregroundMacDeviceID == "mac-b")
         #expect(store.activeRoute?.id == "iroh-b")
-        #expect(factory.attemptedKinds() == [.iroh])
+        #expect(factory.attemptedKinds() == [.tailscale, .iroh])
         #expect(await registry.counts() == .init(list: 1, fresh: 0))
         let rows = try await pairedStore.loadAll(stackUserID: "user-1", teamID: nil)
         #expect(rows.count == 2)
@@ -258,7 +261,7 @@ extension ReconnectRouteSelectionTests {
         let factory = KindRecordingTransportFactory(
             router: router,
             box: box,
-            failingKinds: [.iroh]
+            failingKinds: [.tailscale, .iroh]
         )
         let runtime = LivenessTestRuntime(
             transportFactory: factory,
@@ -311,7 +314,10 @@ extension ReconnectRouteSelectionTests {
         await pairedStore.resetLoadAllCount()
 
         #expect(!(await store.reconnectActiveMacIfAvailable(stackUserID: "user-1")))
-        #expect(factory.attemptedKinds() == Array(repeating: .iroh, count: macCount))
+        #expect(
+            factory.attemptedKinds()
+                == Array(repeating: [.tailscale, .iroh], count: macCount).flatMap { $0 }
+        )
         #expect(await registry.counts() == .init(list: 1, fresh: 0))
         #expect(await pairedStore.currentLoadAllCount() == 2)
     }
@@ -321,7 +327,11 @@ extension ReconnectRouteSelectionTests {
         let router = LivenessHostRouter()
         await router.setHostIdentity(deviceID: "test-mac", instanceTag: "stable")
         let box = TransportBox()
-        let factory = KindRecordingTransportFactory(router: router, box: box)
+        let factory = KindRecordingTransportFactory(
+            router: router,
+            box: box,
+            failingKinds: [.tailscale]
+        )
         let runtime = LivenessTestRuntime(
             transportFactory: factory,
             now: { clock.now },
@@ -373,7 +383,7 @@ extension ReconnectRouteSelectionTests {
 
         #expect(await store.reconnectActiveMacIfAvailable(stackUserID: "user-1"))
         #expect(store.activeRoute?.id == iroh.id)
-        #expect(factory.attemptedKinds() == [.iroh])
+        #expect(factory.attemptedKinds() == [.tailscale, .iroh])
         #expect(store.connectionError?.localizedCaseInsensitiveContains("update cmux") != true)
         #expect(await registry.state() == .init(listCalls: 1, wrotePresenceRoutes: true))
         let persisted = try #require(await pairedStore.activeMac(
@@ -388,7 +398,11 @@ extension ReconnectRouteSelectionTests {
         let router = LivenessHostRouter()
         await router.setHostIdentity(deviceID: "test-mac", instanceTag: "stable")
         let box = TransportBox()
-        let factory = KindRecordingTransportFactory(router: router, box: box)
+        let factory = KindRecordingTransportFactory(
+            router: router,
+            box: box,
+            failingKinds: [.tailscale]
+        )
         let runtime = LivenessTestRuntime(
             transportFactory: factory,
             now: { clock.now },
@@ -425,7 +439,7 @@ extension ReconnectRouteSelectionTests {
 
         #expect(await store.reconnectActiveMacIfAvailable(stackUserID: "user-1"))
         #expect(store.activeRoute?.id == iroh.id)
-        #expect(factory.attemptedKinds() == [.iroh])
+        #expect(factory.attemptedKinds() == [.tailscale, .iroh])
         #expect(store.connectionError?.localizedCaseInsensitiveContains("update cmux") != true)
     }
 
@@ -494,7 +508,8 @@ extension ReconnectRouteSelectionTests {
         let clock = TestClock()
         let factory = KindRecordingTransportFactory(
             router: LivenessHostRouter(),
-            box: TransportBox()
+            box: TransportBox(),
+            failingKinds: [.tailscale]
         )
         let runtime = LivenessTestRuntime(
             transportFactory: factory,
@@ -552,7 +567,7 @@ extension ReconnectRouteSelectionTests {
         )
 
         #expect(!(await store.reconnectActiveMacIfAvailable(stackUserID: "user-1")))
-        #expect(factory.attemptedKinds().isEmpty)
+        #expect(factory.attemptedKinds() == [.tailscale])
         let copy = [store.connectionError, store.connectionErrorGuidance]
             .compactMap { $0 }
             .joined(separator: " ")
@@ -563,7 +578,8 @@ extension ReconnectRouteSelectionTests {
         let clock = TestClock()
         let factory = KindRecordingTransportFactory(
             router: LivenessHostRouter(),
-            box: TransportBox()
+            box: TransportBox(),
+            failingKinds: [.tailscale]
         )
         let runtime = LivenessTestRuntime(
             transportFactory: factory,
@@ -621,7 +637,7 @@ extension ReconnectRouteSelectionTests {
         )
 
         #expect(!(await store.switchToMac(macDeviceID: "test-mac")))
-        #expect(factory.attemptedKinds().isEmpty)
+        #expect(factory.attemptedKinds() == [.tailscale])
         let copy = [store.connectionError, store.connectionErrorGuidance]
             .compactMap { $0 }
             .joined(separator: " ")
@@ -633,7 +649,8 @@ extension ReconnectRouteSelectionTests {
         let runtime = LivenessTestRuntime(
             transportFactory: KindRecordingTransportFactory(
                 router: LivenessHostRouter(),
-                box: TransportBox()
+                box: TransportBox(),
+                failingKinds: [.tailscale]
             ),
             now: { clock.now },
             supportedRouteKinds: [.iroh, .tailscale]
@@ -695,7 +712,11 @@ extension ReconnectRouteSelectionTests {
         let router = LivenessHostRouter()
         await router.setHostIdentity(deviceID: "test-mac", instanceTag: "stable")
         let box = TransportBox()
-        let factory = KindRecordingTransportFactory(router: router, box: box)
+        let factory = KindRecordingTransportFactory(
+            router: router,
+            box: box,
+            failingKinds: [.tailscale]
+        )
         let runtime = LivenessTestRuntime(
             transportFactory: factory,
             now: { clock.now },
@@ -754,7 +775,11 @@ extension ReconnectRouteSelectionTests {
         let clock = TestClock()
         let router = LivenessHostRouter()
         let box = TransportBox()
-        let factory = KindRecordingTransportFactory(router: router, box: box)
+        let factory = KindRecordingTransportFactory(
+            router: router,
+            box: box,
+            failingKinds: [.tailscale]
+        )
         let runtime = LivenessTestRuntime(
             transportFactory: factory,
             now: { clock.now },
@@ -828,7 +853,11 @@ extension ReconnectRouteSelectionTests {
         let clock = TestClock()
         let router = LivenessHostRouter()
         let box = TransportBox()
-        let factory = KindRecordingTransportFactory(router: router, box: box)
+        let factory = KindRecordingTransportFactory(
+            router: router,
+            box: box,
+            failingKinds: [.tailscale]
+        )
         let runtime = LivenessTestRuntime(
             transportFactory: factory,
             now: { clock.now },
@@ -870,7 +899,7 @@ extension ReconnectRouteSelectionTests {
         )
 
         #expect(!(await store.reconnectActiveMacIfAvailable(stackUserID: "user-1")))
-        #expect(factory.attemptedKinds().isEmpty)
+        #expect(factory.attemptedKinds() == [.tailscale])
         #expect(!store.connectionRequiresReauth)
         #expect(store.hasKnownPairedMac)
         #expect(await registry.counts() == .init(list: 1, fresh: 0))
@@ -893,7 +922,8 @@ extension ReconnectRouteSelectionTests {
         let runtime = LivenessTestRuntime(
             transportFactory: KindRecordingTransportFactory(
                 router: LivenessHostRouter(),
-                box: TransportBox()
+                box: TransportBox(),
+                failingKinds: [.tailscale]
             ),
             now: { clock.now },
             supportedRouteKinds: [.iroh, .tailscale]
@@ -928,7 +958,8 @@ extension ReconnectRouteSelectionTests {
         let runtime = LivenessTestRuntime(
             transportFactory: KindRecordingTransportFactory(
                 router: LivenessHostRouter(),
-                box: TransportBox()
+                box: TransportBox(),
+                failingKinds: [.tailscale]
             ),
             now: { clock.now },
             supportedRouteKinds: [.iroh, .tailscale]

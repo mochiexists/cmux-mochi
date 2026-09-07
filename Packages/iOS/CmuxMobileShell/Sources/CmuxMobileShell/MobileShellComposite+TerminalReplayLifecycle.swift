@@ -10,6 +10,12 @@ public import Foundation
 /// internal) instead of `MobileShellComposite.swift` to respect that file's
 /// length budget.
 extension MobileShellComposite {
+    /// Requests a bounded replacement replay for an already-mounted renderer.
+    /// Manual-I/O clients use this after growing their local assigned grid.
+    public func requestTerminalVisibleScreenReplay(surfaceID: String) {
+        requestTerminalReplay(surfaceID: surfaceID)
+    }
+
     func markTerminalBytesDelivered(
         surfaceID: String,
         endSeq: UInt64,

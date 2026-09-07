@@ -45,14 +45,14 @@ let package = Package(
         // test runner satisfies the link with a stub. The app links the real
         // GhosttyKit.
         .target(
-            name: "GhosttyRuntimeTestStubs",
+            name: "CmuxTerminalGhosttyRuntimeTestStubs",
             path: "Tests/GhosttyRuntimeTestStubs"
         ),
         .testTarget(
             name: "CmuxTerminalTests",
             dependencies: [
                 "CmuxTerminal",
-                "GhosttyRuntimeTestStubs",
+                "CmuxTerminalGhosttyRuntimeTestStubs",
                 .product(name: "CmuxTerminalCore", package: "CmuxTerminalCore"),
                 .product(name: "CmuxGhosttyKit", package: "CmuxTerminalCore"),
             ],

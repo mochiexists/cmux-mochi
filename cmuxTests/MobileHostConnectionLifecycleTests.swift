@@ -127,6 +127,112 @@ extension MobileHostAuthorizationTests {
         service.debugResetMobileLifecycleStateForTesting()
     }
 
+    @Test func testStoppingDeviceLinkListenerClosesOnlyDeviceLinkConnections() async throws {
+        let service = MobileHostService.shared
+        let registry = MobileHostConnectionRegistry.shared
+        service.debugResetMobileLifecycleStateForTesting()
+        for connection in registry.removeAll() {
+            await connection.close(reason: "test setup")
+        }
+        defer {
+            service.debugResetMobileLifecycleStateForTesting()
+        }
+
+        let deviceLinkTransport = GatedMobileHostByteTransport()
+        let irohTransport = GatedMobileHostByteTransport()
+        let deviceLinkID = UUID()
+        let irohID = UUID()
+        let deviceLinkConnection = MobileHostConnection(
+            id: deviceLinkID,
+            transport: deviceLinkTransport,
+            authorizeRequest: { _ in nil },
+            onAuthorizedRequest: { _ in },
+            handleRequest: { _ in .ok([:]) },
+            onClose: { _ in }
+        )
+        let irohConnection = MobileHostConnection(
+            id: irohID,
+            transport: irohTransport,
+            authorizeRequest: { _ in nil },
+            onAuthorizedRequest: { _ in },
+            handleRequest: { _ in .ok([:]) },
+            onClose: { _ in }
+        )
+        #expect(registry.insert(
+            deviceLinkConnection,
+            id: deviceLinkID,
+            authorization: .pairedDevice(fingerprint: "device-link", label: "Phone"),
+            limit: 8
+        ))
+        #expect(registry.insert(
+            irohConnection,
+            id: irohID,
+            authorization: try irohAdmissionContext(),
+            limit: 8
+        ))
+
+        service.debugStopLegacyListenerForTesting()
+        await waitForTransportClose(deviceLinkTransport)
+
+        #expect(registry.count == 1)
+        #expect(registry.connection(id: deviceLinkID) == nil)
+        #expect(registry.connection(id: irohID) != nil)
+        #expect(await deviceLinkTransport.observedCloseCount() == 1)
+        #expect(await irohTransport.observedCloseCount() == 0)
+
+        for connection in registry.removeAll() {
+            await connection.close(reason: "test cleanup")
+        }
+    }
+
+    @Test func testPairedDeviceCountExcludesEnrollmentCandidates() async {
+        let registry = MobileHostConnectionRegistry.shared
+        for connection in registry.removeAll() {
+            await connection.close(reason: "test setup")
+        }
+
+        let candidateID = UUID()
+        let pairedID = UUID()
+        let candidate = MobileHostConnection(
+            id: candidateID,
+            transport: GatedMobileHostByteTransport(),
+            authorizeRequest: { _ in nil },
+            onAuthorizedRequest: { _ in },
+            handleRequest: { _ in .ok([:]) },
+            onClose: { _ in }
+        )
+        let paired = MobileHostConnection(
+            id: pairedID,
+            transport: GatedMobileHostByteTransport(),
+            authorizeRequest: { _ in nil },
+            onAuthorizedRequest: { _ in },
+            handleRequest: { _ in .ok([:]) },
+            onClose: { _ in }
+        )
+
+        #expect(registry.insert(
+            candidate,
+            id: candidateID,
+            authorization: .enrollmentCandidate(fingerprint: "candidate"),
+            limit: 8
+        ))
+        #expect(registry.count == 1)
+        #expect(registry.pairedDeviceCount == 0)
+
+        #expect(registry.insert(
+            paired,
+            id: pairedID,
+            authorization: .pairedDevice(fingerprint: "paired", label: "iPhone"),
+            limit: 8
+        ))
+        #expect(registry.count == 2)
+        #expect(registry.pairedDeviceCount == 1)
+
+        for connection in registry.removeAll() {
+            await connection.close(reason: "test cleanup")
+        }
+    }
+
     private static func mobileHostStatusFrame(id: String) throws -> Data {
         try MobileSyncFrameCodec.encodeFrame(
             Data("{\"id\":\"\(id)\",\"method\":\"mobile.host.status\",\"params\":{}}".utf8)
@@ -149,6 +255,16 @@ extension MobileHostAuthorizationTests {
         Issue.record(
             "Timed out waiting for \(expected) mobile host connections; observed \(MobileHostConnectionRegistry.shared.count)"
         )
+    }
+
+    private func waitForTransportClose(_ transport: GatedMobileHostByteTransport) async {
+        let clock = ContinuousClock()
+        let deadline = clock.now.advanced(by: .seconds(2))
+        while clock.now < deadline {
+            if await transport.observedCloseCount() > 0 { return }
+            await Task.yield()
+        }
+        Issue.record("Timed out waiting for DeviceLink connection close")
     }
 
     @Test func testIrohEventWriterTimesOutBackpressureWithInjectedClock() async {

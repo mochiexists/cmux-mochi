@@ -35,13 +35,13 @@ extension AgentNotificationRegressionTests {
         let readyMarker = root.appendingPathComponent("ready")
         let execMarker = root.appendingPathComponent("execed")
         try """
-        touch '\(readyMarker.path)'
         trap 'exec /bin/sh "\(scopedScript.path)"' USR1
+        touch '\(readyMarker.path)'
         while :; do sleep 1; done
         """.write(to: initialScript, atomically: true, encoding: .utf8)
         try """
         export CMUX_SURFACE_ID='\(fixture.panelId.uuidString)'
-        exec /bin/sh -c 'touch "\(execMarker.path)"; exec sleep 30'
+        exec /usr/bin/python3 -c 'import pathlib, time; pathlib.Path("\(execMarker.path)").touch(); time.sleep(30)'
         """.write(to: scopedScript, atomically: true, encoding: .utf8)
 
         let process = Process()
@@ -73,6 +73,14 @@ extension AgentNotificationRegressionTests {
         #expect(cachedMiss == nil)
         #expect(Darwin.kill(process.processIdentifier, SIGUSR1) == 0)
         #expect(await waitForMarker(at: execMarker))
+
+        // macOS redacts KERN_PROCARGS2 environments for protected system
+        // executables such as /bin/sh and /bin/sleep. Python represents the
+        // readable agent process here and writes readiness after its final exec.
+        let liveArguments = try #require(
+            CmuxTopProcessSnapshot.processArgumentsAndEnvironment(for: Int(process.processIdentifier))
+        )
+        #expect(liveArguments.environment["CMUX_SURFACE_ID"] == fixture.panelId.uuidString)
 
         #expect(
             fixture.appDelegate.liveAgentDeliveryTarget(forAgentPID: process.processIdentifier)

@@ -19,4 +19,7 @@ public enum MobilePairingPortApplyResult: Sendable, Equatable {
 
     /// The requested port was outside the valid `1...65535` range.
     case invalid(requestedPort: Int)
+
+    /// Listener preparation failed before cmux could determine port availability.
+    case failed(message: String)
 }

@@ -182,8 +182,8 @@ import Testing
         "mounting before a remote client exists must not send an inert replay request"
     )
 
-    let connected = await store.connectPairingURL(try attachURL(for: makeTicket(clock: clock)))
-    #expect(connected, "scripted connect must succeed")
+    _ = try await store.connect(ticket: makeTicket(clock: clock))
+    #expect(store.connectionState == .connected, "scripted connect must succeed")
     let capabilitiesResolved = try await pollUntil {
         store.supportedHostCapabilities.contains("terminal.replay.v1")
     }
@@ -352,8 +352,8 @@ import Testing
         "mounting before a remote client exists must not send an inert replay request"
     )
 
-    let connected = await store.connectPairingURL(try attachURL(for: makeTicket(clock: clock)))
-    #expect(connected, "scripted connect must succeed")
+    _ = try await store.connect(ticket: makeTicket(clock: clock))
+    #expect(store.connectionState == .connected, "scripted connect must succeed")
     let capabilitiesResolved = try await pollUntil {
         !store.supportedHostCapabilities.isEmpty
     }

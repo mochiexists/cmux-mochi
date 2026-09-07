@@ -456,7 +456,10 @@ struct BrowserDesignModeOffscreenSelectionHandoffTests {
             includingPropertiesForKeys: nil
         ) else { return 0 }
         return enumerator.compactMap { $0 as? URL }.reduce(into: 0) { count, url in
-            if url.lastPathComponent.hasSuffix("-screenshot.png") {
+            // Lease markers retain the artifact's filename as a suffix, but
+            // only the image itself begins with the store's surface prefix.
+            if url.lastPathComponent.hasPrefix("surface-"),
+               url.lastPathComponent.hasSuffix("-screenshot.png") {
                 count += 1
             }
         }

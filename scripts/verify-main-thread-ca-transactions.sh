@@ -22,15 +22,14 @@ if [ ! -d "$APP_PATH" ]; then
 fi
 
 APP_BASENAME="$(basename "$APP_PATH")"
-if [ "$APP_BASENAME" = "cmux DEV.app" ] && [ "${CMUX_ALLOW_UNTAGGED_CA_REGRESSION:-0}" != "1" ]; then
+source "$(dirname "$0")/fork-identity.env"
+if { [ "$APP_BASENAME" = "cmux DEV.app" ] || [ "$APP_BASENAME" = "${CMUX_FORK_APP_NAME} DEV.app" ]; } && [ "${CMUX_ALLOW_UNTAGGED_CA_REGRESSION:-0}" != "1" ]; then
   echo "ERROR: refusing to launch untagged cmux DEV.app without CMUX_ALLOW_UNTAGGED_CA_REGRESSION=1" >&2
   exit 2
 fi
 
-BINARY="$APP_PATH/Contents/MacOS/cmux DEV"
-if [ ! -x "$BINARY" ]; then
-  BINARY="$APP_PATH/Contents/MacOS/cmux"
-fi
+EXECUTABLE_NAME="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$APP_PATH/Contents/Info.plist")"
+BINARY="$APP_PATH/Contents/MacOS/$EXECUTABLE_NAME"
 
 if [ ! -x "$BINARY" ]; then
   echo "ERROR: cmux executable not found in $APP_PATH" >&2

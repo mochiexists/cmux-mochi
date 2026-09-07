@@ -35,16 +35,22 @@ import Testing
         return (connection, writer, pipe)
     }
 
+    /// Delivers one `%begin`/`%end` block, first answering any fire-and-forget
+    /// commands queued ahead of it (see ``drainFireAndForgetCommandResults()``)
+    /// so the block lands on the FIFO slot the test means it for.
     private func reply(
         _ connection: RemoteTmuxControlConnection, lines: [String], isError: Bool = false
     ) {
+        connection.drainFireAndForgetCommandResults()
         connection.handleMessageForTesting(
             .commandResult(commandNumber: 0, lines: lines, isError: isError)
         )
     }
 
     /// Publishes window @1 as a single 80×24 pane %0 (list-windows reply +
-    /// its rects reply), leaving the FIFO empty.
+    /// its rects reply), leaving no pane-rects fetch outstanding. The
+    /// subscriptions that staging and publishing issue stay on the FIFO; the
+    /// next ``reply(_:lines:isError:)`` answers them.
     private func publishSinglePaneWindow(_ connection: RemoteTmuxControlConnection) {
         reply(connection, lines: ["@1 f92f,80x24,0,0,0 f92f,80x24,0,0,0 [] main"])
         reply(connection, lines: ["%0 0 0 80 24 1 off :0 \"ejc3-mac\""])
@@ -67,6 +73,18 @@ import Testing
             if case .paneRects = $0 { return true }
             return false
         }.count
+    }
+
+    /// The window whose pane-rects fetch will be answered first. Which window
+    /// tmux answers first is a race between round trips, so the tests derive
+    /// their reply order from the queue rather than assuming one. Subscription
+    /// sends share the FIFO (see ``drainFireAndForgetCommandResults()``), so this
+    /// scans for the first rects entry instead of reading the literal head.
+    private func firstPendingRectsWindow(_ connection: RemoteTmuxControlConnection) -> Int? {
+        for kind in connection.pendingCommandKindsForTesting {
+            if case let .paneRects(windowId, _) = kind { return windowId }
+        }
+        return nil
     }
 
     @Test func layoutChangeNotifiesOnlyOnItsRectsReply() {
@@ -126,8 +144,8 @@ import Testing
             "@2 e5d1,90x30,0,0,5 e5d1,90x30,0,0,5 [] two",
         ])
         let kinds = connection.pendingCommandKindsForTesting
-        guard case let .paneRects(firstWindow, _) = kinds.first else {
-            Issue.record("expected a paneRects fetch at the FIFO head, got \(kinds)")
+        guard let firstWindow = firstPendingRectsWindow(connection) else {
+            Issue.record("expected a paneRects fetch on the FIFO, got \(kinds)")
             return
         }
         let firstPane = firstWindow == 1 ? 0 : 5
@@ -155,8 +173,8 @@ import Testing
             "@2 e5d1,90x30,0,0,5 e5d1,90x30,0,0,5 [] two",
         ])
         let kinds = connection.pendingCommandKindsForTesting
-        guard case let .paneRects(firstWindow, _) = kinds.first else {
-            Issue.record("expected a paneRects fetch at the FIFO head, got \(kinds)")
+        guard let firstWindow = firstPendingRectsWindow(connection) else {
+            Issue.record("expected a paneRects fetch on the FIFO, got \(kinds)")
             return
         }
         let firstPane = firstWindow == 1 ? 0 : 5
@@ -226,9 +244,9 @@ import Testing
         ])
         notifies = 0 // the list-windows order/name notify is not under test
         let kinds = connection.pendingCommandKindsForTesting
-        #expect(kinds.count == 2)
-        guard case let .paneRects(firstWindow, _) = kinds[0] else {
-            Issue.record("expected a paneRects fetch at the FIFO head, got \(kinds)")
+        #expect(paneRectsFIFOCount(connection) == 2)
+        guard let firstWindow = firstPendingRectsWindow(connection) else {
+            Issue.record("expected a paneRects fetch on the FIFO, got \(kinds)")
             return
         }
         let firstPane = firstWindow == 1 ? 0 : 5
@@ -394,8 +412,8 @@ import Testing
         ])
         notifies = 0
         let kinds = connection.pendingCommandKindsForTesting
-        guard case let .paneRects(erroringWindow, _) = kinds.first else {
-            Issue.record("expected a paneRects fetch at the FIFO head, got \(kinds)")
+        guard let erroringWindow = firstPendingRectsWindow(connection) else {
+            Issue.record("expected a paneRects fetch on the FIFO, got \(kinds)")
             return
         }
         let healthyWindow = erroringWindow == 1 ? 2 : 1
@@ -591,4 +609,43 @@ import Testing
         #expect(connection.hasPendingLayout(windowId: 1) == false)
     }
 
+}
+
+/// Fake-control-stream helpers shared by the remote-tmux suites.
+///
+/// tmux answers EVERY command it is sent with its own `%begin`/`%end` block,
+/// including the fire-and-forget ones — notably the `refresh-client -B`
+/// `pane-border-status` subscription that staging a window's first layout
+/// issues (see ``RemoteTmuxControlConnection/stagePendingLayout(windowId:node:visibleNode:zoomed:name:)``).
+/// Command results correlate positionally, so a fake stream that skips those
+/// blocks feeds every later reply to the wrong FIFO slot and the pane-rects
+/// reply is discarded — leaving the window unpublished.
+extension RemoteTmuxControlConnection {
+    /// Answers the fire-and-forget commands queued ahead of the reply a test
+    /// actually cares about, leaving the correlated command at the FIFO head.
+    func drainFireAndForgetCommandResults() {
+        while let head = pendingCommandKindsForTesting.first, head == .other {
+            handleMessageForTesting(
+                .commandResult(commandNumber: 0, lines: [], isError: false)
+            )
+        }
+    }
+
+    /// Answers every queued command until the FIFO drains: `paneRectLines`
+    /// supplies each `list-panes` rects reply (by window id) and everything else
+    /// gets an empty block. Publishing a window queues further subscriptions, so
+    /// this re-reads the head each pass instead of iterating a stale snapshot.
+    func drainAllPendingCommandResults(paneRectLines: (Int) -> [String]) {
+        while let kind = pendingCommandKindsForTesting.first {
+            let lines: [String]
+            if case let .paneRects(windowId, _) = kind {
+                lines = paneRectLines(windowId)
+            } else {
+                lines = []
+            }
+            handleMessageForTesting(
+                .commandResult(commandNumber: 0, lines: lines, isError: false)
+            )
+        }
+    }
 }

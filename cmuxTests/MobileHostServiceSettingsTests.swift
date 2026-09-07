@@ -2,6 +2,7 @@ import CMUXMobileCore
 import CmuxIrohTransport
 import CmuxSettings
 import Foundation
+import Network
 import Testing
 
 #if canImport(cmux_DEV)
@@ -225,6 +226,52 @@ struct MobileHostServiceSettingsTests {
         #expect(MobileHostService.portApplyPreBindOutcome(enabled: true, currentBoundPort: nil, requestedPort: 58470) == nil)
     }
 
+    @Test func portApplyContinuationRejectsStaleOrDisabledAttempts() {
+        #expect(MobileHostService.portApplyContinuationOutcome(
+            enabled: true,
+            isCurrentAttempt: true
+        ) == nil)
+        #expect(MobileHostService.portApplyContinuationOutcome(
+            enabled: false,
+            isCurrentAttempt: false
+        ) == .savedWhileDisabled)
+        guard case .failed = MobileHostService.portApplyContinuationOutcome(
+            enabled: true,
+            isCurrentAttempt: false
+        ) else {
+            Issue.record("a superseded Apply Port attempt must be cancelled")
+            return
+        }
+    }
+
+    @Test func portApplyListenerCreationPreservesAddressConflictOutcome() {
+        #expect(MobileHostService.portApplyListenerCreationOutcome(
+            error: NWError.posix(.EADDRINUSE)
+        ) == .portInUse)
+        #expect(MobileHostService.portApplyListenerCreationOutcome(
+            error: NWError.posix(.EADDRNOTAVAIL)
+        ) == .portInUse)
+        guard case .failed = MobileHostService.portApplyListenerCreationOutcome(
+            error: NWError.posix(.EACCES)
+        ) else {
+            Issue.record("a permission failure must not be mislabeled as port-in-use")
+            return
+        }
+        guard case .failed = MobileHostService.portApplyListenerCreationOutcome(
+            error: CocoaError(.fileReadUnknown)
+        ) else {
+            Issue.record("a non-network listener construction error must stay distinct from port-in-use")
+            return
+        }
+    }
+
+    @Test func identityDeadlinePrecedesPairingSheetReadinessDeadline() {
+        #expect(
+            MobileHostPairingDeadlines.identityLoad
+                < MobileHostPairingDeadlines.listenerReadiness
+        )
+    }
+
     @Test func syncDecisionStartsStopsAndNoOpsForEnabledState() {
         // Disabled: stop only when something is running, otherwise no-op.
         #expect(MobileHostService.syncDecision(enabled: false, listenerRunning: false, desiredPort: 58465, appliedPort: nil) == .noop)
@@ -241,6 +288,29 @@ struct MobileHostServiceSettingsTests {
         #expect(MobileHostService.syncDecision(enabled: true, listenerRunning: true, desiredPort: 9000, appliedPort: 58465) == .restart)
         // Running but the applied port is unknown: restart to reconcile.
         #expect(MobileHostService.syncDecision(enabled: true, listenerRunning: true, desiredPort: 58465, appliedPort: nil) == .restart)
+    }
+
+    @Test func readinessWaitsForAnAsyncListenerStart() {
+        #expect(MobileHostService.shouldAwaitListenerReadiness(
+            listenerExists: false,
+            startPending: true,
+            boundPort: nil
+        ))
+        #expect(MobileHostService.shouldAwaitListenerReadiness(
+            listenerExists: true,
+            startPending: false,
+            boundPort: nil
+        ))
+        #expect(!MobileHostService.shouldAwaitListenerReadiness(
+            listenerExists: true,
+            startPending: false,
+            boundPort: 58465
+        ))
+        #expect(!MobileHostService.shouldAwaitListenerReadiness(
+            listenerExists: false,
+            startPending: false,
+            boundPort: nil
+        ))
     }
 }
 
@@ -351,24 +421,4 @@ struct MobileHostTransportRouteCompositionTests {
     }
 }
 
-@Suite(.serialized)
-@MainActor
-struct MobileHostMacScopedMutationAuthorizationTests {
-    @Test func ignoresUnknownAttachTokenForBroadWorkspaceRequests() async {
-        let service = MobileHostService.shared
-        service.debugConfigureAcceptedStackAuthTokenForTesting("cmux-dev-token")
-        defer { service.debugConfigureAcceptedStackAuthTokenForTesting(nil) }
-        for method in ["workspace.list", "workspace.create"] {
-            let request = MobileHostRPCRequest(
-                id: method,
-                method: method,
-                params: [:],
-                auth: MobileHostRPCAuth(attachToken: "stale-ticket", stackAccessToken: "cmux-dev-token")
-            )
-            let result = await service.debugAuthorizationError(for: request)
-            #expect(result == nil)
-        }
-    }
-
-}
 #endif

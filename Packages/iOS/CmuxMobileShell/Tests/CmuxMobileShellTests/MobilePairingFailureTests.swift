@@ -210,6 +210,21 @@ import Testing
         #expect(category.analyticsReason == "auth")
     }
 
+    @Test func missingDeviceLinkIdentityMapsToAuthFailedOnLAN() throws {
+        let localRoute = try CmxAttachRoute(
+            id: "local-network",
+            kind: .localNetwork,
+            endpoint: .hostPort(host: "192.168.1.20", port: CmxMobileDefaults.defaultHostPort)
+        )
+        let category = MobilePairingFailureCategory.classify(
+            error: CmxNetworkByteTransportError.deviceLinkAuthorizationUnavailable,
+            route: localRoute
+        )
+
+        #expect(category == .authFailed)
+        #expect(category.analyticsReason == "auth")
+    }
+
     @Test func rpcAccountMismatchCodeMapsToAccountMismatch() {
         let category = MobilePairingFailureCategory.classify(
             error: MobileShellConnectionError.rpcError("account_mismatch", "different"),
@@ -308,6 +323,13 @@ import Testing
         #expect(message.lowercased().contains("newer version"))
         #expect(MobilePairingFailureCategory.unrecognizedVersion.guidance != nil)
         #expect(MobilePairingFailureCategory.unrecognizedVersion.analyticsReason == "unrecognized_version")
+    }
+
+    @Test func pairingNotSavedMessageRendersItsDashInsteadOfAnEscapePlaceholder() {
+        let message = MobilePairingFailureCategory.pairingNotSaved.message
+
+        #expect(message.contains("—"))
+        #expect(!message.contains("{2014}"))
     }
 
     @Test func missingRouteFallsBackWithoutCrashingOnFormat() {

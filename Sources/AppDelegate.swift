@@ -545,6 +545,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
     var aboutTitlebarDebugStore: AboutTitlebarDebugStore { debugWindowsCoordinator.aboutTitlebarStore }
     /// Coordinates remote tmux (`ssh … tmux -CC`) mirroring; composition-root owned.
     let remoteTmuxController = RemoteTmuxController()
+    /// Owns DeviceLink-authenticated Mac-to-Mac workspace viewing.
+    lazy var hiveWorkspaceService = HiveWorkspaceService()
     /// Composition-root lifetime owner shared by every window's font-size
     /// queue. Window coordinators receive this dependency explicitly; no
     /// coordinator reaches back through `AppDelegate.shared`.
@@ -2354,6 +2356,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
             .trimmingCharacters(in: .whitespacesAndNewlines)
         let resolvedFileName = (fileName?.isEmpty == false) ? fileName! : "Cmd Click Fixture.txt"
         let fixtureDirectoryURL = URL(fileURLWithPath: fixtureDirectory, isDirectory: true)
+        let requestedWorkingDirectory = env["CMUX_UI_TEST_TERMINAL_CMD_CLICK_WORKING_DIRECTORY"]?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let workingDirectory = requestedWorkingDirectory.flatMap { $0.isEmpty ? nil : $0 }
+            ?? fixtureDirectoryURL.path
         let expectedFileURL = fixtureDirectoryURL.appendingPathComponent(resolvedFileName)
         let siblingFileURL = fixtureDirectoryURL.appendingPathComponent("OtherFile")
         let extraFileNames: [String]
@@ -2388,7 +2394,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
             text.replacingOccurrences(of: "'", with: "'\"'\"'")
         }
         let displayToken: String
-        let shellCommand: String
+        var shellCommand: String
         switch resolvedLineFormat {
         case "osc8":
             displayToken = resolvedFileName
@@ -2397,9 +2403,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
             shellCommand = "clear\rfor i in $(seq 1 48); do printf '\\033]8;;%s\\033\\\\%s\\033]8;;\\033\\\\\\n' '\(escapedURL)' '\(escapedDisplayToken)'; done\r"
         case "log":
             displayToken = "\(baseDisplayToken)\(displaySuffix)"
-            let blockLine = "\(linePrefix)\(displayToken)"
-            let shellBlockLine = singleQuotedShellLiteral(blockLine)
-            shellCommand = "clear\rfor i in $(seq 1 48); do printf '%s\\n' '\(shellBlockLine)'; done\r"
+            if let linkTarget = env["CMUX_UI_TEST_TERMINAL_CMD_CLICK_LINK_TARGET"], !linkTarget.isEmpty {
+                let escapedPrefix = singleQuotedShellLiteral(linePrefix)
+                let escapedTarget = singleQuotedShellLiteral(linkTarget)
+                let escapedDisplayToken = singleQuotedShellLiteral(displayToken)
+                shellCommand = "clear\rfor i in $(seq 1 48); do printf '%s\\033]8;;%s\\033\\\\%s\\033]8;;\\033\\\\\\n' '\(escapedPrefix)' '\(escapedTarget)' '\(escapedDisplayToken)'; done\r"
+            } else {
+                let blockLine = "\(linePrefix)\(displayToken)"
+                let shellBlockLine = singleQuotedShellLiteral(blockLine)
+                shellCommand = "clear\rfor i in $(seq 1 48); do printf '%s\\n' '\(shellBlockLine)'; done\r"
+            }
         case "alt_screen_log":
             displayToken = "\(baseDisplayToken)\(displaySuffix)"
             let blockLine = "\(linePrefix)\(displayToken)"
@@ -2419,6 +2432,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
                 shellCommand = "clear\rfor i in $(seq 1 48); do printf '%s\\n' '\(shellBlockLine)'; done\r"
             }
         }
+        // Set the real shell directory too: a metadata-only fixture is raced
+        // by the next shell hook reporting its actual startup directory.
+        shellCommand = "cd -- '\(singleQuotedShellLiteral(workingDirectory))'\r" + shellCommand
         let deadline = Date().addingTimeInterval((commandPath?.isEmpty == false) ? 60.0 : 20.0)
         var seeded = false
         var resolved = false
@@ -2514,13 +2530,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
             let size = ghostty_surface_size(surface)
             let rows = max(Int(size.rows), 1)
             let cols = max(Int(size.columns), 1)
-            let debugCellSize = terminalPanel.hostedView.debugCellSize
-            let cellWidth = debugCellSize.width > 0 ? debugCellSize.width : CGFloat(size.cell_width_px)
-            let cellHeight = debugCellSize.height > 0 ? debugCellSize.height : CGFloat(size.cell_height_px)
-            guard cellWidth > 0, cellHeight > 0 else { return nil }
+            guard let metrics = terminalPanel.hostedView.debugGridMetrics else { return nil }
+            let cellWidth = metrics.cellWidth
+            let cellHeight = metrics.cellHeight
 
-            let xInset = max(0, (bounds.width - (CGFloat(cols) * cellWidth)) / 2)
-            let yInset = max(0, (bounds.height - (CGFloat(rows) * cellHeight)) / 2)
+            let xInset = metrics.xInset
+            let yInset = metrics.yInset
             let pointClampX: (CGFloat) -> CGFloat = { x in
                 min(bounds.width - 4, max(4, x))
             }
@@ -2541,8 +2556,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
             for (lineIndex, line) in visibleLines.enumerated() {
                 var searchStart = line.startIndex
                 var ranges: [Range<String.Index>] = []
+                // A long absolute path can wrap across multiple physical rows.
+                // Click its visible leading segment, not a row from the
+                // unwrapped text-export representation.
+                let searchableToken = String(displayToken.prefix(max(1, cols - 2)))
                 while searchStart < line.endIndex,
-                      let range = line.range(of: displayToken, range: searchStart..<line.endIndex) {
+                      let range = line.range(of: searchableToken, range: searchStart..<line.endIndex) {
                     ranges.append(range)
                     searchStart = range.upperBound
                 }
@@ -2629,13 +2648,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
                 "displayToken": displayToken,
                 "fileName": resolvedFileName,
                 "expectedPath": expectedFileURL.path,
-                "fixtureDirectory": fixtureDirectoryURL.path
+                "fixtureDirectory": fixtureDirectoryURL.path,
+                "workingDirectory": workingDirectory
             ]
             if let terminalPanel {
                 let terminalFrame = terminalPanel.hostedView.debugPortalFrameInWindow
                 payload["surfaceId"] = terminalPanel.id.uuidString
                 payload["terminalVisibleInUI"] = terminalPanel.hostedView.debugPortalVisibleInUI ? "1" : "0"
                 payload["terminalFrameInWindow"] = rectPayload(terminalFrame)
+                if let workspace = terminalPanel.surface.owningWorkspace() {
+                    let expectedPath = (expectedFileURL.path as NSString).resolvingSymlinksInPath
+                    payload["expectedFileInMarkdownViewer"] = workspace.panels.values.contains { panel in
+                        guard let markdown = panel as? MarkdownPanel else { return false }
+                        return (markdown.filePath as NSString).resolvingSymlinksInPath == expectedPath
+                    } ? "1" : "0"
+                }
             }
             if let window {
                 payload["windowFrame"] = rectPayload(window.frame)
@@ -2985,7 +3012,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
                 return
             }
 
-            workspace.updatePanelDirectory(panelId: terminalPanel.id, directory: fixtureDirectoryURL.path)
+            workspace.updatePanelDirectory(panelId: terminalPanel.id, directory: workingDirectory)
 
             let terminalFrame = terminalPanel.hostedView.debugPortalFrameInWindow
             let terminalReady = terminalPanel.surface.surface != nil
@@ -2998,7 +3025,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
             if terminalReady && terminalVisible && !seeded {
                 seeded = true
                 sendTextWhenReady(shellCommand, to: workspace, beforeSend: {
-                    workspace.updatePanelDirectory(panelId: terminalPanel.id, directory: fixtureDirectoryURL.path)
+                    workspace.updatePanelDirectory(panelId: terminalPanel.id, directory: workingDirectory)
                 })
             }
 
@@ -3010,7 +3037,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
             let hasRenderedToken = renderedTokenCount >= 6
             if hasRenderedToken,
                (tokenPointPayload?["tokenLayoutMatch"] as? String) != "1" {
-                tokenPointPayload = tokenPoints(in: terminalPanel, visibleText: visibleText)
+                if let surface = terminalPanel.surface.surface,
+                   let gridRows = TerminalController.shared.readTerminalViewportGridRows(
+                    terminalPanel: terminalPanel,
+                    rowRange: 0..<Int(ghostty_surface_size(surface).rows)
+                   ) {
+                    tokenPointPayload = tokenPoints(in: terminalPanel, visibleText: gridRows.joined(separator: "\n"))
+                }
             }
             let tokenLayoutReady = (tokenPointPayload?["tokenLayoutMatch"] as? String) == "1"
 
@@ -7583,7 +7616,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
             return workspace
         }
 
-        let title = String(localized: "mobile.pairing.window.title", defaultValue: "Pair iPhone")
+        let title = String(localized: "mobile.pairing.window.title", defaultValue: "Pair a Device")
         let workspace = manager.addWorkspace(
             title: title,
             select: focusWorkspace,
@@ -13071,7 +13104,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            self?.refreshGhosttyShortcuts()
+            MainActor.assumeIsolated {
+                self?.refreshGhosttyShortcuts()
+            }
         }
     }
 

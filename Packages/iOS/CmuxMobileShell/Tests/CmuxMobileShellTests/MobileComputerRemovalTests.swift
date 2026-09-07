@@ -416,8 +416,7 @@ struct MobileComputerRemovalTests {
             composite.remoteClient = MobileCoreRPCClient(
                 runtime: PairingDeadlineRuntime(),
                 route: route,
-                ticket: ticket,
-                usesDeviceLinkIdentity: true
+                ticket: ticket
             )
             composite.foregroundMacDeviceID = targetMac
             composite.activeMacInstanceTag = "nightly"
@@ -590,21 +589,6 @@ private struct RemovalFailingStore: MobilePairedMacStoring {
         try await inner.removeAll()
     }
 
-    func authorizeUserTailscaleRoutes(
-        macDeviceID: String,
-        instanceTag: String?,
-        stackUserID: String?,
-        teamID: String?,
-        routes: [CmxAttachRoute]
-    ) async throws {
-        try await inner.authorizeUserTailscaleRoutes(
-            macDeviceID: macDeviceID,
-            instanceTag: instanceTag,
-            stackUserID: stackUserID,
-            teamID: teamID,
-            routes: routes
-        )
-    }
 }
 
 private struct IrohForgetCall: Equatable, Hashable {

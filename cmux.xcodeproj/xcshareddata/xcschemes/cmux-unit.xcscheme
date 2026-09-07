@@ -12,7 +12,9 @@
   </BuildAction>
   <TestAction buildConfiguration="Debug" selectedDebuggerIdentifier="Xcode.DebuggerFoundation.Debugger.LLDB" selectedLauncherIdentifier="Xcode.DebuggerFoundation.Launcher.LLDB" shouldUseLaunchSchemeArgsEnv="YES">
     <Testables>
-      <TestableReference skipped="NO">
+      <!-- App-host suites share AppDelegate, UserDefaults, and the GUI session.
+           Swift Testing also needs explicit serialization across suites. -->
+      <TestableReference skipped="NO" parallelizable="NO">
         <BuildableReference BuildableIdentifier="primary" BlueprintIdentifier="F1000004A1B2C3D4E5F60718" BuildableName="cmuxTests.xctest" BlueprintName="cmuxTests" ReferencedContainer="container:cmux.xcodeproj"/>
         <!-- Superseded by explicit-setting Swift Testing coverage in FocusHistoryScopeTests. -->
         <SkippedTests>

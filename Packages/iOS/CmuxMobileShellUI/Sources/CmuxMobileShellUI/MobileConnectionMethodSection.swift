@@ -3,10 +3,10 @@ import CmuxMobileShellModel
 import CmuxMobileSupport
 import SwiftUI
 
-/// The Auto-Connect vs Tailscale connection-method choice, shared by Settings
-/// and (through the same store) onboarding. Choosing Tailscale surfaces the
+/// The Auto-Connect vs secure-pairing connection-method choice, shared by Settings
+/// and (through the same store) onboarding. Choosing secure pairing surfaces the
 /// pairing-code scanner entry, because a user-entered code is what authorizes
-/// each Mac's Tailscale destination.
+/// each Mac's authenticated local-network and Tailscale destinations.
 struct MobileConnectionMethodSection: View {
     @Bindable var store: MobileConnectionMethodStore
     /// Fork (cmux Mochi): the automatic method dials upstream's account-backed
@@ -34,7 +34,7 @@ struct MobileConnectionMethodSection: View {
                 }
                 Text(L10n.string(
                     "mobile.settings.connectionMethod.tailscale",
-                    defaultValue: "Tailscale"
+                    defaultValue: "Secure Pairing"
                 ))
                 .tag(MobileConnectionMethod.tailscale)
             }
@@ -68,7 +68,7 @@ struct MobileConnectionMethodSection: View {
         case .tailscale:
             L10n.string(
                 "mobile.settings.connectionMethod.tailscaleFooter",
-                defaultValue: "Connects over your Tailscale network first. Scan the Tailscale pairing code shown on your Mac once (cmux Settings → Pair iPhone) to enable it for that Mac."
+                defaultValue: "Scan once to authorize this iPhone. cmux prefers your local network for speed and falls back to Tailscale when needed."
             )
         }
     }

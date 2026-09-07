@@ -28,7 +28,6 @@ import Testing
             runtime: runtime,
             route: route,
             ticket: ticket,
-            allowsStackAuthFallback: true
         )
         let request = Task {
             try? await client.sendRequest(
@@ -80,7 +79,6 @@ import Testing
             runtime: runtime,
             route: route,
             ticket: ticket,
-            allowsStackAuthFallback: true,
             abandonedConnectCleanupTimeoutNanoseconds: 1_000_000,
             lateAbandonedConnectCloseTimeoutNanoseconds: 1_000_000
         )

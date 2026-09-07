@@ -20,6 +20,11 @@ import Testing
         )
         #expect(
             DiagnosticFailureKind.classify(
+                CmxNetworkByteTransportError.deviceLinkAuthorizationUnavailable
+            ) == .authorizationFailed
+        )
+        #expect(
+            DiagnosticFailureKind.classify(
                 CmxNetworkByteTransportError.tailscaleAuthorizationUnavailable
             ) == .authorizationFailed
         )

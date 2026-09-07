@@ -12,6 +12,20 @@ import XCTest
 
 @MainActor
 final class MarkdownPanelTests: XCTestCase {
+    func testMissingMarkdownFileRestoresWithoutStartingFileWatcher() {
+        let missingURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("cmux-missing-markdown-\(UUID().uuidString)", isDirectory: true)
+            .appendingPathComponent("missing.md")
+
+        XCTAssertFalse(FileManager.default.fileExists(atPath: missingURL.path))
+        XCTAssertFalse(MarkdownPanel.shouldStartFileWatcher(for: missingURL.path))
+
+        let panel = MarkdownPanel(workspaceId: UUID(), filePath: missingURL.path)
+        defer { panel.close() }
+
+        XCTAssertTrue(panel.isFileUnavailable)
+    }
+
     func testControlMarkdownOpenReusesExistingRightSidePane() throws {
         let manager = TabManager()
         let workspace = try XCTUnwrap(manager.tabs.first)
@@ -367,11 +381,15 @@ final class MarkdownPanelTests: XCTestCase {
         XCTAssertFalse(panel.isFileUnavailable)
 
         let reloaded = expectation(description: "markdown file change reloaded")
-        let cancellable = panel.$content.dropFirst().sink { content in
-            if content == updatedContent {
+        // An atomic save can produce multiple watcher events for the same
+        // content. Observe the first matching reload, not every publication.
+        let cancellable = panel.$content
+            .dropFirst()
+            .filter { $0 == updatedContent }
+            .prefix(1)
+            .sink { _ in
                 reloaded.fulfill()
             }
-        }
         defer { cancellable.cancel() }
 
         try updatedContent.write(to: fileURL, atomically: true, encoding: .utf8)
@@ -654,10 +672,15 @@ final class MarkdownPanelTests: XCTestCase {
         let frame = NSRect(x: 0, y: 0, width: 720, height: 360)
         let webView = WKWebView(frame: frame, configuration: WKWebViewConfiguration())
         let window = NSWindow(contentRect: frame, styleMask: [.borderless], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
         window.contentView = webView
         window.orderFrontRegardless()
         defer {
+            webView.stopLoading()
             webView.navigationDelegate = nil
+            _ = window.makeFirstResponder(nil)
+            window.contentView = nil
+            window.orderOut(nil)
             window.close()
         }
 
@@ -741,11 +764,16 @@ final class MarkdownPanelTests: XCTestCase {
         let webView = MarkdownWebView(frame: frame, configuration: configuration)
         coordinator.webView = webView
         let window = NSWindow(contentRect: frame, styleMask: [.borderless], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
         window.contentView = webView
         window.orderFrontRegardless()
         defer {
+            webView.stopLoading()
             webView.navigationDelegate = nil
             coordinator.webView = nil
+            _ = window.makeFirstResponder(nil)
+            window.contentView = nil
+            window.orderOut(nil)
             window.close()
         }
 
@@ -839,10 +867,15 @@ final class MarkdownPanelTests: XCTestCase {
         let frame = NSRect(x: 0, y: 0, width: 320, height: 240)
         let webView = WKWebView(frame: frame, configuration: WKWebViewConfiguration())
         let window = NSWindow(contentRect: frame, styleMask: [.borderless], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
         window.contentView = webView
         window.orderFrontRegardless()
         defer {
+            webView.stopLoading()
             webView.navigationDelegate = nil
+            _ = window.makeFirstResponder(nil)
+            window.contentView = nil
+            window.orderOut(nil)
             window.close()
         }
 
@@ -882,13 +915,18 @@ final class MarkdownPanelTests: XCTestCase {
         let webView = MarkdownWebView(frame: frame, configuration: configuration)
         coordinator.webView = webView
         let window = NSWindow(contentRect: frame, styleMask: [.borderless], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
         window.contentView = webView
         window.orderFrontRegardless()
         defer {
+            webView.stopLoading()
             webView.navigationDelegate = nil
             coordinator.webView = nil
             coordinator.cancelImageLoads()
             remoteImageHandler.cancelOpenTasks()
+            _ = window.makeFirstResponder(nil)
+            window.contentView = nil
+            window.orderOut(nil)
             window.close()
         }
 

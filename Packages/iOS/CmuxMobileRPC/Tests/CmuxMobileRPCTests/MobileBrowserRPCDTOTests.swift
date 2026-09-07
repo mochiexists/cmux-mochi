@@ -95,37 +95,34 @@ import Testing
         #expect(stop.panelID == "panel-3")
     }
 
-    @Test func browserListCarriesMatchingWorkspaceTicketContext() async throws {
+    @Test func browserListUsesTransportAdmissionOnly() async throws {
         let frame = try await recordedRequest(
             method: "mobile.browser.list",
             params: ["workspace_id": "workspace-main"],
             ticketWorkspaceID: "workspace-main"
         )
-        #expect(frame.attachToken == "ticket-secret")
-        #expect(frame.stackAccessToken == "test-stack-token")
+        #expect(frame.hasAuth == false)
     }
 
-    @Test func panelCommandUsesMacWideTicketContext() async throws {
+    @Test func panelCommandUsesTransportAdmissionOnly() async throws {
         let frame = try await recordedRequest(
             method: "mobile.browser.stream.start",
             params: ["panel_id": "panel-1"],
             ticketWorkspaceID: ""
         )
-        #expect(frame.attachToken == "ticket-secret")
-        #expect(frame.stackAccessToken == "test-stack-token")
+        #expect(frame.hasAuth == false)
     }
 
-    @Test func panelCommandOmitsUnprovableWorkspaceTicketContext() async throws {
+    @Test func scopedPanelCommandUsesTransportAdmissionOnly() async throws {
         let frame = try await recordedRequest(
             method: "mobile.browser.input.key",
             params: ["panel_id": "panel-1", "key": "return", "modifiers": []],
             ticketWorkspaceID: "workspace-main"
         )
-        #expect(frame.attachToken == nil)
-        #expect(frame.stackAccessToken == "test-stack-token")
+        #expect(frame.hasAuth == false)
     }
 
-    @Test func viewportUpdateUsesMacWideTicketContext() async throws {
+    @Test func remoteViewportUpdateUsesTransportAdmissionOnly() async throws {
         let frame = try await recordedRequest(
             method: "mobile.browser.viewport",
             params: [
@@ -136,8 +133,7 @@ import Testing
             ],
             ticketWorkspaceID: ""
         )
-        #expect(frame.attachToken == "ticket-secret")
-        #expect(frame.stackAccessToken == "test-stack-token")
+        #expect(frame.hasAuth == false)
     }
 
     private func recordedRequest(
@@ -149,7 +145,6 @@ import Testing
         let transport = QueuedCancellationProbeTransport()
         let runtime = TestMobileSyncRuntime(
             transportFactory: QueuedCancellationProbeTransportFactory(transport: transport),
-            stackAccessToken: "test-stack-token"
         )
         let ticket = try CmxAttachTicket(
             workspaceID: ticketWorkspaceID,
@@ -164,7 +159,6 @@ import Testing
             runtime: runtime,
             route: route,
             ticket: ticket,
-            allowsStackAuthFallback: true
         )
         let request = try MobileCoreRPCClient.requestData(method: method, params: params)
         let task = Task { try await client.sendRequest(request) }

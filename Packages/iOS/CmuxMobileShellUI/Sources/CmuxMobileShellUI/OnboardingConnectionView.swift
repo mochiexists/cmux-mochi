@@ -8,7 +8,7 @@ struct OnboardingConnectionView: View {
     let connectionMethod: MobileConnectionMethod
     /// Fork (cmux Mochi): the automatic method dials upstream's account-backed
     /// relays, so it is only offered to a signed-in session. Account-free
-    /// onboarding goes straight to the QR/Tailscale pairing this fork runs on —
+    /// onboarding goes straight to the QR/DeviceLink pairing this fork runs on —
     /// showing a dead "Recommended" option was the footgun that funneled new
     /// installs into "Couldn't connect to your Mac yet".
     let showsAutomaticMethod: Bool
@@ -62,7 +62,7 @@ struct OnboardingConnectionView: View {
         if connectionMethod == .tailscale {
             return L10n.string(
                 "mobile.onboarding.connect.tailscaleTitle",
-                defaultValue: "Connect over Tailscale"
+                defaultValue: "Pair securely"
             )
         }
         return L10n.string(
@@ -81,7 +81,7 @@ struct OnboardingConnectionView: View {
         if connectionMethod == .tailscale {
             return L10n.string(
                 "mobile.onboarding.connect.tailscaleBody",
-                defaultValue: "Connect over your Tailscale network. Scan the pairing code shown on your Mac."
+                defaultValue: "Scan the pairing code shown on your Mac. cmux uses your local network when available and Tailscale when you're away."
             )
         }
         return L10n.string(

@@ -47,6 +47,11 @@ extension CmxRoutePingResult {
                 "mobile.computers.ping.failed",
                 defaultValue: "Unreachable"
             )
+        case .authenticationRequired:
+            return L10n.string(
+                "mobile.computers.ping.authenticationRequired",
+                defaultValue: "Checked by secure connection"
+            )
         case .unsupportedRoute:
             return L10n.string(
                 "mobile.computers.ping.unsupported",
@@ -65,7 +70,7 @@ extension CmxRoutePingResult {
             return .orange
         case .unreachable, .timedOut, .dnsFailed, .failed:
             return .red
-        case .unsupportedRoute:
+        case .authenticationRequired, .unsupportedRoute:
             return .secondary
         }
     }
@@ -78,6 +83,8 @@ extension CmxRoutePingResult {
             return "exclamationmark.circle.fill"
         case .unreachable, .timedOut, .dnsFailed, .failed:
             return "xmark.circle.fill"
+        case .authenticationRequired:
+            return "lock.shield"
         case .unsupportedRoute:
             return "minus.circle"
         }

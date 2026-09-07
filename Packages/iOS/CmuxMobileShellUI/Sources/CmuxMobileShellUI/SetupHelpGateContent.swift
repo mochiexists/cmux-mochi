@@ -23,7 +23,7 @@ struct SetupHelpGateContent {
                 title: L10n.string("mobile.setupHelp.signInTitle", defaultValue: "Scan the pairing code"),
                 body: L10n.string(
                     "mobile.setupHelp.signInBody",
-                    defaultValue: "Open Pair iPhone in cmux on your computer and scan its QR code. Pairing works without a cmux account."
+                    defaultValue: "Open Pair a Device in cmux on your computer and scan its QR code. Pairing works without a cmux account."
                 ),
                 link: nil,
                 identifierSuffix: "notSignedIn",
@@ -35,7 +35,7 @@ struct SetupHelpGateContent {
                 title: L10n.string("mobile.setupHelp.macAppTitle", defaultValue: "Run cmux on your computer"),
                 body: L10n.string(
                     "mobile.setupHelp.macAppBody",
-                    defaultValue: "Keep cmux and Tailscale running on both devices. Open Pair iPhone in cmux on the computer, then scan its QR code here."
+                    defaultValue: "Keep cmux running on the computer. Open Pair a Device, then scan its QR code here while both devices share a local network or Tailscale."
                 ),
                 link: nil,
                 identifierSuffix: "signedInNeverPaired",
@@ -47,7 +47,7 @@ struct SetupHelpGateContent {
                 title: L10n.string("mobile.setupHelp.unreachableTitle", defaultValue: "Wake the computer"),
                 body: L10n.string(
                     "mobile.setupHelp.unreachableBody",
-                    defaultValue: "You paired this computer before, but it is not reachable now. Wake it and make sure cmux and Tailscale are running; this phone reconnects on its own."
+                    defaultValue: "You paired this computer before, but it is not reachable now. Wake it and make sure cmux is running. Join the same local network, or connect both devices to Tailscale; this phone reconnects on its own."
                 ),
                 link: nil,
                 identifierSuffix: "macUnreachable",
@@ -59,7 +59,7 @@ struct SetupHelpGateContent {
                 title: L10n.string("mobile.setupHelp.mismatchTitle", defaultValue: "Pair again"),
                 body: L10n.string(
                     "mobile.setupHelp.mismatchBody",
-                    defaultValue: "The computer rejected this phone's saved pairing. Open Pair iPhone on the computer and scan a fresh QR code."
+                    defaultValue: "The computer rejected this phone's saved pairing. Open Pair a Device on the computer and scan a fresh QR code."
                 ),
                 link: nil,
                 identifierSuffix: "accountMismatch",

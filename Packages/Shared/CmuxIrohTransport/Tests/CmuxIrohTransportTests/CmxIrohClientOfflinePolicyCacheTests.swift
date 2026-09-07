@@ -359,7 +359,7 @@ struct CmxIrohClientOfflinePolicyCacheTests {
         let probeRequest = CmxByteTransportRequest(
             route: try fixture.route(hints: []),
             expectedPeerDeviceID: fixture.acceptor.deviceID,
-            authorizationMode: .stackBearer
+            authorizationMode: .transportAdmission
         )
         var observedDeactivation = false
         for _ in 0 ..< 1_024 where !observedDeactivation {

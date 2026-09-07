@@ -365,6 +365,29 @@ struct BrowserDesignModeScreenshotEvaluatorTests {
 
     @Test func zoomedPageUsesBoundedStitchedOverviewAndSelectionCapture() async throws {
         let webView = WKWebView(frame: NSRect(x: 0, y: 0, width: 640, height: 480))
+        // Stitched capture needs the same attached rendering context as a
+        // browser pane; a detached WKWebView may never finish its snapshots.
+        let hostWindow = NSWindow(
+            contentRect: webView.frame,
+            styleMask: [.titled],
+            backing: .buffered,
+            defer: false
+        )
+        hostWindow.isReleasedWhenClosed = false
+        hostWindow.contentView = webView
+        hostWindow.center()
+        NSApplication.shared.activate(ignoringOtherApps: true)
+        hostWindow.makeKeyAndOrderFront(nil)
+        defer {
+            webView.stopLoading()
+            webView.navigationDelegate = nil
+            _ = hostWindow.makeFirstResponder(nil)
+            hostWindow.contentView = nil
+            hostWindow.orderOut(nil)
+            hostWindow.close()
+        }
+        try #require(webView.window === hostWindow)
+        try #require(hostWindow.isVisible)
         let (loaded, loadedContinuation) = AsyncStream<Void>.makeStream()
         let navigationDelegate = BrowserDesignModeTestNavigationDelegate {
             loadedContinuation.yield()
@@ -382,6 +405,7 @@ struct BrowserDesignModeScreenshotEvaluatorTests {
         )
         var loadedIterator = loaded.makeAsyncIterator()
         _ = await loadedIterator.next()
+        try #require(hostWindow.occlusionState.contains(.visible))
         webView.pageZoom = 2
 
         let screenshotEvaluator = BrowserDesignModeScreenshotEvaluator(

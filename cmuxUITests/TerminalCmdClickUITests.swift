@@ -1,5 +1,6 @@
 import XCTest
 import Foundation
+import AppKit
 
 final class TerminalCmdClickUITests: XCTestCase {
     private enum DisplayMode: String {
@@ -219,6 +220,76 @@ final class TerminalCmdClickUITests: XCTestCase {
         )
     }
 
+    func testCmdClickHardWrappedHTMLPathFromUnrelatedDirectoryOpensFileURLOnce() throws {
+        try assertHardWrappedHTMLPathOpensOnce(forceRuntimeLink: false)
+    }
+
+    func testCmdClickHardWrappedHTMLHyperlinkUsesRuntimeCallbackOnce() throws {
+        try assertHardWrappedHTMLPathOpensOnce(forceRuntimeLink: true)
+    }
+
+    private func assertHardWrappedHTMLPathOpensOnce(forceRuntimeLink: Bool) throws {
+        // Keep each printed row shorter than the terminal width, even inside
+        // XCTest's long sandbox temporary directory. No global /tmp writes.
+        let originalFixtureDirectory = fixtureDirectoryURL!
+        defer { try? FileManager.default.removeItem(at: originalFixtureDirectory) }
+        fixtureDirectoryURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("w-\(UUID().uuidString.prefix(8))", isDirectory: true)
+        let workingDirectory = URL(fileURLWithPath: "/", isDirectory: true)
+        let rootPath = fixtureDirectoryURL.path + "/"
+        let midpoint = rootPath.index(rootPath.startIndex, offsetBy: rootPath.count / 2)
+        let split = try XCTUnwrap(rootPath[..<midpoint].lastIndex(of: "/"))
+        let continuationStart = rootPath.index(after: split)
+        let wrappedRoot = String(rootPath[...split]) + "\n  " + String(rootPath[continuationStart...])
+        let fileName = "Documents/Github/test-project/docs/audits/report.html"
+        let app = launchApp(
+            displayMode: .raw,
+            lineFormat: .log,
+            fileName: fileName,
+            linePrefix: "Open report (\(wrappedRoot)\n  ",
+            displaySuffix: ")",
+            captureOpenPaths: true,
+            captureHoverDiagnostics: false,
+            captureOpenURLs: true,
+            workingDirectory: workingDirectory.path,
+            linkTarget: forceRuntimeLink ? fileName : nil
+        )
+        defer { app.terminate() }
+
+        let setup = try waitForReadySetup()
+        XCTAssertEqual(setup.payload["workingDirectory"] as? String, workingDirectory.path)
+        XCTAssertTrue((setup.payload["visibleTextTail"] as? String ?? "").contains("/\n  Documents/Github/test-project/"))
+        let expectedURL = URL(fileURLWithPath: expectedPath(for: fileName)).absoluteString
+        XCTAssertEqual(URL(fileURLWithPath: setup.expectedPath).absoluteString, expectedURL)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: workingDirectory.appendingPathComponent(fileName).path))
+
+        let action = forceRuntimeLink ? "stationary_cmd_click_token" : "cmd_click_token"
+        let result = try runCommand(action: action, additionalPayload: ["tokenColumnOffset": 3])
+        XCTAssertEqual(result["lastCommandSucceeded"] as? String, "1", "result=\(result)")
+        if forceRuntimeLink {
+            XCTAssertEqual(result["lastCommandOpenedURL"] as? String, expectedURL)
+        } else {
+            XCTAssertEqual(result["lastCommandOpenedPath"] as? String, setup.expectedPath)
+        }
+        XCTAssertTrue(waitForCondition(timeout: 5) {
+            !self.loadCapturedOpenPaths().isEmpty || !self.loadCapturedOpenPaths(path: self.openURLCapturePath).isEmpty
+        })
+        let openedURLs = loadCapturedOpenPaths(path: openURLCapturePath)
+        let openedPaths = loadCapturedOpenPaths()
+        let allDestinations = openedURLs + openedPaths.map { URL(fileURLWithPath: $0).absoluteString }
+        XCTAssertEqual(allDestinations, [expectedURL], "Expected exactly one correct file destination, never an invented host.")
+        if forceRuntimeLink {
+            // Only open_url writes this capture; mouse consumption alone does
+            // not establish that Ghostty invoked the runtime callback.
+            XCTAssertEqual(openedURLs, [expectedURL], "Expected Ghostty's actual open_url callback.")
+            XCTAssertEqual(openedPaths, [], "The fallback opener must not duplicate the runtime callback.")
+        }
+        XCTAssertTrue(waitForOpenCountToStay(openedURLs.count, timeout: 0.75, path: openURLCapturePath))
+        XCTAssertTrue(waitForOpenCountToStay(openedPaths.count, timeout: 0.75))
+        XCTAssertEqual(loadCapturedOpenPaths(path: openURLCapturePath), openedURLs)
+        XCTAssertEqual(loadCapturedOpenPaths(), openedPaths)
+    }
+
     func testCmdClickRawLsStylePathPrefersSnapshotWhenQuicklookDisagrees() throws {
         let app = launchApp(
             displayMode: .raw,
@@ -426,9 +497,8 @@ final class TerminalCmdClickUITests: XCTestCase {
             expectedResolvedPath,
             "Expected cmd-click to trim the prose period from the Markdown path. result=\(result)"
         )
-        XCTAssertEqual(
-            result["lastCommandOpenedInMarkdownViewer"] as? String,
-            "1",
+        XCTAssertTrue(
+            waitForCondition(timeout: 5) { self.loadSetupData()?["expectedFileInMarkdownViewer"] as? String == "1" },
             "Expected Markdown paths to open in the cmux Markdown viewer. result=\(result)"
         )
         XCTAssertEqual(
@@ -472,9 +542,8 @@ final class TerminalCmdClickUITests: XCTestCase {
             expectedResolvedPath,
             "Expected cmd-click to trim the prose period from the absolute Markdown path. result=\(result)"
         )
-        XCTAssertEqual(
-            result["lastCommandOpenedInMarkdownViewer"] as? String,
-            "1",
+        XCTAssertTrue(
+            waitForCondition(timeout: 5) { self.loadSetupData()?["expectedFileInMarkdownViewer"] as? String == "1" },
             "Expected absolute Markdown paths to open in the cmux Markdown viewer. result=\(result)"
         )
         XCTAssertEqual(
@@ -703,6 +772,11 @@ final class TerminalCmdClickUITests: XCTestCase {
 
         var previousOpenCount = loadCapturedOpenPaths().count
         for tokenColumnOffset in 0..<fileName.count {
+            if tokenColumnOffset > 0 {
+                // These are independent single-click probes, not a native
+                // double-click gesture that should select and suppress open.
+                RunLoop.current.run(until: Date().addingTimeInterval(NSEvent.doubleClickInterval + 0.05))
+            }
             let result = try runCommand(
                 action: "cmd_click_token",
                 additionalPayload: ["tokenColumnOffset": tokenColumnOffset]
@@ -805,7 +879,10 @@ final class TerminalCmdClickUITests: XCTestCase {
         openSupportedFilesInCmux: Bool = false,
         openMarkdownInCmuxViewer: Bool? = nil,
         quicklookOverride: String? = nil,
-        viewportOffsetDelta: Int? = nil
+        viewportOffsetDelta: Int? = nil,
+        captureOpenURLs: Bool = false,
+        workingDirectory: String? = nil,
+        linkTarget: String? = nil
     ) -> XCUIApplication {
         let app = XCUIApplication.cmuxTestApplication()
         app.launchEnvironment["CMUX_TAG"] = "ui-test-terminal-cmd-click"
@@ -817,6 +894,12 @@ final class TerminalCmdClickUITests: XCTestCase {
         app.launchEnvironment["CMUX_UI_TEST_TERMINAL_CMD_CLICK_FILE_NAME"] = fileName
         app.launchEnvironment["CMUX_UI_TEST_TERMINAL_CMD_CLICK_DISPLAY_MODE"] = displayMode.rawValue
         app.launchEnvironment["CMUX_UI_TEST_TERMINAL_CMD_CLICK_LINE_FORMAT"] = lineFormat.rawValue
+        if let workingDirectory {
+            app.launchEnvironment["CMUX_UI_TEST_TERMINAL_CMD_CLICK_WORKING_DIRECTORY"] = workingDirectory
+        }
+        if let linkTarget {
+            app.launchEnvironment["CMUX_UI_TEST_TERMINAL_CMD_CLICK_LINK_TARGET"] = linkTarget
+        }
         app.launchEnvironment["CMUX_UI_TEST_OPEN_SUPPORTED_FILES_IN_CMUX"] = openSupportedFilesInCmux ? "1" : "0"
         if !displaySuffix.isEmpty {
             app.launchEnvironment["CMUX_UI_TEST_TERMINAL_CMD_CLICK_DISPLAY_SUFFIX"] = displaySuffix
@@ -838,7 +921,7 @@ final class TerminalCmdClickUITests: XCTestCase {
         if captureOpenPaths {
             app.launchEnvironment["CMUX_UI_TEST_CAPTURE_OPEN_PATH"] = openCapturePath
         }
-        if lineFormat == .osc8 {
+        if lineFormat == .osc8 || captureOpenURLs {
             app.launchEnvironment["CMUX_UI_TEST_CAPTURE_OPEN_URL_PATH"] = openURLCapturePath
         }
         if captureHoverDiagnostics {
@@ -895,15 +978,15 @@ final class TerminalCmdClickUITests: XCTestCase {
         return openedPaths
     }
 
-    private func waitForOpenCountToStay(_ expectedCount: Int, timeout: TimeInterval) -> Bool {
+    private func waitForOpenCountToStay(_ expectedCount: Int, timeout: TimeInterval, path: String? = nil) -> Bool {
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {
-            if loadCapturedOpenPaths().count != expectedCount {
+            if loadCapturedOpenPaths(path: path).count != expectedCount {
                 return false
             }
             RunLoop.current.run(until: Date().addingTimeInterval(0.05))
         }
-        return loadCapturedOpenPaths().count == expectedCount
+        return loadCapturedOpenPaths(path: path).count == expectedCount
     }
 
     private func waitForHoverDiagnostics(timeout: TimeInterval) -> [String: Any]? {
@@ -937,6 +1020,19 @@ final class TerminalCmdClickUITests: XCTestCase {
                 NSLocalizedDescriptionKey: "Expected terminal cmd-click setup data. payload=\(loadSetupData() ?? [:])"
             ])
         }
+        // Independent of the path resolver: a grid expressed in AppKit points
+        // must fit inside the actual view. Raw Retina pixels violate this even
+        // if the fixture and resolver accidentally share the same wrong math.
+        let metrics = try XCTUnwrap(setup.payload["tokenCellMetrics"] as? [String: Any])
+        let frame = try XCTUnwrap(setup.payload["terminalFrameInWindow"] as? [String: Any])
+        let cellWidth = try XCTUnwrap(metrics["cellWidth"] as? Double)
+        let cellHeight = try XCTUnwrap(metrics["cellHeight"] as? Double)
+        let columns = try XCTUnwrap(metrics["columns"] as? Int)
+        let rows = try XCTUnwrap(metrics["rows"] as? Int)
+        let width = try XCTUnwrap(frame["width"] as? Double)
+        let height = try XCTUnwrap(frame["height"] as? Double)
+        XCTAssertLessThanOrEqual(cellWidth * Double(columns), width + 1, "Grid cells must use points, not backing pixels")
+        XCTAssertLessThanOrEqual(cellHeight * Double(rows), height + 1, "Grid cells must use points, not backing pixels")
         return setup
     }
 

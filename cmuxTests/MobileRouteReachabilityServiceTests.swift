@@ -130,6 +130,7 @@ private func testRoute(
             usesEphemeralFallback: false,
             routes: [route],
             activeConnectionCount: 0,
+            pairedDeviceConnectionCount: 0,
             lastErrorDescription: nil
         )
         let service = MobileRouteReachabilityService(

@@ -21,17 +21,17 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-TEAM_ID = "7WLXT3NR37"
+TEAM_ID = "599WAZ6282"
 APPSTORE_BUNDLE_ID = "com.cmux.app"
 APPSTORE_APP_ID = f"{TEAM_ID}.{APPSTORE_BUNDLE_ID}"
-BETA_BUNDLE_ID = "dev.cmux.app.beta"
+BETA_BUNDLE_ID = "com.cmux-mochi.ios"
 BETA_APP_ID = f"{TEAM_ID}.{BETA_BUNDLE_ID}"
 ASC_APP_ID = "6783338052"
 ASC_VERSION_ID = "version-1.0.0"
 ASC_BUILD_ID = "build-1.0.0"
-IDENTITY = f"Apple Distribution: Manaflow, Inc. ({TEAM_ID})"
+IDENTITY = f"Apple Distribution: Atlas Codes LTD ({TEAM_ID})"
 APPSTORE_MARKETING_VERSION = "1.0.0"
-BETA_MARKETING_VERSION = "1.0.4"
+BETA_MARKETING_VERSION = "1.0.205"
 
 FAILURES: list[str] = []
 
@@ -633,7 +633,7 @@ def test_upload_beta_lane_uses_beta_marketing_version(tmp: Path, fakebin: Path) 
     profiles = export_options.get("provisioningProfiles", {})
     _check(
         profiles.get(BETA_BUNDLE_ID) == "cmux Beta Distribution",
-        "export options map the beta profile to dev.cmux.app.beta",
+        "export options map the beta profile to com.cmux-mochi.ios",
     )
 
     ipa_line = next(line for line in result.stdout.splitlines() if line.startswith("IPA_PATH="))
@@ -642,7 +642,7 @@ def test_upload_beta_lane_uses_beta_marketing_version(tmp: Path, fakebin: Path) 
         info = plistlib.loads(zf.read("Payload/cmux.app/Info.plist"))
     _check(
         info.get("CFBundleIdentifier") == BETA_BUNDLE_ID,
-        "final signed beta IPA Info.plist is dev.cmux.app.beta",
+        "final signed beta IPA Info.plist is com.cmux-mochi.ios",
     )
     _check(
         info.get("CFBundleShortVersionString") == BETA_MARKETING_VERSION,

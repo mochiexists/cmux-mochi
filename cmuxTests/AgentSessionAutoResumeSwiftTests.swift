@@ -280,6 +280,38 @@ struct AgentSessionAutoResumeSwiftTests {
         }
     }
 
+    /// A deleted project path still belongs to its saved filesystem lineage.
+    /// The host shell cannot enter the deleted leaf, but it must start in the
+    /// nearest existing parent instead of inheriting an unrelated workspace's
+    /// directory. The prepared resume command continues to carry the exact
+    /// deleted path so a moved-folder failure remains explicit and debuggable.
+    @MainActor
+    @Test func agentResumeRestoreStartsDeletedCwdAtNearestExistingParent() throws {
+        try withRestoredDefaults(key: AgentSessionAutoResumeSettings.autoResumeAgentSessionsKey) {
+            UserDefaults.standard.set(true, forKey: AgentSessionAutoResumeSettings.autoResumeAgentSessionsKey)
+
+            let existingParent = FileManager.default.temporaryDirectory
+                .appendingPathComponent("cmux-deleted-resume-parent-\(UUID().uuidString)", isDirectory: true)
+            try FileManager.default.createDirectory(at: existingParent, withIntermediateDirectories: true)
+            defer { try? FileManager.default.removeItem(at: existingParent) }
+            let deletedDirectory = existingParent
+                .appendingPathComponent("moved-project", isDirectory: true)
+                .path
+            #expect(!FileManager.default.fileExists(atPath: deletedDirectory))
+
+            let (restored, restoredPanelId) = try restoreWorkspaceWithAutoResumedClaudeAgent(
+                savedDirectory: deletedDirectory
+            )
+            let terminal = try #require(restored.terminalPanel(for: restoredPanelId))
+
+            #expect(terminal.requestedWorkingDirectory == existingParent.path)
+            #expect(
+                restored.restoredAgentSnapshotsByPanelId[restoredPanelId]?.workingDirectory
+                    == deletedDirectory
+            )
+        }
+    }
+
     /// Regression for #7155: while a restored auto-resumed agent (e.g. Claude)
     /// still holds the pane's foreground, the shell never reaches a prompt, so
     /// the pane's tracked cwd cannot self-correct. The restore guard (#6617)

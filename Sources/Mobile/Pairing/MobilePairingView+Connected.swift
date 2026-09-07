@@ -7,11 +7,11 @@ extension MobilePairingView {
             Image(systemName: "checkmark.circle.fill")
                 .cmuxFont(size: 36)
                 .foregroundStyle(.green)
-            Text(String(localized: "mobile.pairing.connected.title", defaultValue: "iPhone connected"))
+            Text(String(localized: "mobile.pairing.connected.title", defaultValue: "Device connected"))
                 .cmuxFont(.title3, weight: .semibold)
             Text(String(
                 localized: "mobile.pairing.connected.subtitle",
-                defaultValue: "Your terminal workspaces are now syncing to your iPhone. You can close this window."
+                defaultValue: "Your terminal workspaces are now syncing to the paired device. You can close this window."
             ))
             .multilineTextAlignment(.center)
             .foregroundStyle(.secondary)
@@ -24,7 +24,7 @@ extension MobilePairingView {
         VStack(alignment: .leading, spacing: 10) {
             step(1, String(
                 localized: "mobile.pairing.step.install",
-                defaultValue: "Install cmux on your iPhone and open it."
+                defaultValue: "Open cmux on your iPhone or another Mac."
             ))
             HStack(spacing: 4) {
                 Spacer(minLength: 30)
@@ -39,12 +39,12 @@ extension MobilePairingView {
                 Spacer(minLength: 0)
             }
             step(2, String(
-                localized: "mobile.pairing.step.tailscale",
-                defaultValue: "Connect your iPhone to the same Tailscale network as this Mac."
+                localized: "mobile.pairing.step.network",
+                defaultValue: "Connect the other device to the same local network or Tailscale network as this Mac."
             ))
             step(3, String(
                 localized: "mobile.pairing.step.scan",
-                defaultValue: "Tap Add device, then Scan QR Code, and point the camera at the code above."
+                defaultValue: "On iPhone, scan the QR code. On another Mac, open Remote Macs and paste the copied pairing link."
             ))
         }
         .frame(maxWidth: .infinity, alignment: .leading)

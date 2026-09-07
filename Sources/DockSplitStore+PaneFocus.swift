@@ -247,10 +247,12 @@ extension DockSplitStore {
     }
 
     private func terminalResizeInteractionWindow() -> NSWindow? {
-        if let eventWindow = NSApp.currentEvent?.window { return eventWindow }
-        return panels.values.lazy.compactMap { panel in
+        // A programmatic drag session can run while currentEvent still belongs
+        // to another window. The attached terminal is the owning window.
+        let hostingWindow = panels.values.lazy.compactMap { panel in
             (panel as? TerminalPanel)?.hostedView.window
         }.first
+        return hostingWindow ?? NSApp.currentEvent?.window
     }
 
     func splitTabBar(_ controller: BonsplitController, didSelectTab tab: Bonsplit.Tab, inPane pane: PaneID) {

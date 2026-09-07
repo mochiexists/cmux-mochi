@@ -33,7 +33,6 @@ import Testing
             runtime: runtime,
             route: route,
             ticket: ticket,
-            allowsStackAuthFallback: true
         )
 
         let stalledRequest = try MobileCoreRPCClient.requestData(
@@ -752,7 +751,6 @@ import Testing
             runtime: runtime,
             route: route,
             ticket: ticket,
-            allowsStackAuthFallback: true
         )
     }
 

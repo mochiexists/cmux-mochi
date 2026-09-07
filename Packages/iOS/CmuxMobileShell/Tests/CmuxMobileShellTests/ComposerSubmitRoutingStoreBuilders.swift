@@ -90,7 +90,6 @@ func makeRoutingConnectedStore(
         runtime: runtime,
         route: route,
         ticket: ticket,
-        allowsStackAuthFallback: true
     )
     store.foregroundMacDeviceID = "test-mac"
     store.supportedHostCapabilities = hostCapabilities
@@ -125,7 +124,6 @@ func installFreshRemoteClient(on store: MobileShellComposite, router: RoutingHos
         runtime: runtime,
         route: route,
         ticket: ticket,
-        allowsStackAuthFallback: true
     )
     store.foregroundMacDeviceID = "test-mac-2"
 }
@@ -158,7 +156,6 @@ func installSecondaryClient(
         runtime: runtime,
         route: route,
         ticket: ticket,
-        allowsStackAuthFallback: true
     )
     store.secondaryMacSubscriptions[macDeviceID.pairingKey] = SecondaryMacSubscription(
         macDeviceID: macDeviceID,

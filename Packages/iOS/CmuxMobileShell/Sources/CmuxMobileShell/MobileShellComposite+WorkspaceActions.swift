@@ -221,10 +221,6 @@ extension MobileShellComposite {
             target: target,
             fallback: workspaceHostDisplayName(for: id)
         )
-        guard macScopedWorkspaceMutationIsAuthorized(target: target) else {
-            MobileDebugLog.anchormux("move.blocked gate=macScopedMutationAuthorization id=\(id.rawValue.suffix(6))")
-            return .failure(.authorizationFailed(hostDisplayName: hostDisplayName))
-        }
         var params = workspaceMutationParams(id: id)
         if let groupID {
             params["group_id"] = groupID.rawValue
@@ -333,9 +329,6 @@ extension MobileShellComposite {
         guard supportedHostCapabilities.contains("workspace.group_create.v1") else {
             return .failure(.unsupported(hostDisplayName: hostDisplayName))
         }
-        guard macScopedWorkspaceMutationIsAuthorized(target: target) else {
-            return .failure(.authorizationFailed(hostDisplayName: hostDisplayName))
-        }
         var params: [String: Any] = [:]
         if let trimmed = title?.trimmingCharacters(in: .whitespacesAndNewlines),
            !trimmed.isEmpty {
@@ -360,25 +353,6 @@ extension MobileShellComposite {
             return .none
         }
         return workspaceActionCapabilities(for: anchorWorkspaceID)
-    }
-
-    private func macScopedWorkspaceMutationIsAuthorized(target: WorkspaceMutationTarget) -> Bool {
-        guard let client = target.client else { return true }
-        let now = runtime?.now() ?? Date()
-        let policy = MobileShellWorkspaceMutationTicketPolicy(now: now)
-        if target.isForeground {
-            return policy.allowsMacScopedWorkspaceMutations(
-                activeTicket ?? client.attachTicket,
-                hostAuthorizesByAccount: hostAuthorizesAccountScopedMutations
-            )
-        }
-        let subscription = target.ownerKey.flatMap { secondaryMacSubscriptions[$0] }
-        let ticket = subscription?.ticket ?? client.attachTicket
-        return policy.allowsMacScopedWorkspaceMutations(
-            ticket,
-            hostAuthorizesByAccount: subscription?.supportedHostCapabilities
-                .contains(Self.workspaceMutationAccountAuthCapability) ?? false
-        )
     }
 
     private func sendWorkspaceMutation(
@@ -413,9 +387,6 @@ extension MobileShellComposite {
         let hostDisplayName = workspaceGroupHostDisplayName(for: id, target: target)
         guard workspaceGroupActionCapabilities(for: id).supportsGroupActions else {
             return .failure(.unsupported(hostDisplayName: hostDisplayName))
-        }
-        guard macScopedWorkspaceMutationIsAuthorized(target: target) else {
-            return .failure(.authorizationFailed(hostDisplayName: hostDisplayName))
         }
         var params: [String: Any] = ["group_id": id.rawValue, "action": action]
         if let title {

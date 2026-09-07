@@ -26,7 +26,6 @@ actor LivenessHostRouter {
     }
 
     private var recorded: [RecordedRequest] = []
-    private var attachTicketFailuresRemaining = 0
     private var countWaiters: [(
         id: UUID,
         method: String,
@@ -125,10 +124,6 @@ actor LivenessHostRouter {
 
     func heldRequestCount() -> Int {
         heldContinuations.count
-    }
-
-    func failNextAttachTicketRequests(count: Int = 1) {
-        attachTicketFailuresRemaining += count
     }
 
     func replayResponsesServed() -> Int {
@@ -412,16 +407,6 @@ actor LivenessHostRouter {
         viewportReport: LivenessViewportReport? = nil
     ) async -> Data? {
         switch method {
-        case "mobile.attach_ticket.create":
-            if attachTicketFailuresRemaining > 0 {
-                attachTicketFailuresRemaining -= 1
-                return try? Self.errorFrame(
-                    id: id,
-                    code: "internal",
-                    message: "scripted attach ticket failure"
-                )
-            }
-            return try? Self.resultFrame(id: id, result: ["ticket": Self.attachTicketObject()])
         case "workspace.list", "mobile.workspace.list":
             workspaceListRequestCount += 1
             let workspaceTitle = workspaceListTitles.isEmpty
@@ -913,8 +898,8 @@ func makeConnectedStore(
     )
     store.signIn()
     let ticket = try makeTicket(clock: clock)
-    let connected = await store.connectPairingURL(try attachURL(for: ticket))
-    #expect(connected, "scripted connect must succeed")
+    _ = try await store.connect(ticket: ticket)
+    #expect(store.connectionState == .connected, "scripted connect must succeed")
     let capabilitiesResolved = try await pollUntil {
         !store.supportedHostCapabilities.isEmpty
     }
@@ -944,6 +929,5 @@ func installFreshLivenessRemoteClient(
         runtime: runtime,
         route: route,
         ticket: ticket,
-        allowsStackAuthFallback: true
     )
 }

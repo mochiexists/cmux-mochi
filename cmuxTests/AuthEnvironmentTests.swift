@@ -89,27 +89,23 @@ struct AuthEnvironmentTests {
         #expect(
             AuthEnvironment.callbackScheme(
                 environment: ["CMUX_TAG": "Safari Auth!"],
-                bundleIdentifier: "com.cmuxterm.app.debug.safari-auth",
+                bundleIdentifier: "com.cmux-mochi.debug.safari-auth",
                 isDebugBuild: true
             ) == "cmux-dev-safari-auth"
         )
     }
 
-    @Test("release callback scheme ignores ambient tag")
-    func releaseCallbackSchemeIgnoresAmbientTag() {
+    @Test("release callback scheme ignores ambient tag", arguments: [
+        ("com.cmux-mochi", "cmux"),
+        ("com.cmux-mochi.nightly", "cmux-nightly"),
+    ])
+    func releaseCallbackSchemeIgnoresAmbientTag(bundleIdentifier: String, expectedScheme: String) {
         #expect(
             AuthEnvironment.callbackScheme(
                 environment: ["CMUX_TAG": "safari-auth"],
-                bundleIdentifier: "com.cmuxterm.app",
+                bundleIdentifier: bundleIdentifier,
                 isDebugBuild: false
-            ) == "cmux"
-        )
-        #expect(
-            AuthEnvironment.callbackScheme(
-                environment: ["CMUX_TAG": "safari-auth"],
-                bundleIdentifier: "com.cmuxterm.app.nightly",
-                isDebugBuild: false
-            ) == "cmux-nightly"
+            ) == expectedScheme
         )
     }
 
@@ -126,7 +122,7 @@ struct AuthEnvironmentTests {
                 "CMUX_AUTH_WWW_ORIGIN": "https://cmux.com",
                 "CMUX_AUTH_CALLBACK_SCHEME": "cmux",
             ],
-            bundleIdentifier: "com.cmuxterm.app"
+            bundleIdentifier: "com.cmux-mochi"
         )
 
         assertNativeSignInURL(url)
@@ -140,7 +136,7 @@ struct AuthEnvironmentTests {
                 "CMUX_TAG": "pair-auth",
                 "CMUX_PORT": "4123",
             ],
-            bundleIdentifier: "com.cmuxterm.app.debug.pair-auth"
+            bundleIdentifier: "com.cmux-mochi.debug.pair-auth"
         )
 
         #expect(url.scheme == "http")
@@ -177,7 +173,7 @@ struct AuthEnvironmentTests {
                 "CMUX_AUTH_WWW_ORIGIN": "https://cmux.com",
                 "CMUX_AUTH_CALLBACK_SCHEME": "cmux",
             ],
-            bundleIdentifier: "com.cmuxterm.app"
+            bundleIdentifier: "com.cmux-mochi"
         )
         let russianURL = AuthEnvironment.signInURL(
             callbackState: "state-1",
@@ -188,7 +184,7 @@ struct AuthEnvironmentTests {
                 "CMUX_AUTH_WWW_ORIGIN": "https://cmux.com",
                 "CMUX_AUTH_CALLBACK_SCHEME": "cmux",
             ],
-            bundleIdentifier: "com.cmuxterm.app"
+            bundleIdentifier: "com.cmux-mochi"
         )
 
         #expect(russianURL == englishURL)

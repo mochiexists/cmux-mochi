@@ -58,16 +58,9 @@ extension MobileShellComposite {
     /// survives the launch is a key pair in the keychain — which is why this
     /// pairing reconnects after a cold start where the old ticket could not.
     func connectDeviceLinkPairing(payload: PairingPayload) async -> MobilePairingURLConnectionResult {
-        // A completed key exchange IS this device's credential, so the shell is
-        // authenticated from here on. Without this the pairing succeeds but
-        // never persists: scope resolution requires a signed-in shell, and a
-        // pairing that is not stored cannot be reconnected to — which looked
-        // like a reconnect bug rather than a persistence one.
-        if !isSignedIn { signIn() }
         _ = beginPairingValidationAttempt()
         connectionAttemptGeneration = UUID()
         clearPairingError()
-        clearPairingVersionWarning()
 
         logDeviceLink("enrolling against \(payload.routes.joined(separator: ","))")
         let enroller = MobileDeviceLinkEnroller(deviceLabel: Self.deviceLinkDeviceLabel)
@@ -84,20 +77,18 @@ extension MobileShellComposite {
             }
             // Enrollment runs on its own short-lived transport and closes it, so
             // a completed pairing leaves no channel to use. Dial through the
-            // stored-Mac reconnect path rather than `connect(ticket:)`: the
-            // ticket carries no bearer (the device key is the credential), and
-            // the ticket path treats a tokenless route as a manual host and
-            // tries to exchange for one. Reconnect is the path built to offer a
+            // stored-Mac reconnect path rather than `connect(ticket:)`.
+            // Reconnect is the path built to select the request-scoped
             // DeviceLink identity for a Mac this device has already stored.
             let didConnect = await reconnectActiveMacIfAvailable(
                 stackUserID: identityProvider?.currentUserID
             )
             logDeviceLink("post-pairing dial connected=\(didConnect)")
-            // The pairing itself succeeded and is durable either way. A dial
-            // that did not land is a reachability problem for the ordinary
-            // retry path to solve, not a reason to tell the user their code
-            // was bad and send them back to the QR screen.
-            return .connected
+            // The pairing itself succeeded and is durable either way. Preserve
+            // that distinction so callers leave the scanner but can present an
+            // honest offline/retry state instead of briefly claiming a live
+            // connection or bouncing back to the QR.
+            return didConnect ? .connected : .pairedOffline
         } catch let error as MobileDeviceLinkEnrollmentError {
             logDeviceLink("enrollment failed \(String(describing: error))")
             applyDeviceLinkFailure(error)
@@ -118,16 +109,10 @@ extension MobileShellComposite {
         outcome: MobileDeviceLinkEnrollmentOutcome,
         payload: PairingPayload
     ) async -> Bool {
-        // Prefer the route that actually completed the pairing handshake: it is
-        // the one proven to reach this Mac from this device. A simulator can
-        // only use loopback (it shares the Mac's network stack, which cannot
-        // TCP-connect to the Mac's own tailnet address), while a phone reaches
-        // the tailnet address — so neither ordering is right in general, but
-        // "what just worked" always is.
-        let orderedDescriptions = [outcome.route] + payload.routes.filter { $0 != outcome.route }
-        let routes = orderedDescriptions.enumerated().compactMap { index, description in
-            Self.deviceLinkRoute(from: description, priority: index)
-        }
+        let routes = Self.orderedDeviceLinkRoutes(
+            payloadRoutes: payload.routes,
+            successfulRoute: outcome.route
+        )
         // Record which pairing belongs to this Mac while both halves are known.
         // Reconnect otherwise has to guess which key to offer, and with more
         // than one paired Mac it guesses wrong.
@@ -161,9 +146,12 @@ extension MobileShellComposite {
         return persisted
     }
 
-    /// Rebuilds the route that worked, so reconnection starts where pairing
-    /// succeeded rather than re-discovering it.
-    private static func deviceLinkRoute(from description: String, priority: Int = 0) -> CmxAttachRoute? {
+    /// Rebuilds one advertised DeviceLink route with its concrete transport
+    /// kind so reconnect ordering can prefer LAN without losing fallback.
+    nonisolated static func deviceLinkRoute(
+        from description: String,
+        priority: Int = 0
+    ) -> CmxAttachRoute? {
         guard let (host, port) = MobileDeviceLinkEnroller.splitHostPort(description) else {
             return nil
         }
@@ -171,14 +159,65 @@ extension MobileShellComposite {
         // a tailscale route is contradictory, and route policy checks disagree
         // about such a row - which is how a simulator pairing ends up with a
         // stored route nothing will dial.
-        let isLoopback = host == "127.0.0.1" || host == "::1" || host.lowercased() == "localhost"
-        let kind: CmxAttachTransportKind = isLoopback ? .debugLoopback : .tailscale
+        let isLoopback = CmxLoopbackHost().matches(host)
+        let kind: CmxAttachTransportKind
+        if isLoopback {
+            kind = .debugLoopback
+        } else if CmxLocalNetworkHost().matches(host) {
+            kind = .localNetwork
+        } else {
+            kind = .tailscale
+        }
         return try? CmxAttachRoute(
             id: "\(kind.rawValue)-\(priority)",
             kind: kind,
             endpoint: .hostPort(host: host, port: port),
             priority: priority
         )
+    }
+
+    /// Rebuilds payload routes in the reconnect contract order: loopback for a
+    /// simulator, then authenticated LAN, then Tailscale fallback. The route
+    /// that completed enrollment breaks ties within one transport kind, but a
+    /// temporary cellular pairing must not pin Tailscale ahead of LAN forever.
+    nonisolated static func orderedDeviceLinkRoutes(
+        payloadRoutes: [String],
+        successfulRoute: String
+    ) -> [CmxAttachRoute] {
+        let successfulFirst = [successfulRoute] + payloadRoutes.filter { $0 != successfulRoute }
+        let unprioritized = successfulFirst.compactMap { deviceLinkRoute(from: $0) }
+        let ordered = unprioritized.enumerated().sorted { left, right in
+            let leftRank = deviceLinkRouteRank(left.element.kind)
+            let rightRank = deviceLinkRouteRank(right.element.kind)
+            if leftRank != rightRank {
+                return leftRank < rightRank
+            }
+            return left.offset < right.offset
+        }
+        return ordered.enumerated().compactMap { priority, item in
+            guard case let .hostPort(host, port) = item.element.endpoint else {
+                return nil
+            }
+            return try? CmxAttachRoute(
+                id: "\(item.element.kind.rawValue)-\(priority)",
+                kind: item.element.kind,
+                endpoint: .hostPort(host: host, port: port),
+                priority: priority
+            )
+        }
+    }
+
+    nonisolated static func deviceLinkRouteRank(_ kind: CmxAttachTransportKind) -> Int {
+        switch kind {
+        case .debugLoopback:
+            return 0
+        case .localNetwork:
+            return 1
+        case .tailscale:
+            return 2
+        case .iroh, .websocket:
+            return 3
+        }
     }
 
     /// Maps an enrollment failure onto the pairing UI.
@@ -200,14 +239,21 @@ extension MobileShellComposite {
         }
     }
 
-    /// A human-recognizable name for this phone, shown on the Mac's device list
+    /// A human-recognizable name for this client, shown on the Mac's device list
     /// and in its enrollment notification.
     static var deviceLinkDeviceLabel: String {
         #if canImport(UIKit)
         let name = UIDevice.current.name.trimmingCharacters(in: .whitespacesAndNewlines)
         return name.isEmpty ? "iPhone" : name
+        #elseif os(macOS)
+        let name = Host.current().localizedName?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if let name, !name.isEmpty {
+            return name
+        }
+        return "Mac"
         #else
-        return "iOS device"
+        return "Device"
         #endif
     }
 }
@@ -249,14 +295,13 @@ extension MobileShellComposite {
         authenticated: Bool,
         stackAuthenticated: Bool,
         hasPairedDevice: Bool,
-        attachTicket: Bool,
         restoring: Bool,
         connected: Bool
     ) {
         logDeviceLink(
             "reconnect gate uiTestURL=\(uiTestURL) authenticated=\(authenticated) "
                 + "stack=\(stackAuthenticated) pairedDevice=\(hasPairedDevice) "
-                + "attachTicket=\(attachTicket) restoring=\(restoring) connected=\(connected)"
+                + "restoring=\(restoring) connected=\(connected)"
         )
     }
 }
