@@ -324,3 +324,40 @@ is other causes. The starvation anti-pattern was also identified in roughly 32 o
 test files that were left untouched; sweeping those is the obvious next increment.
 
 One unexpected failure remains in shard 1, which is correctly enough to fail it.
+
+## Final CI result, run 34068253036
+
+**release-build: SUCCESS.** This is the job that failed identically in the two runs
+before tonight. Both previously failing steps passed, and the validation step
+resolved all four binaries at the corrected path:
+
+- `cmux Mochi.app/Contents/Resources/bin/ghostty` — universal, x86_64 and arm64
+- `cmux Mochi.app/Contents/Resources/bin/cmux-diff-sidecar` — universal
+- App SDK version 26.5, as the lane requires
+
+The workflow fix is therefore confirmed end to end, not merely reasoned about.
+
+**The tmux fix is confirmed too.** In shard 2, `RemoteTmuxRectPublicationTests` now
+passes in 0.091 seconds and `RemoteTmuxMirrorTargetingTests` in 2.031 seconds, and
+all three touched files record zero issues. That is 22 issues cleared.
+
+**Measured effect of the harness fix**, comparing like for like across runs. Treat as
+signal, not a controlled experiment, since machine load differed.
+
+| | Before | After |
+| --- | --- | --- |
+| Shard 1, worst batch failures | 47 | 35 |
+| Shard 1 distinct failing tests | 31 | 29 |
+| Shard 2 distinct failing tests | 62 | 48 |
+| Shard 3, largest summary failures | 191 | 168 |
+| Shard 3 distinct failing tests | 58 | 58 |
+| Shard 3 unexpected failures | 9 | 9 |
+
+**All four app-host shards still fail, and that is correct.** They were always
+failing; only two of them used to admit it. `tests` and `ci-status` fail purely
+because they aggregate the shards.
+
+The residue is the work that was deliberately not attempted before signoff: the fork
+context menu clusters, the eleven Codex hook-stop fixtures, the nine unexpected
+failures in shard 3, and the roughly 32 other test files carrying the same dispatch
+starvation anti-pattern.
