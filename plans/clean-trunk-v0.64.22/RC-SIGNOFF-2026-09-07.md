@@ -295,3 +295,32 @@ and the workflow derived the nightly suffix itself.
 
 A replacement CI run, 34068253036, was dispatched automatically on the current
 commit and is running. It exercises release-build plus both test-harness fixes.
+
+## The test fixes are now verified to compile, and they measurably help
+
+Run 34068253036, shard 1, resolves the verification gap flagged earlier.
+
+**They compile.** The test target built and reached "Testing started", with zero
+compiler errors in any of the six files touched. The earlier caveat about the fixes
+being syntax-checked but not type-checked no longer applies, and the revert command
+is no longer expected to be needed.
+
+**The corrected gate behaves exactly as designed.** Shard 1, which the old policy
+reported as a pass, now prints "Unexpected test failure or missing XCTest summary"
+and fails. That is the new code path firing on real CI output.
+
+**The harness fix helps but does not fully cure.** Comparing the same batch of 53
+tests across the two runs:
+
+| | Before | After |
+| --- | --- | --- |
+| Failures in the 53-test batch | 47 | 35 |
+| Distinct failing tests in shard 1 | 31 | 29 |
+
+Treat this as a strong signal rather than a controlled experiment, since the two runs
+saw different machine load. The direction and size are consistent with the diagnosis:
+relieving dispatch-pool starvation recovers a large block of tests, and the residue
+is other causes. The starvation anti-pattern was also identified in roughly 32 other
+test files that were left untouched; sweeping those is the obvious next increment.
+
+One unexpected failure remains in shard 1, which is correctly enough to fail it.
