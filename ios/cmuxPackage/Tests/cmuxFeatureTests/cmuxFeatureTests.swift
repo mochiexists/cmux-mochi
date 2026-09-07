@@ -242,6 +242,10 @@ final class TerminalOutputCollector {
                 ],
             ]
         ),
+        // The shell now probes host capabilities and subscribes to events right
+        // after the first workspace list; the scripted transport answers in order.
+        try rpcHostStatusFrame(renderGrid: false),
+        try rpcResultFrame(result: ["stream_id": "events"]),
     ])
     let runtime = testRuntime(
         supportedRouteKinds: [.debugLoopback],
@@ -312,6 +316,10 @@ final class TerminalOutputCollector {
                 ],
             ]
         ),
+        // The shell now probes host capabilities and subscribes to events right
+        // after the first workspace list; the scripted transport answers in order.
+        try rpcHostStatusFrame(renderGrid: false),
+        try rpcResultFrame(result: ["stream_id": "events"]),
     ])
     let runtime = testRuntime(
         supportedRouteKinds: [.debugLoopback],
@@ -352,6 +360,10 @@ final class TerminalOutputCollector {
                 ],
             ]
         ),
+        // The shell now probes host capabilities and subscribes to events right
+        // after the first workspace list; the scripted transport answers in order.
+        try rpcHostStatusFrame(renderGrid: false),
+        try rpcResultFrame(result: ["stream_id": "events"]),
         try rpcErrorFrame(message: "Terminal surface is not ready"),
     ])
     let runtime = testRuntime(
@@ -406,6 +418,10 @@ final class TerminalOutputCollector {
                 ],
             ]
         ),
+        // The shell now probes host capabilities and subscribes to events right
+        // after the first workspace list; the scripted transport answers in order.
+        try rpcHostStatusFrame(renderGrid: false),
+        try rpcResultFrame(result: ["stream_id": "events"]),
     ])
     let runtime = testRuntime(
         supportedRouteKinds: [.debugLoopback],
@@ -467,6 +483,10 @@ final class TerminalOutputCollector {
                 ],
             ]
         ),
+        // The shell now probes host capabilities and subscribes to events right
+        // after the first workspace list; the scripted transport answers in order.
+        try rpcHostStatusFrame(renderGrid: false),
+        try rpcResultFrame(result: ["stream_id": "events"]),
         try rpcErrorFrame(message: "Terminal surface is not ready"),
     ])
     let runtime = testRuntime(
@@ -1591,6 +1611,8 @@ private actor SupersededAttachURLRouter: RequestAwareTransportRouter {
                 title: "Second Workspace",
                 terminalID: "second-terminal"
             )
+        case "mobile.host.status":
+            return try rpcHostStatusFrame(renderGrid: false)
         default:
             return try rpcErrorFrame(message: "Unexpected method \(request.method ?? "nil")")
         }
@@ -1630,6 +1652,8 @@ private actor RemoteCreateTerminalRouter: RequestAwareTransportRouter {
             return try rpcTwoWorkspaceListFrame()
         case "terminal.create":
             return try rpcTerminalCreateScopedFrame()
+        case "mobile.host.status":
+            return try rpcHostStatusFrame(renderGrid: false)
         default:
             return try rpcErrorFrame(message: "Unexpected method \(request.method ?? "nil")")
         }
@@ -1672,6 +1696,8 @@ private actor DelayedRemoteCreateTerminalRouter: RequestAwareTransportRouter {
             markTerminalCreateRequested()
             await waitForTerminalCreateRelease()
             return try rpcTerminalCreateScopedFrame()
+        case "mobile.host.status":
+            return try rpcHostStatusFrame(renderGrid: false)
         default:
             return try rpcErrorFrame(message: "Unexpected method \(request.method ?? "nil")")
         }
@@ -1715,6 +1741,8 @@ private actor RemoteCreateWorkspaceRouter: RequestAwareTransportRouter {
             )
         case "workspace.create":
             return try rpcWorkspaceCreateFrame()
+        case "mobile.host.status":
+            return try rpcHostStatusFrame(renderGrid: false)
         default:
             return try rpcErrorFrame(message: "Unexpected method \(request.method ?? "nil")")
         }
