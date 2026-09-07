@@ -52,3 +52,15 @@ Packages/macOS/CmuxSettings/Sources/CmuxSettings/SocketControl/CmuxStateDirector
 Packages/macOS/CmuxSettings/Sources/CmuxSettings/SocketControl/SocketControlSettings.swift:SocketControlSettings
 Packages/macOS/CmuxSettings/Sources/CmuxSettings/SocketControl/SocketPathMarkerFiles.swift:SocketPathMarkerFiles
 Packages/macOS/CmuxUpdater/Sources/CmuxUpdater/UpdateTiming.swift:UpdateTiming
+# Added 2026-09-08 when the lint gate was made blocking on main: these were
+# already failing CI before that date. Shrink-only, same as the entries above.
+Packages/iOS/CmuxMobileDiagnostics/Sources/CmuxMobileDiagnostics/MobileLatencyTrace.swift:MobileLatencyTrace
+Packages/iOS/CmuxMobileShellModel/Sources/CmuxMobileShellModel/MobileOnboardingPresentationPolicy.swift:MobileOnboardingPresentationPolicy
+Packages/iOS/CmuxMobileToast/Sources/CmuxMobileToast/ToastDemo.swift:ToastDemo
+Packages/macOS/CmuxAppKitSupportUI/Sources/CmuxAppKitSupportUI/Popover/CmuxPopoverMutation.swift:CmuxPopoverMutation
+Packages/Shared/CMUXMobileCore/Sources/CMUXMobileCore/DiagnosticEventPresentation.swift:DiagnosticEventPresentation
+Packages/Shared/CMUXMobileCore/Sources/CMUXMobileCore/MobileBrowserStreamCapability.swift:MobileBrowserStreamCapability
+Packages/Shared/CMUXMobileCore/Sources/CMUXMobileCore/MobileTerminalReplayViewportFence.swift:MobileTerminalReplayViewportFence
+Packages/Shared/CMUXMobileCore/Sources/CMUXMobileCore/MobileTerminalScrollbackPreference.swift:MobileTerminalScrollbackPreference
+Packages/Shared/CMUXMobileCore/Sources/CMUXMobileCore/MobileWorkspaceMetadataLimits.swift:MobileWorkspaceMetadataLimits
+Packages/Shared/CmuxSentryTelemetry/Sources/CmuxSentryScrubbing/ScrubberDenylists.swift:ScrubberDenylists

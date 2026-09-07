@@ -12,6 +12,9 @@ on:
       - "scripts/mobile-attach-qr.sh"
       - "scripts/lib/mobile-attach.sh"
       - ".github/workflows/test-ios.yml"
+      - "scripts/lint-ios-package-conventions.sh"
+      - "scripts/lint-ios-package-conventions-baseline.txt"
+      - "scripts/lint-namespace-types-baseline.txt"
   workflow_dispatch:
     inputs:
       ref:
@@ -82,7 +85,7 @@ jobs:
           fi
           # The conventions lint (free-function ban, namespace-type rule, ...)
           # covers every package, so it runs for any Packages/ change too.
-          if grep -Eq '^(ios/|Packages/|Sources/Mobile/|vendor/stack-auth-swift-sdk-prerelease/|scripts/lint-ios-package-conventions\.sh$|scripts/lint-namespace-types-baseline\.txt$)' /tmp/changed-files.txt; then
+          if grep -Eq '^(ios/|Packages/|Sources/Mobile/|vendor/stack-auth-swift-sdk-prerelease/|scripts/lint-ios-package-conventions\.sh$|scripts/lint-ios-package-conventions-baseline\.txt$|scripts/lint-namespace-types-baseline\.txt$)' /tmp/changed-files.txt; then
             echo "should_lint=true" >> "$GITHUB_OUTPUT"
           else
             echo "No package-owned files changed; skipping conventions lint."
