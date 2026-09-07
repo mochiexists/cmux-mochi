@@ -46,10 +46,19 @@ struct TLSLoopbackTests {
         process.waitUntilExit()
         try #require(process.terminationStatus == 0, "openssl pkcs12 export failed")
 
+        var importOptions: [String: Any] = [
+            kSecImportExportPassphrase as String: "devicelink-test",
+        ]
+        if #available(macOS 15, *) {
+            // Keep the identity in process memory. Without this, macOS writes it
+            // into the default keychain, which is locked or absent on headless CI
+            // runners and makes the import fail before any TLS is exercised.
+            importOptions[kSecImportToMemoryOnly as String] = true
+        }
         var imported: CFArray?
         let status = SecPKCS12Import(
             try Data(contentsOf: p12URL) as CFData,
-            [kSecImportExportPassphrase as String: "devicelink-test"] as CFDictionary,
+            importOptions as CFDictionary,
             &imported
         )
         try #require(status == errSecSuccess, "SecPKCS12Import failed: \(status)")
