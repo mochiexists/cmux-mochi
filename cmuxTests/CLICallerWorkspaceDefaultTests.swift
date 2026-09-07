@@ -344,7 +344,7 @@ struct CLICallerWorkspaceDefaultTests {
         handler: @escaping @Sendable (String) -> String
     ) -> DispatchSemaphore {
         let handled = DispatchSemaphore(value: 0)
-        DispatchQueue.global(qos: .userInitiated).async {
+        Thread.detachNewThread {
             defer { handled.signal() }
 
             var clientAddr = sockaddr_un()
@@ -436,7 +436,7 @@ struct CLICallerWorkspaceDefaultTests {
         }
 
         let exitSignal = DispatchSemaphore(value: 0)
-        DispatchQueue.global(qos: .userInitiated).async {
+        Thread.detachNewThread {
             process.waitUntilExit()
             exitSignal.signal()
         }

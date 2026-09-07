@@ -242,7 +242,7 @@ struct PiFeedDockOwnershipTests {
     ) async -> TerminalController.V2CallResult {
         let resultBox = PiFeedV2CallResultBox()
         await withCheckedContinuation { continuation in
-            DispatchQueue.global(qos: .userInitiated).async {
+            Thread.detachNewThread {
                 resultBox.value = TerminalController.shared.v2IngestAcknowledgedFeedEvents(events)
                 continuation.resume()
             }

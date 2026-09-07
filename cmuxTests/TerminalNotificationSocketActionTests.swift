@@ -388,7 +388,7 @@ final class TerminalNotificationSocketActionTests: XCTestCase {
     ) async throws -> [String: Any] {
         let requestData = try Self.makeV2RequestData(method: method, params: params)
         return try await withCheckedThrowingContinuation { continuation in
-            DispatchQueue.global(qos: .userInitiated).async {
+            Thread.detachNewThread {
                 do {
                     continuation.resume(returning: try Self.sendV2Request(data: requestData, to: socketPath))
                 } catch {

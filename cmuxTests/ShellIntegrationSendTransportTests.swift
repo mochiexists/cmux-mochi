@@ -411,7 +411,7 @@ private final class UnixLineListener: @unchecked Sendable {
             throw POSIXError(.EADDRINUSE)
         }
         let fd = serverFD
-        DispatchQueue.global().async { [weak self] in
+        Thread.detachNewThread { [weak self] in
             let client = accept(fd, nil, nil)
             guard client >= 0 else { return }
             var data = Data()

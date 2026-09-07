@@ -27,7 +27,7 @@ extension CLINotifyProcessIntegrationRegressionTests {
     ) -> DispatchGroup {
         let handled = DispatchGroup()
         handled.enter()
-        DispatchQueue.global(qos: .userInitiated).async {
+        Thread.detachNewThread {
             defer { handled.leave() }
 
             var clientAddr = sockaddr_in()

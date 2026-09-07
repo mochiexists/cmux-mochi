@@ -301,7 +301,7 @@ struct SSHPTYAttachNoProgressRetryTests {
         }
 
         let exited = DispatchSemaphore(value: 0)
-        DispatchQueue.global(qos: .userInitiated).async {
+        Thread.detachNewThread {
             process.waitUntilExit()
             exited.signal()
         }

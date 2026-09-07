@@ -286,7 +286,7 @@ final class WorkspaceSSHFishShellTests: XCTestCase {
         }
 
         let exitSignal = DispatchSemaphore(value: 0)
-        DispatchQueue.global(qos: .userInitiated).async {
+        Thread.detachNewThread {
             process.waitUntilExit()
             exitSignal.signal()
         }
@@ -366,7 +366,7 @@ final class WorkspaceSSHFishShellTests: XCTestCase {
         let handled = expectation(description: "cli mock socket handled")
         handled.expectedFulfillmentCount = max(1, connectionCount)
         for _ in 0..<max(1, connectionCount) {
-            DispatchQueue.global(qos: .userInitiated).async {
+            Thread.detachNewThread {
                 var clientAddr = sockaddr_un()
                 var clientAddrLen = socklen_t(MemoryLayout<sockaddr_un>.size)
                 let clientFD = withUnsafeMutablePointer(to: &clientAddr) { ptr in

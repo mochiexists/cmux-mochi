@@ -121,7 +121,7 @@ func startCodexHookMockSocketServerAccepting(
     surfaceId: String,
     connectionLimit: Int
 ) {
-    DispatchQueue.global(qos: .userInitiated).async {
+    Thread.detachNewThread {
         var accepted = 0
         while accepted < connectionLimit {
             var clientAddr = sockaddr_un()
@@ -136,7 +136,7 @@ func startCodexHookMockSocketServerAccepting(
                 return
             }
             accepted += 1
-            DispatchQueue.global(qos: .userInitiated).async {
+            Thread.detachNewThread {
                 handleCodexHookMockSocketClient(fd: clientFD, commands: commands, surfaceId: surfaceId)
             }
         }
@@ -232,7 +232,7 @@ func runCodexHookProcess(
     }
 
     let exitSignal = DispatchSemaphore(value: 0)
-    DispatchQueue.global(qos: .userInitiated).async {
+    Thread.detachNewThread {
         process.waitUntilExit()
         exitSignal.signal()
     }

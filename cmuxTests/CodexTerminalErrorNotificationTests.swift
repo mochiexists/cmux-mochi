@@ -129,7 +129,7 @@ private final class CodexTerminalErrorSocketServer: @unchecked Sendable {
     }
 
     func start() {
-        DispatchQueue.global(qos: .userInitiated).async { [self] in
+        Thread.detachNewThread { [self] in
             defer { finished.signal() }
             var address = sockaddr_un()
             var addressLength = socklen_t(MemoryLayout<sockaddr_un>.size)
@@ -247,7 +247,7 @@ private struct CodexTerminalErrorProcess {
         try? stdin.fileHandleForWriting.close()
 
         let finished = DispatchSemaphore(value: 0)
-        DispatchQueue.global(qos: .userInitiated).async {
+        Thread.detachNewThread {
             process.waitUntilExit()
             finished.signal()
         }

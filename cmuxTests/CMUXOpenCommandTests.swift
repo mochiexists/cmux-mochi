@@ -2894,7 +2894,7 @@ final class CMUXOpenCommandTests: XCTestCase {
         }
 
         let exitSignal = DispatchSemaphore(value: 0)
-        DispatchQueue.global(qos: .userInitiated).async {
+        Thread.detachNewThread {
             process.waitUntilExit()
             exitSignal.signal()
         }
@@ -2920,7 +2920,7 @@ final class CMUXOpenCommandTests: XCTestCase {
     private func readLine(from handle: FileHandle, timeout: TimeInterval) throws -> String {
         let finished = DispatchSemaphore(value: 0)
         let dataBox = AsyncValueBox(Data())
-        DispatchQueue.global(qos: .userInitiated).async {
+        Thread.detachNewThread {
             var line = Data()
             while line.count < 1024 {
                 let byte = handle.readData(ofLength: 1)
@@ -2975,7 +2975,7 @@ final class CMUXOpenCommandTests: XCTestCase {
         guard process.isRunning else { return }
         process.terminate()
         let finished = DispatchSemaphore(value: 0)
-        DispatchQueue.global(qos: .utility).async {
+        Thread.detachNewThread {
             process.waitUntilExit()
             finished.signal()
         }
@@ -3041,7 +3041,7 @@ final class CMUXOpenCommandTests: XCTestCase {
         handler: @escaping @Sendable (String) -> String
     ) -> XCTestExpectation {
         let handled = expectation(description: "cli open mock socket handled")
-        DispatchQueue.global(qos: .userInitiated).async {
+        Thread.detachNewThread {
             var clientAddr = sockaddr_un()
             var clientAddrLen = socklen_t(MemoryLayout<sockaddr_un>.size)
             let clientFD = withUnsafeMutablePointer(to: &clientAddr) { ptr in

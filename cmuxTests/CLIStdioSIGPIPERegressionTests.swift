@@ -57,7 +57,7 @@ final class CLIStdioSIGPIPERegressionTests: XCTestCase {
         timeout: TimeInterval = 5
     ) -> XCTWaiter.Result {
         let exited = expectation(description: description)
-        DispatchQueue.global(qos: .userInitiated).async {
+        Thread.detachNewThread {
             process.waitUntilExit()
             exited.fulfill()
         }
@@ -92,7 +92,7 @@ final class CLIStdioSIGPIPERegressionTests: XCTestCase {
         }
 
         let exitSignal = DispatchSemaphore(value: 0)
-        DispatchQueue.global(qos: .userInitiated).async {
+        Thread.detachNewThread {
             process.waitUntilExit()
             exitSignal.signal()
         }

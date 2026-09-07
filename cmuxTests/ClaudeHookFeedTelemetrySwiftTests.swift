@@ -191,7 +191,7 @@ private func startServer(
     resolvedSurfaceID: String,
     feedSeen: DispatchSemaphore
 ) {
-    DispatchQueue.global(qos: .userInitiated).async {
+    Thread.detachNewThread {
         while true {
             var clientAddr = sockaddr_un()
             var clientAddrLen = socklen_t(MemoryLayout<sockaddr_un>.size)
@@ -204,7 +204,7 @@ private func startServer(
                 if errno == EINTR { continue }
                 return
             }
-            DispatchQueue.global(qos: .userInitiated).async {
+            Thread.detachNewThread {
                 handleClient(
                     clientFD,
                     state: state,
