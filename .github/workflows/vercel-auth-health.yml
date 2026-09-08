@@ -17,6 +17,14 @@ jobs:
         with:
           bun-version: "1.3.14"
       - name: Verify Vercel token
-        run: bunx vercel@56.3.1 whoami
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          # This is a health check for a configured token, not a check that
+          # the token is configured. With no VERCEL_TOKEN secret on this fork
+          # it failed every morning and mailed the owner. Skip until one exists.
+          if [ -z "${VERCEL_TOKEN:-}" ]; then
+            echo "::notice::VERCEL_TOKEN is not configured on this repository; skipping the auth health check."
+            exit 0
+          fi
+          bunx vercel@56.3.1 whoami

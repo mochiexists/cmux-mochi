@@ -34,7 +34,7 @@ private enum RemoteResumeHookSocketServer {
         surfaceID: UUID
     ) -> DispatchSemaphore {
         let finished = DispatchSemaphore(value: 0)
-        DispatchQueue.global(qos: .userInitiated).async {
+        Thread.detachNewThread {
             defer { finished.signal() }
             var clientAddress = sockaddr_un()
             var clientAddressLength = socklen_t(MemoryLayout<sockaddr_un>.size)

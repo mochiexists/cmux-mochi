@@ -150,7 +150,7 @@ struct CLISSHPTYResizeInputTests {
         #expect(bridgeCloseObserved.wait(timeout: .now() + 5) == .success)
 
         let exited = DispatchSemaphore(value: 0)
-        DispatchQueue.global(qos: .userInitiated).async {
+        Thread.detachNewThread {
             process.waitUntilExit()
             exited.signal()
         }
@@ -376,7 +376,7 @@ struct CLISSHPTYResizeInputTests {
         if flags >= 0 {
             _ = fcntl(listenerFD, F_SETFL, flags | O_NONBLOCK)
         }
-        DispatchQueue.global(qos: .userInitiated).async {
+        Thread.detachNewThread {
             let clientGroup = DispatchGroup()
             defer {
                 clientGroup.wait()
@@ -393,7 +393,7 @@ struct CLISSHPTYResizeInputTests {
                 }
                 if clientFD >= 0 {
                     clientGroup.enter()
-                    DispatchQueue.global(qos: .userInitiated).async {
+                    Thread.detachNewThread {
                         defer {
                             Darwin.close(clientFD)
                             clientGroup.leave()
@@ -452,7 +452,7 @@ struct CLISSHPTYResizeInputTests {
         eventRecorder: EventRecorder
     ) -> DispatchSemaphore {
         let handled = DispatchSemaphore(value: 0)
-        DispatchQueue.global(qos: .userInitiated).async {
+        Thread.detachNewThread {
             defer { handled.signal() }
             var clientAddr = sockaddr_in()
             var clientAddrLen = socklen_t(MemoryLayout<sockaddr_in>.size)

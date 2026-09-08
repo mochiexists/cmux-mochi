@@ -354,7 +354,7 @@ enum ClaudeHookLiveDeliveryHarness {
         handler: @escaping @Sendable (String) -> String
     ) -> DispatchSemaphore {
         let handled = DispatchSemaphore(value: 0)
-        DispatchQueue.global(qos: .userInitiated).async {
+        Thread.detachNewThread {
             while true {
                 var clientAddr = sockaddr_un()
                 var clientAddrLen = socklen_t(MemoryLayout<sockaddr_un>.size)
@@ -368,7 +368,7 @@ enum ClaudeHookLiveDeliveryHarness {
                     return
                 }
 
-                DispatchQueue.global(qos: .userInitiated).async {
+                Thread.detachNewThread {
                     defer {
                         Darwin.close(clientFD)
                         handled.signal()

@@ -400,7 +400,7 @@ extension CLINotifyProcessIntegrationRegressionTests {
     /// writes a status line, so the CLI's bounded ready wait must fire.
     private func startSilentBridgeServer(listenerFD: Int32) -> XCTestExpectation {
         let handled = expectation(description: "silent pty bridge server handled")
-        DispatchQueue.global(qos: .userInitiated).async {
+        Thread.detachNewThread {
             defer { handled.fulfill() }
 
             var clientAddr = sockaddr_in()

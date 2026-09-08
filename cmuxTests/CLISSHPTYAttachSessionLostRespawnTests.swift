@@ -417,7 +417,7 @@ extension CLINotifyProcessIntegrationRegressionTests {
 
     private func startBridgeErrorServer(listenerFD: Int32, message: String, code: String) -> XCTestExpectation {
         let handled = expectation(description: "pty bridge coded error server handled")
-        DispatchQueue.global(qos: .userInitiated).async {
+        Thread.detachNewThread {
             defer { handled.fulfill() }
 
             var clientAddr = sockaddr_in()

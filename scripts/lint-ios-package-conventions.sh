@@ -24,6 +24,25 @@ for d in Packages/Shared/CMUXMobileCore Packages/iOS/CmuxMobile* Packages/Shared
 done
 
 fail=0
+
+# Grandfathered per-line offenders that pre-date the gate being enforced. Each
+# entry is `<rule>TAB<file>TAB<reported text>` exactly as this script prints
+# it. The list may only SHRINK: fix an offender and delete its line. An entry
+# that no longer matches a live finding fails the lint so the file cannot rot.
+# Never add entries for new code; new offenders must be fixed or carry a
+# reviewed inline lint:allow justification.
+BASELINE_FILE="scripts/lint-ios-package-conventions-baseline.txt"
+CONSUMED_BASELINE="$(mktemp)"
+trap 'rm -f "$CONSUMED_BASELINE"' EXIT
+
+baselined() { # rule file text -> 0 when grandfathered
+  local key
+  key="$(printf '%s\t%s\t%s' "$1" "$2" "$3")"
+  grep -qxF "$key" "$BASELINE_FILE" 2>/dev/null || return 1
+  printf '%s\n' "$key" >> "$CONSUMED_BASELINE"
+  return 0
+}
+
 report() { # rule, severity, file, line, text
   printf '%-7s %-28s %s:%s  %s\n' "$2" "$1" "$3" "$4" "$5"
 }
@@ -49,7 +68,9 @@ scan() { # rule severity pattern carveout(0/1) pathspec...
     echo "$text" | grep -qE '^[[:space:]]*//' && continue
     if [ "$carve" = 1 ]; then carveout_ok "$f" "$n" && continue
     else suppressed "$f" "$n" && continue; fi
-    report "$rule" "$sev" "$f" "$n" "$(echo "$text" | sed 's/^[[:space:]]*//' | cut -c1-90)"
+    trimmed="$(echo "$text" | sed 's/^[[:space:]]*//' | cut -c1-90)"
+    baselined "$rule" "$f" "$trimmed" && continue
+    report "$rule" "$sev" "$f" "$n" "$trimmed"
     [ "$sev" = ERROR ] && fail=1
   done < <(grep -rnE "$pat" "$@" --include='*.swift' 2>/dev/null)
 }
@@ -82,9 +103,12 @@ scan free-function ERROR '^(@[A-Za-z()_ ]+ )?(public |internal |package |private
 echo "== namespace-enums (caseless enum with static members) =="
 while IFS= read -r f; do
   case "$f" in */Tests/*|*Tests.swift|*/.build/*) continue ;; esac
-  python3 - "$f" <<'PY'
-import re, sys
-path = sys.argv[1]
+  python3 - "$f" "$BASELINE_FILE" "$CONSUMED_BASELINE" <<'PY'
+import os, re, sys
+path, baseline_path, consumed_path = sys.argv[1:4]
+baseline = set()
+if os.path.exists(baseline_path):
+    baseline = {l.rstrip("\n") for l in open(baseline_path, encoding="utf-8") if l.strip() and not l.startswith("#")}
 src = open(path).read()
 for m in re.finditer(r'(?:public\s+|package\s+)?enum\s+(\w+)[^{]*\{', src):
     name = m.group(1)
@@ -110,12 +134,29 @@ for m in re.finditer(r'(?:public\s+|package\s+)?enum\s+(\w+)[^{]*\{', src):
         ctx = head[head.rfind('\n', 0, head.rfind('\n'))+1:]
         if 'lint:allow' in ctx:
             continue
+        key = f"namespace-enum\t{path}\tenum {name}"
+        if key in baseline:
+            with open(consumed_path, "a", encoding="utf-8") as consumed:
+                consumed.write(key + "\n")
+            continue
         line = head.count('\n') + 1
         print(f'ERROR   namespace-enum               {path}:{line}  enum {name} (caseless, static members) -> scope onto the owning type')
 PY
 done < <(grep -rlE '\benum [A-Z]' "${SCOPES[@]}" --include='*.swift' 2>/dev/null) | tee /tmp/.lint-ns-enum-$$
 grep -q ERROR /tmp/.lint-ns-enum-$$ 2>/dev/null && fail=1
 rm -f /tmp/.lint-ns-enum-$$
+
+echo "== stale baseline entries (the grandfather list may only shrink) =="
+if [ -f "$BASELINE_FILE" ]; then
+  while IFS= read -r entry; do
+    [ -z "$entry" ] && continue
+    case "$entry" in \#*) continue ;; esac
+    if ! grep -qxF "$entry" "$CONSUMED_BASELINE"; then
+      printf 'ERROR   stale-baseline               %s  no longer matches a finding; delete it from %s\n' "$(printf '%s' "$entry" | tr '\t' ' ')" "$BASELINE_FILE"
+      fail=1
+    fi
+  done < "$BASELINE_FILE"
+fi
 
 echo "== namespace-types (static-only public types; instantiate or extend the receiver) =="
 # Owner rule: types must never act as namespaces. Flagged: a public

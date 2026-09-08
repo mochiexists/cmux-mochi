@@ -330,7 +330,7 @@ struct CLIHookNoResponseTests {
         handler: @escaping @Sendable (String) -> String?
     ) -> MockSocketServer {
         let handled = DispatchSemaphore(value: 0)
-        DispatchQueue.global(qos: .userInitiated).async {
+        Thread.detachNewThread {
             var didFulfill = false
             func fulfillOnce() {
                 if !didFulfill {
@@ -372,7 +372,7 @@ struct CLIHookNoResponseTests {
         handler: @escaping @Sendable (String) -> String?
     ) -> MockSocketServer {
         let handled = DispatchSemaphore(value: 0)
-        DispatchQueue.global(qos: .userInitiated).async {
+        Thread.detachNewThread {
             let fulfillmentLock = NSLock()
             var didFulfill = false
             func fulfillOnce() {
@@ -403,7 +403,7 @@ struct CLIHookNoResponseTests {
                 }
                 accepted += 1
 
-                DispatchQueue.global(qos: .userInitiated).async {
+                Thread.detachNewThread {
                     defer { Darwin.close(clientFD) }
                     readLines(from: clientFD) { line in
                         state.append(line)
@@ -435,7 +435,7 @@ struct CLIHookNoResponseTests {
         }
 
         let handled = DispatchSemaphore(value: 0)
-        DispatchQueue.global(qos: .userInitiated).async {
+        Thread.detachNewThread {
             var clientAddr = sockaddr_un()
             var clientAddrLen = socklen_t(MemoryLayout<sockaddr_un>.size)
             let clientFD = withUnsafeMutablePointer(to: &clientAddr) { ptr in

@@ -69,7 +69,7 @@ final class TerminalNotificationQueueTests: XCTestCase {
         let payload = "Async|Queued|Body"
         let command = "notify_target_async \(workspace.id.uuidString) \(focusedPanelId.uuidString) \(payload)"
         let responses = try await withCheckedThrowingContinuation { continuation in
-            DispatchQueue.global(qos: .userInitiated).async {
+            Thread.detachNewThread {
                 do {
                     continuation.resume(returning: try self.sendCommands([command], to: socketPath))
                 } catch {

@@ -530,7 +530,7 @@ struct ClaudeHookSurfaceResolutionSwiftTests {
         handler: @escaping @Sendable (String) -> String
     ) -> DispatchSemaphore {
         let handled = DispatchSemaphore(value: 0)
-        DispatchQueue.global(qos: .userInitiated).async {
+        Thread.detachNewThread {
             while true {
                 var clientAddr = sockaddr_un()
                 var clientAddrLen = socklen_t(MemoryLayout<sockaddr_un>.size)
@@ -544,7 +544,7 @@ struct ClaudeHookSurfaceResolutionSwiftTests {
                     return
                 }
 
-                DispatchQueue.global(qos: .userInitiated).async {
+                Thread.detachNewThread {
                     var authenticated = requiredSocketPassword == nil
 
                     defer {
@@ -845,7 +845,7 @@ struct ClaudeHookSurfaceResolutionSwiftTests {
         }
 
         let exitSignal = DispatchSemaphore(value: 0)
-        DispatchQueue.global(qos: .userInitiated).async {
+        Thread.detachNewThread {
             process.waitUntilExit()
             exitSignal.signal()
         }

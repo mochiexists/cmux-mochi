@@ -271,7 +271,7 @@ final class TerminalNotificationCallerTests: XCTestCase {
 
         let command = "notify_target \(workspace.id.uuidString) \(focusedPanelId.uuidString) Sync|Read after write|Body"
         let responses = try await withCheckedThrowingContinuation { continuation in
-            DispatchQueue.global(qos: .userInitiated).async {
+            Thread.detachNewThread {
                 do {
                     continuation.resume(returning: try self.sendCommands([command], to: socketPath))
                 } catch {
@@ -340,7 +340,7 @@ final class TerminalNotificationCallerTests: XCTestCase {
         to socketPath: String
     ) async throws -> [String: Any] {
         try await withCheckedThrowingContinuation { continuation in
-            DispatchQueue.global(qos: .userInitiated).async {
+            Thread.detachNewThread {
                 do {
                     continuation.resume(returning: try self.sendV2Request(method: method, params: params, to: socketPath))
                 } catch {

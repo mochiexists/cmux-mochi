@@ -46,15 +46,32 @@ struct TLSLoopbackTests {
         process.waitUntilExit()
         try #require(process.terminationStatus == 0, "openssl pkcs12 export failed")
 
-        var imported: CFArray?
-        let status = SecPKCS12Import(
-            try Data(contentsOf: p12URL) as CFData,
-            [kSecImportExportPassphrase as String: "devicelink-test"] as CFDictionary,
-            &imported
-        )
-        try #require(status == errSecSuccess, "SecPKCS12Import failed: \(status)")
-        let items = try #require(imported as? [[String: Any]])
-        let identity = try #require(items.first?[kSecImportItemIdentity as String])
+        var importOptions: [String: Any] = [
+            kSecImportExportPassphrase as String: "devicelink-test",
+        ]
+        if #available(macOS 15, *) {
+            // Keep the identity in process memory. Without this, macOS writes it
+            // into the default keychain, which is locked or absent on headless CI
+            // runners and makes the import fail before any TLS is exercised.
+            importOptions[kSecImportToMemoryOnly as String] = true
+        }
+        // The memory-only import very occasionally returns the certificate
+        // without its identity on CI (1 in ~6 runs on the mac-mini runner);
+        // a second attempt has always produced it. Bound the retry so a real
+        // failure still surfaces.
+        let p12Data = try Data(contentsOf: p12URL) as CFData
+        var identityObject: Any?
+        for attempt in 1...3 {
+            var imported: CFArray?
+            let status = SecPKCS12Import(p12Data, importOptions as CFDictionary, &imported)
+            try #require(status == errSecSuccess, "SecPKCS12Import failed: \(status) on attempt \(attempt)")
+            let items = try #require(imported as? [[String: Any]])
+            if let found = items.first?[kSecImportItemIdentity as String] {
+                identityObject = found
+                break
+            }
+        }
+        let identity = try #require(identityObject, "SecPKCS12Import returned no identity after 3 attempts")
         return (identity as! SecIdentity, material.fingerprint)
     }
 

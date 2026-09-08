@@ -217,7 +217,7 @@ final class CMUXOpenHTMLFocusTests {
         handler: @escaping @Sendable (String) -> String
     ) -> DispatchSemaphore {
         let handled = DispatchSemaphore(value: 0)
-        DispatchQueue.global(qos: .userInitiated).async {
+        Thread.detachNewThread {
             var clientAddr = sockaddr_un()
             var clientAddrLen = socklen_t(MemoryLayout<sockaddr_un>.size)
             let clientFD = withUnsafeMutablePointer(to: &clientAddr) { ptr in

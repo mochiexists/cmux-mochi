@@ -682,7 +682,7 @@ final class CLINotifyProcessIntegrationRegressionTests: XCTestCase {
         surfaceIds: [String],
         connectionLimit: Int
     ) {
-        DispatchQueue.global(qos: .userInitiated).async {
+        Thread.detachNewThread {
             var accepted = 0
             while accepted < connectionLimit {
                 var clientAddr = sockaddr_un()
@@ -698,7 +698,7 @@ final class CLINotifyProcessIntegrationRegressionTests: XCTestCase {
                 }
                 accepted += 1
 
-                DispatchQueue.global(qos: .userInitiated).async {
+                Thread.detachNewThread {
                     defer { Darwin.close(clientFD) }
                     var pending = Data()
                     var buffer = [UInt8](repeating: 0, count: 4096)
@@ -4538,7 +4538,7 @@ final class CLINotifyProcessIntegrationRegressionTests: XCTestCase {
         }
 
         let bridgeHandled = expectation(description: "bridge handshake captured")
-        DispatchQueue.global(qos: .userInitiated).async {
+        Thread.detachNewThread {
             defer { bridgeHandled.fulfill() }
             var clientAddr = sockaddr_in()
             var clientAddrLen = socklen_t(MemoryLayout<sockaddr_in>.size)
@@ -4605,7 +4605,7 @@ final class CLINotifyProcessIntegrationRegressionTests: XCTestCase {
         XCTAssertEqual(handshakeReceived.wait(timeout: .now() + 5), .success)
 
         let exited = DispatchSemaphore(value: 0)
-        DispatchQueue.global(qos: .userInitiated).async {
+        Thread.detachNewThread {
             process.waitUntilExit()
             exited.signal()
         }
@@ -4742,7 +4742,7 @@ final class CLINotifyProcessIntegrationRegressionTests: XCTestCase {
         )
 
         let bridgeHandled = expectation(description: "controlled bridge handled")
-        DispatchQueue.global(qos: .userInitiated).async {
+        Thread.detachNewThread {
             defer { bridgeHandled.fulfill() }
             var clientAddr = sockaddr_in()
             var clientAddrLen = socklen_t(MemoryLayout<sockaddr_in>.size)
@@ -4818,7 +4818,7 @@ final class CLINotifyProcessIntegrationRegressionTests: XCTestCase {
         allowResizeResponse.signal()
 
         let exited = DispatchSemaphore(value: 0)
-        DispatchQueue.global(qos: .userInitiated).async {
+        Thread.detachNewThread {
             process.waitUntilExit()
             exited.signal()
         }
@@ -4946,7 +4946,7 @@ final class CLINotifyProcessIntegrationRegressionTests: XCTestCase {
         }
 
         let bridgeHandled = expectation(description: "controlled bridge handled")
-        DispatchQueue.global(qos: .userInitiated).async {
+        Thread.detachNewThread {
             defer { bridgeHandled.fulfill() }
             var clientAddr = sockaddr_in()
             var clientAddrLen = socklen_t(MemoryLayout<sockaddr_in>.size)
@@ -5011,7 +5011,7 @@ final class CLINotifyProcessIntegrationRegressionTests: XCTestCase {
         closeBridge.signal()
         wait(for: [bridgeHandled], timeout: 5)
         let exited = DispatchSemaphore(value: 0)
-        DispatchQueue.global(qos: .userInitiated).async {
+        Thread.detachNewThread {
             process.waitUntilExit()
             exited.signal()
         }
@@ -9155,7 +9155,7 @@ final class CLINotifyProcessIntegrationRegressionTests: XCTestCase {
         context: ClaudeHookContext,
         connectionLimit: Int
     ) {
-        DispatchQueue.global(qos: .userInitiated).async {
+        Thread.detachNewThread {
             var accepted = 0
             while accepted < connectionLimit {
                 var clientAddr = sockaddr_un()
@@ -9171,7 +9171,7 @@ final class CLINotifyProcessIntegrationRegressionTests: XCTestCase {
                 }
                 accepted += 1
 
-                DispatchQueue.global(qos: .userInitiated).async {
+                Thread.detachNewThread {
                     defer { Darwin.close(clientFD) }
                     var pending = Data()
                     var buffer = [UInt8](repeating: 0, count: 4096)

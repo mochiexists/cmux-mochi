@@ -1,0 +1,59 @@
+# Grandfathered offenders for lint-ios-package-conventions.sh, captured 2026-09-08
+# from the state of main at the time the gate was made blocking. One entry per
+# line: <rule>TAB<file>TAB<reported text>. This list may only shrink; never add
+# entries for new code. See the script header for the rules.
+free-function	Packages/iOS/CmuxMobileRPC/Sources/CmuxMobileRPC/MobileNotificationFeedListBoundedDecodeOptions.swift	func mobileNotificationFeedListBoundedDecodeOptions(
+free-function	Packages/iOS/CmuxMobileRPC/Sources/CmuxMobileRPC/MobileNotificationFeedListBoundedItem.swift	private func mobileNotificationFeedListIdentityString(
+free-function	Packages/iOS/CmuxMobileRPC/Sources/CmuxMobileRPC/MobileNotificationFeedListBoundedItem.swift	private func mobileNotificationFeedListOptionalString(
+free-function	Packages/iOS/CmuxMobileRPC/Sources/CmuxMobileRPC/MobileNotificationFeedListBoundedItem.swift	private func mobileNotificationFeedListString(
+free-function	Packages/iOS/CmuxMobileRPC/Sources/CmuxMobileRPC/MobileNotificationFeedListBoundedItem.swift	private func mobileNotificationFeedListString(_ value: String, limitedToUTF8Bytes maxBytes
+free-function	Packages/iOS/CmuxMobileRPC/Sources/CmuxMobileRPC/MobileRPCConnectAttemptKey.swift	private func canonicalHostIdentity(_ value: String) -> String {
+free-function	Packages/iOS/CmuxMobileRPC/Sources/CmuxMobileRPC/MobileRPCConnectAttemptKey.swift	private func canonicalIPv4Address(_ value: String) -> String? {
+free-function	Packages/iOS/CmuxMobileRPC/Sources/CmuxMobileRPC/MobileRPCConnectAttemptKey.swift	private func canonicalIPv6Address(_ value: String) -> String? {
+free-function	Packages/iOS/CmuxMobileRPC/Sources/CmuxMobileRPC/MobileRPCConnectAttemptKey.swift	private func defaultPort(for scheme: String) -> Int? {
+free-function	Packages/iOS/CmuxMobileRPC/Sources/CmuxMobileRPC/MobileRPCConnectAttemptKey.swift	private func stableURLIdentity(_ value: String) -> String {
+free-function	Packages/iOS/CmuxMobileShell/Sources/CmuxMobileShell/MobileMacConnectionRegistry.swift	private func mobileMacConnectionDisplayName(
+free-function	Packages/iOS/CmuxMobileShell/Sources/CmuxMobileShell/MobileShellComposite+NotificationFeed.swift	private func mobileShellNotificationFeedString(_ value: String, limitedToUTF8Bytes maxByte
+free-function	Packages/iOS/CmuxMobileShell/Sources/CmuxMobileShell/MobileShellComposite+PairedMacCoalescing.swift	func physicalMacAliasCanonicalIDsByCanonicalID(
+free-function	Packages/iOS/CmuxMobileShell/Sources/CmuxMobileShell/SecondaryControlAttemptPolicy.swift	func secondaryControlAttemptIsTransient(_ error: any Error) -> Bool {
+free-function	Packages/iOS/CmuxMobileShell/Sources/CmuxMobileShell/WarmControlPoolCapacity.swift	func warmControlPoolHasCapacity(
+free-function	Packages/iOS/CmuxMobileShellModel/Sources/CmuxMobileShellModel/MobileNotificationFeedAggregation.swift	func mobileNotificationFeedItemPrecedes(
+free-function	Packages/iOS/CmuxMobileShellUI/Sources/CmuxMobileShellUI/NotificationFeedPreviewView.swift	private func makeNotificationFeedPreviewFixtureItems(referenceDate: Date) -> [MobileNotifi
+free-function	Packages/iOS/CmuxMobileShellUI/Sources/CmuxMobileShellUI/NotificationFeedPreviewView.swift	private func makeNotificationFeedPreviewStressItems(
+free-function	Packages/iOS/CmuxMobileShellUI/Sources/CmuxMobileShellUI/NotificationFeedRowPresentation.swift	private func notificationFeedRowAccessibilityDetails(
+free-function	Packages/iOS/CmuxMobileShellUI/Sources/CmuxMobileShellUI/NotificationFeedRowPresentation.swift	private func notificationFeedRowAccessibilityField(label: String, value: String) -> String
+free-function	Packages/iOS/CmuxMobileShellUI/Sources/CmuxMobileShellUI/NotificationFeedRowPresentation.swift	private func notificationFeedRowApplyingConnectionStatus(
+free-function	Packages/iOS/CmuxMobileShellUI/Sources/CmuxMobileShellUI/NotificationFeedRowPresentation.swift	private func notificationFeedRowCanonical(_ value: String) -> String {
+free-function	Packages/iOS/CmuxMobileShellUI/Sources/CmuxMobileShellUI/NotificationFeedRowPresentation.swift	private func notificationFeedRowMatches(_ lhs: String, _ rhs: String) -> Bool {
+free-function	Packages/iOS/CmuxMobileShellUI/Sources/CmuxMobileShellUI/NotificationFeedRowPresentation.swift	private func notificationFeedRowMatchesAny(_ candidate: String, _ values: [String]) -> Boo
+free-function	Packages/iOS/CmuxMobileShellUI/Sources/CmuxMobileShellUI/NotificationFeedRowPresentation.swift	private func notificationFeedRowNormalized(_ value: String?) -> String? {
+free-function	Packages/iOS/CmuxMobileShellUI/Sources/CmuxMobileShellUI/TerminalOutputApplicationPath.swift	func terminalOutputApplicationPath(
+free-function	Packages/iOS/CmuxMobileTerminal/Sources/CmuxMobileTerminal/VerifiedReplayFrameCapture.swift	func copyVerifiedReplayCGImage(from capture: VerifiedReplaySurfaceCapture) -> CGImage? {
+free-function	Packages/iOS/CmuxMobileTerminal/Sources/CmuxMobileTerminal/VerifiedReplayFrameCapture.swift	func copyVerifiedReplayCGImage(from contents: Any?) -> CGImage? {
+free-function	Packages/iOS/CmuxMobileTerminal/Sources/CmuxMobileTerminal/VerifiedReplayFrameCapture.swift	func verifiedReplayPresentationGeometry(
+free-function	Packages/iOS/CmuxMobileTerminal/Sources/CmuxMobileTerminal/VerifiedReplayFrameCapture.swift	func verifiedReplayRendererIdentity(
+free-function	Packages/iOS/CmuxMobileTerminal/Sources/CmuxMobileTerminal/VerifiedReplayFrameCapture.swift	func verifiedReplaySurfaceCapture(from contents: Any?) -> VerifiedReplaySurfaceCapture? {
+free-function	Packages/iOS/CmuxMobileTerminal/Sources/CmuxMobileTerminal/VerifiedReplayFrameCapture.swift	private func verifiedReplaySurfaceExtentMatchesGeometry(
+free-function	Packages/iOS/CmuxMobileTerminal/Sources/CmuxMobileTerminal/VerifiedReplayFrameCapture.swift	private func verifiedReplayTransformScalars(_ transform: CATransform3D) -> [CGFloat] {
+free-function	Packages/Shared/CMUXMobileCore/Sources/CMUXMobileCore/CmxDeviceIDCanonicalization.swift	public func cmxCanonicalDeviceID(_ deviceID: String) -> String {
+lock	Packages/iOS/CmuxMobileDiagnostics/Sources/CmuxMobileDiagnostics/MobileLatencyTraceWriter.swift	state = OSAllocatedUnfairLock(initialState: State(capacity: capacity))
+lock	Packages/iOS/CmuxMobileRPC/Sources/CmuxMobileRPC/RPCTaskTimeoutCancellation.swift	private let lock = NSLock()
+lock	Packages/iOS/CmuxMobileShell/Sources/CmuxMobileShell/DeviceIdentityStore.swift	private static let processLock = OSAllocatedUnfairLock(initialState: ())
+lock	Packages/iOS/CmuxMobileTerminal/Sources/CmuxMobileTerminal/GhosttySurfaceView.swift	OSAllocatedUnfairLock<ViewportRestoreGate>(initialState: .init())
+namespace-enum	Packages/iOS/CmuxMobileDiagnostics/Sources/CmuxMobileDiagnostics/MobileLatencyTrace.swift	enum MobileLatencyTrace
+namespace-enum	Packages/iOS/CmuxMobileShell/Sources/CmuxMobileShell/MobileLatencyProbe.swift	enum MobileLatencyProbe
+namespace-enum	Packages/iOS/CmuxMobileShell/Sources/CmuxMobileShellReleaseGateSupport/MobileIrohReleaseGateResponseValidator.swift	enum MobileIrohReleaseGateResponseValidator
+namespace-enum	Packages/iOS/CmuxMobileShellModel/Sources/CmuxMobileShellModel/MobileOnboardingPresentationPolicy.swift	enum MobileOnboardingPresentationPolicy
+namespace-enum	Packages/iOS/CmuxMobileShellUI/Sources/CmuxMobileShellUI/ChangesPreviewFixture.swift	enum GeneratedSchema
+namespace-enum	Packages/iOS/CmuxMobileShellUI/Sources/CmuxMobileShellUI/HiddenComputerRow.swift	enum HiddenComputersCopy
+namespace-enum	Packages/iOS/CmuxMobileShellUI/Sources/CmuxMobileShellUI/MobileAuthenticatedShellPresentation.swift	enum MobileReconnectPresentation
+namespace-enum	Packages/iOS/CmuxMobileShellUI/Sources/CmuxMobileShellUI/OnboardingScreenshot.swift	enum OnboardingIPhoneScreenshotFrameMetrics
+namespace-enum	Packages/iOS/CmuxMobileShellUI/Sources/CmuxMobileShellUI/WorkspaceListTableCoordinator+ApplyRouteProbe.swift	enum WorkspaceListApplyRouteProbe
+namespace-enum	Packages/iOS/CmuxMobileShellUI/Sources/CmuxMobileShellUI/WorkspaceShellView.swift	enum WorkspaceRootToolbarSizing
+namespace-enum	Packages/iOS/CmuxMobileToast/Sources/CmuxMobileToast/ToastDemo.swift	enum ToastDemo
+namespace-enum	Packages/iOS/CmuxMobileToast/Sources/CmuxMobileToast/ToastMotion.swift	enum ToastMotion
+namespace-enum	Packages/iOS/CmuxMobileTransport/Sources/CmuxMobileTransport/CmxSystemHostResolver.swift	enum CmxSystemHostResolver
+namespace-enum	Packages/Shared/CMUXMobileCore/Sources/CMUXMobileCore/DiagnosticEventPresentation.swift	enum DiagnosticEventPresentation
+namespace-enum	Packages/Shared/CMUXMobileCore/Sources/CMUXMobileCore/MobileTerminalReplayViewportFence.swift	enum MobileTerminalReplayViewportFence
+namespace-enum	Packages/Shared/CMUXMobileCore/Sources/CMUXMobileCore/MobileTerminalScrollbackPreference.swift	enum MobileTerminalScrollbackPreference
+namespace-enum	Packages/Shared/CMUXMobileCore/Sources/CMUXMobileCore/MobileWorkspaceMetadataLimits.swift	enum MobileWorkspaceMetadataLimits

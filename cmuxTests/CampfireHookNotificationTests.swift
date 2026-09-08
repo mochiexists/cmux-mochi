@@ -208,7 +208,7 @@ struct CampfireHookNotificationTests {
         context: HookContext,
         connectionLimit: Int
     ) {
-        DispatchQueue.global(qos: .userInitiated).async {
+        Thread.detachNewThread {
             var accepted = 0
             while accepted < connectionLimit {
                 var clientAddr = sockaddr_un()
@@ -224,7 +224,7 @@ struct CampfireHookNotificationTests {
                 }
                 accepted += 1
 
-                DispatchQueue.global(qos: .userInitiated).async {
+                Thread.detachNewThread {
                     defer { Darwin.close(clientFD) }
                     var pending = Data()
                     var buffer = [UInt8](repeating: 0, count: 4096)
@@ -304,7 +304,7 @@ struct CampfireHookNotificationTests {
         try? stdinPipe.fileHandleForWriting.close()
 
         let exitSignal = DispatchSemaphore(value: 0)
-        DispatchQueue.global(qos: .userInitiated).async {
+        Thread.detachNewThread {
             process.waitUntilExit()
             exitSignal.signal()
         }

@@ -1,0 +1,297 @@
+name: Fork parity gate
+
+# The fork's own release contract, and nothing else. Every suite here is the
+# automated proof named in plans/clean-trunk-v0.64.22/FEATURE-LEDGER.md for a
+# fork-owned behaviour. The full sharded app-host suite in ci.yml is upstream's
+# contract: it has never been green for this fork and is not green upstream
+# either, so it cannot gate a release. This workflow can, and it runs in
+# minutes rather than hours.
+#
+# Two properties make it a real gate:
+# - it is NOT tolerant: any assertion failure fails the job, and
+# - every selected suite must actually execute; a suite that silently never
+#   runs (the failure mode the sharded lane hides behind its idle watchdog)
+#   fails the job too.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fork-gate-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  # App-host suites (cmuxTests target). Keep in sync with the ledger's
+  # "Automated proof" column; tests/test_fork_gate_suites.py checks that every
+  # ledger suite is listed here and exists in the tree.
+  CMUX_FORK_GATE_APP_HOST_SUITES: >-
+    AgentSessionAutoResumeSwiftTests
+    ArtifactStoreTests
+    CMUXCLISendSubmitWaitTests
+    CMUXCLISentryTelemetryRegressionTests
+    CMUXCLIWelcomeRegressionTests
+    CmuxSkillsBundleInstallerTests
+    MacSentryStartupPolicyTests
+    MobilePairingConnectionTransitionTests
+    PaneZoomSessionPersistenceTests
+    ReopenLastClosedTests
+    SessionPersistenceTests
+    SessionRestorableAgentSnapshotPermissionModeTests
+    SidebarBonsplitWorkspaceSpringLoadTests
+    SidebarDragFailsafePolicyTests
+    SidebarLazyLayoutScaleTests
+    SidebarOverflowingScrollStatusChurnTests
+    SidebarWorkspaceDropPlannerTests
+    TaskManagerResourcesTests
+    TaskManagerSurfaceParityTests
+    TaskManagerViewSnapshotBoundaryTests
+    WorkspaceGroupTests
+    WorkspaceScreenshotParityTests
+    WorkspaceTabPathActionsTests
+  # Individual tests inside a ledger suite that are known to fail and are
+  # excluded by name. Every entry needs an owner decision and must be listed
+  # in tests/test_fork_gate_suites.py's KNOWN_FAILING with its reason; the
+  # list may only shrink.
+  CMUX_FORK_GATE_SKIPPED_TESTS: >-
+    SessionPersistenceTests/testRestoreDoesNotPassDeletedAgentHookCwdToTerminalRuntime
+  # Ledger suites that can only run inside the iOS simulator. They are gated
+  # by test-ios.yml's ios-simulator job, not here; listed so the ledger check
+  # knows they are covered.
+  CMUX_FORK_GATE_IOS_SIMULATOR_SUITES: >-
+    OnboardingConnectionPhaseTests
+
+jobs:
+  fork-package-suites:
+    name: fork-owned package suites
+    runs-on: ${{ vars.MACOS_RUNNER_IOS || 'blacksmith-6vcpu-macos-26' }}
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+          submodules: false
+
+      - name: Select Xcode
+        run: |
+          set -euo pipefail
+          ./scripts/select-ci-xcode.sh
+
+      - name: Provision GhosttyKit
+        run: |
+          # CmuxMobileShell and CmuxMobileShellUI link GhosttyKit through a
+          # local binary target; a reused runner workspace can carry an empty
+          # GhosttyKit.xcframework that makes package resolution fatal.
+          ./scripts/ensure-ghosttykit.sh
+
+      - name: Prepare an unlocked test keychain
+        run: |
+          # The pairing suites write real DeviceLink identities; the runner's
+          # login keychain is locked with no UI allowed (-25308).
+          set -euo pipefail
+          KEYCHAIN_PASSWORD="$(uuidgen)"
+          KEYCHAIN_PATH="$RUNNER_TEMP/cmux-fork-gate.keychain-db"
+          security delete-keychain "$KEYCHAIN_PATH" >/dev/null 2>&1 || true
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security list-keychains -d user -s "$KEYCHAIN_PATH"
+          security default-keychain -d user -s "$KEYCHAIN_PATH"
+          echo "CMUX_TEST_KEYCHAIN_PATH=$KEYCHAIN_PATH" >> "$GITHUB_ENV"
+
+      - name: Run fork-owned package suites
+        run: |
+          set -euo pipefail
+          run_suite() {
+            local package="$1" suite="$2" log
+            log="$RUNNER_TEMP/fork-gate-$(basename "$package")-$suite.log"
+            echo "== $package :: $suite"
+            swift test --package-path "$package" --filter "$suite" 2>&1 | tee "$log"
+            scripts/ci/require_selected_test_execution.sh "$log" "$suite"
+          }
+          run_suite Packages/macOS/CmuxControlSocket ControlSurfaceSendGuardTests
+          run_suite Packages/macOS/CmuxWorkspaces WorkspaceRightSidePlacementPlannerTests
+          run_suite Packages/macOS/CmuxUpdaterUI UpdatePillPopoverResizeTests
+          run_suite Packages/iOS/CmuxMobileShell MobilePairingFailureTests
+          # OnboardingConnectionPhaseTests lives in CmuxMobileShellUI, which is
+          # iOS-only and cannot `swift test` on macOS; it runs in the iOS
+          # simulator lane (test-ios.yml). See CMUX_FORK_GATE_IOS_SIMULATOR_SUITES.
+
+      - name: Remove the test keychain
+        if: ${{ always() }}
+        run: |
+          if [ -n "${CMUX_TEST_KEYCHAIN_PATH:-}" ]; then
+            security delete-keychain "$CMUX_TEST_KEYCHAIN_PATH" >/dev/null 2>&1 || true
+          fi
+
+  fork-app-host-suites:
+    name: fork-owned app-host suites
+    # Same routing as ci.yml's app-host job: XCTest needs an interactive Aqua
+    # session that can broker testmanagerd.
+    runs-on: ${{ vars.MACOS_RUNNER_APP_HOST || vars.MACOS_RUNNER_15 || 'warp-macos-15-arm64-6x' }}
+    timeout-minutes: 60
+    env:
+      CMUX_CI_XCODE_APP: ${{ vars.CMUX_CI_XCODE_APP_MACOS_15 }}
+      CMUX_CI_REQUIRED_MACOS_SDK_MAJOR: "26"
+      CMUX_SKIP_ZIG_BUILD: "1"
+      SWIFT_BACKTRACE: "interactive=no,timeout=0s,symbolicate=off,color=no"
+      CMUX_XCODEBUILD_NONINTERACTIVE_POST_TEST_TIMEOUT_SECONDS: "45"
+    steps:
+      - name: Clear stale git locks (self-hosted reused workspace)
+        shell: bash
+        run: |
+          ws="${GITHUB_WORKSPACE:-$PWD}"
+          rm -f "$ws/.git/index.lock" 2>/dev/null || true
+          if [ -d "$ws/.git/modules" ]; then
+            find "$ws/.git/modules" -type f -name "*.lock" -delete 2>/dev/null || true
+          fi
+
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          submodules: recursive
+
+      - name: Check the suite list against the ledger
+        run: python3 tests/test_fork_gate_suites.py
+
+      - name: Select Xcode
+        run: |
+          set -euo pipefail
+          ./scripts/select-ci-xcode.sh
+
+      - name: Capture Ghostty revision
+        id: ghostty-revision
+        run: |
+          echo "sha=$(git -C ghostty rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache GhosttyKit.xcframework
+        id: cache-ghosttykit
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: GhosttyKit.xcframework
+          key: ghosttykit-sentry-off-v1-${{ steps.ghostty-revision.outputs.sha }}
+
+      - name: Download pre-built GhosttyKit.xcframework
+        if: steps.cache-ghosttykit.outputs.cache-hit != 'true'
+        run: |
+          ./scripts/download-prebuilt-ghosttykit.sh
+
+      - name: Install Rust
+        run: |
+          ./scripts/install-rust-ci.sh
+
+      - name: Cache Swift packages
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: .ci-source-packages
+          key: spm-${{ hashFiles('cmux.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved') }}
+          restore-keys: spm-
+
+      - name: Sanitize Swift package cache
+        run: python3 scripts/ci/sanitize-xcode-source-packages-cache.py .ci-source-packages
+
+      - name: Prepare isolated DerivedData
+        run: |
+          set -euo pipefail
+          DERIVED_DATA_PATH="${RUNNER_TEMP}/cmux-derived-data-fork-gate-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          rm -rf "$DERIVED_DATA_PATH"
+          mkdir -p "$DERIVED_DATA_PATH"
+          echo "CMUX_DERIVED_DATA_PATH=$DERIVED_DATA_PATH" >> "$GITHUB_ENV"
+
+      - name: Resolve Swift packages
+        run: |
+          set -euo pipefail
+          SOURCE_PACKAGES_DIR="$PWD/.ci-source-packages"
+          mkdir -p "$SOURCE_PACKAGES_DIR"
+          for attempt in 1 2 3; do
+            if xcodebuild -project cmux.xcodeproj -scheme cmux-unit -configuration Debug \
+              -derivedDataPath "$CMUX_DERIVED_DATA_PATH" \
+              -clonedSourcePackagesDirPath "$SOURCE_PACKAGES_DIR" \
+              -resolvePackageDependencies; then
+              if [ -d "$SOURCE_PACKAGES_DIR/artifacts/sparkle/Sparkle/Sparkle.xcframework" ] && [ -d "$SOURCE_PACKAGES_DIR/artifacts/sentry-cocoa/Sentry/Sentry.xcframework" ]; then
+                exit 0
+              fi
+              echo "Resolve succeeded but binary artifacts are missing (stale cache); clearing and retrying" >&2
+              rm -rf "$SOURCE_PACKAGES_DIR"
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              echo "Failed to resolve Swift packages after 3 attempts" >&2
+              exit 1
+            fi
+            echo "Package resolution failed on attempt $attempt, retrying..."
+            sleep $((attempt * 5))
+          done
+
+      - name: Enable XCTest automation mode
+        run: |
+          set -euo pipefail
+          if ! command -v automationmodetool >/dev/null 2>&1; then
+            echo "::warning::automationmodetool is unavailable; XCTest will use its default automation-mode setup"
+            exit 0
+          fi
+          if sudo -n true 2>/dev/null; then
+            sudo -n automationmodetool enable-automationmode-without-authentication
+          else
+            echo "::warning::Passwordless sudo unavailable; XCTest will use its default automation-mode setup"
+          fi
+
+      - name: Build for testing
+        run: |
+          # Build outside the app-host wrapper: its idle watchdog is sized for
+          # a test run, and a single large file (ContentView.swift) can compile
+          # for longer than that with no output. The job timeout bounds this.
+          set -euo pipefail
+          SOURCE_PACKAGES_DIR="$PWD/.ci-source-packages"
+          xcodebuild \
+            -project cmux.xcodeproj -scheme cmux-unit -configuration Debug \
+            -derivedDataPath "$CMUX_DERIVED_DATA_PATH" \
+            -clonedSourcePackagesDirPath "$SOURCE_PACKAGES_DIR" \
+            -disableAutomaticPackageResolution \
+            -destination "platform=macOS" \
+            CMUX_SKIP_ZIG_BUILD=1 \
+            build-for-testing
+
+      - name: Run fork-owned app-host suites
+        run: |
+          # One non-tolerant invocation. The wrapper serialises app-host runs on
+          # the machine and owns the idle watchdog; xcodebuild's own exit code is
+          # the verdict, and the execution check below refuses a green that ran
+          # nothing.
+          set -euo pipefail
+          SOURCE_PACKAGES_DIR="$PWD/.ci-source-packages"
+          LOG_PATH="$RUNNER_TEMP/fork-gate-app-host.log"
+          read -ra SUITES <<< "$CMUX_FORK_GATE_APP_HOST_SUITES"
+          SELECTORS=()
+          for suite in "${SUITES[@]}"; do
+            SELECTORS+=("-only-testing:cmuxTests/$suite")
+          done
+          read -ra SKIPPED <<< "${CMUX_FORK_GATE_SKIPPED_TESTS:-}"
+          for test in "${SKIPPED[@]}"; do
+            [ -n "$test" ] && SELECTORS+=("-skip-testing:cmuxTests/$test")
+          done
+          scripts/ci/run-in-console-session.sh \
+            scripts/ci/run-app-host-xcodebuild.sh \
+            -project cmux.xcodeproj -scheme cmux-unit -configuration Debug \
+            -derivedDataPath "$CMUX_DERIVED_DATA_PATH" \
+            -clonedSourcePackagesDirPath "$SOURCE_PACKAGES_DIR" \
+            -disableAutomaticPackageResolution \
+            -destination "platform=macOS" \
+            CMUX_SKIP_ZIG_BUILD=1 \
+            "${SELECTORS[@]}" \
+            test-without-building 2>&1 | tee "$LOG_PATH"
+          scripts/ci/require_selected_test_execution.sh "$LOG_PATH" "fork-gate"
+          python3 scripts/ci/check_fork_gate_execution.py "$LOG_PATH" "${SUITES[@]}"
+
+      - name: Upload app-host log
+        if: ${{ always() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: fork-gate-app-host-log
+          path: ${{ runner.temp }}/fork-gate-app-host.log
+          if-no-files-found: ignore

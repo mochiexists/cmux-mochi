@@ -242,6 +242,10 @@ final class TerminalOutputCollector {
                 ],
             ]
         ),
+        // The shell now probes host capabilities and subscribes to events right
+        // after the first workspace list; the scripted transport answers in order.
+        try rpcHostStatusFrame(renderGrid: false),
+        try rpcResultFrame(result: ["stream_id": "events"]),
     ])
     let runtime = testRuntime(
         supportedRouteKinds: [.debugLoopback],
@@ -312,6 +316,10 @@ final class TerminalOutputCollector {
                 ],
             ]
         ),
+        // The shell now probes host capabilities and subscribes to events right
+        // after the first workspace list; the scripted transport answers in order.
+        try rpcHostStatusFrame(renderGrid: false),
+        try rpcResultFrame(result: ["stream_id": "events"]),
     ])
     let runtime = testRuntime(
         supportedRouteKinds: [.debugLoopback],
@@ -352,6 +360,10 @@ final class TerminalOutputCollector {
                 ],
             ]
         ),
+        // The shell now probes host capabilities and subscribes to events right
+        // after the first workspace list; the scripted transport answers in order.
+        try rpcHostStatusFrame(renderGrid: false),
+        try rpcResultFrame(result: ["stream_id": "events"]),
         try rpcErrorFrame(message: "Terminal surface is not ready"),
     ])
     let runtime = testRuntime(
@@ -406,6 +418,10 @@ final class TerminalOutputCollector {
                 ],
             ]
         ),
+        // The shell now probes host capabilities and subscribes to events right
+        // after the first workspace list; the scripted transport answers in order.
+        try rpcHostStatusFrame(renderGrid: false),
+        try rpcResultFrame(result: ["stream_id": "events"]),
     ])
     let runtime = testRuntime(
         supportedRouteKinds: [.debugLoopback],
@@ -467,6 +483,10 @@ final class TerminalOutputCollector {
                 ],
             ]
         ),
+        // The shell now probes host capabilities and subscribes to events right
+        // after the first workspace list; the scripted transport answers in order.
+        try rpcHostStatusFrame(renderGrid: false),
+        try rpcResultFrame(result: ["stream_id": "events"]),
         try rpcErrorFrame(message: "Terminal surface is not ready"),
     ])
     let runtime = testRuntime(
@@ -875,7 +895,16 @@ struct TerminalStreamTests {
     _ = try await store.connect(ticket: ticket)
 
     let subscribeRequests = try await waitForRequestCount("mobile.events.subscribe", count: 1, router: router)
-    #expect(subscribeRequests.first?.topics == ["workspace.updated", "terminal.render_grid", "terminal.set_font", "notification.dismissed", "notification.badge"])
+    // Render-grid fidelity must subscribe to the grid stream and never to raw
+    // bytes. The full topic list also carries sync, notification-feed and
+    // browser topics that are owned by other features, so assert membership
+    // rather than the exact list.
+    let subscribedTopics = try #require(subscribeRequests.first?.topics)
+    #expect(subscribedTopics.contains("terminal.render_grid"))
+    #expect(!subscribedTopics.contains("terminal.bytes"))
+    for requiredTopic in ["workspace.updated", "terminal.set_font", "notification.dismissed", "notification.badge"] {
+        #expect(subscribedTopics.contains(requiredTopic), "missing \(requiredTopic)")
+    }
 
     collector.mount(store: store, surfaceID: "live-terminal")
     _ = try await waitForRequestCount("mobile.terminal.replay", count: 1, router: router)
@@ -1591,6 +1620,8 @@ private actor SupersededAttachURLRouter: RequestAwareTransportRouter {
                 title: "Second Workspace",
                 terminalID: "second-terminal"
             )
+        case "mobile.host.status":
+            return try rpcHostStatusFrame(renderGrid: false)
         default:
             return try rpcErrorFrame(message: "Unexpected method \(request.method ?? "nil")")
         }
@@ -1630,6 +1661,8 @@ private actor RemoteCreateTerminalRouter: RequestAwareTransportRouter {
             return try rpcTwoWorkspaceListFrame()
         case "terminal.create":
             return try rpcTerminalCreateScopedFrame()
+        case "mobile.host.status":
+            return try rpcHostStatusFrame(renderGrid: false)
         default:
             return try rpcErrorFrame(message: "Unexpected method \(request.method ?? "nil")")
         }
@@ -1672,6 +1705,8 @@ private actor DelayedRemoteCreateTerminalRouter: RequestAwareTransportRouter {
             markTerminalCreateRequested()
             await waitForTerminalCreateRelease()
             return try rpcTerminalCreateScopedFrame()
+        case "mobile.host.status":
+            return try rpcHostStatusFrame(renderGrid: false)
         default:
             return try rpcErrorFrame(message: "Unexpected method \(request.method ?? "nil")")
         }
@@ -1715,6 +1750,8 @@ private actor RemoteCreateWorkspaceRouter: RequestAwareTransportRouter {
             )
         case "workspace.create":
             return try rpcWorkspaceCreateFrame()
+        case "mobile.host.status":
+            return try rpcHostStatusFrame(renderGrid: false)
         default:
             return try rpcErrorFrame(message: "Unexpected method \(request.method ?? "nil")")
         }

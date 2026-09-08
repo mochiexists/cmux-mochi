@@ -90,7 +90,7 @@ final class OpenCodeHookRegressionTests: XCTestCase {
             return ProcessRunResult(status: -1, stdout: "", stderr: String(describing: error), timedOut: false)
         }
         let exitSignal = DispatchSemaphore(value: 0)
-        DispatchQueue.global(qos: .userInitiated).async {
+        Thread.detachNewThread {
             process.waitUntilExit()
             exitSignal.signal()
         }

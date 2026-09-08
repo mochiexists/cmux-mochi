@@ -4903,9 +4903,14 @@ extension SessionPersistenceTests {
         """.write(to: fakeCodex, atomically: true, encoding: .utf8)
         try fileManager.setAttributes([.posixPermissions: 0o700], ofItemAtPath: fakeCodex.path)
 
+        // Name the fake by absolute path. The startup input wraps the command
+        // in an inner login shell, and a login shell's profile can put a real
+        // `codex` ahead of anything this test prepends to PATH; on one CI Mac
+        // that launched the real Codex TUI, which waited on stdin until the
+        // idle watchdog killed the run. An absolute path is immune to PATH.
         let binding = SurfaceResumeBindingSnapshot(
             kind: "codex",
-            command: "cd '\(deletedCwd.path)' && codex resume session-duplicate-turn --yolo",
+            command: "cd '\(deletedCwd.path)' && '\(fakeCodex.path)' resume session-duplicate-turn --yolo",
             cwd: deletedCwd.path,
             checkpointId: "session-duplicate-turn",
             source: "agent-hook",
@@ -4918,7 +4923,9 @@ extension SessionPersistenceTests {
         let startupInput = try XCTUnwrap(binding.startupInput)
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/bin/zsh")
-        process.arguments = ["-lc", startupInput]
+        // No rc files (-f) for the outer shell, so this process's PATH is
+        // what the startup input sees.
+        process.arguments = ["-fc", startupInput]
         var environment = ProcessInfo.processInfo.environment
         environment["PATH"] = "\(bin.path):\(environment["PATH"] ?? "/usr/bin:/bin")"
         environment["CMUX_FAKE_CODEX_OUTPUT"] = outputURL.path
