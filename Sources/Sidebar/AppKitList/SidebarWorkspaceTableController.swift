@@ -44,6 +44,11 @@ final class SidebarWorkspaceTableController: NSObject, NSTableViewDataSource, NS
         reloadFlush: { [weak self] in self?.containerView?.tableView.reloadData() }
     )
     private let rowHeightCache = SidebarWorkspaceTableRowHeightCache()
+    /// The writer AppKit is holding for an in-flight sidebar drag, if any.
+    /// It owns the completion path across a dismantle; see
+    /// ``SidebarWorkspaceDragPasteboardWriter``. Weak because AppKit is the
+    /// owner: when it releases the writer the drag is over either way.
+    private weak var activeWorkspaceDragWriter: SidebarWorkspaceDragPasteboardWriter?
     private let dropTargetGeometry = SidebarWorkspaceTableDropTargetGeometryGate()
 
 #if DEBUG
@@ -720,12 +725,18 @@ final class SidebarWorkspaceTableController: NSObject, NSTableViewDataSource, NS
         let workspaceId = rows[row].workspaceId
         actions.beginWorkspaceDrag(workspaceId)
         workspaceDragSessionDidBegin()
-        let item = NSPasteboardItem()
-        item.setString(
-            "\(SidebarTabDragPayload.prefix)\(workspaceId.uuidString)",
-            forType: NSPasteboard.PasteboardType(SidebarTabDragPayload.typeIdentifier)
+        // AppKit retains this writer from here until the session ends, so the
+        // controller and actions it holds survive a dismantle in between and
+        // `endedAt` below always has something to end. A plain NSPasteboardItem
+        // let that graph go and left the Dock believing a drag was still live.
+        let writer = SidebarWorkspaceDragPasteboardWriter(
+            workspaceId: workspaceId,
+            sourceView: tableView,
+            controller: self,
+            actions: actions
         )
-        return item
+        activeWorkspaceDragWriter = writer
+        return writer
     }
 
     func tableView(
@@ -814,7 +825,23 @@ final class SidebarWorkspaceTableController: NSObject, NSTableViewDataSource, NS
         endedAt screenPoint: NSPoint,
         operation: NSDragOperation
     ) {
-        actions?.endWorkspaceDrag()
+        endWorkspaceDragRetainingWriterIfNeeded()
+    }
+
+    /// Ends the drag through whichever actions are still reachable.
+    ///
+    /// After a dismantle `actions` is nil, but the writer AppKit held through
+    /// the session still carries them, which is the whole point of retaining
+    /// it. Releases the writer's graph afterwards so nothing outlives the drag.
+    private func endWorkspaceDragRetainingWriterIfNeeded() {
+        let writer = activeWorkspaceDragWriter
+        if let actions {
+            actions.endWorkspaceDrag()
+        } else if let retained = writer?.retainedActions {
+            retained.endWorkspaceDrag()
+        }
+        writer?.releaseRetainedSource()
+        activeWorkspaceDragWriter = nil
         workspaceDragSessionDidEnd()
     }
 
