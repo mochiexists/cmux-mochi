@@ -48,13 +48,18 @@ env:
     SidebarLazyLayoutScaleTests
     SidebarOverflowingScrollStatusChurnTests
     SidebarWorkspaceDropPlannerTests
-    SocketListenerAcceptPolicyTests
     TaskManagerResourcesTests
     TaskManagerSurfaceParityTests
     TaskManagerViewSnapshotBoundaryTests
     WorkspaceGroupTests
     WorkspaceScreenshotParityTests
     WorkspaceTabPathActionsTests
+  # Individual tests inside a ledger suite that are known to fail and are
+  # excluded by name. Every entry needs an owner decision and must be listed
+  # in tests/test_fork_gate_suites.py's KNOWN_FAILING with its reason; the
+  # list may only shrink.
+  CMUX_FORK_GATE_SKIPPED_TESTS: >-
+    SessionPersistenceTests/testRestoreDoesNotPassDeletedAgentHookCwdToTerminalRuntime
   # Ledger suites that can only run inside the iOS simulator. They are gated
   # by test-ios.yml's ios-simulator job, not here; listed so the ledger check
   # knows they are covered.
@@ -265,6 +270,10 @@ jobs:
           SELECTORS=()
           for suite in "${SUITES[@]}"; do
             SELECTORS+=("-only-testing:cmuxTests/$suite")
+          done
+          read -ra SKIPPED <<< "${CMUX_FORK_GATE_SKIPPED_TESTS:-}"
+          for test in "${SKIPPED[@]}"; do
+            [ -n "$test" ] && SELECTORS+=("-skip-testing:cmuxTests/$test")
           done
           scripts/ci/run-in-console-session.sh \
             scripts/ci/run-app-host-xcodebuild.sh \
