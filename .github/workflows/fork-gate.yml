@@ -55,6 +55,11 @@ env:
     WorkspaceGroupTests
     WorkspaceScreenshotParityTests
     WorkspaceTabPathActionsTests
+  # Ledger suites that can only run inside the iOS simulator. They are gated
+  # by test-ios.yml's ios-simulator job, not here; listed so the ledger check
+  # knows they are covered.
+  CMUX_FORK_GATE_IOS_SIMULATOR_SUITES: >-
+    OnboardingConnectionPhaseTests
 
 jobs:
   fork-package-suites:
@@ -109,7 +114,9 @@ jobs:
           run_suite Packages/macOS/CmuxWorkspaces WorkspaceRightSidePlacementPlannerTests
           run_suite Packages/macOS/CmuxUpdaterUI UpdatePillPopoverResizeTests
           run_suite Packages/iOS/CmuxMobileShell MobilePairingFailureTests
-          run_suite Packages/iOS/CmuxMobileShellUI OnboardingConnectionPhaseTests
+          # OnboardingConnectionPhaseTests lives in CmuxMobileShellUI, which is
+          # iOS-only and cannot `swift test` on macOS; it runs in the iOS
+          # simulator lane (test-ios.yml). See CMUX_FORK_GATE_IOS_SIMULATOR_SUITES.
 
       - name: Remove the test keychain
         if: ${{ always() }}

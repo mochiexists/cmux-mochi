@@ -28,12 +28,14 @@ def ledger_suites() -> set[str]:
     return suites
 
 
-def workflow_lists() -> tuple[set[str], set[str]]:
+def workflow_lists() -> tuple[set[str], set[str], set[str]]:
     text = WORKFLOW.read_text(encoding="utf-8")
     block = re.search(r"CMUX_FORK_GATE_APP_HOST_SUITES: >-\n((?:\s{4}\S+\n)+)", text)
     app_host = set(block.group(1).split()) if block else set()
     packages = set(re.findall(r"run_suite \S+ (\w+Tests)", text))
-    return app_host, packages
+    sim_block = re.search(r"CMUX_FORK_GATE_IOS_SIMULATOR_SUITES: >-\n((?:\s{4}\S+\n)+)", text)
+    ios_simulator = set(sim_block.group(1).split()) if sim_block else set()
+    return app_host, packages, ios_simulator
 
 
 def declared_types(paths) -> set[str]:
@@ -48,15 +50,19 @@ def declared_types(paths) -> set[str]:
 
 def main() -> int:
     ledger = ledger_suites()
-    app_host, packages = workflow_lists()
+    app_host, packages, ios_simulator = workflow_lists()
     in_app_target = declared_types(ROOT.glob("cmuxTests/**/*.swift"))
     in_packages = declared_types(ROOT.glob("Packages/**/Tests/**/*.swift"))
+    in_ios_packages = declared_types(ROOT.glob("Packages/iOS/**/Tests/**/*.swift"))
     problems: list[str] = []
     for suite in sorted(ledger):
         if suite not in in_app_target and suite not in in_packages:
             problems.append(f"ledger names {suite} but no such suite exists in the tree")
-        elif suite not in app_host and suite not in packages:
+        elif suite not in app_host and suite not in packages and suite not in ios_simulator:
             problems.append(f"ledger names {suite} but fork-gate.yml does not run it")
+    for suite in sorted(ios_simulator):
+        if suite not in in_ios_packages:
+            problems.append(f"fork-gate.yml defers {suite} to the iOS simulator lane but no iOS package declares it")
     for suite in sorted(app_host):
         if suite not in in_app_target:
             problems.append(f"fork-gate.yml lists {suite} but cmuxTests has no such suite")
@@ -67,7 +73,7 @@ def main() -> int:
         print(f"ERROR {problem}")
     if problems:
         return 1
-    print(f"ok: {len(ledger)} ledger suites covered ({len(app_host)} app-host, {len(packages)} package)")
+    print(f"ok: {len(ledger)} ledger suites covered ({len(app_host)} app-host, {len(packages)} package, {len(ios_simulator)} iOS simulator)")
     return 0
 
 
