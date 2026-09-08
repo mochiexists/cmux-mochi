@@ -152,6 +152,63 @@ struct SidebarWorkspaceTableTests {
     }
 
 #if DEBUG
+    /// Regression for the wedge where sidebar drags left Mission Control,
+    /// Spaces and swipe gestures dead until `killall Dock`.
+    ///
+    /// AppKit asks for the pasteboard writer before it creates the native drag
+    /// session, so SwiftUI can dismantle the table in between. Dismantle drops
+    /// `actions` and nils the table's delegate; without the writer holding the
+    /// completion path, AppKit's `endedAt` had nothing to reach and the drag
+    /// was never ended app-side, so the Dock kept believing one was in flight.
+    @Test
+    @MainActor
+    func draggingSessionEndsAfterTheTableIsDismantledMidDrag() async {
+        let controller = SidebarWorkspaceTableController()
+        let container = controller.makeContainerView()
+        let row = makeRowConfiguration()
+        var didEndWorkspaceDrag = false
+        let actions = makeTableActions(endWorkspaceDrag: { didEndWorkspaceDrag = true })
+
+        controller.apply(
+            rows: [row],
+            actions: actions,
+            workspaceIds: [row.workspaceId],
+            selectedWorkspaceId: nil,
+            selectedScrollTargetWorkspaceId: nil
+        )
+        await flushStagedTableMutations()
+
+        let writer = controller.tableView(container.tableView, pasteboardWriterForRow: 0)
+        #expect(
+            writer is SidebarWorkspaceDragPasteboardWriter,
+            "The row writer must own the drag's completion path, not be a bare NSPasteboardItem."
+        )
+
+        // SwiftUI tears the representable down while AppKit is still building
+        // its session. This is the interval the wedge lived in.
+        controller.dismantleContainerView(container)
+        #expect(
+            (writer as? SidebarWorkspaceDragPasteboardWriter)?.isRetainingSource == true,
+            "The writer must still hold the source graph after a mid-drag dismantle."
+        )
+
+        controller.tableView(
+            container.tableView,
+            draggingSession: NSDraggingSession(),
+            endedAt: .zero,
+            operation: []
+        )
+
+        #expect(
+            didEndWorkspaceDrag,
+            "endedAt must still end the drag after a dismantle, or the Dock keeps the session alive and gestures wedge."
+        )
+        #expect(
+            (writer as? SidebarWorkspaceDragPasteboardWriter)?.isRetainingSource == false,
+            "The writer must release the source graph once the drag has ended."
+        )
+    }
+
     @Test
     @MainActor
     func tableApplyCoalescesAndMutatesOnlyAfterTheCurrentCallbackReturns() async {
@@ -547,7 +604,8 @@ struct SidebarWorkspaceTableTests {
     @MainActor
     private func makeTableActions(
         updateWorkspaceDrag: @escaping (CGPoint, [SidebarWorkspaceReorderDropOverlay.Target], UUID?) -> SidebarWorkspaceTableReorderDropUpdate? = { _, _, _ in nil },
-        clearWorkspaceDropIndicator: @escaping () -> Void = {}
+        clearWorkspaceDropIndicator: @escaping () -> Void = {},
+        endWorkspaceDrag: @escaping () -> Void = {}
     ) -> SidebarWorkspaceTableActions {
         SidebarWorkspaceTableActions(
             attachScrollView: { _ in },
@@ -556,7 +614,7 @@ struct SidebarWorkspaceTableTests {
             createEmptyWorkspaceGroup: {},
             beginWorkspaceDrag: { _ in },
             movingWorkspaceCount: { _ in 1 },
-            endWorkspaceDrag: {},
+            endWorkspaceDrag: endWorkspaceDrag,
             isValidWorkspaceDrag: { true },
             updateWorkspaceDrag: updateWorkspaceDrag,
             performWorkspaceDrop: { _, _, _ in false },
