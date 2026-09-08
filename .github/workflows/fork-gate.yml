@@ -73,6 +73,13 @@ jobs:
           set -euo pipefail
           ./scripts/select-ci-xcode.sh
 
+      - name: Provision GhosttyKit
+        run: |
+          # CmuxMobileShell and CmuxMobileShellUI link GhosttyKit through a
+          # local binary target; a reused runner workspace can carry an empty
+          # GhosttyKit.xcframework that makes package resolution fatal.
+          ./scripts/ensure-ghosttykit.sh
+
       - name: Prepare an unlocked test keychain
         run: |
           # The pairing suites write real DeviceLink identities; the runner's
