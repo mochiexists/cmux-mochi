@@ -236,6 +236,22 @@ jobs:
             echo "::warning::Passwordless sudo unavailable; XCTest will use its default automation-mode setup"
           fi
 
+      - name: Build for testing
+        run: |
+          # Build outside the app-host wrapper: its idle watchdog is sized for
+          # a test run, and a single large file (ContentView.swift) can compile
+          # for longer than that with no output. The job timeout bounds this.
+          set -euo pipefail
+          SOURCE_PACKAGES_DIR="$PWD/.ci-source-packages"
+          xcodebuild \
+            -project cmux.xcodeproj -scheme cmux-unit -configuration Debug \
+            -derivedDataPath "$CMUX_DERIVED_DATA_PATH" \
+            -clonedSourcePackagesDirPath "$SOURCE_PACKAGES_DIR" \
+            -disableAutomaticPackageResolution \
+            -destination "platform=macOS" \
+            CMUX_SKIP_ZIG_BUILD=1 \
+            build-for-testing
+
       - name: Run fork-owned app-host suites
         run: |
           # One non-tolerant invocation. The wrapper serialises app-host runs on
@@ -259,7 +275,7 @@ jobs:
             -destination "platform=macOS" \
             CMUX_SKIP_ZIG_BUILD=1 \
             "${SELECTORS[@]}" \
-            test 2>&1 | tee "$LOG_PATH"
+            test-without-building 2>&1 | tee "$LOG_PATH"
           scripts/ci/require_selected_test_execution.sh "$LOG_PATH" "fork-gate"
           python3 scripts/ci/check_fork_gate_execution.py "$LOG_PATH" "${SUITES[@]}"
 
