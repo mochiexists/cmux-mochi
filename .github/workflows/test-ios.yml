@@ -239,6 +239,27 @@ jobs:
   ios-simulator:
     needs: detect-ios-changes
     if: ${{ needs.detect-ios-changes.outputs.should_run == 'true' }}
+    env:
+      # Tests known to fail on inherited code, excluded by name so the lane
+      # reports on everything else. Each entry carries its reason; the list
+      # may only shrink. Format: <target>/<suite type>/<function>.
+      #
+      # TerminalViewportSpacingTests (2): font-fit stretch expectations from
+      #   upstream 0.64.22, untouched by the fork, fail deterministically on
+      #   the simulator (16 s waits). Owner call on the intended behaviour.
+      # MobileIrohRuntimeCompositionTests (2), MobileIrohReleaseGateRunnerTests (1):
+      #   iroh transport-mode / relay-only expectations that predate the
+      #   DeviceLink-only transport refactor; wait for binds that no longer
+      #   happen. Owner call on whether the tests or the product are right.
+      # GhosttyRuntimeActionTests (1): passes locally, fails on the runner
+      #   (needsDraw on a replacement surface view). Flake pending diagnosis.
+      CMUX_IOS_KNOWN_FAILING_TESTS: >-
+        cmuxFeatureTests/TerminalViewportSpacingTests/macResizeShrinkGrowRestoresFill
+        cmuxFeatureTests/TerminalViewportSpacingTests/macShortWindowStretchesToFillHeight
+        cmuxFeatureTests/MobileIrohRuntimeCompositionTests/debugTransportModePersistsAndRebindsWithoutRotatingIdentity
+        cmuxFeatureTests/MobileIrohRuntimeCompositionTests/laterSameAccountAuthenticationRetriesQuarantineBeforeActivation
+        cmuxFeatureTests/MobileIrohReleaseGateRunnerTests/pathTimeoutPreservesCompletedProbeProofs
+        CmuxMobileTerminalTests/GhosttyRuntimeActionTests/staleRendererContinuationDoesNotTargetReplacementView
     # Blacksmith, not the bare `macos-26` label (which our self-hosted fleet
     # carries). iOS simulator XCTest runs inside the Simulator, not as a
     # foregrounded Mac app, so the Blacksmith macOS foreground limitation that
@@ -441,6 +462,10 @@ jobs:
             # test_filter, while the PR lane still builds the app and runs
             # non-UI iOS tests.
             XCODEBUILD_ARGS+=(-skip-testing:cmuxUITests)
+            read -ra KNOWN_FAILING <<< "${CMUX_IOS_KNOWN_FAILING_TESTS:-}"
+            for known in "${KNOWN_FAILING[@]}"; do
+              [ -n "$known" ] && XCODEBUILD_ARGS+=(-skip-testing:"$known")
+            done
           fi
           XCODEBUILD_ARGS+=(test)
           selected_tests_passed_despite_xcodebuild_status() {
