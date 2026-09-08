@@ -1026,7 +1026,6 @@ C0DE71B10000000000000001 /* AppDelegate+AgentChatNotifications.swift in Sources 
 		904090409040904090409045 /* DockUnreadProjectionContextBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 904090409040904090409046 /* DockUnreadProjectionContextBridge.swift */; };
 		D86860000000000000000001 /* DockWorkingDirectoryInheritanceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D86860000000000000000002 /* DockWorkingDirectoryInheritanceTests.swift */; };
 		D0B10014A1B2C3D4E5F60001 /* DragOverlayRoutingPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0B10015A1B2C3D4E5F60001 /* DragOverlayRoutingPolicy.swift */; };
-		B8B0FA00000000000000000D /* DragSessionLatchMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8B0FA00000000000000000E /* DragSessionLatchMonitor.swift */; };
 		D75280040000000000000001 /* DynamicTracingSignpostInterval.swift in Sources */ = {isa = PBXBuildFile; fileRef = D75280040000000000000002 /* DynamicTracingSignpostInterval.swift */; };
 		D3622100A1B2C3D4E5F60718 /* EditableTextViewArrowKeyForwardingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3622101A1B2C3D4E5F60718 /* EditableTextViewArrowKeyForwardingTests.swift */; };
 		A7206C010000000000000001 /* EffectiveAppearanceObservation.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7206C020000000000000001 /* EffectiveAppearanceObservation.swift */; };
@@ -3672,7 +3671,6 @@ C0DE71B10000000000000002 /* AppDelegate+AgentChatNotifications.swift */ = {isa =
 		904090409040904090409046 /* DockUnreadProjectionContextBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DockUnreadProjectionContextBridge.swift; sourceTree = "<group>"; };
 		D86860000000000000000002 /* DockWorkingDirectoryInheritanceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DockWorkingDirectoryInheritanceTests.swift; sourceTree = "<group>"; };
 		D0B10015A1B2C3D4E5F60001 /* DragOverlayRoutingPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DragOverlayRoutingPolicy.swift; sourceTree = "<group>"; };
-		B8B0FA00000000000000000E /* DragSessionLatchMonitor.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = "DragSessionLatchMonitor.swift"; sourceTree = "<group>"; };
 		D75280040000000000000002 /* DynamicTracingSignpostInterval.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DynamicTracingSignpostInterval.swift; sourceTree = "<group>"; };
 		D3622101A1B2C3D4E5F60718 /* EditableTextViewArrowKeyForwardingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditableTextViewArrowKeyForwardingTests.swift; sourceTree = "<group>"; };
 		A7206C020000000000000001 /* EffectiveAppearanceObservation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EffectiveAppearanceObservation.swift; sourceTree = "<group>"; };
@@ -6447,7 +6445,6 @@ C0DE71B10000000000000002 /* AppDelegate+AgentChatNotifications.swift */ = {isa =
 				A7C0F1000000000000000001 /* ArtifactExternalPreview.swift */,
 				F1100000000000000000000E /* TerminalController+MobileBrowser.swift */,
 				F1100000000000000000000F /* SyntheticKeyEventFactory.swift */,
-				B8B0FA00000000000000000E /* DragSessionLatchMonitor.swift */,
 				ACA7C4A7000000000000000E /* TerminalController+MobileChat.swift */,
 				C7AF10000000000000000004 /* TerminalController+MobileChatArtifacts.swift */,
 				C7AF20000000000000000002 /* TerminalController+MobileTerminalArtifacts.swift */,
@@ -9149,7 +9146,6 @@ C0DE71B10000000000000002 /* AppDelegate+AgentChatNotifications.swift */ = {isa =
 				904090409040904090409041 /* DockUnreadPanelProjection.swift in Sources */,
 				904090409040904090409045 /* DockUnreadProjectionContextBridge.swift in Sources */,
 				D0B10014A1B2C3D4E5F60001 /* DragOverlayRoutingPolicy.swift in Sources */,
-				B8B0FA00000000000000000D /* DragSessionLatchMonitor.swift in Sources */,
 				D75280040000000000000001 /* DynamicTracingSignpostInterval.swift in Sources */,
 				A7206C010000000000000001 /* EffectiveAppearanceObservation.swift in Sources */,
 					5732A0095732A0095732A009 /* EnvironmentValues+MinimalModeInvalidationProbe.swift in Sources */,
