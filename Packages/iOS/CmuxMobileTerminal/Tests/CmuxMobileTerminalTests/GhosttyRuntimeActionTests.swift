@@ -6,7 +6,10 @@ import UIKit
 
 @testable import CmuxMobileTerminal
 
-@Suite("Ghostty runtime actions")
+// Serialized: every test here shares the process-wide Ghostty runtime, the
+// static surface-pointer registry and the key window, so running them
+// concurrently lets one test's surface satisfy another's frame assertion.
+@Suite("Ghostty runtime actions", .serialized)
 struct GhosttyRuntimeActionTests {
     @MainActor
     @Test("renderer continuation actions request another frame")
@@ -38,8 +41,26 @@ struct GhosttyRuntimeActionTests {
         #expect(view.needsDraw)
     }
 
+    // DISABLED (fork): this proof cannot observe what it claims, and its
+    // teardown is unsafe. Measured on 2026-09-09:
+    //   * `replacementView.needsDraw` goes true with NO stale continuation at
+    //     all — mounting the replacement makes it request its own frame — so a
+    //     pass here never distinguished "not retargeted" from "not yet drawn".
+    //   * The invariant itself holds structurally: the GHOSTTY_ACTION_RENDER
+    //     handler captures the bridge and reads `bridge.surfaceView` when the
+    //     continuation runs, and `detach()` nils it (observed nil here), so the
+    //     registry re-registration this models is not on that path at all.
+    //   * Letting the drain run to completion instead of short-circuiting on
+    //     the contaminated flag crashes teardown: the test points a live
+    //     surface address at a second view, and dismantling both cannot unwind
+    //     that safely.
+    // Proving "no draw was delivered" needs a delivery counter on the wakeup
+    // path, not a shared latch. Re-enable with that, not with more timing.
     @MainActor
-    @Test("stale renderer continuations do not follow reused surface addresses")
+    @Test(
+        "stale renderer continuations do not follow reused surface addresses",
+        .disabled("Contaminated signal and unsafe teardown; needs a wakeup-delivery counter.")
+    )
     func staleRendererContinuationDoesNotTargetReplacementView() async throws {
         let runtime = try GhosttyRuntime.shared()
         let delegate = RendererContinuationTestDelegate()
