@@ -865,6 +865,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
     #endif
     private lazy var updateController = UpdateController(log: updateLog)
     private let titlebarControlsLayoutModel = TitlebarControlsLayoutModel()
+    /// Releases a mouse button that an orphaned drag session has latched, so
+    /// system gestures recover without a Dock restart. See DragSessionLatchMonitor.
+    private let dragSessionLatchMonitor = DragSessionLatchMonitor()
     private lazy var titlebarAccessoryController = UpdateTitlebarAccessoryController(
         updateLog: updateLog,
         settingsRuntime: settingsRuntime,
@@ -1553,6 +1556,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         }
         titlebarAccessoryController.start()
         windowDecorationsController.start()
+        dragSessionLatchMonitor.start()
         installMainWindowKeyObserver()
         refreshGhosttyShortcuts()
         installGhosttyConfigObserver()
