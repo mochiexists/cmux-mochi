@@ -75,3 +75,6 @@ artifacts/
 
 # tmux verbose debug logs (tmux -v) that land in the cwd
 tmux-*.log
+
+# Local universal build output (scripts/build-universal)
+build-universal/
