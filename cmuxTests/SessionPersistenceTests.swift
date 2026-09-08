@@ -4918,7 +4918,12 @@ extension SessionPersistenceTests {
         let startupInput = try XCTUnwrap(binding.startupInput)
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/bin/zsh")
-        process.arguments = ["-lc", startupInput]
+        // No rc files (-f): a login shell re-sources the profile, which
+        // prepends the user's own bin directories and can even define `codex`
+        // as a shell function. Either shadows the fake `codex` below, and the
+        // real Codex TUI then starts and waits on stdin forever. This is what
+        // hung app-host shard 1 and the fork gate at this test on the runner.
+        process.arguments = ["-fc", startupInput]
         var environment = ProcessInfo.processInfo.environment
         environment["PATH"] = "\(bin.path):\(environment["PATH"] ?? "/usr/bin:/bin")"
         environment["CMUX_FAKE_CODEX_OUTPUT"] = outputURL.path
