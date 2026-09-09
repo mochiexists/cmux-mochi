@@ -21,6 +21,33 @@ struct TerminalFolderTapPolicyTests {
 
     private struct StatFailure: Error {}
 
+    /// A classification deadline that never elapses, so a test that is about
+    /// the stat result winning the race does not depend on how fast a loaded
+    /// CI simulator can hop to the main actor.
+    private struct NeverElapsingClock: Clock {
+        typealias Instant = ContinuousClock.Instant
+
+        var now: Instant { ContinuousClock.now }
+        var minimumResolution: Duration { .zero }
+
+        func sleep(until deadline: Instant, tolerance: Duration?) async throws {
+            // Parked until the policy cancels the deadline task; the wait is
+            // long enough that it is only ever ended by that cancellation.
+            try await Task.sleep(for: .seconds(3600))
+        }
+    }
+
+    /// A classification deadline that has already elapsed, so a test that is
+    /// about the deadline winning the race never depends on wall-clock timing.
+    private struct ElapsedClock: Clock {
+        typealias Instant = ContinuousClock.Instant
+
+        var now: Instant { ContinuousClock.now }
+        var minimumResolution: Duration { .zero }
+
+        func sleep(until deadline: Instant, tolerance: Duration?) async throws {}
+    }
+
     @Test("enabled opens without statting")
     func enabledOpensWithoutStatting() async {
         let stub = CountingStatStub(kind: .directory)
@@ -85,7 +112,8 @@ struct TerminalFolderTapPolicyTests {
         let startedAt = clock.now
         let decision = await TerminalFolderTapPolicy(
             folderTapEnabled: false,
-            classificationDeadline: .milliseconds(50)
+            classificationDeadline: .milliseconds(50),
+            clock: ElapsedClock()
         ).decision(
             for: "/tmp/file",
             stat: { _ in
@@ -108,7 +136,8 @@ struct TerminalFolderTapPolicyTests {
     func disabledFastClassificationOpensArtifact() async {
         let decision = await TerminalFolderTapPolicy(
             folderTapEnabled: false,
-            classificationDeadline: .milliseconds(50)
+            classificationDeadline: .milliseconds(50),
+            clock: NeverElapsingClock()
         ).decision(
             for: "/tmp/file",
             stat: { _ in .text }

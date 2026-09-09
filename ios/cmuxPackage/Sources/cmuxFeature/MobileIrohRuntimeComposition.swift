@@ -1320,6 +1320,13 @@ public final class MobileIrohRuntimeComposition:
         }
         signOutObservedAuthClear = false
         signOutAuthRevisionAtPreparation = nil
+        // Releasing the quarantine is a fresh lifecycle: the streak that armed
+        // the activation backoff belonged to the signed-out account's state,
+        // which was just wiped. `reconcile` checks `signOutPhase.allowsLifecycle`
+        // before it reaches the account-switch clear, so a backoff armed before
+        // the quarantine would otherwise survive every reconcile that ran while
+        // quarantined and suppress the first activation after recovery.
+        clearActivationRetryBackoff()
         signOutPhase = .idle
     }
 
@@ -3094,6 +3101,13 @@ extension MobileIrohRuntimeComposition: CmxIrohDebugSettingsControlling {
         )
         transportVerificationMode = mode
         publishIrohSettingsUpdate()
+
+        // Selecting a verification mode is a real state change, like a
+        // scenePhase-active transition or a network-path change: the failure
+        // streak that armed the activation backoff belonged to the previous
+        // mode, so the rebind below must retry at the floor instead of being
+        // skipped by a window the old mode opened.
+        clearActivationRetryBackoff()
 
         guard let accountID = observedAccountID ?? activeAccountID else { return }
         await scheduleReconcile(

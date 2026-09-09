@@ -285,8 +285,12 @@ import Testing
         #expect(orderedIndex.representativeID(for: "mac-a") == nightly.id)
         #expect(activeIndex.representativeID(for: nightly.id) == nightly.id)
         #expect(activeIndex.representativeID(for: stable.id) == stable.id)
-        #expect(activeIndex.filterMachineIDs(for: nightly.id) == ["mac-a"])
-        #expect(activeIndex.filterMachineIDs(for: stable.id) == ["mac-a"])
+        // A tagged selection filters to that build's rows, so the aliases come
+        // back as pairing ids rather than the bare device id (#8936).
+        #expect(activeIndex.filterMachineIDs(for: nightly.id) == [nightly.id])
+        #expect(activeIndex.filterMachineIDs(for: stable.id) == [stable.id])
+        // An untagged selection still filters at the device level.
+        #expect(activeIndex.filterMachineIDs(for: "mac-a") == ["mac-a"])
     }
 
     @Test func composerMenuSelectsExactlyOnePairing() {
