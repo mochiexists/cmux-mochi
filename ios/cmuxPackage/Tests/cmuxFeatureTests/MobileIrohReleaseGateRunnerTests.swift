@@ -172,9 +172,15 @@ struct MobileIrohReleaseGateRunnerTests {
         let pendingSettings = AsyncStream<CmxIrohSettingsSnapshot>.makeStream(
             bufferingPolicy: .bufferingNewest(1)
         )
+        // The settings stream never yields, so the runner always reaches its
+        // timeout however long that is. The budget only has to outlast the
+        // probes, which must complete for their proofs to be preserved — at
+        // 20ms it instead raced readiness and reported every proof false
+        // whenever the simulator was loaded. One second matches the sibling
+        // path-mismatch proof, which runs the same probes reliably.
         let report = try await runLatePathFailure(
             settingsUpdates: pendingSettings.stream,
-            timeout: .milliseconds(20)
+            timeout: .seconds(1)
         )
         pendingSettings.continuation.finish()
 
