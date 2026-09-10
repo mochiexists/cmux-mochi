@@ -131,6 +131,14 @@ def helper_environment(scenario_config_path):
     return env
 
 
+# Listing the bundled themes is a sub-second operation, but this runs on a
+# self-hosted runner that has just finished an hour-long signing build, so the
+# budget is generous. A timeout here is a real hang, not a slow machine, and it
+# must say why: the previous 10s/no-diagnostics form failed the nightly twice
+# while telling us nothing at all.
+PLAIN_LIST_TIMEOUT = float(os.environ.get("CMUX_THEME_PICKER_LIST_TIMEOUT", "90"))
+
+plain_started = time.monotonic()
 try:
     plain_result = subprocess.run(
         [helper_path, "+list-themes", "--plain"],
@@ -139,11 +147,35 @@ try:
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
-        timeout=10,
+        timeout=PLAIN_LIST_TIMEOUT,
     )
-except subprocess.TimeoutExpired:
-    sys.stderr.write("FAIL: timed out while listing bundled themes in plain mode\n")
+except subprocess.TimeoutExpired as timed_out:
+    sys.stderr.write(
+        "FAIL: timed out after %.1fs while listing bundled themes in plain mode\n"
+        % PLAIN_LIST_TIMEOUT
+    )
+    sys.stderr.write("helper: %s\n" % helper_path)
+    sys.stderr.write("resources: %s\n" % ghostty_resources_dir)
+    partial_out = timed_out.stdout or b""
+    partial_err = timed_out.stderr or b""
+    if isinstance(partial_out, bytes):
+        partial_out = partial_out.decode("utf-8", "replace")
+    if isinstance(partial_err, bytes):
+        partial_err = partial_err.decode("utf-8", "replace")
+    sys.stderr.write(
+        "partial stdout (%d bytes):\n%s\n" % (len(partial_out), partial_out[-2000:])
+    )
+    sys.stderr.write(
+        "partial stderr (%d bytes):\n%s\n" % (len(partial_err), partial_err[-2000:])
+    )
     sys.exit(1)
+except subprocess.CalledProcessError as failed:
+    sys.stderr.write("FAIL: helper exited %d listing bundled themes\n" % failed.returncode)
+    sys.stderr.write(failed.stderr or "")
+    sys.exit(1)
+sys.stderr.write(
+    "listed bundled themes in %.2fs\n" % (time.monotonic() - plain_started)
+)
 theme_names = [
     line.rsplit(" (", 1)[0]
     for line in plain_result.stdout.splitlines()
