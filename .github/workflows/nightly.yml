@@ -671,6 +671,10 @@ jobs:
             echo "Missing APPLE_SIGNING_IDENTITY secret" >&2
             exit 1
           fi
+          # trustd picks up the new keychain search list asynchronously; sign a
+          # scratch binary until it succeeds so the real bundle never races it
+          # (2026-09-10, run 34533549785: "[leaf MissingIntermediate]").
+          ./scripts/ci/await-codesign-identity.sh build.keychain "$APPLE_SIGNING_IDENTITY"
           for APP_PATH in \
             "build-universal/Build/Products/Release/cmux Mochi NIGHTLY.app"
           do
@@ -819,4 +823,7 @@ jobs:
         if: always()
         run: |
           security delete-keychain build.keychain >/dev/null 2>&1 || true
+          # Deleting the keychain leaves the runner's user search list empty;
+          # put the login keychain back so the box is not left half-configured.
+          security list-keychains -d user -s "$HOME/Library/Keychains/login.keychain-db"
           rm -f /tmp/cert.p12
