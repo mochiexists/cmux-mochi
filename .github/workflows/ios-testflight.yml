@@ -364,6 +364,21 @@ jobs:
           # Write the expanded path ($HOME, not ~) so later steps can read it.
           echo "ASC_API_KEY_PATH=$KEY_PATH" >> "$GITHUB_ENV"
 
+      - name: Ensure the runner user has a default keychain
+        run: |
+          # `security cms -D` (profile decode) and cert import need a default
+          # keychain. A test job that deletes its throwaway default keychain
+          # without restoring the login keychain leaves none ("A default
+          # keychain could not be found", 2026-09-12 run 34691000675).
+          if ! security default-keychain -d user >/dev/null 2>&1; then
+            echo "No default keychain; restoring the login keychain"
+            security default-keychain -d user -s "$HOME/Library/Keychains/login.keychain-db"
+          fi
+          if ! security list-keychains -d user | grep -q 'login.keychain-db'; then
+            echo "Login keychain missing from the search list; restoring it"
+            security list-keychains -d user -s "$HOME/Library/Keychains/login.keychain-db"
+          fi
+
       - name: Import iOS distribution signing cert
         env:
           IOS_DISTRIBUTION_CERTIFICATE_BASE64: ${{ secrets.IOS_DISTRIBUTION_CERTIFICATE_BASE64 }}
@@ -575,6 +590,7 @@ jobs:
         if: always()
         run: |
           security delete-keychain ios-testflight.keychain >/dev/null 2>&1 || true
+          security list-keychains -d user -s "$HOME/Library/Keychains/login.keychain-db"
 
   # NOTE: this lane uploads internal-only builds of com.cmux-mochi.ios, so there
   # is no external-group assignment job here. The old assign-external-group job
