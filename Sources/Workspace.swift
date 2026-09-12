@@ -2340,6 +2340,8 @@ final class Workspace: Identifiable, ObservableObject {
     private var surfaceTabBarButtonGlobalConfigPath: String?
     private var surfaceTabBarButtonConfiguration: SurfaceTabBarButtonConfiguration?
     private var featureFlagsObserver: NSObjectProtocol?
+    /// Follows the terminal-link target setting for the tab bar's globe highlight.
+    var surfaceTabBarBrowserLinkTargetTask: Task<Void, Never>?
 
     /// The pane-tree sub-model (CmuxPanes): owns the panel registry, the
     /// surface-id mapping, and the pane-layout bookkeeping. The legacy
@@ -3536,6 +3538,7 @@ final class Workspace: Identifiable, ObservableObject {
                 self?.reapplySurfaceTabBarButtonsForFeatureFlags()
             }
         }
+        installSurfaceTabBarBrowserLinkTargetMenu()
     }
 
     private var sharedLiveAgentIndexObserver: NSObjectProtocol?
@@ -3554,6 +3557,7 @@ final class Workspace: Identifiable, ObservableObject {
         if let featureFlagsObserver {
             NotificationCenter.default.removeObserver(featureFlagsObserver)
         }
+        surfaceTabBarBrowserLinkTargetTask?.cancel()
         activeRemoteSessionControllerID = nil
         remoteSessionTransitionTask?.cancel()
         remoteSessionController?.stop(cleanupScope: .persistentSlot)

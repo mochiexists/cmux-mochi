@@ -48,6 +48,7 @@ env:
     SidebarLazyLayoutScaleTests
     SidebarOverflowingScrollStatusChurnTests
     SidebarWorkspaceDropPlannerTests
+    SurfaceTabBarBrowserLinkTargetMenuTests
     TaskManagerResourcesTests
     TaskManagerSurfaceParityTests
     TaskManagerViewSnapshotBoundaryTests
