@@ -129,6 +129,12 @@ jobs:
           if [ -n "${CMUX_TEST_KEYCHAIN_PATH:-}" ]; then
             security delete-keychain "$CMUX_TEST_KEYCHAIN_PATH" >/dev/null 2>&1 || true
           fi
+          # default-keychain/list-keychains above pointed the runner user at the
+          # throwaway keychain; deleting it left NO default keychain, which broke
+          # the next TestFlight upload on this box ("A default keychain could not
+          # be found", 2026-09-12 run 34691000675). Put the login keychain back.
+          security default-keychain -d user -s "$HOME/Library/Keychains/login.keychain-db"
+          security list-keychains -d user -s "$HOME/Library/Keychains/login.keychain-db"
 
   fork-app-host-suites:
     name: fork-owned app-host suites
