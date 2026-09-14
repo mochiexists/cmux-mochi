@@ -2,6 +2,24 @@
 
 All notable changes to cmux are documented here.
 
+## [0.64.208] - 2026-09-15
+
+### Added
+- Right-click the new-browser globe in the pane tab bar to toggle **Open Links in Default Browser**; the globe turns accent-colored while links open outside cmux ([#11](https://github.com/mochiexists/cmux-mochi/pull/11)).
+- Remote Mac workspaces (Hive): pair a second Mac over DeviceLink and mount its workspaces, with live snapshots, bridged terminal streams, a remote Mac picker, and localized remote UI ([#3](https://github.com/mochiexists/cmux-mochi/pull/3)).
+- Account-free iPhone pairing over the local network, with an authenticated LAN fallback when Tailscale is unavailable.
+
+### Fixed
+- Stop trackpad gestures, Mission Control, and Spaces going dead after a sidebar drag until `killall Dock`; drag sessions now complete even when the sidebar is rebuilt mid-drag ([#5](https://github.com/mochiexists/cmux-mochi/pull/5), [#6](https://github.com/mochiexists/cmux-mochi/pull/6)).
+- Open wrapped HTML file links from terminal output without inventing a web host, and hit-test terminal links with native point geometry so clicks land on the right cell.
+- Keep pane divider resizing scoped to its own window.
+- Session restore: skip startup commands for unsupported custom agents, fall back to the nearest existing directory when a saved working directory has moved, stop watching Markdown paths that no longer exist, and reject stale Codex child checkpoints.
+- Copy Path on the sidebar now copies the focused workspace's path, and stale agent ports clear from the sidebar.
+- iPhone pairing shows progress and errors, guides you through a pairing mismatch, requires durable pairing before reporting success, rebinds after network changes, recognizes Wi-Fi personal hotspot routes, and reconnects reliably over Tailscale and tethered links. Settings shows the channel pairing port.
+- Browser panes preserve legacy theme and deferred lifecycle state.
+- `cmux` simulator commands anchor to the live caller pane; zsh socket reports are wrapped with a single capability.
+- SSH authentication cleanup no longer leaves signal handlers or snapshots behind.
+
 ## [0.64.207] - 2026-08-31
 
 ### Fixed
