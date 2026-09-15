@@ -20,7 +20,7 @@
    ```
 
    This will:
-   - Initialize git submodules (ghostty, homebrew-cmux)
+   - Initialize git submodules (ghostty, vendor/bonsplit)
    - Build the GhosttyKit.xcframework from source
    - Create the necessary symlinks
 

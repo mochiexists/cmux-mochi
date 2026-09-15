@@ -105,19 +105,6 @@
 
 `.dmg` 파일을 열고 cmux를 응용 프로그램 폴더로 드래그하면 돼요. Sparkle을 통해 자동 업데이트되니 한 번만 다운로드하면 돼요.
 
-### Homebrew
-
-```bash
-brew tap manaflow-ai/cmux
-brew install --cask cmux
-```
-
-나중에 업데이트하려면 아래 명령어를 실행해주세요:
-
-```bash
-brew upgrade --cask cmux
-```
-
 처음 실행할 때 macOS에서 개발자 확인 팝업이 뜰 수 있어요. **열기**를 클릭하면 돼요.
 
 ## 왜 cmux를 만들었나요?

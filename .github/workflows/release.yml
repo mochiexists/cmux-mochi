@@ -96,7 +96,10 @@ jobs:
     # and v0.64.15 attempt 1 was killed by a 20-minute budget mid-notarization.
     # Fork (cmux Mochi): 75 like origin/main — the self-hosted box also pays
     # checkout/cache time inside this budget, and 40 has cancelled mid-release.
-    timeout-minutes: 75
+    # Fork (cmux Mochi): 120, not 75. The 0.64.205 and 0.64.208 releases hit the
+    # old limit during the post-job cleanup steps after the release was already
+    # published, which marked the run "cancelled" and stopped downstream lanes.
+    timeout-minutes: 120
     steps:
       - name: Clear stale git locks (self-hosted reused workspace)
         shell: bash
@@ -267,15 +270,55 @@ jobs:
           echo "Derived Sparkle public key: $DERIVED_PUBLIC_KEY"
           echo "SPARKLE_PUBLIC_KEY=$DERIVED_PUBLIC_KEY" >> "$GITHUB_ENV"
 
+      # Fork (cmux Mochi): reuse the Xcode compilation cache that the Nightly and
+      # PR release-build lanes already warm under the same key prefix. Without it
+      # every tag was a cold universal build (57 min for v0.64.208).
+      - name: Compute Xcode compilation cache key
+        if: steps.guard_release_assets.outputs.skip_all != 'true'
+        id: compilation-cache-key
+        run: |
+          set -euo pipefail
+          echo "toolchain=$(xcodebuild -version | shasum -a 256 | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Xcode compilation results
+        if: steps.guard_release_assets.outputs.skip_all != 'true'
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: build-universal/CompilationCache.noindex
+          key: xcode-compilation-release-${{ runner.os }}-${{ runner.arch }}-${{ steps.compilation-cache-key.outputs.toolchain }}-${{ github.sha }}
+          restore-keys: |
+            xcode-compilation-release-${{ runner.os }}-${{ runner.arch }}-${{ steps.compilation-cache-key.outputs.toolchain }}-
+
       - name: Build universal app (Release)
         if: steps.guard_release_assets.outputs.skip_all != 'true'
         run: |
           CMUX_SKIP_ZIG_BUILD=1 xcodebuild -scheme cmux -configuration Release -derivedDataPath build-universal \
             -destination 'generic/platform=macOS' \
             -clonedSourcePackagesDirPath .spm-cache \
+            -showBuildTimingSummary \
             ARCHS="arm64 x86_64" \
             ONLY_ACTIVE_ARCH=NO \
+            COMPILATION_CACHE_ENABLE_CACHING=YES \
+            COMPILATION_CACHE_LIMIT_SIZE=3221225472 \
+            COMPILER_INDEX_STORE_ENABLE=NO \
             CODE_SIGNING_ALLOWED=NO build
+
+      - name: Bound Xcode compilation cache size
+        if: steps.guard_release_assets.outputs.skip_all != 'true'
+        run: |
+          set -euo pipefail
+          cache_path="build-universal/CompilationCache.noindex"
+          max_cache_kib=$((5 * 1024 * 1024))
+          if [ -d "$cache_path" ]; then
+            cache_kib=$(du -sk "$cache_path" | awk '{print $1}')
+          else
+            cache_kib=0
+          fi
+          echo "Xcode compilation cache size: ${cache_kib} KiB (limit: ${max_cache_kib} KiB)"
+          if [ "$cache_kib" -gt "$max_cache_kib" ]; then
+            echo "Xcode compilation cache exceeds 5 GiB; skipping cache save"
+            rm -rf "$cache_path"
+          fi
 
       - name: Download universal Ghostty CLI helper
         if: steps.guard_release_assets.outputs.skip_all != 'true'
