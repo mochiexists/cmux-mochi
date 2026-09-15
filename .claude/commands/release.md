@@ -13,8 +13,8 @@ Ship a stable cmux release built by CI: bump version, update changelog, open a P
    ```bash
    git describe --tags --abbrev=0
    git log --oneline <last-tag>..HEAD --no-merges
-   gh pr view <N> --repo manaflow-ai/cmux --json author --jq '.author.login'
-   gh issue view <N> --repo manaflow-ai/cmux --json author --jq '.author.login'
+   gh pr view <N> --repo mochiexists/cmux-mochi --json author --jq '.author.login'
+   gh issue view <N> --repo mochiexists/cmux-mochi --json author --jq '.author.login'
    ```
 
    Keep only end-user visible changes, categorize into Added, Changed, Fixed, Removed, and build a deduplicated list of contributor `@handle`s from PR authors and linked issue reporters. If nothing is user-facing, ask the user whether to release anyway.
@@ -33,13 +33,13 @@ Ship a stable cmux release built by CI: bump version, update changelog, open a P
 
 8. **Guard and tag.** `./scripts/release-pretag-guard.sh`, then `git tag vX.Y.Z && git push origin vX.Y.Z`. If the guard fails, run `./scripts/bump-version.sh`, commit the build-number bump, push and merge that change, then retry.
 
-9. **Watch the release workflow.** `gh run watch --repo manaflow-ai/cmux`. Confirm the release at https://github.com/manaflow-ai/cmux/releases exists with `cmux-macos.dmg` attached.
+9. **Watch the release workflow.** `gh run watch --repo mochiexists/cmux-mochi`. Confirm the release at https://github.com/mochiexists/cmux-mochi/releases exists with `cmux-macos.dmg` attached.
 
 10. **Verify the homebrew cask.** `update-homebrew.yml` triggers automatically once the release workflow finishes.
 
     ```bash
     gh run list --workflow=update-homebrew.yml --limit=1
-    gh run watch --repo manaflow-ai/cmux <run-id>
+    gh run watch --repo mochiexists/cmux-mochi <run-id>
     cd homebrew-cmux && git pull && grep version Casks/cmux.rb
     bash tests/test_homebrew_sha.sh
     ```
