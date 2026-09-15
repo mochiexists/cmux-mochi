@@ -35,16 +35,7 @@ Ship a stable cmux release built by CI: bump version, update changelog, open a P
 
 9. **Watch the release workflow.** `gh run watch --repo mochiexists/cmux-mochi`. Confirm the release at https://github.com/mochiexists/cmux-mochi/releases exists with `cmux-macos.dmg` attached.
 
-10. **Verify the homebrew cask.** `update-homebrew.yml` triggers automatically once the release workflow finishes.
-
-    ```bash
-    gh run list --workflow=update-homebrew.yml --limit=1
-    gh run watch --repo mochiexists/cmux-mochi <run-id>
-    cd homebrew-cmux && git pull && grep version Casks/cmux.rb
-    bash tests/test_homebrew_sha.sh
-    ```
-
-11. **Notify.** `say "cmux release complete"` on success, `say "cmux release failed"` on failure.
+10. **Notify.** `say "cmux release complete"` on success, `say "cmux release failed"` on failure.
 
 ## Changelog guidelines
 

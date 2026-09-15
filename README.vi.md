@@ -103,19 +103,6 @@ Sidebar hiển thị nhánh git, trạng thái/số PR liên kết, thư mục l
 
 Mở file `.dmg` và kéo cmux vào thư mục Applications. cmux tự cập nhật qua Sparkle, nên bạn chỉ cần tải một lần.
 
-### Homebrew
-
-```bash
-brew tap manaflow-ai/cmux
-brew install --cask cmux
-```
-
-Cập nhật sau này:
-
-```bash
-brew upgrade --cask cmux
-```
-
 Lần mở đầu tiên, macOS có thể yêu cầu bạn xác nhận mở app từ nhà phát triển được xác định. Nhấn **Open** để tiếp tục.
 
 ## Vì sao cmux?

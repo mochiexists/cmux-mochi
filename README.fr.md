@@ -105,19 +105,6 @@ La barre latérale affiche la branche git, le statut/numéro de PR lié, le rép
 
 Ouvrez le `.dmg` et glissez cmux dans votre dossier Applications. cmux se met à jour automatiquement via Sparkle, vous n'avez donc besoin de le télécharger qu'une seule fois.
 
-### Homebrew
-
-```bash
-brew tap manaflow-ai/cmux
-brew install --cask cmux
-```
-
-Pour mettre à jour plus tard :
-
-```bash
-brew upgrade --cask cmux
-```
-
 Au premier lancement, macOS peut vous demander de confirmer l'ouverture d'une application provenant d'un développeur identifié. Cliquez sur **Ouvrir** pour continuer.
 
 ## Pourquoi cmux ?

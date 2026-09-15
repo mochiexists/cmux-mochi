@@ -14,7 +14,6 @@ OWNED_ROOTS = ("Sources", "CLI", "Packages", "cmuxTests", "cmuxUITests")
 IGNORED_PATH_PARTS = (
     "/vendor/",
     "/ghostty/",
-    "/homebrew-cmux/",
     "/SourcePackages/",
     "/.ci-source-packages/",
 )

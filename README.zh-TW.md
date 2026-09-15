@@ -105,19 +105,6 @@
 
 開啟 `.dmg` 檔案並將 cmux 拖曳至「應用程式」資料夾。cmux 透過 Sparkle 自動更新，您只需下載一次。
 
-### Homebrew
-
-```bash
-brew tap manaflow-ai/cmux
-brew install --cask cmux
-```
-
-之後更新：
-
-```bash
-brew upgrade --cask cmux
-```
-
 首次啟動時，macOS 可能會要求您確認開啟來自已驗證開發者的應用程式。點擊**開啟**即可繼續。
 
 ## 為什麼做 cmux？
