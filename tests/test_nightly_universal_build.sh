@@ -126,6 +126,23 @@ if ! awk '
   exit 1
 fi
 
+RELEASE_WORKFLOW_FILE="$ROOT_DIR/.github/workflows/release.yml"
+if ! awk '
+  /^  build-sign-notarize:/ { in_release=1; next }
+  in_release && /^  [a-zA-Z0-9_-]+:/ { in_release=0 }
+  in_release && /path: build-universal\/CompilationCache\.noindex/ { saw_path=1 }
+  in_release && /key: xcode-compilation-release-/ { saw_key=1 }
+  in_release && /restore-keys:/ { saw_restore=1 }
+  in_release && /COMPILATION_CACHE_ENABLE_CACHING=YES/ { saw_cache_flag=1 }
+  in_release && /COMPILATION_CACHE_LIMIT_SIZE=3221225472/ { saw_runtime_limit=1 }
+  in_release && /max_cache_kib=\$\(\(5 \* 1024 \* 1024\)\)/ { saw_save_limit=1 }
+  in_release && /rm -rf "\$cache_path"/ { saw_skip_save=1 }
+  END { exit !(saw_path && saw_key && saw_restore && saw_cache_flag && saw_runtime_limit && saw_save_limit && saw_skip_save) }
+' "$RELEASE_WORKFLOW_FILE"; then
+  echo "FAIL: tagged release builds must restore the compilation cache shared with the Nightly and PR lanes"
+  exit 1
+fi
+
 if ! awk '
   /^  build-nightly-ghostty-cli-helper:/ { job="helper"; next }
   /^  build-nightly-app:/ { job="app"; next }
