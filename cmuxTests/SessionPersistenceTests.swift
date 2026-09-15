@@ -769,6 +769,23 @@ final class SessionPersistenceTests: XCTestCase {
         XCTAssertEqual(rows, ["first", "second", "third"])
     }
 
+    func testSnapshotTextFromVTExportFoldsRowsAndKeepsOnlyTheTail() {
+        let raw = "\u{1B}[31mone\r\ntwo\r\nthree\r\nfour"
+
+        XCTAssertEqual(
+            TerminalController.snapshotText(fromVTExport: raw, lineLimit: 2, normalizeLineEndings: true),
+            "three\nfour"
+        )
+        XCTAssertEqual(
+            TerminalController.snapshotText(fromVTExport: raw, lineLimit: nil, normalizeLineEndings: true),
+            "\u{1B}[31mone\ntwo\nthree\nfour"
+        )
+        XCTAssertEqual(
+            TerminalController.snapshotText(fromVTExport: raw, lineLimit: nil, normalizeLineEndings: false),
+            raw
+        )
+    }
+
     func testShouldRemoveExportedScreenDirectoryOnlyWithinTemporaryRoot() {
         let tempRoot = URL(fileURLWithPath: "/tmp")
             .appendingPathComponent("cmux-export-tests-\(UUID().uuidString)", isDirectory: true)

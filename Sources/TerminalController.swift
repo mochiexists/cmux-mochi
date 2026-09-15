@@ -5653,11 +5653,53 @@ class TerminalController {
               let rawOutput = String(data: data, encoding: .utf8) else {
             return nil
         }
+        return Self.snapshotText(
+            fromVTExport: rawOutput,
+            lineLimit: lineLimit,
+            normalizeLineEndings: normalizeLineEndings
+        )
+    }
+
+    /// Styled scrollback for session snapshots, read from terminal memory.
+    ///
+    /// Session autosave calls this for every terminal panel on the main actor
+    /// every few seconds, so it must never touch the filesystem. The previous
+    /// `write_screen_file` export blocked the UI for a `mkdir` / write / read /
+    /// `stat` / `unlink` round-trip per panel; under disk pressure single
+    /// syscalls took seconds and both shipping builds stalled 8-9 s per tick
+    /// (2026-09-15). Ghostty formats the same VT reconstruction straight into a
+    /// bounded buffer instead.
+    private func readTerminalTextFromBoundedVTForSnapshot(
+        terminalPanel: TerminalPanel,
+        lineLimit: Int?
+    ) -> String? {
+        let maxRows = lineLimit ?? SessionPersistencePolicy.maxScrollbackLinesPerTerminal
+        guard let rawOutput = terminalPanel.surface.boundedScreenTailVTNow(
+            maxRows: maxRows,
+            maxBytes: SessionPersistencePolicy.maxScrollbackCharactersPerTerminal
+        ) else {
+            return nil
+        }
+        return Self.snapshotText(
+            fromVTExport: rawOutput,
+            lineLimit: lineLimit,
+            normalizeLineEndings: true
+        )
+    }
+
+    /// Post-processes a Ghostty VT export into snapshot text: optionally folds
+    /// Ghostty's CRLF row separators to `\n`, then keeps only the last
+    /// `lineLimit` rows.
+    nonisolated static func snapshotText(
+        fromVTExport rawOutput: String,
+        lineLimit: Int?,
+        normalizeLineEndings: Bool
+    ) -> String {
         var output = normalizeLineEndings
-            ? Self.normalizedMobileVTExportText(rawOutput)
+            ? normalizedMobileVTExportText(rawOutput)
             : rawOutput
         if let lineLimit {
-            output = Self.tailTerminalLines(output, maxLines: lineLimit)
+            output = tailTerminalLines(output, maxLines: lineLimit)
         }
         return output
     }
@@ -5692,7 +5734,7 @@ class TerminalController {
     ) -> String? {
         if includeScrollback,
            allowVTExport,
-           let vtOutput = readTerminalTextFromVTExportForSnapshot(
+           let vtOutput = readTerminalTextFromBoundedVTForSnapshot(
                terminalPanel: terminalPanel,
                lineLimit: lineLimit
            ) {
