@@ -54,8 +54,9 @@ If somebody passes you a message, pass it to NEXT_LABEL. Keep it the same, or no
 Rules:
 - Only react to a message that starts with BATON.
 - Use your own wording in the pane before you pass it on, if you want.
-- Pass it on by running exactly one shell command. The next message only needs to start with BATON:
+- Pass it on by EXECUTING exactly one shell command with your Bash/shell tool. Printing or quoting the command does not count; the next agent only hears it if the command actually runs. The next message only needs to start with BATON:
   cmux send --surface "NEXT_SURFACE" "BATON from YOUR_LABEL: <message you want to pass>" && NEXT_SUBMIT
+- After running it, say in one line what you changed and confirm the command ran.
 - If this is the final hop, include FINAL somewhere in the BATON message.
 - If you receive a BATON marked FINAL, react however you like and do not pass it on.
 - Do not create helper scripts, temp files, background loops, or contact external services.
@@ -121,3 +122,4 @@ Do not close panes automatically after the demo. Ask the user whether to keep th
 - This template intentionally allows each agent to decide whether the message stays intact.
 - Keep the ring 2x2 for the first test. Four panes and one full lap are enough.
 - If the same worker receives two batons, process only the newest one and mention that the older one was superseded.
+- Workers may print the pass command instead of running it (seen 2026-09-21 with Haiku 4.5: hop C showed the `cmux send` line and the ring stalled). The prompt says EXECUTING for this reason; the conductor should still read each hop and nudge a stalled one once.
