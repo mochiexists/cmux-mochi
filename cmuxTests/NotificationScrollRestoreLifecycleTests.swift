@@ -49,6 +49,23 @@ struct NotificationScrollRestoreLifecycleTests {
         #expect(panel.sessionScrollbackReplayBoundaryMarker == clearBoundary)
     }
 
+    @Test func explicitHistoryClearAcceptsVTBoundaryRestyledAcrossWrappedRows() throws {
+        let panel = TerminalPanel(workspaceId: UUID())
+        defer { panel.surface.releaseSurfaceForTesting() }
+
+        panel.markSessionScrollbackExplicitlyCleared()
+        let clearBoundary = try #require(panel.sessionScrollbackReplayBoundaryMarker)
+        let splitIndex = clearBoundary.index(clearBoundary.startIndex, offsetBy: 24)
+        let wrappedBoundary = String(clearBoundary[..<splitIndex])
+            + "\u{001B}[0m\r\n\u{001B}[8m"
+            + String(clearBoundary[splitIndex...])
+
+        #expect(panel.acceptSessionScrollbackCapture(
+            "fresh after clear\n\u{001B}[8m\(wrappedBoundary)\u{001B}[0m\n"
+        ))
+        #expect(!panel.sessionScrollbackFallbackInvalidatedByClear)
+    }
+
     @Test func replayCompletionKeepsHistoricalRestoreUntilRowsBecomeAddressable() {
         let boundary = "test-replay-boundary"
         let surfaceView = NotificationLifecycleRecordingSurfaceView(frame: .zero)
