@@ -85,14 +85,15 @@ import UIKit
         terminalConfigTheme: rawConfig
     )
     defer { view.prepareForDismantle() }
-    let resetWhileReversed = Data(
-        ("\u{1B}]10;#123456\u{1B}\\" +
-            "\u{1B}]11;#654321\u{1B}\\" +
-            "\u{1B}]4;200;rgb:ab/cd/ef\u{1B}\\" +
-            "\u{1B}[?5h" +
-            "\u{1B}]110\u{1B}\\" +
-            "\u{1B}]111\u{1B}\\").utf8
-    )
+    let resetSequences: [String] = [
+        "\u{1B}]10;#123456\u{1B}\\",
+        "\u{1B}]11;#654321\u{1B}\\",
+        "\u{1B}]4;200;rgb:ab/cd/ef\u{1B}\\",
+        "\u{1B}[?5h",
+        "\u{1B}]110\u{1B}\\",
+        "\u{1B}]111\u{1B}\\",
+    ]
+    let resetWhileReversed = Data(resetSequences.joined().utf8)
 
     #expect(await view.processOutputAndWait(resetWhileReversed))
     let frame = try exportThemeFrame(from: view)
