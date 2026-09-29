@@ -3,6 +3,8 @@ internal import Security
 
 /// Errors from the keychain-backed stores.
 public enum KeychainStorageError: Error, Equatable {
+    /// A production keychain store was reached from a unit-test process.
+    case testProcessAccess
     /// The item exists but the keychain is locked. **Not** the same as absent:
     /// a caller must never respond to this by generating a replacement
     /// identity, which would silently orphan every pairing this device holds.
@@ -89,6 +91,7 @@ struct KeychainItem {
     }
 
     func read() throws -> Data? {
+        try rejectTestProcessAccess()
         func attempt(dataProtection: Bool) -> (OSStatus, CFTypeRef?) {
             var query = baseQuery(dataProtection: dataProtection)
             query[kSecReturnData] = true
@@ -123,6 +126,7 @@ struct KeychainItem {
     }
 
     func write(_ data: Data) throws {
+        try rejectTestProcessAccess()
         do {
             try write(data, dataProtection: Self.usesDataProtection)
         } catch KeychainStorageError.unexpectedStatus(let status)
@@ -189,12 +193,28 @@ struct KeychainItem {
     }
 
     func delete() throws {
+        try rejectTestProcessAccess()
         var status = SecItemDelete(baseQuery(dataProtection: Self.usesDataProtection) as CFDictionary)
         if Self.usesDataProtection, Self.isMissingEntitlement(status) {
             status = SecItemDelete(baseQuery(dataProtection: false) as CFDictionary)
         }
         guard status == errSecSuccess || status == errSecItemNotFound else {
             throw KeychainStorageError.unexpectedStatus(status)
+        }
+    }
+
+    private func rejectTestProcessAccess() throws {
+        let process = ProcessInfo.processInfo
+        let environment = process.environment
+        let executable = process.arguments.first ?? ""
+        let isTestProcess = environment["XCTestConfigurationFilePath"] != nil
+            || environment["XCTestBundlePath"] != nil
+            || environment["SWIFT_TESTING_ENABLED"] != nil
+            || executable.contains(".xctest/")
+            || process.processName.hasSuffix("Tests")
+            || process.processName == "swiftpm-testing-helper"
+        guard !isTestProcess else {
+            throw KeychainStorageError.testProcessAccess
         }
     }
 }

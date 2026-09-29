@@ -7,7 +7,7 @@ import Foundation
 /// writes split-brain-free by clearing the file store whenever Keychain
 /// succeeds.
 public actor FallbackTokenStore: StackAuthTokenStoreProtocol {
-    private let keychain: KeychainStackTokenStore
+    private let keychain: any KeychainStackTokenStoring
     private let file: FileStackTokenStore
     private let log = AuthDebugLog()
     private var keychainWorks: Bool = true
@@ -16,7 +16,7 @@ public actor FallbackTokenStore: StackAuthTokenStoreProtocol {
     /// - Parameters:
     ///   - keychain: The primary keychain-backed store.
     ///   - file: The fallback file-backed store.
-    public init(primary keychain: KeychainStackTokenStore, fallback file: FileStackTokenStore) {
+    public init(primary keychain: any KeychainStackTokenStoring, fallback file: FileStackTokenStore) {
         self.keychain = keychain
         self.file = file
     }

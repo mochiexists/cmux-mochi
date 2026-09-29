@@ -13,13 +13,14 @@ public final class HiveComposition {
     public init(
         databaseURL: URL,
         defaults: UserDefaults = .standard,
+        deviceLinkClient: MobileDeviceLinkClient = .shared,
         allowsLoopbackRoutes: Bool = false
     ) throws {
         let pairedMacStore = try MobilePairedMacStore(databaseURL: databaseURL)
         let runtime = HiveMobileRuntime.network(
             allowsLoopbackRoutes: allowsLoopbackRoutes
         ) { request in
-            let options = MobileDeviceLinkClient.shared.pairingTLSOptions(
+            let options = deviceLinkClient.pairingTLSOptions(
                 forMacDeviceID: request.expectedPeerDeviceID,
                 instanceTag: request.expectedPeerInstanceTag
             )
@@ -32,6 +33,7 @@ public final class HiveComposition {
             runtime: runtime,
             isSignedIn: false,
             pairedMacStore: pairedMacStore,
+            deviceLinkClient: deviceLinkClient,
             clientIDRepository: MobileClientIDRepository(defaults: defaults),
             pairingHintDefaults: defaults,
             multiMacAggregationDefaults: defaults

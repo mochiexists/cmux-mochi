@@ -576,7 +576,7 @@ struct CMUXMobileRootView: View {
     /// the sign-in screen after a pairing until some unrelated change happened
     /// to invalidate the body.
     private func refreshPairedDeviceIdentity() {
-        let paired = MobileDeviceLinkClient.shared.hasAnyPairedDevice()
+        let paired = store.hasAnyPairedDeviceCredential()
         guard paired != hasPairedDeviceIdentity else { return }
         hasPairedDeviceIdentity = paired
     }

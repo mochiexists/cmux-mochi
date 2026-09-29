@@ -190,7 +190,7 @@ extension MobileShellComposite {
               MobileLocalPairingScope.isLocal(accountID),
               activeRoute?.kind != .iroh,
               let foregroundMacDeviceID,
-              MobileDeviceLinkClient.shared.hasUsableCredential(
+              deviceLinkClient.hasUsableCredential(
                   forMacDeviceID: foregroundMacDeviceID,
                   instanceTag: activeMacInstanceTag
               ) else { return nil }
@@ -641,7 +641,7 @@ extension MobileShellComposite {
 
         // A Mac this device holds a DeviceLink key and pin for is dialed
         // directly with that exact identity over mutual TLS.
-        let hasDeviceLinkCredential = MobileDeviceLinkClient.shared
+        let hasDeviceLinkCredential = deviceLinkClient
             .hasUsableCredential(
                 forMacDeviceID: pairedMacDeviceID,
                 instanceTag: instanceTagExpectation.deviceLinkInstanceTag

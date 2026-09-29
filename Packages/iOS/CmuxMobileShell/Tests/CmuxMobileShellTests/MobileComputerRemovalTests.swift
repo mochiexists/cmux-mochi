@@ -323,11 +323,7 @@ struct MobileComputerRemovalTests {
                 now: Date(timeIntervalSince1970: TimeInterval(index + 1))
             )
         }
-        let credentials = MobileDeviceLinkClient(
-            scope: KeychainScope(
-                bundleIdentifier: "com.cmux-mochi.tests.remove.\(label).\(UUID().uuidString)"
-            )
-        )
+        let credentials = makeInMemoryMobileDeviceLinkClient("remove-\(label)")
         let defaultsSuiteName = "mobile-computer-removal-\(UUID().uuidString)"
         let pairingHintDefaults = UserDefaults(suiteName: defaultsSuiteName)!
         let pairedStore: any MobilePairedMacStoring = failRemoval
@@ -337,6 +333,7 @@ struct MobileComputerRemovalTests {
             isSignedIn: true,
             pairedMacStore: pairedStore,
             personalIrohForget: personalIrohForget,
+            deviceLinkClient: credentials,
             deviceLinkCredentialRemover: credentials,
             deviceLinkSelfRevocationSender: deviceLinkSelfRevocationSender,
             identityProvider: ownerAccountID.map { StaticIdentityProvider(userID: $0) },

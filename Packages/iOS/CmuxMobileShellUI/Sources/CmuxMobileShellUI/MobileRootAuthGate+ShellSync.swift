@@ -34,7 +34,7 @@ extension MobileRootAuthGate {
         // the store return nothing — the UI reported "no computers paired" while
         // a DeviceLink connection was live underneath. On hardware it fired
         // ~49 s after a successful cold-launch reconnect.
-        if MobileDeviceLinkClient.shared.hasAnyPairedDevice() {
+        if store.hasAnyPairedDeviceCredential() {
             return
         }
         store.signOut()

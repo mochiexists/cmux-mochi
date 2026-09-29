@@ -745,6 +745,8 @@ public final class MobileShellComposite: MobileTerminalOutputSinking {
     let personalIrohForget: (any MobileIrohMacForgetting)?
     /// Destroys the per-Mac DeviceLink identity after the Mac has revoked it.
     let deviceLinkCredentialRemover: any MobileDeviceLinkCredentialRemoving
+    /// DeviceLink credential authority used by reconnect, enrollment, and promotion paths.
+    let deviceLinkClient: MobileDeviceLinkClient
     /// Sends the authenticated self-revoke request over the selected Mac's live connection.
     let deviceLinkSelfRevocationSender: any MobileDeviceLinkSelfRevocationSending
     /// Live presence subscription (the `workers/presence` Durable Object edge).
@@ -1318,6 +1320,11 @@ public final class MobileShellComposite: MobileTerminalOutputSinking {
         return selectedWorkspace.preferredTerminal
     }
 
+    /// Whether this composition's injected DeviceLink store holds any pairing.
+    public func hasAnyPairedDeviceCredential() -> Bool {
+        deviceLinkClient.hasAnyPairedDevice()
+    }
+
     /// Create a mobile shell store with injectable runtime services for app
     /// composition, previews, and package tests.
     /// - Parameter browserStreamEvents: App-lifetime browser stream state kept outside workspace previews.
@@ -1335,7 +1342,8 @@ public final class MobileShellComposite: MobileTerminalOutputSinking {
         deviceRegistry: (any DeviceRegistryRefreshing)? = nil,
         personalIrohDiscovery: (any MobileIrohMacDiscovering)? = nil,
         personalIrohForget: (any MobileIrohMacForgetting)? = nil,
-        deviceLinkCredentialRemover: any MobileDeviceLinkCredentialRemoving = MobileDeviceLinkClient.shared,
+        deviceLinkClient: MobileDeviceLinkClient = .shared,
+        deviceLinkCredentialRemover: (any MobileDeviceLinkCredentialRemoving)? = nil,
         deviceLinkSelfRevocationSender: any MobileDeviceLinkSelfRevocationSending = MobileDeviceLinkSelfRevocationSender(),
         presence: (any PresenceSubscribing)? = nil,
         clientIDRepository: MobileClientIDRepository = MobileClientIDRepository(defaults: .standard),
@@ -1383,7 +1391,8 @@ public final class MobileShellComposite: MobileTerminalOutputSinking {
         self.deviceRegistry = deviceRegistry
         self.personalIrohDiscovery = personalIrohDiscovery
         self.personalIrohForget = personalIrohForget
-        self.deviceLinkCredentialRemover = deviceLinkCredentialRemover
+        self.deviceLinkClient = deviceLinkClient
+        self.deviceLinkCredentialRemover = deviceLinkCredentialRemover ?? deviceLinkClient
         self.deviceLinkSelfRevocationSender = deviceLinkSelfRevocationSender
         self.presence = presence
         self.identityProvider = identityProvider
@@ -2403,7 +2412,7 @@ public final class MobileShellComposite: MobileTerminalOutputSinking {
                 !irohReconnectIsBlocked || $0.kind != .iroh
             }
             let localHasIroh = localRoutes.contains { $0.kind == .iroh }
-            let hasDeviceLinkCredential = MobileDeviceLinkClient.shared
+            let hasDeviceLinkCredential = deviceLinkClient
                 .hasUsableCredential(
                     forMacDeviceID: mac.macDeviceID,
                     instanceTag: mac.instanceTag
@@ -7531,7 +7540,7 @@ public final class MobileShellComposite: MobileTerminalOutputSinking {
             }
             mobileShellLog.info("pairing trying route kind=\(route.kind.rawValue, privacy: .public) endpoint=\(route.endpoint.logDescription, privacy: .private)")
             let hadDeviceLinkCredentialForMigration = route.kind != .iroh
-                && MobileDeviceLinkClient.shared.hasUsableCredential(
+                && deviceLinkClient.hasUsableCredential(
                     forMacDeviceID: ticket.macDeviceID,
                     instanceTag: instanceTagExpectation.deviceLinkInstanceTag
                 )
@@ -7853,7 +7862,7 @@ public final class MobileShellComposite: MobileTerminalOutputSinking {
                     // present in the keychain.
                     if hadDeviceLinkCredentialForMigration,
                        !resolvedForegroundMacID.isEmpty {
-                        MobileDeviceLinkClient.shared.promoteLegacyPairing(
+                        deviceLinkClient.promoteLegacyPairing(
                             macDeviceID: resolvedForegroundMacID,
                             instanceTag: resolvedInstanceTag
                         )

@@ -3,13 +3,13 @@ public import Foundation
 public import Network
 internal import Security
 
-protocol MobileDeviceIdentityStoring: Sendable {
+public protocol MobileDeviceIdentityStoring: Sendable {
     func identity(forPairingID pairingID: String) throws -> DeviceIdentityMaterial?
     func save(_ material: DeviceIdentityMaterial, forPairingID pairingID: String) throws
     func remove(pairingID: String) throws
 }
 
-protocol MobileServerPinStoring: Sendable {
+public protocol MobileServerPinStoring: Sendable {
     func pins() throws -> [String: DeviceFingerprint]
     func setPin(_ fingerprint: DeviceFingerprint, forPairingID pairingID: String) throws
     func removePin(forPairingID pairingID: String) throws
@@ -106,7 +106,7 @@ public final class MobileDeviceLinkClient: @unchecked Sendable {
         )
     }
 
-    init(
+    public init(
         identityStore: any MobileDeviceIdentityStoring,
         pinStore: any MobileServerPinStoring,
         pairingIndexDefaults: UserDefaults

@@ -116,7 +116,7 @@ extension MobileShellComposite {
         // Record which pairing belongs to this Mac while both halves are known.
         // Reconnect otherwise has to guess which key to offer, and with more
         // than one paired Mac it guesses wrong.
-        MobileDeviceLinkClient.shared.rememberPairing(
+        deviceLinkClient.rememberPairing(
             macDeviceID: outcome.macDeviceID,
             instanceTag: outcome.macInstanceTag,
             pairingID: outcome.pairingID

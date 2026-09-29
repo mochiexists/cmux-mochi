@@ -11,7 +11,7 @@ extension ReconnectRouteSelectionTests {
     @Test func secondaryDeviceLinkClientUsesTransportAdmission() async throws {
         let macDeviceID = "secondary-devicelink-\(UUID().uuidString)"
         let instanceTag = "nightly"
-        let pairingClient = MobileDeviceLinkClient.shared
+        let pairingClient = makeInMemoryMobileDeviceLinkClient("secondary")
         let pinHex = (
             UUID().uuidString.replacingOccurrences(of: "-", with: "")
                 + UUID().uuidString.replacingOccurrences(of: "-", with: "")
@@ -45,7 +45,8 @@ extension ReconnectRouteSelectionTests {
                 now: { Date() },
                 supportedRouteKinds: [.tailscale]
             ),
-            isSignedIn: true
+            isSignedIn: true,
+            deviceLinkClient: pairingClient
         )
         let mac = MobilePairedMac(
             macDeviceID: macDeviceID,
@@ -110,7 +111,7 @@ extension ReconnectRouteSelectionTests {
             heldConnectAttempts: []
         )
         let (pairedStore, directory) = try makePairedMacStore()
-        let pairingClient = MobileDeviceLinkClient.shared
+        let pairingClient = makeInMemoryMobileDeviceLinkClient("recovery")
         let macDeviceID = "devicelink-reconnect-\(UUID().uuidString)"
         let instanceTag = "nightly"
         await router.setHostIdentity(
@@ -164,6 +165,7 @@ extension ReconnectRouteSelectionTests {
             ),
             isSignedIn: false,
             pairedMacStore: pairedStore,
+            deviceLinkClient: pairingClient,
             identityProvider: StaticIdentityProvider(userID: nil),
             reachability: AlwaysOnlineReachability(),
             pairingHintDefaults: pairingDefaults
@@ -252,11 +254,12 @@ extension ReconnectRouteSelectionTests {
 
     @Test func irohAdmissionDoesNotPromoteLegacyDeviceLinkCredential() async throws {
         let macDeviceID = "iroh-does-not-promote-\(UUID().uuidString)"
+        let client = makeInMemoryMobileDeviceLinkClient("iroh-admission")
         let fixture = try await makeRecoveryOwnerFixture(
             macDeviceID: macDeviceID,
-            instanceTag: "nightly"
+            instanceTag: "nightly",
+            deviceLinkClient: client
         )
-        let client = MobileDeviceLinkClient.shared
         let pinHex = (
             UUID().uuidString.replacingOccurrences(of: "-", with: "")
                 + UUID().uuidString.replacingOccurrences(of: "-", with: "")
@@ -719,7 +722,8 @@ extension ReconnectRouteSelectionTests {
         backup: (any PairedMacBackingUp)? = nil,
         heldConnectAttempts: Set<Int> = [],
         macDeviceID: String = "test-mac",
-        instanceTag: String? = nil
+        instanceTag: String? = nil,
+        deviceLinkClient: MobileDeviceLinkClient = makeInMemoryMobileDeviceLinkClient("recovery-fixture")
     ) async throws -> RecoveryOwnerFixture {
         let clock = TestClock()
         let router = LivenessHostRouter()
@@ -759,6 +763,7 @@ extension ReconnectRouteSelectionTests {
             ),
             isSignedIn: true,
             pairedMacStore: pairedStore,
+            deviceLinkClient: deviceLinkClient,
             identityProvider: StaticIdentityProvider(userID: "user-1"),
             reachability: AlwaysOnlineReachability(),
             pairingHintDefaults: UserDefaults(suiteName: "iroh-recovery-owner-\(UUID().uuidString)")!,
