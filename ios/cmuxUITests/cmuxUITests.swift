@@ -2942,6 +2942,122 @@ final class cmuxUITests: XCTestCase {
         await assertHostSelection(workspaceID: "workspace-main", terminalID: "terminal-tui", server: server)
     }
 
+    /// Drives a real DeviceLink session against the tagged Mac host prepared by
+    /// `scripts/e2e/mobile-mac-e2e.sh`. The shell harness owns host lifecycle and
+    /// Mac-side assertions; this test owns the phone UI, rotation, backgrounding,
+    /// terminal input, and the live letterbox geometry assertion.
+    @MainActor
+    func testDeviceLinkMacRoundTripE2E() throws {
+        let environment = ProcessInfo.processInfo.environment
+        guard let pairingURL = environment["CMUX_E2E_PAIRING_URL"],
+              let workspaceID = environment["CMUX_E2E_WORKSPACE_ID"],
+              let marker = environment["CMUX_E2E_MARKER"] else {
+            throw XCTSkip("Run through scripts/e2e/mobile-mac-e2e.sh")
+        }
+
+        XCUIDevice.shared.orientation = .portrait
+        let app = launchApp(mockData: false, environment: [
+            "CMUX_DOGFOOD_ATTACH_URL": pairingURL,
+            "CMUX_MOBILE_SOAK_OPEN_SELECTED_WORKSPACE": "1",
+        ])
+        defer { app.terminate() }
+
+        let surface = app.otherElements["MobileTerminalSurface"]
+        if !surface.waitForExistence(timeout: 20) {
+            let workspaceRow = app.descendants(matching: .any)["MobileWorkspaceRow-\(workspaceID)"]
+            XCTAssertTrue(
+                workspaceRow.waitForExistence(timeout: 60),
+                "The paired Mac never published workspace \(workspaceID)."
+            )
+            workspaceRow.tap()
+        }
+        XCTAssertTrue(surface.waitForExistence(timeout: 20))
+
+        try typeTerminalCommand("echo \(marker)", in: app, surface: surface)
+        XCTAssertTrue(waitForTerminalText(marker, in: surface, timeout: 20))
+
+        try typeTerminalCommand(
+            "stty size | awk '{print \"SIZE-P-\"$1\"x\"$2}'",
+            in: app,
+            surface: surface
+        )
+        let portraitSize = try waitForTerminalSize(prefix: "SIZE-P-", in: surface)
+
+        let portraitFrame = surface.frame
+        XCUIDevice.shared.orientation = .landscapeLeft
+        _ = try waitForTerminalSurfaceFrame(in: app, timeout: 20) { frame in
+            app.isLandscape && frame.width > portraitFrame.width + 80
+        }
+        try typeTerminalCommand(
+            "stty size | awk '{print \"SIZE-L-\"$1\"x\"$2}'",
+            in: app,
+            surface: surface
+        )
+        let landscapeSize = try waitForTerminalSize(prefix: "SIZE-L-", in: surface)
+        XCTAssertNotEqual(
+            portraitSize,
+            landscapeSize,
+            "Rotating the phone must renegotiate the shared Mac PTY size."
+        )
+
+        let beforeResize = try waitForTerminalViewportProbe(in: surface) { probe in
+            probe.awaitingEcho == false && probe.effectiveGrid != nil
+        }
+        try typeTerminalCommand("echo RESIZE-READY-\(marker)", in: app, surface: surface)
+        let afterResize = try waitForTerminalViewportProbe(in: surface, timeout: 60) { probe in
+            probe.awaitingEcho == false
+                && probe.effectiveGrid != nil
+                && probe.effectiveGrid != beforeResize.effectiveGrid
+        }
+        XCTAssertEqual(
+            afterResize.renderMaxY,
+            afterResize.viewportMaxY,
+            accuracy: 4,
+            "After the Mac window resize settles, the phone render must remain bottom-fitted instead of pinned to the top. probe=\(afterResize.rawValue)"
+        )
+        try typeTerminalCommand(
+            "stty size | awk '{print \"SIZE-MAC-\"$1\"x\"$2}'",
+            in: app,
+            surface: surface
+        )
+        _ = try waitForTerminalSize(prefix: "SIZE-MAC-", in: surface)
+
+        XCUIDevice.shared.press(.home)
+        XCTAssertEqual(
+            XCTWaiter.wait(
+                for: [XCTNSPredicateExpectation(
+                    predicate: NSPredicate(format: "state == %d", XCUIApplication.State.runningBackground.rawValue),
+                    object: app
+                )],
+                timeout: 10
+            ),
+            .completed
+        )
+        app.activate()
+        XCTAssertTrue(surface.waitForExistence(timeout: 20))
+        XCTAssertTrue(
+            waitForTerminalText(marker, in: surface, timeout: 20),
+            "The marker must survive background/foreground."
+        )
+        try typeTerminalCommand("echo \(marker)-FOREGROUND", in: app, surface: surface)
+        XCTAssertTrue(waitForTerminalText("\(marker)-FOREGROUND", in: surface, timeout: 20))
+
+        try typeTerminalCommand("echo RESTART-READY-\(marker)", in: app, surface: surface)
+        let connectionStatus = app.descendants(matching: .any)["MobileTerminalMacConnectionStatus"]
+        XCTAssertTrue(
+            connectionStatus.waitForExistence(timeout: 30),
+            "The phone never observed the tagged Mac host stop."
+        )
+        XCTAssertTrue(
+            connectionStatus.waitForNonExistence(timeout: 90),
+            "The phone did not reconnect after the tagged Mac host restarted."
+        )
+
+        XCTAssertTrue(surface.waitForExistence(timeout: 20))
+        try typeTerminalCommand("echo \(marker)-RECONNECTED", in: app, surface: surface)
+        XCTAssertTrue(waitForTerminalText("\(marker)-RECONNECTED", in: surface, timeout: 30))
+    }
+
     /// Pixel-level regression for the blank / garbled terminal class. Buffer
     /// checks (``assertTerminalRow``) false-passed while the screen was blank,
     /// so this gates on the actual on-screen composited pixels via
@@ -4578,6 +4694,127 @@ final class cmuxUITests: XCTestCase {
             line: line
         )
         return surface.frame
+    }
+
+    @MainActor
+    private func typeTerminalCommand(
+        _ command: String,
+        in app: XCUIApplication,
+        surface: XCUIElement,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) throws {
+        XCTAssertTrue(surface.waitForExistence(timeout: 8), file: file, line: line)
+        surface.tap()
+        XCTAssertTrue(
+            app.keyboards.firstMatch.waitForExistence(timeout: 8),
+            "The terminal input proxy did not acquire keyboard focus.",
+            file: file,
+            line: line
+        )
+        app.typeText(command + "\n")
+    }
+
+    @MainActor
+    private func waitForTerminalText(
+        _ expectedText: String,
+        in surface: XCUIElement,
+        timeout: TimeInterval
+    ) -> Bool {
+        let expectation = XCTNSPredicateExpectation(
+            predicate: NSPredicate { object, _ in
+                guard let element = object as? XCUIElement else { return false }
+                return element.label.contains(expectedText)
+            },
+            object: surface
+        )
+        return XCTWaiter.wait(for: [expectation], timeout: timeout) == .completed
+    }
+
+    @MainActor
+    private func waitForTerminalSize(
+        prefix: String,
+        in surface: XCUIElement,
+        timeout: TimeInterval = 30
+    ) throws -> String {
+        let escapedPrefix = NSRegularExpression.escapedPattern(for: prefix)
+        let expression = try NSRegularExpression(pattern: "\(escapedPrefix)([0-9]+x[0-9]+)")
+        var matchedSize: String?
+        let expectation = XCTNSPredicateExpectation(
+            predicate: NSPredicate { object, _ in
+                guard let element = object as? XCUIElement else { return false }
+                let label = element.label
+                let range = NSRange(label.startIndex..., in: label)
+                guard let match = expression.matches(in: label, range: range).last,
+                      let sizeRange = Range(match.range(at: 1), in: label) else {
+                    return false
+                }
+                matchedSize = String(label[sizeRange])
+                return true
+            },
+            object: surface
+        )
+        XCTAssertEqual(
+            XCTWaiter.wait(for: [expectation], timeout: timeout),
+            .completed,
+            "Timed out waiting for terminal size marker \(prefix). Rows: \(surface.label)"
+        )
+        return try XCTUnwrap(matchedSize)
+    }
+
+    private struct TerminalViewportProbe: CustomStringConvertible {
+        let renderMaxY: Double
+        let viewportMaxY: Double
+        let effectiveGrid: String?
+        let awaitingEcho: Bool
+        let rawValue: String
+
+        var description: String { rawValue }
+
+        init?(_ rawValue: String) {
+            let fields = Dictionary(uniqueKeysWithValues: rawValue.split(separator: ";").compactMap { field in
+                let parts = field.split(separator: "=", maxSplits: 1).map(String.init)
+                return parts.count == 2 ? (parts[0], parts[1]) : nil
+            })
+            guard let renderMaxY = fields["renderMaxY"].flatMap(Double.init),
+                  let viewportMaxY = fields["viewportMaxY"].flatMap(Double.init),
+                  let awaitingEchoValue = fields["awaitingEcho"] else {
+                return nil
+            }
+            self.renderMaxY = renderMaxY
+            self.viewportMaxY = viewportMaxY
+            self.effectiveGrid = fields["effectiveGrid"].flatMap { $0 == "natural" ? nil : $0 }
+            self.awaitingEcho = awaitingEchoValue == "1"
+            self.rawValue = rawValue
+        }
+    }
+
+    @MainActor
+    private func waitForTerminalViewportProbe(
+        in surface: XCUIElement,
+        timeout: TimeInterval = 30,
+        matching predicate: @escaping (TerminalViewportProbe) -> Bool
+    ) throws -> TerminalViewportProbe {
+        var matchedProbe: TerminalViewportProbe?
+        let expectation = XCTNSPredicateExpectation(
+            predicate: NSPredicate { object, _ in
+                guard let element = object as? XCUIElement,
+                      let rawValue = element.value as? String,
+                      let probe = TerminalViewportProbe(rawValue),
+                      predicate(probe) else {
+                    return false
+                }
+                matchedProbe = probe
+                return true
+            },
+            object: surface
+        )
+        XCTAssertEqual(
+            XCTWaiter.wait(for: [expectation], timeout: timeout),
+            .completed,
+            "Timed out waiting for the terminal viewport probe. value=\(String(describing: surface.value))"
+        )
+        return try XCTUnwrap(matchedProbe)
     }
 
     @MainActor
