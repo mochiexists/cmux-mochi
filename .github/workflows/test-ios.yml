@@ -250,9 +250,6 @@ jobs:
       # reports on everything else. Each entry carries its reason; the list
       # may only shrink. Format: <target>/<suite type>/<function>.
       #
-      # TerminalViewportSpacingTests (2): font-fit stretch expectations from
-      #   upstream 0.64.22, untouched by the fork, fail deterministically on
-      #   the simulator (16 s waits). Owner call on the intended behaviour.
       # MobileIrohRuntimeCompositionTests (2), MobileIrohReleaseGateRunnerTests (1):
       #   iroh transport-mode / relay-only expectations that predate the
       #   DeviceLink-only transport refactor; wait for binds that no longer
@@ -260,8 +257,6 @@ jobs:
       # GhosttyRuntimeActionTests (1): passes locally, fails on the runner
       #   (needsDraw on a replacement surface view). Flake pending diagnosis.
       CMUX_IOS_KNOWN_FAILING_TESTS: >-
-        cmuxFeatureTests/TerminalViewportSpacingTests/macResizeShrinkGrowRestoresFill
-        cmuxFeatureTests/TerminalViewportSpacingTests/macShortWindowStretchesToFillHeight
         cmuxFeatureTests/MobileIrohRuntimeCompositionTests/debugTransportModePersistsAndRebindsWithoutRotatingIdentity
         cmuxFeatureTests/MobileIrohRuntimeCompositionTests/laterSameAccountAuthenticationRetriesQuarantineBeforeActivation
         cmuxFeatureTests/MobileIrohReleaseGateRunnerTests/pathTimeoutPreservesCompletedProbeProofs
