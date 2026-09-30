@@ -85,6 +85,61 @@ struct HiveWorkspaceCoordinatorTests {
         ))
     }
 
+    @Test("reconnects every paired Mac instead of only the active Mac")
+    func reconnectsEveryPairedMac() async {
+        let pairedMacs = [
+            Self.pairedMac(deviceID: "mac-a", displayName: "Studio", isActive: true),
+            Self.pairedMac(deviceID: "mac-b", displayName: "Laptop", isActive: false),
+        ]
+        let shell = HiveShellStub(
+            pairingResult: .failed,
+            workspaces: [],
+            hasKnownPairing: true,
+            isConnected: true,
+            pairedMacs: pairedMacs
+        )
+        let coordinator = HiveWorkspaceCoordinator(shell: shell)
+
+        #expect(await coordinator.reconnect())
+        #expect(shell.reconnectedPairingIDs == pairedMacs.map(\.id))
+    }
+
+    @Test("owns reconnect and snapshot polling without the browser window")
+    func ownsConnectionLifecycle() async {
+        let updatedWorkspace = MobileWorkspacePreview(
+            id: "remote-workspace",
+            macDeviceID: "mac-a",
+            macDisplayName: "Studio",
+            name: "Updated",
+            terminals: []
+        )
+        let shell = HiveShellStub(
+            pairingResult: .failed,
+            workspaces: [],
+            hasKnownPairing: true,
+            isConnected: true,
+            pairedMacs: [Self.pairedMac(
+                deviceID: "mac-a",
+                displayName: "Studio",
+                isActive: true
+            )]
+        )
+        let coordinator = HiveWorkspaceCoordinator(
+            shell: shell,
+            lifecyclePollInterval: .zero
+        )
+
+        await coordinator.startConnectionLifecycle()
+        shell.workspaces = [updatedWorkspace]
+        await Self.yieldUntil {
+            coordinator.workspaces == [updatedWorkspace]
+        }
+        coordinator.stopConnectionLifecycle()
+
+        #expect(shell.reconnectedPairingIDs == shell.hivePairedMacs.map(\.id))
+        #expect(coordinator.workspaces == [updatedWorkspace])
+    }
+
     @Test("refresh projects reconnect and offline lifecycle truthfully")
     func refreshProjectsConnectionLifecycle() throws {
         let route = try CmxAttachRoute(
@@ -180,6 +235,34 @@ struct HiveWorkspaceCoordinatorTests {
         "cmux-ios-dev://attach?v=3&r=192.168.1.25:3939"
         + "&f=" + String(repeating: "ab", count: 32)
         + "&t=single-use-ticket&n=Studio"
+
+    private static func pairedMac(
+        deviceID: String,
+        displayName: String,
+        isActive: Bool
+    ) -> MobilePairedMac {
+        MobilePairedMac(
+            macDeviceID: deviceID,
+            displayName: displayName,
+            routes: [],
+            createdAt: Date(timeIntervalSince1970: 1),
+            lastSeenAt: Date(timeIntervalSince1970: 2),
+            isActive: isActive,
+            stackUserID: nil,
+            instanceTag: "nightly"
+        )
+    }
+
+    private static func yieldUntil(
+        _ condition: @MainActor () -> Bool,
+        sourceLocation: SourceLocation = #_sourceLocation
+    ) async {
+        for _ in 0..<1_000 {
+            if condition() { return }
+            await Task.yield()
+        }
+        Issue.record("condition never became true", sourceLocation: sourceLocation)
+    }
 }
 
 @MainActor
@@ -198,6 +281,7 @@ private final class HiveShellStub: HiveShellServing {
     var removalResult: MobileComputerRemovalResult
     private(set) var receivedPairingLinks: [String] = []
     private(set) var reconnectCount = 0
+    private(set) var reconnectedPairingIDs: [String] = []
     private(set) var localRemovalIDs: [String] = []
     private(set) var createdTerminalWorkspaceIDs: [MobileWorkspacePreview.ID?] = []
     private(set) var workspaceRenameRequests: [WorkspaceRenameRequest] = []
@@ -245,6 +329,14 @@ private final class HiveShellStub: HiveShellServing {
         refreshBackupBeforeDial: Bool
     ) async -> Bool {
         reconnectCount += 1
+        return isHiveMacConnected
+    }
+
+    func reconnectAllPairedMacs(
+        stackUserID: String?,
+        refreshBackupBeforeDial: Bool
+    ) async -> Bool {
+        reconnectedPairingIDs = hivePairedMacs.map(\.id)
         return isHiveMacConnected
     }
 
