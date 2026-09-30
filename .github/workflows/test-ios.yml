@@ -250,16 +250,9 @@ jobs:
       # reports on everything else. Each entry carries its reason; the list
       # may only shrink. Format: <target>/<suite type>/<function>.
       #
-      # MobileIrohRuntimeCompositionTests (2), MobileIrohReleaseGateRunnerTests (1):
-      #   iroh transport-mode / relay-only expectations that predate the
-      #   DeviceLink-only transport refactor; wait for binds that no longer
-      #   happen. Owner call on whether the tests or the product are right.
       # GhosttyRuntimeActionTests (1): passes locally, fails on the runner
       #   (needsDraw on a replacement surface view). Flake pending diagnosis.
       CMUX_IOS_KNOWN_FAILING_TESTS: >-
-        cmuxFeatureTests/MobileIrohRuntimeCompositionTests/debugTransportModePersistsAndRebindsWithoutRotatingIdentity
-        cmuxFeatureTests/MobileIrohRuntimeCompositionTests/laterSameAccountAuthenticationRetriesQuarantineBeforeActivation
-        cmuxFeatureTests/MobileIrohReleaseGateRunnerTests/pathTimeoutPreservesCompletedProbeProofs
         CmuxMobileTerminalTests/GhosttyRuntimeActionTests/staleRendererContinuationDoesNotTargetReplacementView
     # Blacksmith, not the bare `macos-26` label (which our self-hosted fleet
     # carries). iOS simulator XCTest runs inside the Simulator, not as a
