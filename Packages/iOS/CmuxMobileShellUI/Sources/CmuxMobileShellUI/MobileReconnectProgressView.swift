@@ -1,11 +1,8 @@
-import CMUXMobileCore
 import CmuxMobileSupport
 import SwiftUI
 
 struct MobileReconnectProgressView: View {
     let macName: String
-    let routeKind: CmxAttachTransportKind?
-    let tailnetStatus: TailnetStatus?
 
     var body: some View {
         ZStack {
@@ -20,34 +17,14 @@ struct MobileReconnectProgressView: View {
                     .font(.title2.weight(.semibold))
                     .multilineTextAlignment(.center)
 
-                VStack(spacing: 7) {
-                    technicalLine(
-                        label: L10n.string(
-                            "mobile.reconnect.stage.label",
-                            defaultValue: "Stage"
-                        ),
-                        value: L10n.string(
-                            "mobile.reconnect.stage.routes",
-                            defaultValue: "Trying saved connection routes"
-                        )
-                    )
-                    technicalLine(
-                        label: L10n.string(
-                            "mobile.reconnect.transport.label",
-                            defaultValue: "Transport"
-                        ),
-                        value: routeLabel
-                    )
-                    if let tailnetStatus {
-                        technicalLine(
-                            label: tailscaleLabel,
-                            value: tailnetStatusLabel(tailnetStatus)
-                        )
-                    }
-                }
-                .font(.footnote.monospaced())
+                Text(L10n.string(
+                    "mobile.reconnect.description",
+                    defaultValue: "Trying your saved connections. Make sure cmux is open on your Mac."
+                ))
+                .font(.subheadline)
                 .foregroundStyle(.secondary)
-                .padding(.top, 4)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: 300)
             }
             .padding(32)
         }
@@ -70,46 +47,4 @@ struct MobileReconnectProgressView: View {
         return String(format: format, trimmedName)
     }
 
-    private var routeLabel: String {
-        switch routeKind {
-        case .localNetwork:
-            return L10n.string("mobile.reconnect.transport.localNetwork", defaultValue: "Local Network")
-        case .tailscale:
-            return tailscaleLabel
-        case .iroh:
-            return L10n.string("mobile.settings.iroh", defaultValue: "Iroh")
-        case .websocket:
-            return L10n.string("mobile.reconnect.transport.direct", defaultValue: "Direct")
-        case .debugLoopback:
-            return L10n.string("mobile.reconnect.transport.loopback", defaultValue: "Loopback")
-        case nil:
-            return L10n.string("mobile.reconnect.transport.selecting", defaultValue: "Selecting route")
-        }
-    }
-
-    private var tailscaleLabel: String {
-        L10n.string(
-            "mobile.settings.connectionMethod.tailscale",
-            defaultValue: "Tailscale"
-        )
-    }
-
-    private func tailnetStatusLabel(_ status: TailnetStatus) -> String {
-        switch status {
-        case .active:
-            return L10n.string("mobile.reconnect.tailscale.active", defaultValue: "Connected")
-        case .inactiveOrNotInstalled:
-            return L10n.string("mobile.reconnect.tailscale.inactive", defaultValue: "Not connected")
-        case .unknown:
-            return L10n.string("mobile.reconnect.tailscale.unknown", defaultValue: "Checking")
-        }
-    }
-
-    private func technicalLine(label: String, value: String) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 8) {
-            Text(label + ":")
-            Text(value)
-                .foregroundStyle(.primary)
-        }
-    }
 }

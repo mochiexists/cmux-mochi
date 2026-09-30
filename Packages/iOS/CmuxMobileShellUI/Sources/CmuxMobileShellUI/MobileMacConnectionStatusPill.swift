@@ -1,43 +1,48 @@
+import CMUXMobileCore
 import CmuxMobileShellModel
 import CmuxMobileSupport
 import SwiftUI
 
-/// A compact connection-status pill overlaid on the terminal view, shown only
-/// for problem states (reconnecting / offline). A healthy connection shows no
-/// chrome.
+/// A compact route/status pill overlaid on the terminal view.
 struct MobileMacConnectionStatusPill: View {
     let host: String
     let status: MobileMacConnectionStatus
+    let routeKind: CmxAttachTransportKind?
     var reconnect: (() -> Void)?
 
     @ViewBuilder
     var body: some View {
-        // Only surface the pill for problem states (reconnecting / offline).
-        // A healthy connection shows no chrome.
-        if status != .connected {
-            if let reconnect, status == .unavailable {
+        if let presentation {
+            if let reconnect, presentation == .unavailable {
                 Button(action: reconnect) {
-                    pill
+                    pill(presentation)
                 }
                 .buttonStyle(.plain)
                 .accessibilityElement(children: .combine)
-                .accessibilityLabel(accessibilityLabel)
+                .accessibilityLabel(accessibilityLabel(presentation))
                 .accessibilityHint(
                     L10n.string("mobile.workspace.reconnect", defaultValue: "Reconnect")
                 )
                 .accessibilityIdentifier("MobileTerminalMacConnectionStatus")
             } else {
-                pill
+                pill(presentation)
                     .accessibilityElement(children: .combine)
-                    .accessibilityLabel(accessibilityLabel)
+                    .accessibilityLabel(accessibilityLabel(presentation))
                     .accessibilityIdentifier("MobileTerminalMacConnectionStatus")
             }
         }
     }
 
-    private var pill: some View {
+    private var presentation: MobileMacConnectionStatusPillPresentation? {
+        MobileMacConnectionStatusPillPresentation.resolve(
+            status: status,
+            routeKind: routeKind
+        )
+    }
+
+    private func pill(_ presentation: MobileMacConnectionStatusPillPresentation) -> some View {
         HStack(spacing: 7) {
-            if status == .reconnecting {
+            if presentation == .reconnecting {
                 ProgressView()
                     .controlSize(.mini)
                     .tint(.white)
@@ -45,11 +50,11 @@ struct MobileMacConnectionStatusPill: View {
                     .accessibilityHidden(true)
             } else {
                 Circle()
-                    .fill(status.tintColor)
+                    .fill(tintColor(for: presentation))
                     .frame(width: 8, height: 8)
             }
 
-            Text(status.label)
+            Text(presentation.label)
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.white)
                 .lineLimit(1)
@@ -59,7 +64,22 @@ struct MobileMacConnectionStatusPill: View {
         .background(.black.opacity(0.78), in: Capsule())
     }
 
-    private var accessibilityLabel: String {
-        host.isEmpty ? status.label : "\(host), \(status.label)"
+    private func tintColor(
+        for presentation: MobileMacConnectionStatusPillPresentation
+    ) -> Color {
+        switch presentation {
+        case .route:
+            return .green
+        case .reconnecting:
+            return .orange
+        case .unavailable:
+            return .red
+        }
+    }
+
+    private func accessibilityLabel(
+        _ presentation: MobileMacConnectionStatusPillPresentation
+    ) -> String {
+        host.isEmpty ? presentation.label : "\(host), \(presentation.label)"
     }
 }

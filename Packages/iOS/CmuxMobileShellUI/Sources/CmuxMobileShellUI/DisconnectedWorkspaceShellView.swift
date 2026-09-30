@@ -213,7 +213,7 @@ struct DisconnectedWorkspaceShellView: View {
             } footer: {
                 Text(L10n.string(
                     "mobile.disconnected.listFooter",
-                    defaultValue: "Tap a computer to reconnect. Swipe left to hide or remove one."
+                    defaultValue: "Choose a computer to reconnect. Make sure cmux is open on that computer."
                 ))
             }
             Section {
