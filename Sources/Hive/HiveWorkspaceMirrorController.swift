@@ -85,9 +85,14 @@ final class HiveWorkspaceMirrorController {
                     panel?.surface.processRemoteOutput(data)
                 },
                 onEnd: { [weak self] in
-                    self?.inputForwarder.setConnectionActive(false)
+                    self?.outputDidEnd()
                 }
             )
+        }
+
+        private func outputDidEnd() {
+            inputForwarder.setConnectionActive(false)
+            attachment?.outputDidEnd()
         }
 
         func unsubscribe(from session: HiveTerminalSession) {
@@ -98,6 +103,11 @@ final class HiveWorkspaceMirrorController {
 
         func setConnectionActive(_ isActive: Bool) {
             inputForwarder.setConnectionActive(isActive)
+        }
+
+        func updateConnectionPresentation(isActive: Bool) {
+            inputForwarder.setConnectionActive(isActive)
+            attachment?.connectionStateDidChange(isActive: isActive)
         }
 
         func applyEffectiveGrid(columns: Int, rows: Int) -> Bool {
@@ -116,9 +126,17 @@ final class HiveWorkspaceMirrorController {
     /// Shares one output registration and one ordered resize owner across windows.
     @MainActor
     private final class TerminalAttachment {
+        private struct Viewport: Equatable {
+            let columns: Int
+            let rows: Int
+        }
+
         let session: HiveTerminalSession
         private var bindingsByPanelID: [UUID: TerminalBinding] = [:]
         private var bindingOrder: [UUID] = []
+        private var lastRequestedViewport: Viewport?
+        private var connectionWasActive: Bool?
+        private var needsViewportAfterReconnect = false
 
         init(session: HiveTerminalSession) {
             self.session = session
@@ -156,17 +174,34 @@ final class HiveWorkspaceMirrorController {
             session.stopOutput()
         }
 
+        func connectionStateDidChange(isActive: Bool) {
+            if connectionWasActive == true, !isActive {
+                needsViewportAfterReconnect = true
+            }
+            connectionWasActive = isActive
+        }
+
+        func outputDidEnd() {
+            connectionWasActive = false
+            needsViewportAfterReconnect = true
+        }
+
         func applyViewport(
             from binding: TerminalBinding,
             columns: Int,
             rows: Int
         ) {
-            guard columns > 1, rows > 1,
-                  currentOwner === binding,
-                  let preparation = session.prepareViewport(
-                    columns: columns,
-                    rows: rows
-                  ) else { return }
+            guard columns > 1, rows > 1, currentOwner === binding else { return }
+            let viewport = Viewport(columns: columns, rows: rows)
+            guard needsViewportAfterReconnect || lastRequestedViewport != viewport else {
+                return
+            }
+            lastRequestedViewport = viewport
+            needsViewportAfterReconnect = false
+            guard let preparation = session.prepareViewport(
+                columns: columns,
+                rows: rows
+            ) else { return }
             // The oldest live mount deterministically owns the remote viewport.
             // Every local renderer follows the owner's effective grid, so a
             // differently-sized second window cannot start a resize fight.
@@ -670,7 +705,7 @@ final class HiveWorkspaceMirrorController {
         workspace.remoteConnectionDetail = record.coordinator?.connectionDetail
         for binding in record.bindingsByPanelID.values {
             binding.panel?.hiveConnectionState = state
-            binding.setConnectionActive(state == .connected)
+            binding.updateConnectionPresentation(isActive: state == .connected)
         }
     }
 

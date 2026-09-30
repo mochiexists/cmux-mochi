@@ -70,6 +70,74 @@ struct HiveWorkspaceMirrorControllerTests {
         #expect(attachment.remoteRegistrationCount == 0)
     }
 
+    @Test("sends viewport only for a changed grid or a reconnected Mac")
+    func deduplicatesViewportUntilReconnect() throws {
+        let terminal = MobileTerminalPreview(id: "surface-a", name: "Alpha")
+        var remoteWorkspace = MobileWorkspacePreview(
+            id: "remote-workspace",
+            macDeviceID: "mac-a",
+            macDisplayName: "Studio",
+            name: "Remote",
+            terminals: [terminal]
+        )
+        remoteWorkspace.macInstanceTag = "dev-a"
+        remoteWorkspace.macConnectionStatus = .connected
+        let pairedMac = MobilePairedMac(
+            macDeviceID: "mac-a",
+            displayName: "Studio",
+            routes: [],
+            createdAt: .distantPast,
+            lastSeenAt: .distantPast,
+            isActive: true,
+            stackUserID: nil,
+            instanceTag: "dev-a"
+        )
+        let shell = HiveWorkspaceMirrorShellStub(workspaces: [remoteWorkspace])
+        shell.hivePairedMacs = [pairedMac]
+        shell.hiveMacConnectionStatuses = [pairedMac.id: .connected]
+        let coordinator = HiveWorkspaceCoordinator(shell: shell)
+        coordinator.refreshWorkspaceSnapshot(forcePhaseReconciliation: true)
+        let controller = HiveWorkspaceMirrorController()
+        let manager = TabManager()
+
+        controller.open(
+            workspace: remoteWorkspace,
+            selectedTerminal: terminal,
+            coordinator: coordinator,
+            in: manager
+        )
+        let mirror = try #require(manager.tabs.first { $0.isHiveWorkspaceMirror })
+        let panel = try #require(mirror.focusedTerminalPanel)
+        let sample = Self.sizingSample(columns: 80, rows: 24)
+
+        panel.surface.onManualSizeApplied?(sample)
+        panel.surface.onManualSizeApplied?(sample)
+
+        remoteWorkspace.macConnectionStatus = .unavailable
+        shell.workspaces = [remoteWorkspace]
+        shell.isHiveMacConnected = false
+        shell.hiveConnectionState = .disconnected
+        shell.hiveMacConnectionStatus = .unavailable
+        shell.hiveMacConnectionStatuses = [pairedMac.id: .unavailable]
+        coordinator.refreshWorkspaceSnapshot(forcePhaseReconciliation: true)
+        controller.reconcileMirrors()
+
+        remoteWorkspace.macConnectionStatus = .connected
+        shell.workspaces = [remoteWorkspace]
+        shell.isHiveMacConnected = true
+        shell.hiveConnectionState = .connected
+        shell.hiveMacConnectionStatus = .connected
+        shell.hiveMacConnectionStatuses = [pairedMac.id: .connected]
+        coordinator.refreshWorkspaceSnapshot(forcePhaseReconciliation: true)
+        controller.reconcileMirrors()
+        panel.surface.onManualSizeApplied?(sample)
+
+        #expect(shell.preparedViewports == [
+            .init(surfaceID: terminal.id.rawValue, columns: 80, rows: 24),
+            .init(surfaceID: terminal.id.rawValue, columns: 80, rows: 24),
+        ])
+    }
+
     @Test("promotes the surviving resize owner after the original panel deallocates")
     func promotesResizeOwnerAfterPanelDeallocation() throws {
         let terminal = MobileTerminalPreview(id: "surface-a", name: "Alpha")
