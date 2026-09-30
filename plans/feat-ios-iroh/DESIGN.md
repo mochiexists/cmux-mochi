@@ -1,6 +1,10 @@
 # iroh as the default cmux iOS-to-Mac transport
 
-Status: spike green, design committed, implementation planned as stacked PRs (see "Delivery plan"). Decision (Lawrence, 2026-06-09): iroh is the DEFAULT transport; Tailscale becomes opt-in. Onboarding "just works" with sign-in plus dial-by-EndpointId; no VPN install, no network setup.
+Status: superseded by DeviceLink. The iroh spike and historical design remain
+useful reference material, but the planned iroh-default rollout did not become
+the shipping authority. DeviceLink mutual TLS now owns pairing and authenticated
+reconnects over LAN or Tailscale, including the account-free QR flow. Treat the
+delivery plan below as historical, not pending work.
 
 ## What this is and is not
 

@@ -38,6 +38,7 @@ struct SidebarWorkspaceSnapshotBuilder {
         let isPinned: Bool
         let isPrivacyBlurred: Bool
         let customColorHex: String?
+        var isHiveWorkspaceMirror: Bool = false
         let remoteWorkspaceSidebarText: String?
         let remoteConnectionStatusText: String
         let remoteStateHelpText: String

@@ -117,11 +117,7 @@ struct WorkspaceListView: View {
     @State private var settingsPairingScannerHandoff = SettingsPairingScannerHandoff()
     @State private var showingDeviceTree = false
     @State private var changesSheetTarget: WorkspaceChangesSheetTarget? = nil
-    @State private var macTitlePickerSwitchTask: Task<Void, Never>?
-    @State private var macTitlePickerSwitchIsCancellation = false
-    @State private var macTitlePickerSwitchGeneration: UInt64 = 0
-    @State private var macTitlePickerPendingSelection: WorkspaceMacSelection?
-    @State var deferredWorkspaceSelectionGeneration: UInt64 = 0
+    @State var selectionCoordinator = WorkspaceListSelectionCoordinator()
     /// Stable machine-menu content. Kept as value state so live workspace or
     /// device-tree updates that do not change the actual machine set/name
     /// snapshot do not rebuild an open native Menu. `nil` only before the first
@@ -172,11 +168,11 @@ struct WorkspaceListView: View {
     }
 
     var currentMacTitlePickerSelection: WorkspaceMacSelection {
-        macTitlePickerPendingSelection ?? visibleMacSelection
+        selectionCoordinator.macTitlePickerPendingSelection ?? visibleMacSelection
     }
 
     var macTitlePickerShowsProgress: Bool {
-        macTitlePickerPendingSelection != nil
+        selectionCoordinator.macTitlePickerPendingSelection != nil
     }
 
     /// Groups render from the payload while unfiltered and scoped to the
@@ -491,25 +487,25 @@ struct WorkspaceListView: View {
             cancelStoreSwitch: !startsMachineSwitch
         )
         guard startsMachineSwitch else {
-            macTitlePickerPendingSelection = nil
+            selectionCoordinator.macTitlePickerPendingSelection = nil
             macSelection = selection
             return nil
         }
-        macTitlePickerSwitchGeneration &+= 1
-        let generation = macTitlePickerSwitchGeneration
-        macTitlePickerPendingSelection = selection
+        selectionCoordinator.macTitlePickerSwitchGeneration &+= 1
+        let generation = selectionCoordinator.macTitlePickerSwitchGeneration
+        selectionCoordinator.macTitlePickerPendingSelection = selection
         let task = Task { @MainActor in
             defer {
-                if macTitlePickerSwitchGeneration == generation {
-                    macTitlePickerSwitchTask = nil
-                    macTitlePickerSwitchIsCancellation = false
+                if selectionCoordinator.macTitlePickerSwitchGeneration == generation {
+                    selectionCoordinator.macTitlePickerSwitchTask = nil
+                    selectionCoordinator.macTitlePickerSwitchIsCancellation = false
                 }
             }
             await cancelTask?.value
             await applyMacTitlePickerSelection(selection, switchGeneration: generation)
         }
-        macTitlePickerSwitchTask = task
-        macTitlePickerSwitchIsCancellation = false
+        selectionCoordinator.macTitlePickerSwitchTask = task
+        selectionCoordinator.macTitlePickerSwitchIsCancellation = false
         return task
     }
 
@@ -523,33 +519,34 @@ struct WorkspaceListView: View {
         restorePreviousOnCancel: Bool = true,
         cancelStoreSwitch: Bool = true
     ) -> Task<Void, Never>? {
-        let pendingSwitchTask = macTitlePickerSwitchTask
-        let pendingSwitchIsCancellation = pendingSwitchTask != nil && macTitlePickerSwitchIsCancellation
+        let pendingSwitchTask = selectionCoordinator.macTitlePickerSwitchTask
+        let pendingSwitchIsCancellation = pendingSwitchTask != nil
+            && selectionCoordinator.macTitlePickerSwitchIsCancellation
         if pendingSwitchIsCancellation {
             return pendingSwitchTask
         }
         if pendingSwitchTask != nil {
             pendingSwitchTask?.cancel()
         }
-        macTitlePickerSwitchTask = nil
-        macTitlePickerSwitchIsCancellation = false
-        macTitlePickerPendingSelection = nil
-        macTitlePickerSwitchGeneration &+= 1
-        let generation = macTitlePickerSwitchGeneration
+        selectionCoordinator.macTitlePickerSwitchTask = nil
+        selectionCoordinator.macTitlePickerSwitchIsCancellation = false
+        selectionCoordinator.macTitlePickerPendingSelection = nil
+        selectionCoordinator.macTitlePickerSwitchGeneration &+= 1
+        let generation = selectionCoordinator.macTitlePickerSwitchGeneration
         guard pendingSwitchTask != nil else { return nil }
         guard cancelStoreSwitch else { return nil }
         let cancelMacSwitch = cancelMacSwitch
         let task = Task { @MainActor in
             defer {
-                if macTitlePickerSwitchGeneration == generation {
-                    macTitlePickerSwitchTask = nil
-                    macTitlePickerSwitchIsCancellation = false
+                if selectionCoordinator.macTitlePickerSwitchGeneration == generation {
+                    selectionCoordinator.macTitlePickerSwitchTask = nil
+                    selectionCoordinator.macTitlePickerSwitchIsCancellation = false
                 }
             }
             await cancelMacSwitch?(restorePreviousOnCancel)
         }
-        macTitlePickerSwitchTask = task
-        macTitlePickerSwitchIsCancellation = true
+        selectionCoordinator.macTitlePickerSwitchTask = task
+        selectionCoordinator.macTitlePickerSwitchIsCancellation = true
         return task
     }
 
@@ -561,26 +558,26 @@ struct WorkspaceListView: View {
         func isCurrentSwitchRequest() -> Bool {
             guard !Task.isCancelled else { return false }
             guard let switchGeneration else { return true }
-            return macTitlePickerSwitchGeneration == switchGeneration
+            return selectionCoordinator.macTitlePickerSwitchGeneration == switchGeneration
         }
 
         switch selection {
         case .all, .automatic:
             guard isCurrentSwitchRequest() else { return }
-            macTitlePickerPendingSelection = nil
+            selectionCoordinator.macTitlePickerPendingSelection = nil
             macSelection = selection
         case .machine(let id):
             guard isCurrentSwitchRequest() else { return }
             guard shouldSwitchForMacTitlePickerMachine(id),
                   let target = macSelectionScope.switchTarget(for: id),
                   let switchMac else {
-                macTitlePickerPendingSelection = nil
+                selectionCoordinator.macTitlePickerPendingSelection = nil
                 macSelection = selection
                 return
             }
             let switched = await switchMac(target.macDeviceID, target.instanceTag)
             guard isCurrentSwitchRequest() else { return }
-            macTitlePickerPendingSelection = nil
+            selectionCoordinator.macTitlePickerPendingSelection = nil
             guard switched else { return }
             macSelection = .machine(id)
         }

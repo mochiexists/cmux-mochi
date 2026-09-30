@@ -1036,10 +1036,14 @@ struct cmuxApp: App {
             splitCommandButton(title: String(localized: "menu.view.splitRight", defaultValue: "Split Right"), shortcut: menuShortcut(for: .splitRight)) {
                 performSplitFromMenu(direction: .right)
             }
+            .disabled(activeTabManager.selectedWorkspace?.isHiveWorkspaceMirror == true)
+            .help(Workspace.hiveSplitUnavailableReason)
 
             splitCommandButton(title: String(localized: "menu.view.splitDown", defaultValue: "Split Down"), shortcut: menuShortcut(for: .splitDown)) {
                 performSplitFromMenu(direction: .down)
             }
+            .disabled(activeTabManager.selectedWorkspace?.isHiveWorkspaceMirror == true)
+            .help(Workspace.hiveSplitUnavailableReason)
 
             splitCommandButton(title: String(localized: "menu.view.splitBrowserRight", defaultValue: "Split Browser Right"), shortcut: menuShortcut(for: .splitBrowserRight)) {
                 performBrowserSplitFromMenu(direction: .right)

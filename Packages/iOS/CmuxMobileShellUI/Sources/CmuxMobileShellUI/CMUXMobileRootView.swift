@@ -89,6 +89,14 @@ struct CMUXMobileRootView: View {
         #endif
     }
 
+    private var shouldShowConnectionPolishPreview: Bool {
+        #if os(iOS) && DEBUG
+        return UITestConfig.connectionPolishPreviewMode != nil
+        #else
+        return false
+        #endif
+    }
+
     private var shouldShowChangesPreview: Bool {
         #if os(iOS) && DEBUG
         return UITestConfig.changesPreviewMode != nil
@@ -160,6 +168,16 @@ struct CMUXMobileRootView: View {
     @ViewBuilder private var workspaceListLayoutPreview: some View {
         #if os(iOS) && DEBUG
         WorkspaceListLayoutPreviewView()
+        #else
+        EmptyView()
+        #endif
+    }
+
+    @ViewBuilder private var connectionPolishPreview: some View {
+        #if os(iOS) && DEBUG
+        if let mode = UITestConfig.connectionPolishPreviewMode {
+            MobileConnectionPolishPreviewView(mode: mode)
+        }
         #else
         EmptyView()
         #endif
@@ -332,6 +350,8 @@ struct CMUXMobileRootView: View {
             agentChatDemoPreview
         } else if shouldShowTerminalLayoutPreview {
             terminalLayoutPreview
+        } else if shouldShowConnectionPolishPreview {
+            connectionPolishPreview
         } else if shouldShowWorkspaceListLayoutPreview {
             workspaceListLayoutPreview
         } else if shouldShowHiddenComputersPreview {
@@ -384,11 +404,7 @@ struct CMUXMobileRootView: View {
                 )
                 .overlay {
                     if shouldBlockWorkspaceForReconnect {
-                        MobileReconnectProgressView(
-                            macName: store.connectedHostName,
-                            routeKind: store.activeRoute?.kind,
-                            tailnetStatus: tailscaleStatusMonitor?.status
-                        )
+                        MobileReconnectProgressView(macName: store.connectedHostName)
                     }
                 }
             }
@@ -576,7 +592,7 @@ struct CMUXMobileRootView: View {
     /// the sign-in screen after a pairing until some unrelated change happened
     /// to invalidate the body.
     private func refreshPairedDeviceIdentity() {
-        let paired = MobileDeviceLinkClient.shared.hasAnyPairedDevice()
+        let paired = store.hasAnyPairedDeviceCredential()
         guard paired != hasPairedDeviceIdentity else { return }
         hasPairedDeviceIdentity = paired
     }

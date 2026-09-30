@@ -1599,6 +1599,23 @@
         }
       }
     },
+    "mobile.computers.buildLabelPrefix": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Build:"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ビルド:"
+          }
+        }
+      }
+    },
     "mobile.computers.diagnosticFormat": {
       "extractionState": "manual",
       "localizations": {
@@ -2568,6 +2585,40 @@
         }
       }
     },
+    "mobile.connection.route.lan": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "LAN"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "LAN"
+          }
+        }
+      }
+    },
+    "mobile.connection.route.tailscale": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale"
+          }
+        }
+      }
+    },
     "mobile.connection.requestTimedOut": {
       "extractionState": "manual",
       "localizations": {
@@ -3084,13 +3135,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Tap a computer to reconnect. Swipe left to hide one."
+            "value": "Choose a computer to reconnect. Make sure cmux is open on that computer."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "コンピュータをタップすると再接続します。左にスワイプすると非表示にできます。"
+            "value": "再接続するコンピュータを選択してください。そのコンピュータでcmuxが開いていることを確認してください。"
           }
         }
       }
@@ -6671,13 +6722,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "This computer rejected the saved pairing. Open Pair a Device on the computer and scan a fresh QR code."
+            "value": "Pairing needs to be renewed. Open Pair a Device in cmux on your computer, then scan the new QR code."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "このコンピュータは保存済みのペアリングを拒否しました。コンピュータで「デバイスをペアリング」を開き、新しいQRコードをスキャンしてください。"
+            "value": "ペアリングを更新する必要があります。コンピュータのcmuxで「デバイスをペアリング」を開き、新しいQRコードをスキャンしてください。"
           }
         }
       }
@@ -6755,6 +6806,23 @@
       "localizations": {
         "en": { "stringUnit": { "state": "translated", "value": "Stage" } },
         "ja": { "stringUnit": { "state": "translated", "value": "段階" } }
+      }
+    },
+    "mobile.reconnect.description": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Trying your saved connections. Make sure cmux is open on your Mac."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "保存済みの接続を試しています。Macでcmuxが開いていることを確認してください。"
+          }
+        }
       }
     },
     "mobile.reconnect.stage.routes": {
@@ -7320,6 +7388,23 @@
         }
       }
     },
+    "mobile.settings.connection": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connection"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "接続"
+          }
+        }
+      }
+    },
     "mobile.settings.connectionFocused": {
       "extractionState": "manual",
       "localizations": {
@@ -7707,6 +7792,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "利用規約"
+          }
+        }
+      }
+    },
+    "mobile.settings.terminal": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Terminal"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ターミナル"
           }
         }
       }
@@ -13742,6 +13844,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "Macに接続できません"
+          }
+        }
+      }
+    },
+    "mobile.workspaces.terminalShortcuts": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Terminal Shortcuts"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ターミナルショートカット"
           }
         }
       }

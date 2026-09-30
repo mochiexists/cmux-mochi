@@ -7,22 +7,32 @@ public import SwiftUI
 public struct HiveWorkspaceBrowserView: View {
     @Bindable private var coordinator: HiveWorkspaceCoordinator
     @State private var pairingLink = ""
+    @State private var pendingRemoval: MobilePairedMac?
     @State private var localOnlyRemoval: MobilePairedMac?
     @State private var removalError: String?
     private let openTerminal: @MainActor (
         MobileWorkspacePreview,
         MobileTerminalPreview
     ) -> Void
+    private let isTerminalMounted: @MainActor (
+        MobileWorkspacePreview,
+        MobileTerminalPreview
+    ) -> Bool
 
     public init(
         coordinator: HiveWorkspaceCoordinator,
         openTerminal: @escaping @MainActor (
             MobileWorkspacePreview,
             MobileTerminalPreview
-        ) -> Void
+        ) -> Void,
+        isTerminalMounted: @escaping @MainActor (
+            MobileWorkspacePreview,
+            MobileTerminalPreview
+        ) -> Bool = { _, _ in false }
     ) {
         self.coordinator = coordinator
         self.openTerminal = openTerminal
+        self.isTerminalMounted = isTerminalMounted
     }
 
     public var body: some View {
@@ -35,14 +45,40 @@ public struct HiveWorkspaceBrowserView: View {
         }
         .padding(20)
         .frame(minWidth: 560, minHeight: 480)
-        .task {
-            if coordinator.hasKnownPairing {
-                _ = await coordinator.reconnect()
+        .onAppear {
+            coordinator.setBrowserVisible(true)
+            #if DEBUG
+            let fixture = ProcessInfo.processInfo.environment["CMUX_E2E_HIVE_UI_FIXTURE"]
+            if fixture == "remove-confirmation" {
+                pendingRemoval = coordinator.pairedMacs.first
             }
-            while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(1))
-                coordinator.refreshWorkspaceSnapshot()
+            #endif
+        }
+        .onDisappear { coordinator.setBrowserVisible(false) }
+        .confirmationDialog(
+            String(localized: "hive.remove.confirm.title", defaultValue: "Remove this remote Mac?"),
+            isPresented: Binding(
+                get: { pendingRemoval != nil },
+                set: { if !$0 { pendingRemoval = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button(
+                String(localized: "hive.remove.confirm.action", defaultValue: "Remove Mac"),
+                role: .destructive
+            ) {
+                guard let mac = pendingRemoval else { return }
+                pendingRemoval = nil
+                Task { await remove(mac) }
             }
+            Button(String(localized: "hive.cancel", defaultValue: "Cancel"), role: .cancel) {
+                pendingRemoval = nil
+            }
+        } message: {
+            Text(String(
+                localized: "hive.remove.confirm.message",
+                defaultValue: "This Mac will need to be paired again before you can open its workspaces."
+            ))
         }
         .confirmationDialog(
             String(localized: "hive.remove.localOnly.title", defaultValue: "Forget on this Mac?"),
@@ -92,15 +128,38 @@ public struct HiveWorkspaceBrowserView: View {
             )
             .textFieldStyle(.roundedBorder)
             .lineLimit(1 ... 3)
-            Button(String(localized: "hive.pair.action", defaultValue: "Pair")) {
-                let link = pairingLink
-                Task {
-                    if await coordinator.pair(link: link) {
-                        pairingLink = ""
+            .onSubmit { submitPairing() }
+            Button {
+                submitPairing()
+            } label: {
+                HStack(spacing: 6) {
+                    if isPairing {
+                        ProgressView()
+                            .controlSize(.small)
                     }
+                    Text(String(localized: "hive.pair.action", defaultValue: "Pair"))
                 }
             }
-            .disabled(pairingLink.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            .disabled(!canSubmitPairing)
+        }
+    }
+
+    private var isPairing: Bool {
+        coordinator.phase == .pairing
+    }
+
+    private var canSubmitPairing: Bool {
+        !isPairing
+            && !pairingLink.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private func submitPairing() {
+        guard canSubmitPairing else { return }
+        let link = pairingLink
+        Task {
+            if await coordinator.pair(link: link) {
+                pairingLink = ""
+            }
         }
     }
 
@@ -165,17 +224,7 @@ public struct HiveWorkspaceBrowserView: View {
     @ViewBuilder
     private var workspaceList: some View {
         if coordinator.workspaces.isEmpty {
-            ContentUnavailableView {
-                Label(
-                    String(localized: "hive.empty.title", defaultValue: "No Remote Workspaces"),
-                    systemImage: "desktopcomputer"
-                )
-            } description: {
-                Text(String(
-                    localized: "hive.empty.description",
-                    defaultValue: "Open Pair a Device on the other Mac, then paste its link above."
-                ))
-            }
+            emptyState
         } else {
             List {
                 ForEach(HiveComputerWorkspaceGroup.grouped(coordinator.workspaces)) { computer in
@@ -187,11 +236,33 @@ public struct HiveWorkspaceBrowserView: View {
                                     Button {
                                         openTerminal(workspace, terminal)
                                     } label: {
-                                        Label(terminal.name, systemImage: "terminal")
-                                            .frame(maxWidth: .infinity, alignment: .leading)
+                                        HStack(spacing: 8) {
+                                            Label(terminal.name, systemImage: "terminal")
+                                            Spacer()
+                                            if !terminal.isReady {
+                                                Text(String(
+                                                    localized: "hive.terminal.notReady",
+                                                    defaultValue: "Not ready"
+                                                ))
+                                                .font(.caption)
+                                                .foregroundStyle(.secondary)
+                                            } else if isTerminalMounted(workspace, terminal) {
+                                                Label(
+                                                    String(localized: "hive.terminal.mounted", defaultValue: "Mounted"),
+                                                    systemImage: "checkmark.circle.fill"
+                                                )
+                                                .font(.caption)
+                                                .foregroundStyle(.green)
+                                            }
+                                        }
+                                        .frame(maxWidth: .infinity, alignment: .leading)
                                     }
                                     .buttonStyle(.plain)
                                     .disabled(!terminal.isReady)
+                                    .help(terminal.isReady ? "" : String(
+                                        localized: "hive.terminal.notReady.help",
+                                        defaultValue: "This terminal is still starting on the remote Mac."
+                                    ))
                                 }
                             }
                             .padding(.vertical, 4)
@@ -213,6 +284,48 @@ public struct HiveWorkspaceBrowserView: View {
     }
 
     @ViewBuilder
+    private var emptyState: some View {
+        switch coordinator.emptyState ?? .neverPaired {
+        case .neverPaired:
+            ContentUnavailableView {
+                Label(
+                    String(localized: "hive.empty.neverPaired.title", defaultValue: "Pair Your First Mac"),
+                    systemImage: "link.badge.plus"
+                )
+            } description: {
+                Text(String(
+                    localized: "hive.empty.neverPaired.description",
+                    defaultValue: "Open Pair a Device on the other Mac, then paste its link above."
+                ))
+            }
+        case .pairedOffline:
+            ContentUnavailableView {
+                Label(
+                    String(localized: "hive.empty.offline.title", defaultValue: "Paired Macs Are Offline"),
+                    systemImage: "wifi.slash"
+                )
+            } description: {
+                Text(String(
+                    localized: "hive.empty.offline.description",
+                    defaultValue: "Open Mochi on a paired Mac, then connect to load its workspaces."
+                ))
+            }
+        case .noWorkspaces:
+            ContentUnavailableView {
+                Label(
+                    String(localized: "hive.empty.noWorkspaces.title", defaultValue: "No Workspaces on This Mac"),
+                    systemImage: "rectangle.stack"
+                )
+            } description: {
+                Text(String(
+                    localized: "hive.empty.noWorkspaces.description",
+                    defaultValue: "The remote Mac is connected but does not have an open workspace yet."
+                ))
+            }
+        }
+    }
+
+    @ViewBuilder
     private var pairedComputers: some View {
         if !coordinator.pairedMacs.isEmpty {
             Divider()
@@ -230,11 +343,18 @@ public struct HiveWorkspaceBrowserView: View {
                             }
                         }
                         Spacer()
+                        pairedMacStatus(coordinator.connectionStatus(for: mac))
+                        if coordinator.connectionStatus(for: mac) != .connected {
+                            Button(String(localized: "hive.connect.action", defaultValue: "Connect")) {
+                                Task { await coordinator.connect(mac) }
+                            }
+                            .disabled(coordinator.connectionStatus(for: mac) == .reconnecting)
+                        }
                         Button(
                             String(localized: "hive.remove.action", defaultValue: "Remove"),
                             role: .destructive
                         ) {
-                            Task { await remove(mac) }
+                            pendingRemoval = mac
                         }
                     }
                 }
@@ -245,6 +365,32 @@ public struct HiveWorkspaceBrowserView: View {
                 }
             }
         }
+    }
+
+    private func pairedMacStatus(_ status: MobileMacConnectionStatus) -> some View {
+        let presentation: (String, String, Color) = switch status {
+        case .connected:
+            (
+                String(localized: "hive.mac.status.online", defaultValue: "Online"),
+                "circle.fill",
+                .green
+            )
+        case .reconnecting:
+            (
+                String(localized: "hive.mac.status.reconnecting", defaultValue: "Reconnecting"),
+                "arrow.trianglehead.2.clockwise.rotate.90",
+                .orange
+            )
+        case .unavailable:
+            (
+                String(localized: "hive.mac.status.offline", defaultValue: "Offline"),
+                "circle.fill",
+                .secondary
+            )
+        }
+        return Label(presentation.0, systemImage: presentation.1)
+            .font(.caption)
+            .foregroundStyle(presentation.2)
     }
 
     private func remove(_ mac: MobilePairedMac, localOnly: Bool = false) async {

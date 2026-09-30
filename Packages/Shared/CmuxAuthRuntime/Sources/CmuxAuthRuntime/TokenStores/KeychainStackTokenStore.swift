@@ -15,7 +15,11 @@ import Security
 ///     service: KeychainStackTokenStore.serviceName(bundleIdentifier: Bundle.main.bundleIdentifier)
 /// )
 /// ```
-public actor KeychainStackTokenStore: StackAuthTokenStoreProtocol {
+public protocol KeychainStackTokenStoring: StackAuthTokenStoreProtocol {
+    func trySetTokens(accessToken: String?, refreshToken: String?) async -> Bool
+}
+
+public actor KeychainStackTokenStore: KeychainStackTokenStoring {
     private static let accessTokenAccount = "cmux-auth-access-token"
     private static let refreshTokenAccount = "cmux-auth-refresh-token"
     private let service: String

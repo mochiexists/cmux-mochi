@@ -45,11 +45,10 @@ extension TerminalPanel {
     func acceptSessionScrollbackCapture(_ capturedScrollback: String) -> Bool {
         let containsBoundary: Bool
         if let marker = sessionScrollbackReplayBoundaryMarker {
-            containsBoundary = capturedScrollback.contains(marker)
-                || capturedScrollback
-                    .replacingOccurrences(of: "\r", with: "")
-                    .replacingOccurrences(of: "\n", with: "")
-                    .contains(marker)
+            containsBoundary = SessionPersistencePolicy.internalScrollbackBoundaryRange(
+                of: marker,
+                in: capturedScrollback
+            ) != nil
         } else {
             containsBoundary = false
         }

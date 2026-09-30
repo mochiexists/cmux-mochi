@@ -31,6 +31,8 @@ public struct CommandPaletteContextKeys: Hashable, Sendable {
     public static let workspaceHasSplits = CommandPaletteContextKeys(rawValue: "workspace.hasSplits")
     /// Whether the workspace uses the canvas layout mode.
     public static let workspaceCanvasLayout = CommandPaletteContextKeys(rawValue: "workspace.canvasLayout")
+    /// Whether the workspace is an authenticated Remote Mac mirror.
+    public static let workspaceIsHiveMirror = CommandPaletteContextKeys(rawValue: "workspace.isHiveMirror")
     /// Whether the workspace has sibling workspaces.
     public static let workspaceHasPeers = CommandPaletteContextKeys(rawValue: "workspace.hasPeers")
     /// Whether a workspace exists above the selection.

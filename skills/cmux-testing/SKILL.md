@@ -28,6 +28,7 @@ The `workflow-guard-tests` CI job runs `./scripts/lint-pbxproj-test-wiring.sh`. 
 - For metadata changes, verify the built app bundle or the runtime behavior that depends on the metadata.
 - If a behavior cannot be exercised end to end yet, add a small runtime seam or harness first, then test through it.
 - If no meaningful behavioral or artifact-level test is practical, skip the fake regression test and say so.
+- Tests must never query or mutate the login keychain. Inject in-memory credential, key, and pin stores; production keychain stores should reject access under XCTest or Swift Testing so a missed injection fails instead of prompting.
 
 ## Test framework
 

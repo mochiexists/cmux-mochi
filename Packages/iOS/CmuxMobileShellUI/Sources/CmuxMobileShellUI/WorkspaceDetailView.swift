@@ -347,13 +347,16 @@ struct WorkspaceDetailView: View {
             // The terminal's only connection chrome: last-known content stays
             // visible and scrollable underneath while the pill shows the
             // reconnect progress (or offers Reconnect once attempts stop).
-            MobileMacConnectionStatusPill(
-                host: host,
-                status: effectiveConnectionStatus,
-                reconnect: { reconnectToWorkspaceMac() }
-            )
-                .padding(.top, 10)
-                .padding(.leading, 10)
+            if !store.connectionRequiresReauth {
+                MobileMacConnectionStatusPill(
+                    host: host,
+                    status: effectiveConnectionStatus,
+                    routeKind: activeRouteKind,
+                    reconnect: { reconnectToWorkspaceMac() }
+                )
+                    .padding(.top, 10)
+                    .padding(.leading, 10)
+            }
         }
         #if os(iOS) && DEBUG
         // DEBUG/UI-test-only store-side composer probe.
@@ -432,6 +435,16 @@ struct WorkspaceDetailView: View {
             }
         }
         return connectionStatus
+    }
+
+    /// Opening a workspace promotes its Mac to the foreground connection, whose
+    /// active route is the one carrying this terminal's bytes.
+    private var activeRouteKind: CmxAttachTransportKind? {
+        guard store.selectedWorkspaceID == workspace.id,
+              store.selectedWorkspaceUsesForegroundConnection else {
+            return nil
+        }
+        return store.activeRoute?.kind
     }
 
     /// Input viability is narrower than the displayed status: a same-client

@@ -20,6 +20,7 @@ public protocol HiveShellServing: AnyObject {
     var hiveIsReconnecting: Bool { get }
     var hiveActiveRoute: CmxAttachRoute? { get }
     var hivePairedMacs: [MobilePairedMac] { get }
+    var hiveMacConnectionStatuses: [String: MobileMacConnectionStatus] { get }
 
     func connectPairingURLResult(
         _ rawValue: String?
@@ -30,7 +31,21 @@ public protocol HiveShellServing: AnyObject {
         refreshBackupBeforeDial: Bool
     ) async -> Bool
 
+    /// Reconnects the foreground and every eligible paired Mac connection.
+    func reconnectAllPairedMacs(
+        stackUserID: String?,
+        refreshBackupBeforeDial: Bool,
+        attemptDeadlineNanoseconds: UInt64?
+    ) async -> Bool
+    func reconnectHiveMac(macDeviceID: String, instanceTag: String?) async
+
     func loadPairedMacs() async
+    func createTerminal(in workspaceID: MobileWorkspacePreview.ID?)
+    func renameWorkspace(
+        id: MobileWorkspacePreview.ID,
+        title: String,
+        refreshAfterMutation: Bool
+    ) async -> Result<Void, MobileWorkspaceMutationFailure>
     func removeComputer(
         representativeID: String,
         aliasIDs: [String]
@@ -49,4 +64,11 @@ extension MobileShellComposite: HiveShellServing {
     public var hiveIsReconnecting: Bool { isReconnectingStoredMac }
     public var hiveActiveRoute: CmxAttachRoute? { activeRoute }
     public var hivePairedMacs: [MobilePairedMac] { pairedMacs }
+    public var hiveMacConnectionStatuses: [String: MobileMacConnectionStatus] {
+        macConnectionStatuses
+    }
+
+    public func reconnectHiveMac(macDeviceID: String, instanceTag: String?) async {
+        await reconnectToMac(macDeviceID: macDeviceID, instanceTag: instanceTag)
+    }
 }

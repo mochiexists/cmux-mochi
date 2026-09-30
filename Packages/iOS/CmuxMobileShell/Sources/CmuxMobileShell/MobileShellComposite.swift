@@ -745,6 +745,8 @@ public final class MobileShellComposite: MobileTerminalOutputSinking {
     let personalIrohForget: (any MobileIrohMacForgetting)?
     /// Destroys the per-Mac DeviceLink identity after the Mac has revoked it.
     let deviceLinkCredentialRemover: any MobileDeviceLinkCredentialRemoving
+    /// DeviceLink credential authority used by reconnect, enrollment, and promotion paths.
+    let deviceLinkClient: MobileDeviceLinkClient
     /// Sends the authenticated self-revoke request over the selected Mac's live connection.
     let deviceLinkSelfRevocationSender: any MobileDeviceLinkSelfRevocationSending
     /// Live presence subscription (the `workers/presence` Durable Object edge).
@@ -1318,6 +1320,11 @@ public final class MobileShellComposite: MobileTerminalOutputSinking {
         return selectedWorkspace.preferredTerminal
     }
 
+    /// Whether this composition's injected DeviceLink store holds any pairing.
+    public func hasAnyPairedDeviceCredential() -> Bool {
+        deviceLinkClient.hasAnyPairedDevice()
+    }
+
     /// Create a mobile shell store with injectable runtime services for app
     /// composition, previews, and package tests.
     /// - Parameter browserStreamEvents: App-lifetime browser stream state kept outside workspace previews.
@@ -1335,7 +1342,8 @@ public final class MobileShellComposite: MobileTerminalOutputSinking {
         deviceRegistry: (any DeviceRegistryRefreshing)? = nil,
         personalIrohDiscovery: (any MobileIrohMacDiscovering)? = nil,
         personalIrohForget: (any MobileIrohMacForgetting)? = nil,
-        deviceLinkCredentialRemover: any MobileDeviceLinkCredentialRemoving = MobileDeviceLinkClient.shared,
+        deviceLinkClient: MobileDeviceLinkClient = .shared,
+        deviceLinkCredentialRemover: (any MobileDeviceLinkCredentialRemoving)? = nil,
         deviceLinkSelfRevocationSender: any MobileDeviceLinkSelfRevocationSending = MobileDeviceLinkSelfRevocationSender(),
         presence: (any PresenceSubscribing)? = nil,
         clientIDRepository: MobileClientIDRepository = MobileClientIDRepository(defaults: .standard),
@@ -1383,7 +1391,8 @@ public final class MobileShellComposite: MobileTerminalOutputSinking {
         self.deviceRegistry = deviceRegistry
         self.personalIrohDiscovery = personalIrohDiscovery
         self.personalIrohForget = personalIrohForget
-        self.deviceLinkCredentialRemover = deviceLinkCredentialRemover
+        self.deviceLinkClient = deviceLinkClient
+        self.deviceLinkCredentialRemover = deviceLinkCredentialRemover ?? deviceLinkClient
         self.deviceLinkSelfRevocationSender = deviceLinkSelfRevocationSender
         self.presence = presence
         self.identityProvider = identityProvider
@@ -2098,6 +2107,42 @@ public final class MobileShellComposite: MobileTerminalOutputSinking {
         )).didConnect
     }
 
+    /// Reconnects the foreground pairing and every eligible paired Mac in the
+    /// bounded multi-Mac control pool.
+    ///
+    /// - Parameters:
+    ///   - stackUserID: Account scope for Stack-owned pairings, or `nil` for
+    ///     account-free DeviceLink pairings.
+    ///   - refreshBackupBeforeDial: Whether to refresh the paired-Mac backup
+    ///     before selecting the foreground reconnect candidate.
+    ///   - attemptDeadlineNanoseconds: Optional deadline for this reconnect,
+    ///     overriding the runtime default. Deadline-bound callers return after
+    ///     the foreground attempt and continue secondary aggregation in the
+    ///     tracked background task.
+    /// - Returns: `true` when a foreground pairing connected; otherwise,
+    ///   `false`.
+    @discardableResult
+    public func reconnectAllPairedMacs(
+        stackUserID: String?,
+        refreshBackupBeforeDial: Bool = true,
+        attemptDeadlineNanoseconds: UInt64? = nil
+    ) async -> Bool {
+        let outcome = await reconnectActiveMacOutcome(
+            stackUserID: stackUserID,
+            refreshBackupBeforeDial: refreshBackupBeforeDial,
+            schedulesSecondaryAggregation: false,
+            attemptDeadlineNanoseconds: attemptDeadlineNanoseconds
+        )
+        if outcome.didConnect, multiMacAggregationEnabled {
+            if attemptDeadlineNanoseconds == nil {
+                await refreshSecondaryMacWorkspaces()
+            } else {
+                scheduleSecondaryAggregation()
+            }
+        }
+        return outcome.didConnect
+    }
+
     /// Starts one user-requested retry and exposes its loading state before any await.
     @discardableResult
     public func retryActiveMacReconnect(
@@ -2119,7 +2164,9 @@ public final class MobileShellComposite: MobileTerminalOutputSinking {
 
     func reconnectActiveMacOutcome(
         stackUserID: String?,
-        refreshBackupBeforeDial: Bool = true
+        refreshBackupBeforeDial: Bool = true,
+        schedulesSecondaryAggregation: Bool = true,
+        attemptDeadlineNanoseconds: UInt64? = nil
     ) async -> StoredMacReconnectOutcome {
         lastReconnectStackUserID = stackUserID
         startObservingNetworkPathChanges()
@@ -2157,7 +2204,8 @@ public final class MobileShellComposite: MobileTerminalOutputSinking {
         // generation claim above remains synchronous, preserving serialization
         // while the unstructured operation can be abandoned if an FFI dial
         // ignores cancellation.
-        let deadlineNanoseconds = runtime?.reconnectAttemptDeadlineNanoseconds
+        let deadlineNanoseconds = attemptDeadlineNanoseconds
+            ?? runtime?.reconnectAttemptDeadlineNanoseconds
             ?? 30_000_000_000
         let race = await Self.raceAgainstDeadline(
             nanoseconds: deadlineNanoseconds
@@ -2174,7 +2222,9 @@ public final class MobileShellComposite: MobileTerminalOutputSinking {
             return .superseded
         }
         if let outcome = race.value {
-            if outcome.didConnect, multiMacAggregationEnabled {
+            if outcome.didConnect,
+               multiMacAggregationEnabled,
+               schedulesSecondaryAggregation {
                 // Start secondary dials only after the bounded foreground
                 // operation has handed ownership back to this shared entry.
                 // This preserves foreground-first ordering even though the
@@ -2403,7 +2453,7 @@ public final class MobileShellComposite: MobileTerminalOutputSinking {
                 !irohReconnectIsBlocked || $0.kind != .iroh
             }
             let localHasIroh = localRoutes.contains { $0.kind == .iroh }
-            let hasDeviceLinkCredential = MobileDeviceLinkClient.shared
+            let hasDeviceLinkCredential = deviceLinkClient
                 .hasUsableCredential(
                     forMacDeviceID: mac.macDeviceID,
                     instanceTag: mac.instanceTag
@@ -7531,7 +7581,7 @@ public final class MobileShellComposite: MobileTerminalOutputSinking {
             }
             mobileShellLog.info("pairing trying route kind=\(route.kind.rawValue, privacy: .public) endpoint=\(route.endpoint.logDescription, privacy: .private)")
             let hadDeviceLinkCredentialForMigration = route.kind != .iroh
-                && MobileDeviceLinkClient.shared.hasUsableCredential(
+                && deviceLinkClient.hasUsableCredential(
                     forMacDeviceID: ticket.macDeviceID,
                     instanceTag: instanceTagExpectation.deviceLinkInstanceTag
                 )
@@ -7853,7 +7903,7 @@ public final class MobileShellComposite: MobileTerminalOutputSinking {
                     // present in the keychain.
                     if hadDeviceLinkCredentialForMigration,
                        !resolvedForegroundMacID.isEmpty {
-                        MobileDeviceLinkClient.shared.promoteLegacyPairing(
+                        deviceLinkClient.promoteLegacyPairing(
                             macDeviceID: resolvedForegroundMacID,
                             instanceTag: resolvedInstanceTag
                         )

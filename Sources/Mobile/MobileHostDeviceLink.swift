@@ -121,7 +121,22 @@ private final class MobileHostIdentityMaterialLoadState: @unchecked Sendable {
 /// apps and so upstream merges see only this thin integration layer.
 @MainActor
 final class MobileHostDeviceLink {
-    static let shared = MobileHostDeviceLink()
+    static let shared: MobileHostDeviceLink = {
+        #if DEBUG
+        if let path = ProcessInfo.processInfo.environment["CMUX_E2E_DEVICELINK_STATE_DIR"]?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+           !path.isEmpty,
+           let store = try? MobileHostDeviceLinkE2EStateStore(
+               directoryURL: URL(fileURLWithPath: path, isDirectory: true)
+           ) {
+            return MobileHostDeviceLink(
+                authorizedDeviceStore: store,
+                identityMaterialLoader: { try store.loadOrCreateIdentityMaterial() }
+            )
+        }
+        #endif
+        return MobileHostDeviceLink(scope: MobileHostDeviceLink.keychainScope)
+    }()
 
     /// Where this app instance's keychain items live. Bundle id plus instance
     /// tag, so Stable/Nightly/tagged-dev builds on one Mac never share a table.
@@ -169,21 +184,36 @@ final class MobileHostDeviceLink {
     /// Internal injection point for proving that a slow Security.framework
     /// read never runs on the main actor. Production passes no loader and owns
     /// the scoped Keychain store below.
-    init(
+    convenience init(
         scope: KeychainScope,
         identityMaterialLoader: IdentityMaterialLoader? = nil,
         identityLoadTimeout: Duration = MobileHostPairingDeadlines.identityLoad
     ) {
-        coordinator = DeviceLinkCoordinator(store: KeychainAuthorizedDeviceStore(scope: scope))
-        self.identityLoadTimeout = identityLoadTimeout
+        let authorizedDeviceStore = KeychainAuthorizedDeviceStore(scope: scope)
+        let resolvedIdentityMaterialLoader: IdentityMaterialLoader
         if let identityMaterialLoader {
-            self.identityMaterialLoader = identityMaterialLoader
+            resolvedIdentityMaterialLoader = identityMaterialLoader
         } else {
             let store = KeychainDeviceIdentityStore(scope: scope)
-            self.identityMaterialLoader = {
+            resolvedIdentityMaterialLoader = {
                 try Self.loadOrCreateIdentityMaterial(in: store)
             }
         }
+        self.init(
+            authorizedDeviceStore: authorizedDeviceStore,
+            identityMaterialLoader: resolvedIdentityMaterialLoader,
+            identityLoadTimeout: identityLoadTimeout
+        )
+    }
+
+    private init(
+        authorizedDeviceStore: any AuthorizedDeviceStoring,
+        identityMaterialLoader: @escaping IdentityMaterialLoader,
+        identityLoadTimeout: Duration = MobileHostPairingDeadlines.identityLoad
+    ) {
+        coordinator = DeviceLinkCoordinator(store: authorizedDeviceStore)
+        self.identityLoadTimeout = identityLoadTimeout
+        self.identityMaterialLoader = identityMaterialLoader
     }
 
     /// Loads the authorized-devices table.

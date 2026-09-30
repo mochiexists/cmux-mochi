@@ -97,6 +97,12 @@ public struct UITestConfig {
         #endif
     }
 
+    /// Connection UI fixture selected for deterministic screenshot capture.
+    /// DEBUG-only and gated on mock data like the rest of the UI-test harness.
+    public static var connectionPolishPreviewMode: String? {
+        value(for: "CMUX_UITEST_CONNECTION_POLISH_PREVIEW")
+    }
+
     /// When `CMUX_UITEST_HIDDEN_COMPUTERS_PREVIEW=1`, the root view renders a
     /// static Hidden Computers list with fixture rows so UI tests can exercise
     /// the rows' swipe actions (the confirm-first Forget flow) without sign-in

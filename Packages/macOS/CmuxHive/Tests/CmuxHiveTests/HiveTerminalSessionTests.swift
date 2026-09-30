@@ -61,6 +61,44 @@ struct HiveTerminalSessionTests {
         #expect(shell.registrationCount == 2)
         session.detach()
     }
+
+    @Test("fans one registered output stream out to every mounted consumer")
+    func fansOutOneRegistrationToEveryConsumer() async {
+        let shell = HiveTerminalShellStub()
+        let session = HiveTerminalSession(surfaceID: "surface-a", shell: shell)
+        let first = OutputRecorder()
+        let second = OutputRecorder()
+        let token = UUID()
+
+        session.attach { first.append($0) }
+        session.attach { second.append($0) }
+        shell.outputContinuation.yield(
+            MobileTerminalOutputChunk(
+                data: Data("shared".utf8),
+                streamToken: token
+            )
+        )
+        await Self.yieldUntil {
+            first.data == Data("shared".utf8)
+                && second.data == Data("shared".utf8)
+        }
+
+        #expect(shell.registrationCount == 1)
+        #expect(first.data == Data("shared".utf8))
+        #expect(second.data == Data("shared".utf8))
+        session.detach()
+    }
+
+    private static func yieldUntil(
+        _ condition: @MainActor () -> Bool,
+        sourceLocation: SourceLocation = #_sourceLocation
+    ) async {
+        for _ in 0..<1_000 {
+            if condition() { return }
+            await Task.yield()
+        }
+        Issue.record("condition never became true", sourceLocation: sourceLocation)
+    }
 }
 
 @MainActor

@@ -6817,6 +6817,7 @@ struct ContentView: View {
                 CommandPaletteContextKeys.workspaceCanvasLayout,
                 workspace.layoutMode == .canvas
             )
+            snapshot.setBool(CommandPaletteContextKeys.workspaceIsHiveMirror, workspace.isHiveWorkspaceMirror)
             let workspaceIndex = tabManager.tabs.firstIndex { $0.id == workspace.id }
             snapshot.setBool(CommandPaletteContextKeys.workspaceHasPeers, tabManager.tabs.count > 1)
             snapshot.setBool(CommandPaletteContextKeys.workspaceHasAbove, (workspaceIndex ?? 0) > 0)
@@ -7537,7 +7538,10 @@ struct ContentView: View {
                 subtitle: panelSubtitle,
                 keywords: ["rename", "tab", "title"],
                 dismissOnRun: false,
-                when: { $0.bool(CommandPaletteContextKeys.hasFocusedPanel) }
+                when: {
+                    $0.bool(CommandPaletteContextKeys.hasFocusedPanel)
+                        && !$0.bool(CommandPaletteContextKeys.workspaceIsHiveMirror)
+                }
             )
         )
         contributions.append(
@@ -7549,6 +7553,7 @@ struct ContentView: View {
                 when: {
                     $0.bool(CommandPaletteContextKeys.hasFocusedPanel)
                         && $0.bool(CommandPaletteContextKeys.panelHasCustomName)
+                        && !$0.bool(CommandPaletteContextKeys.workspaceIsHiveMirror)
                 }
             )
         )
@@ -7943,7 +7948,10 @@ struct ContentView: View {
                 title: constant(String(localized: "command.terminalSplitRight.title", defaultValue: "Split Right")),
                 subtitle: constant(String(localized: "command.terminalSplitRight.subtitle", defaultValue: "Terminal Layout")),
                 keywords: ["terminal", "split", "right"],
-                when: { $0.bool(CommandPaletteContextKeys.panelIsTerminal) }
+                when: {
+                    $0.bool(CommandPaletteContextKeys.panelIsTerminal)
+                        && !$0.bool(CommandPaletteContextKeys.workspaceIsHiveMirror)
+                }
             )
         )
         contributions.append(
@@ -8024,7 +8032,10 @@ struct ContentView: View {
                 title: constant(String(localized: "command.terminalSplitDown.title", defaultValue: "Split Down")),
                 subtitle: constant(String(localized: "command.terminalSplitDown.subtitle", defaultValue: "Terminal Layout")),
                 keywords: ["terminal", "split", "down"],
-                when: { $0.bool(CommandPaletteContextKeys.panelIsTerminal) }
+                when: {
+                    $0.bool(CommandPaletteContextKeys.panelIsTerminal)
+                        && !$0.bool(CommandPaletteContextKeys.workspaceIsHiveMirror)
+                }
             )
         )
         contributions.append(
@@ -15368,7 +15379,9 @@ struct TabItemView: View, Equatable {
     private func remoteWorkspaceSection(
         snapshot workspaceSnapshot: SidebarWorkspaceSnapshotBuilder.Snapshot
     ) -> some View {
-        if !settings.hidesAllDetails, sidebarShowSSH, let remoteWorkspaceSidebarText = workspaceSnapshot.remoteWorkspaceSidebarText {
+        if !settings.hidesAllDetails,
+           (sidebarShowSSH || workspaceSnapshot.isHiveWorkspaceMirror),
+           let remoteWorkspaceSidebarText = workspaceSnapshot.remoteWorkspaceSidebarText {
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
                     Text(remoteWorkspaceSidebarText)

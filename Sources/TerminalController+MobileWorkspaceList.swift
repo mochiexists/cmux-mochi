@@ -94,12 +94,16 @@ extension TerminalController {
             // to one workspace or terminal is a targeted lookup (create/refresh of
             // a single entry), not a sidebar render, so it omits group sections to
             // keep the response minimal. The phone always lists the full window.
+            let hostWorkspaces = mobileHostWorkspaces(in: tabManager)
             if requestedWorkspaceID == nil, requestedTerminalID == nil {
-                groups = mobileWorkspaceGroupPayloads(tabManager.workspaceGroups, tabs: tabManager.tabs)
+                groups = mobileWorkspaceGroupPayloads(
+                    tabManager.workspaceGroups,
+                    tabs: hostWorkspaces
+                )
             }
             let visibleWorkspaces = requestedWorkspaceID.map { workspaceID in
-                tabManager.tabs.filter { $0.id == workspaceID }
-            } ?? tabManager.tabs
+                hostWorkspaces.filter { $0.id == workspaceID }
+            } ?? hostWorkspaces
             if let requestedWorkspaceID, visibleWorkspaces.isEmpty {
                 return .err(
                     code: "not_found",
@@ -145,13 +149,14 @@ extension TerminalController {
             for summary in app.listMainWindowSummaries() {
                 guard seenWindowIDs.insert(summary.windowId).inserted else { continue }
                 guard let windowTabManager = app.tabManagerFor(windowId: summary.windowId) else { continue }
+                let hostWorkspaces = mobileHostWorkspaces(in: windowTabManager)
                 aggregatedGroups.append(
                     contentsOf: mobileWorkspaceGroupPayloads(
                         windowTabManager.workspaceGroups,
-                        tabs: windowTabManager.tabs
+                        tabs: hostWorkspaces
                     )
                 )
-                for workspace in windowTabManager.tabs where seenWorkspaceIDs.insert(workspace.id).inserted {
+                for workspace in hostWorkspaces where seenWorkspaceIDs.insert(workspace.id).inserted {
                     flattened.append(
                         mobileWorkspacePayload(
                             workspace: workspace,
@@ -178,6 +183,13 @@ extension TerminalController {
             payload["created_terminal_id"] = createdTerminalID
         }
         return .ok(payload)
+    }
+
+    /// Workspaces this Mac actually hosts, excluding Hive views sourced from a peer.
+    /// Shared by targeted and all-window lists so mirrors can never be offered
+    /// back to another Mac or iPhone as a recursively hostable workspace.
+    private func mobileHostWorkspaces(in tabManager: TabManager) -> [Workspace] {
+        tabManager.tabs.filter { !$0.isHiveWorkspaceMirror }
     }
 
     /// Serializes one workspace into the iOS-facing mobile workspace list shape.

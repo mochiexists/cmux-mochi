@@ -19,9 +19,7 @@ struct MobileDeviceLinkForgetTests {
 
     /// A client scoped to this test, so it cannot see or disturb real pairings.
     private func makeClient(_ label: String) -> MobileDeviceLinkClient {
-        MobileDeviceLinkClient(
-            scope: KeychainScope(bundleIdentifier: "com.cmux-mochi.tests.\(label)")
-        )
+        makeInMemoryMobileDeviceLinkClient(label)
     }
 
     private func cleanUp(_ client: MobileDeviceLinkClient, macs: [String]) {

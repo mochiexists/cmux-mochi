@@ -63,7 +63,13 @@ extension MobileShellComposite {
         clearPairingError()
 
         logDeviceLink("enrolling against \(payload.routes.joined(separator: ","))")
-        let enroller = MobileDeviceLinkEnroller(deviceLabel: Self.deviceLinkDeviceLabel)
+        // Enrollment and reconnect must use the same credential owner. Tests,
+        // simulator builds, and Hive can inject a non-Keychain client; falling
+        // back to `.shared` here created credentials reconnect could not read.
+        let enroller = MobileDeviceLinkEnroller(
+            client: deviceLinkClient,
+            deviceLabel: Self.deviceLinkDeviceLabel
+        )
         do {
             let outcome = try await enroller.enroll(payload: payload)
             logDeviceLink("enrolled ok via \(outcome.route)")
@@ -116,7 +122,7 @@ extension MobileShellComposite {
         // Record which pairing belongs to this Mac while both halves are known.
         // Reconnect otherwise has to guess which key to offer, and with more
         // than one paired Mac it guesses wrong.
-        MobileDeviceLinkClient.shared.rememberPairing(
+        deviceLinkClient.rememberPairing(
             macDeviceID: outcome.macDeviceID,
             instanceTag: outcome.macInstanceTag,
             pairingID: outcome.pairingID

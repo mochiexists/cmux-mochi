@@ -1394,6 +1394,18 @@ class TerminalController {
             return v2AsyncResultCall(id: request.id, timeoutSeconds: 30) {
                 await self.v2DeviceLinkDeviceRevoke(params: request.params)
             }
+        case "hive.pair":
+            return v2AsyncResultCall(id: request.id, timeoutSeconds: 30) {
+                await self.v2HivePair(params: request.params)
+            }
+        case "hive.status":
+            return v2AsyncResultCall(id: request.id, timeoutSeconds: 30) {
+                await self.v2HiveStatus()
+            }
+        case "hive.remove":
+            return v2AsyncResultCall(id: request.id, timeoutSeconds: 30) {
+                await self.v2HiveRemove(params: request.params)
+            }
         case "mobile.terminal.set_font":
             return v2Result(id: request.id, v2MobileTerminalSetFont(params: request.params))
         case "system.ping":
@@ -2342,6 +2354,13 @@ class TerminalController {
         case "sidebar.custom.open":
             return v2Result(id: id, self.v2CustomSidebarOpen(params: params))
 
+        // Hive list/open touch main-actor coordinator and renderer state. Open
+        // deliberately preserves selection and application focus.
+        case "hive.list":
+            return v2Result(id: id, self.v2HiveList())
+        case "hive.open":
+            return v2Result(id: id, self.v2HiveOpen(params: params))
+
         // Surfaces / input: surface.list/current/focus/split/respawn/create/close/move/
         // reorder handled by ControlCommandCoordinator (surface.move forwards to the
         // still-shared v2SurfaceMove). surface.action/tab.action and
@@ -2474,6 +2493,11 @@ class TerminalController {
             "system.memory",
             "mobile.host.status",
             "mobile.pairing.code.create",
+            "hive.pair",
+            "hive.list",
+            "hive.open",
+            "hive.status",
+            "hive.remove",
             "mobile.terminal.set_font",
             "mobile.workspace.list",
             "mobile.terminal.create",

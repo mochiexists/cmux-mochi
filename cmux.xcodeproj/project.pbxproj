@@ -1231,9 +1231,11 @@ C0DE71B10000000000000001 /* AppDelegate+AgentChatNotifications.swift in Sources 
 		C0DE34020000000000000005 /* HelpMenuUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE34020000000000000006 /* HelpMenuUITests.swift */; };
 		F5320000A1B2C3D4E5F60718 /* HermesAgentIndex.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5320001A1B2C3D4E5F60718 /* HermesAgentIndex.swift */; };
 		4931A11B0000000000000002 /* HiddenRightSidebarContentMountingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4931A11B0000000000000001 /* HiddenRightSidebarContentMountingTests.swift */; };
+		C41FE4000000000000000001 /* HiveE2EDeviceLinkCredentialStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = C41FE4000000000000000002 /* HiveE2EDeviceLinkCredentialStore.swift */; };
 		C41FE1000000000000000001 /* HiveWorkspaceMirrorController.swift in Sources */ = {isa = PBXBuildFile; fileRef = C41FE1000000000000000002 /* HiveWorkspaceMirrorController.swift */; };
 		C41FE1010000000000000001 /* HiveWorkspaceMirrorControllerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C41FE1010000000000000002 /* HiveWorkspaceMirrorControllerTests.swift */; };
 		C41FE2000000000000000001 /* HiveWorkspaceService.swift in Sources */ = {isa = PBXBuildFile; fileRef = C41FE2000000000000000002 /* HiveWorkspaceService.swift */; };
+		F4A400000000000000000001 /* HiveWorkspaceUIFixtureShell.swift in Sources */ = {isa = PBXBuildFile; fileRef = F4A400000000000000000002 /* HiveWorkspaceUIFixtureShell.swift */; };
 		CD0CFE6000000000CD0CFE60 /* HostAccountFlow.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD0CFE6100000000CD0CFE61 /* HostAccountFlow.swift */; };
 		B1F0C0030000000000000001 /* HostedInspectorDockControlScript.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1F0C0030000000000000002 /* HostedInspectorDockControlScript.swift */; };
 		B1F0C0040000000000000001 /* HostedInspectorDockControlScriptTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1F0C0040000000000000002 /* HostedInspectorDockControlScriptTests.swift */; };
@@ -1387,6 +1389,7 @@ C0DE71B10000000000000001 /* AppDelegate+AgentChatNotifications.swift in Sources 
 		B8B0FA000000000000000003 /* MobileHostDeviceLink+Pairing.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8B0FA000000000000000004 /* MobileHostDeviceLink+Pairing.swift */; };
 		B8B0FA000000000000000001 /* MobileHostDeviceLink.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8B0FA000000000000000002 /* MobileHostDeviceLink.swift */; };
 		B8B0FA000000000000000005 /* MobileHostDeviceLinkAdmissionSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8B0FA000000000000000006 /* MobileHostDeviceLinkAdmissionSnapshot.swift */; };
+		B8E2E0000000000000000001 /* MobileHostDeviceLinkE2EStateStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8E2E0000000000000000002 /* MobileHostDeviceLinkE2EStateStore.swift */; };
 		B8B0FA000000000000000011 /* MobileHostDeviceLinkTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8B0FA000000000000000012 /* MobileHostDeviceLinkTests.swift */; };
 		B8B056D90000000000000001 /* MobileHostIdentity.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8B056D90000000000000002 /* MobileHostIdentity.swift */; };
 		B8B056D80000000000000001 /* MobileHostIdentityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8B056D80000000000000002 /* MobileHostIdentityTests.swift */; };
@@ -2248,6 +2251,7 @@ C0DE71B10000000000000001 /* AppDelegate+AgentChatNotifications.swift in Sources 
 		A28B087F000000000000000B /* TerminalController+DiffViewerTrust.swift in Sources */ = {isa = PBXBuildFile; fileRef = A28B087F000000000000000C /* TerminalController+DiffViewerTrust.swift */; };
 		8777C0018777C0018777C001 /* TerminalController+DockControlTopology.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8777C0028777C0028777C002 /* TerminalController+DockControlTopology.swift */; };
 		8672D0038672D0038672D003 /* TerminalController+FeedAcknowledgment.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8672D0048672D0048672D004 /* TerminalController+FeedAcknowledgment.swift */; };
+		C41FE5000000000000000001 /* TerminalController+Hive.swift in Sources */ = {isa = PBXBuildFile; fileRef = C41FE5000000000000000002 /* TerminalController+Hive.swift */; };
 		F2100000000000000000000E /* TerminalController+MobileBrowser.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1100000000000000000000E /* TerminalController+MobileBrowser.swift */; };
 		ACA7C4A7000000000000000D /* TerminalController+MobileChat.swift in Sources */ = {isa = PBXBuildFile; fileRef = ACA7C4A7000000000000000E /* TerminalController+MobileChat.swift */; };
 		C7AF10000000000000000003 /* TerminalController+MobileChatArtifacts.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7AF10000000000000000004 /* TerminalController+MobileChatArtifacts.swift */; };
@@ -3880,9 +3884,11 @@ C0DE71B10000000000000002 /* AppDelegate+AgentChatNotifications.swift */ = {isa =
 		C0DE34020000000000000006 /* HelpMenuUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HelpMenuUITests.swift; sourceTree = "<group>"; };
 		F5320001A1B2C3D4E5F60718 /* HermesAgentIndex.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesAgentIndex.swift; sourceTree = "<group>"; };
 		4931A11B0000000000000001 /* HiddenRightSidebarContentMountingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HiddenRightSidebarContentMountingTests.swift; sourceTree = "<group>"; };
+		C41FE4000000000000000002 /* HiveE2EDeviceLinkCredentialStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HiveE2EDeviceLinkCredentialStore.swift; sourceTree = "<group>"; };
 		C41FE1000000000000000002 /* HiveWorkspaceMirrorController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HiveWorkspaceMirrorController.swift; sourceTree = "<group>"; };
 		C41FE1010000000000000002 /* HiveWorkspaceMirrorControllerTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = HiveWorkspaceMirrorControllerTests.swift; sourceTree = "<group>"; };
 		C41FE2000000000000000002 /* HiveWorkspaceService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HiveWorkspaceService.swift; sourceTree = "<group>"; };
+		F4A400000000000000000002 /* HiveWorkspaceUIFixtureShell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HiveWorkspaceUIFixtureShell.swift; sourceTree = "<group>"; };
 		CD0CFE6100000000CD0CFE61 /* HostAccountFlow.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = HostAccountFlow.swift; sourceTree = "<group>"; };
 		B1F0C0030000000000000002 /* HostedInspectorDockControlScript.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = App/HostedInspectorDockControlScript.swift; sourceTree = "<group>"; };
 		B1F0C0040000000000000002 /* HostedInspectorDockControlScriptTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostedInspectorDockControlScriptTests.swift; sourceTree = "<group>"; };
@@ -4032,6 +4038,7 @@ C0DE71B10000000000000002 /* AppDelegate+AgentChatNotifications.swift */ = {isa =
 		B8B0FA000000000000000004 /* MobileHostDeviceLink+Pairing.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = "MobileHostDeviceLink+Pairing.swift"; sourceTree = "<group>"; };
 		B8B0FA000000000000000002 /* MobileHostDeviceLink.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = "MobileHostDeviceLink.swift"; sourceTree = "<group>"; };
 		B8B0FA000000000000000006 /* MobileHostDeviceLinkAdmissionSnapshot.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = "MobileHostDeviceLinkAdmissionSnapshot.swift"; sourceTree = "<group>"; };
+		B8E2E0000000000000000002 /* MobileHostDeviceLinkE2EStateStore.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = "MobileHostDeviceLinkE2EStateStore.swift"; sourceTree = "<group>"; };
 		B8B0FA000000000000000012 /* MobileHostDeviceLinkTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = "MobileHostDeviceLinkTests.swift"; sourceTree = "<group>"; };
 		B8B056D90000000000000002 /* MobileHostIdentity.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MobileHostIdentity.swift; sourceTree = "<group>"; };
 		B8B056D80000000000000002 /* MobileHostIdentityTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MobileHostIdentityTests.swift; sourceTree = "<group>"; };
@@ -4879,6 +4886,7 @@ C0DE71B10000000000000002 /* AppDelegate+AgentChatNotifications.swift */ = {isa =
 		A28B087F000000000000000C /* TerminalController+DiffViewerTrust.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TerminalController+DiffViewerTrust.swift"; sourceTree = "<group>"; };
 		8777C0028777C0028777C002 /* TerminalController+DockControlTopology.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TerminalController+DockControlTopology.swift"; sourceTree = "<group>"; };
 		8672D0048672D0048672D004 /* TerminalController+FeedAcknowledgment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TerminalController+FeedAcknowledgment.swift"; sourceTree = "<group>"; };
+		C41FE5000000000000000002 /* TerminalController+Hive.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TerminalController+Hive.swift"; sourceTree = "<group>"; };
 		F1100000000000000000000E /* TerminalController+MobileBrowser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TerminalController+MobileBrowser.swift"; sourceTree = "<group>"; };
 		ACA7C4A7000000000000000E /* TerminalController+MobileChat.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = "TerminalController+MobileChat.swift"; sourceTree = "<group>"; };
 		C7AF10000000000000000004 /* TerminalController+MobileChatArtifacts.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = "TerminalController+MobileChatArtifacts.swift"; sourceTree = "<group>"; };
@@ -5608,6 +5616,7 @@ C0DE71B10000000000000002 /* AppDelegate+AgentChatNotifications.swift */ = {isa =
 				B8B0FA000000000000000006 /* MobileHostDeviceLinkAdmissionSnapshot.swift */,
 				B8B0FA000000000000000004 /* MobileHostDeviceLink+Pairing.swift */,
 				B8B0FA000000000000000002 /* MobileHostDeviceLink.swift */,
+				B8E2E0000000000000000002 /* MobileHostDeviceLinkE2EStateStore.swift */,
 				47BDC06F004C02A52B05E4A0 /* MobileHostRPC.swift */,
 				A1B2C3D4E5F60718293A4C02 /* MobileHostOrderedRequestQueue.swift */,
 				7ACA497A6831165EA879C642 /* MobileHostService.swift */,
@@ -5688,6 +5697,8 @@ C0DE71B10000000000000002 /* AppDelegate+AgentChatNotifications.swift */ = {isa =
 		C41FE3000000000000000001 /* Hive */ = {
 			isa = PBXGroup;
 			children = (
+				C41FE4000000000000000002 /* HiveE2EDeviceLinkCredentialStore.swift */,
+				F4A400000000000000000002 /* HiveWorkspaceUIFixtureShell.swift */,
 				C41FE1000000000000000002 /* HiveWorkspaceMirrorController.swift */,
 				C41FE2000000000000000002 /* HiveWorkspaceService.swift */,
 			);
@@ -6430,6 +6441,7 @@ C0DE71B10000000000000002 /* AppDelegate+AgentChatNotifications.swift */ = {isa =
 				C0DE00000000000000000C85 /* TerminalController+ControlSurfaceDock.swift */,
 				C0DE00000000000000000C51 /* TerminalController+ControlMobileHostContext.swift */,
 				A7C0F0040000000000000001 /* TerminalController+MobilePairingCode.swift */,
+				C41FE5000000000000000002 /* TerminalController+Hive.swift */,
 				A7C0F0050000000000000001 /* TerminalController+DeviceLink.swift */,
 				A7C0F0060000000000000001 /* TerminalController+WorkspaceScreenshot.swift */,
 				A7C0F0070000000000000001 /* TerminalController+SurfaceImageEncoding.swift */,
@@ -9290,8 +9302,10 @@ C0DE71B10000000000000002 /* AppDelegate+AgentChatNotifications.swift */ = {isa =
 					A6AC72020000000000000001 /* GPUSpinnerStyle.swift in Sources */,
 					A93770010000000000000002 /* GrokSessionLocator+ProcessDiscovery.swift in Sources */,
 					F5320000A1B2C3D4E5F60718 /* HermesAgentIndex.swift in Sources */,
+				C41FE4000000000000000001 /* HiveE2EDeviceLinkCredentialStore.swift in Sources */,
 				C41FE1000000000000000001 /* HiveWorkspaceMirrorController.swift in Sources */,
 				C41FE2000000000000000001 /* HiveWorkspaceService.swift in Sources */,
+				F4A400000000000000000001 /* HiveWorkspaceUIFixtureShell.swift in Sources */,
 				CD0CFE6000000000CD0CFE60 /* HostAccountFlow.swift in Sources */,
 				B1F0C0030000000000000001 /* HostedInspectorDockControlScript.swift in Sources */,
 				F17A00000000000000000002 /* HostLatencyTrace.swift in Sources */,
@@ -9398,6 +9412,7 @@ C0DE71B10000000000000002 /* AppDelegate+AgentChatNotifications.swift */ = {isa =
 				B8B0FA000000000000000003 /* MobileHostDeviceLink+Pairing.swift in Sources */,
 				B8B0FA000000000000000001 /* MobileHostDeviceLink.swift in Sources */,
 				B8B0FA000000000000000005 /* MobileHostDeviceLinkAdmissionSnapshot.swift in Sources */,
+				B8E2E0000000000000000001 /* MobileHostDeviceLinkE2EStateStore.swift in Sources */,
 				B8B056D90000000000000001 /* MobileHostIdentity.swift in Sources */,
 				A17070900000000000000002 /* MobileHostIrohApplicationLaneRouter.swift in Sources */,
 				C1A070000000000000000002 /* MobileHostIrohAuthObserver.swift in Sources */,
@@ -9982,6 +9997,7 @@ C0DE71B10000000000000002 /* AppDelegate+AgentChatNotifications.swift */ = {isa =
 				A28B087F000000000000000B /* TerminalController+DiffViewerTrust.swift in Sources */,
 				8777C0018777C0018777C001 /* TerminalController+DockControlTopology.swift in Sources */,
 				8672D0038672D0038672D003 /* TerminalController+FeedAcknowledgment.swift in Sources */,
+				C41FE5000000000000000001 /* TerminalController+Hive.swift in Sources */,
 				F2100000000000000000000E /* TerminalController+MobileBrowser.swift in Sources */,
 				ACA7C4A7000000000000000D /* TerminalController+MobileChat.swift in Sources */,
 				C7AF10000000000000000003 /* TerminalController+MobileChatArtifacts.swift in Sources */,

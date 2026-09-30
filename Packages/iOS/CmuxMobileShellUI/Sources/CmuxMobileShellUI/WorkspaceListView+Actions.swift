@@ -28,7 +28,7 @@ extension WorkspaceListView {
     @discardableResult
     func selectWorkspaceFromList(_ id: CmuxMobileShellModel.MobileWorkspacePreview.ID) -> Task<Void, Never>? {
         invalidateDeferredWorkspaceSelection()
-        let selectionGeneration = deferredWorkspaceSelectionGeneration
+        let selectionGeneration = selectionCoordinator.deferredWorkspaceSelectionGeneration
         guard let cancelTask = prepareWorkspaceSelectionFromList() else {
             selectWorkspace(id)
             return nil
@@ -36,14 +36,14 @@ extension WorkspaceListView {
         let task = Task { @MainActor in
             await cancelTask.value
             guard !Task.isCancelled,
-                  deferredWorkspaceSelectionGeneration == selectionGeneration else { return }
+                  selectionCoordinator.deferredWorkspaceSelectionGeneration == selectionGeneration else { return }
             selectWorkspace(id)
         }
         return task
     }
 
     func invalidateDeferredWorkspaceSelection() {
-        deferredWorkspaceSelectionGeneration &+= 1
+        selectionCoordinator.deferredWorkspaceSelectionGeneration &+= 1
     }
 
     var requestWorkspaceClose: ((CmuxMobileShellModel.MobileWorkspacePreview.ID) -> Void)? {

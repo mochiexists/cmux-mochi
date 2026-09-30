@@ -48,6 +48,7 @@ extension SidebarWorkspaceSnapshotBuilder.Snapshot {
             isPinned: snapshot.isPinned,
             isPrivacyBlurred: snapshot.isPrivacyBlurred,
             customColorHex: snapshot.customColorHex,
+            isHiveWorkspaceMirror: snapshot.isHiveWorkspaceMirror,
             remoteWorkspaceSidebarText: remoteWorkspaceSidebarText,
             remoteConnectionStatusText: remoteConnectionStatusText,
             remoteStateHelpText: remoteStateHelpText,

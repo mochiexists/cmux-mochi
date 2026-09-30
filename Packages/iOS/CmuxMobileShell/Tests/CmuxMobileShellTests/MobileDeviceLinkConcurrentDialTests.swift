@@ -158,7 +158,7 @@ private actor ConcurrentDialGate {
     }
 }
 
-private final class InMemoryMobileDeviceLinkCredentialStore:
+final class InMemoryMobileDeviceLinkCredentialStore:
     MobileDeviceIdentityStoring,
     MobileServerPinStoring,
     @unchecked Sendable
@@ -202,6 +202,16 @@ private final class InMemoryMobileDeviceLinkCredentialStore:
         storedPins[pairingID] = nil
         lock.unlock()
     }
+}
+
+func makeInMemoryMobileDeviceLinkClient(_ label: String = UUID().uuidString) -> MobileDeviceLinkClient {
+    let store = InMemoryMobileDeviceLinkCredentialStore()
+    let defaults = UserDefaults(suiteName: "mobile-device-link-tests-\(label)-\(UUID().uuidString)")!
+    return MobileDeviceLinkClient(
+        identityStore: store,
+        pinStore: store,
+        pairingIndexDefaults: defaults
+    )
 }
 
 private final class ConcurrentDeviceLinkServer: @unchecked Sendable {

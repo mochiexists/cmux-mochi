@@ -1,10 +1,9 @@
 # Multi-Mac aggregated workspaces + compound filtering (iOS)
 
-Status: in progress. Builds on the paired-Mac backup/restore (so the phone knows
-every Mac). Goal from Lawrence: the home screen shows workspaces from EVERY
-connected Mac, and filtering is rethought so you can compose read-state × machine
-(e.g. "unread on Mac X"). The single-active-Mac "connect / add device" model goes
-away.
+Status: complete. P1–P5 are implemented: workspace models carry Mac identity,
+the shell owns a per-Mac connection pool, the home screen aggregates workspaces,
+read-state and machine filters compose, and opening a workspace promotes its Mac
+for terminal I/O. The sections below retain the original rollout design.
 
 ## Today (single-Mac), the blockers
 

@@ -26,6 +26,19 @@ struct ControlCommandExecutionPolicyTests {
         #expect(ControlCommandExecutionPolicy(forMethod: "aiAccounts.remove") == .socketWorker(mainThreadCallable: false))
     }
 
+    @Test func hiveTransportWorkRunsOffMainWhileMirrorStateStaysOnMain() {
+        for method in ["hive.pair", "hive.status", "hive.remove"] {
+            #expect(
+                ControlCommandExecutionPolicy(forMethod: method)
+                    == .socketWorker(mainThreadCallable: false),
+                "\(method)"
+            )
+        }
+        for method in ["hive.list", "hive.open"] {
+            #expect(ControlCommandExecutionPolicy(forMethod: method) == .mainActor, "\(method)")
+        }
+    }
+
     @Test func fixedWorkerSetRunsOnTheSocketWorker() {
         for method in [
             "system.ping", "system.capabilities", "auth.status", "auth.sign_in_url",

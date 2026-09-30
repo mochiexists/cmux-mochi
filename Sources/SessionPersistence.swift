@@ -80,7 +80,7 @@ enum SessionPersistencePolicy {
     private static func removingInternalScrollbackBoundaryLines(from text: String) -> String {
         let prefix = SessionScrollbackReplayStore.continuationBoundaryPrefix
         var sanitized = text
-        while let markerRange = rangeIgnoringLineBreaks(of: prefix, in: sanitized) {
+        while let markerRange = internalScrollbackBoundaryRange(of: prefix, in: sanitized) {
             let lineStart = sanitized[..<markerRange.lowerBound].lastIndex(of: "\n")
                 .map { sanitized.index(after: $0) } ?? sanitized.startIndex
             let lineEnd = sanitized[markerRange.upperBound...].firstIndex(of: "\n")
@@ -90,7 +90,11 @@ enum SessionPersistencePolicy {
         return sanitized
     }
 
-    private static func rangeIgnoringLineBreaks(
+    /// Finds an internal boundary even when VT export restyles a concealed marker
+    /// at a physical row wrap. Ghostty emits reset/conceal CSI sequences around
+    /// the wrap, so matching only while ignoring CR/LF rejects the authoritative
+    /// post-clear capture and leaves autosave permanently dirty.
+    static func internalScrollbackBoundaryRange(
         of needle: String,
         in text: String
     ) -> Range<String.Index>? {
@@ -113,13 +117,39 @@ enum SessionPersistencePolicy {
                 text.formIndex(after: &textIndex)
                 continue
             }
-            if matchStart != nil, (character == "\n" || character == "\r") {
-                text.formIndex(after: &textIndex)
-                continue
+            if matchStart != nil {
+                if character.unicodeScalars.allSatisfy({ $0.value == 0x0A || $0.value == 0x0D }) {
+                    text.formIndex(after: &textIndex)
+                    continue
+                }
+                if let nextIndex = indexAfterCSISequence(startingAt: textIndex, in: text) {
+                    textIndex = nextIndex
+                    continue
+                }
             }
             matchStart = nil
             needleIndex = needle.startIndex
             text.formIndex(after: &textIndex)
+        }
+        return nil
+    }
+
+    private static func indexAfterCSISequence(
+        startingAt startIndex: String.Index,
+        in text: String
+    ) -> String.Index? {
+        guard text[startIndex] == "\u{001B}" else { return nil }
+        var index = text.index(after: startIndex)
+        guard index < text.endIndex, text[index] == "[" else { return nil }
+        text.formIndex(after: &index)
+        while index < text.endIndex {
+            guard let scalar = text[index].unicodeScalars.first,
+                  text[index].unicodeScalars.count == 1 else { return nil }
+            if (0x40...0x7E).contains(scalar.value) {
+                return text.index(after: index)
+            }
+            guard (0x20...0x3F).contains(scalar.value) else { return nil }
+            text.formIndex(after: &index)
         }
         return nil
     }

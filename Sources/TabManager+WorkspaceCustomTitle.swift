@@ -47,14 +47,23 @@ extension TabManager {
                 userInfo: [GhosttyNotificationKey.tabId: tabId]
             )
         }
-        // A remote tmux mirror workspace rename propagates to `rename-session`,
-        // but only when the write landed (an `.auto` write rejected over a
-        // user-set title must not desync the remote session name).
-        if applied, propagateToRemoteTmux, tabs[index].isRemoteTmuxMirror {
-            AppDelegate.shared?.remoteTmuxController.handleMirrorWorkspaceRenamed(
-                workspaceId: tabId,
-                title: title
-            )
+        // Remote mirror workspace renames propagate through their backing
+        // transport, but only when the write landed (an `.auto` write rejected
+        // over a user-set title must not desync the remote workspace name).
+        if applied, propagateToRemoteTmux {
+            switch tabs[index].remoteMirrorMutationRoute(for: .workspaceRename) {
+            case .hive:
+                if !currentDisplayTitle.isEmpty {
+                    tabs[index].requestHiveWorkspaceRename(currentDisplayTitle)
+                }
+            case .remoteTmux:
+                AppDelegate.shared?.remoteTmuxController.handleMirrorWorkspaceRenamed(
+                    workspaceId: tabId,
+                    title: title
+                )
+            case .local, .unavailable:
+                break
+            }
         }
         return applied
     }

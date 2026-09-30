@@ -62,9 +62,7 @@ import Testing
         let directory = try makeTemporaryDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
 
-        let keychain = KeychainStackTokenStore(
-            service: "com.cmux.tests.TokenStoreCompareAndSetTests.\(UUID().uuidString)"
-        )
+        let keychain = InMemoryKeychainTokenStore()
         let file = FileStackTokenStore(directory: directory)
         await file.setTokens(accessToken: "access-1", refreshToken: "refresh-1")
         let store = FallbackTokenStore(primary: keychain, fallback: file)
@@ -88,5 +86,43 @@ import Testing
             attributes: [.posixPermissions: 0o700]
         )
         return directory
+    }
+}
+
+private actor InMemoryKeychainTokenStore: KeychainStackTokenStoring {
+    private var accessToken: String?
+    private var refreshToken: String?
+
+    func getStoredAccessToken() async -> String? { accessToken }
+    func getStoredRefreshToken() async -> String? { refreshToken }
+
+    func setTokens(accessToken: String?, refreshToken: String?) async {
+        self.accessToken = accessToken
+        self.refreshToken = refreshToken
+    }
+
+    func trySetTokens(accessToken: String?, refreshToken: String?) async -> Bool {
+        await setTokens(accessToken: accessToken, refreshToken: refreshToken)
+        return true
+    }
+
+    func clearTokens() async {
+        accessToken = nil
+        refreshToken = nil
+    }
+
+    func clearTokensIfCurrent(accessToken: String?, refreshToken: String?) async -> Bool {
+        guard self.accessToken == accessToken, self.refreshToken == refreshToken else { return false }
+        await clearTokens()
+        return true
+    }
+
+    func compareAndSet(
+        compareRefreshToken: String,
+        newRefreshToken: String?,
+        newAccessToken: String?
+    ) async {
+        guard refreshToken == compareRefreshToken else { return }
+        await setTokens(accessToken: newAccessToken, refreshToken: newRefreshToken)
     }
 }

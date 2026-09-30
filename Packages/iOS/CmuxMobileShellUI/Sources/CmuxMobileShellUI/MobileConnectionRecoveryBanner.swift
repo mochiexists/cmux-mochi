@@ -11,7 +11,7 @@ import SwiftUI
 /// row when the current surface is a list instead of a terminal.
 struct MobileConnectionRecoveryBanner: View {
     static let defaultPairingRejectionDescription: String.LocalizationValue =
-        "This computer rejected the saved pairing. Open Pair a Device on the computer and scan a fresh QR code."
+        "Pairing needs to be renewed. Open Pair a Device in cmux on your computer, then scan the new QR code."
 
     var connectionRequiresReauth: Bool
     var rendersInline = false
@@ -30,9 +30,9 @@ struct MobileConnectionRecoveryBanner: View {
         .animation(.default, value: connectionRequiresReauth)
     }
 
-    /// A rejected DeviceLink credential requires a fresh QR pairing. The
-    /// transport's raw error is intentionally not shown because upstream auth
-    /// wording can mention accounts that this fork does not require.
+    /// An expired DeviceLink credential requires a fresh QR pairing. The
+    /// transport's raw rejection is intentionally replaced with a concise
+    /// recovery action.
     @ViewBuilder
     private func repairPairingBanner(text: String) -> some View {
         if rendersInline {
