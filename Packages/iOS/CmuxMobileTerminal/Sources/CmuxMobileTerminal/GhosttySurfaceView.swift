@@ -282,6 +282,16 @@ public final class GhosttySurfaceView: UIView, TerminalSurfaceHosting {
         return proxy
     }()
 
+    private func updateDebugViewportAccessibilityValue(using snapshot: TerminalViewportSnapshot) {
+        let effectiveGridValue = effectiveGrid.map { "\($0.cols)x\($0.rows)" } ?? "natural"
+        debugAccessibilityProxy.accessibilityValue = [
+            "renderMaxY=\(String(format: "%.2f", lastRenderRect.maxY))",
+            "viewportMaxY=\(String(format: "%.2f", snapshot.layoutViewportRect.maxY))",
+            "effectiveGrid=\(effectiveGridValue)",
+            "awaitingEcho=\(awaitingViewportEcho ? 1 : 0)",
+        ].joined(separator: ";")
+    }
+
     /// DEBUG/UI-test accessibility carrier for the surface's live bottom-dock state.
     ///
     /// Exposes the four dock bits the round-9 reducer turns on
@@ -1253,6 +1263,7 @@ public final class GhosttySurfaceView: UIView, TerminalSurfaceHosting {
         guard renderRect != lastRenderRect else { return }
         lastRenderRect = renderRect
         #if DEBUG
+        updateDebugViewportAccessibilityValue(using: snapshot)
         recordBottomViewportMismatchIfNeeded()
         #endif
         syncRendererLayerFrame(scale: preferredScreenScale, renderRect: renderRect)
@@ -3780,6 +3791,7 @@ public final class GhosttySurfaceView: UIView, TerminalSurfaceHosting {
         )
         lastRenderRect = renderRect
         #if DEBUG
+        updateDebugViewportAccessibilityValue(using: snapshot)
         recordBottomViewportMismatchIfNeeded()
         #endif
         MobileDebugLog.anchormux(
