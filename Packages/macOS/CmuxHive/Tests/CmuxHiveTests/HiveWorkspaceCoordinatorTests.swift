@@ -148,6 +148,34 @@ struct HiveWorkspaceCoordinatorTests {
         #expect(shell.localRemovalIDs == [mac.id])
     }
 
+    @Test("routes supported workspace mutations through the mobile host RPCs")
+    func routesWorkspaceMutations() async {
+        let workspace = MobileWorkspacePreview(
+            id: "remote-workspace",
+            macDeviceID: "mac-a",
+            macDisplayName: "Studio",
+            name: "Remote",
+            terminals: []
+        )
+        let shell = HiveShellStub(pairingResult: .connected, workspaces: [workspace])
+        let coordinator = HiveWorkspaceCoordinator(shell: shell)
+
+        coordinator.createTerminal(in: workspace.rpcWorkspaceID)
+        let result = await coordinator.renameWorkspace(
+            id: workspace.rpcWorkspaceID,
+            title: "Renamed"
+        )
+
+        #expect(shell.createdTerminalWorkspaceIDs == [workspace.rpcWorkspaceID])
+        #expect(shell.workspaceRenameRequests == [
+            .init(id: workspace.rpcWorkspaceID, title: "Renamed", refreshAfterMutation: true),
+        ])
+        guard case .success = result else {
+            Issue.record("Expected successful workspace rename")
+            return
+        }
+    }
+
     private static let deviceLinkURL =
         "cmux-ios-dev://attach?v=3&r=192.168.1.25:3939"
         + "&f=" + String(repeating: "ab", count: 32)
@@ -171,6 +199,14 @@ private final class HiveShellStub: HiveShellServing {
     private(set) var receivedPairingLinks: [String] = []
     private(set) var reconnectCount = 0
     private(set) var localRemovalIDs: [String] = []
+    private(set) var createdTerminalWorkspaceIDs: [MobileWorkspacePreview.ID?] = []
+    private(set) var workspaceRenameRequests: [WorkspaceRenameRequest] = []
+
+    struct WorkspaceRenameRequest: Equatable {
+        let id: MobileWorkspacePreview.ID
+        let title: String
+        let refreshAfterMutation: Bool
+    }
 
     init(
         pairingResult: MobilePairingURLConnectionResult,
@@ -213,6 +249,23 @@ private final class HiveShellStub: HiveShellServing {
     }
 
     func loadPairedMacs() async {}
+
+    func createTerminal(in workspaceID: MobileWorkspacePreview.ID?) {
+        createdTerminalWorkspaceIDs.append(workspaceID)
+    }
+
+    func renameWorkspace(
+        id: MobileWorkspacePreview.ID,
+        title: String,
+        refreshAfterMutation: Bool
+    ) async -> Result<Void, MobileWorkspaceMutationFailure> {
+        workspaceRenameRequests.append(.init(
+            id: id,
+            title: title,
+            refreshAfterMutation: refreshAfterMutation
+        ))
+        return .success(())
+    }
 
     func removeComputer(
         representativeID: String,

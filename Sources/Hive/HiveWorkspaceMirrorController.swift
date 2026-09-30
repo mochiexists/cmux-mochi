@@ -242,6 +242,20 @@ final class HiveWorkspaceMirrorController {
             autoRefreshMetadata: false
         )
         workspace.isRemoteTmuxMirror = true
+        let remoteWorkspaceID = remoteWorkspace.rpcWorkspaceID
+        workspace.configureHiveMirror(
+            requestNewTerminal: { [weak coordinator] in
+                coordinator?.createTerminal(in: remoteWorkspaceID)
+            },
+            requestWorkspaceRename: { [weak coordinator] title in
+                Task { @MainActor in
+                    _ = await coordinator?.renameWorkspace(
+                        id: remoteWorkspaceID,
+                        title: title
+                    )
+                }
+            }
+        )
         let defaultPanelIDs = Array(workspace.panels.keys)
         var bindingsByPanelID: [UUID: TerminalBinding] = [:]
         var panelIDByRemoteSurfaceID: [String: UUID] = [:]

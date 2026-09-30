@@ -49,6 +49,26 @@ public final class HiveWorkspaceCoordinator {
         return HiveTerminalSession(surfaceID: surfaceID, shell: terminalShell)
     }
 
+    /// Creates a terminal through the same authenticated host RPC used by iOS.
+    public func createTerminal(in workspaceID: MobileWorkspacePreview.ID) {
+        shell.createTerminal(in: workspaceID)
+    }
+
+    /// Renames a workspace through the authenticated host workspace-action RPC.
+    @discardableResult
+    public func renameWorkspace(
+        id: MobileWorkspacePreview.ID,
+        title: String
+    ) async -> Result<Void, MobileWorkspaceMutationFailure> {
+        let result = await shell.renameWorkspace(
+            id: id,
+            title: title,
+            refreshAfterMutation: true
+        )
+        refreshWorkspaceSnapshot()
+        return result
+    }
+
     /// Pair using the host's DeviceLink v3 URL and expose the shell result.
     @discardableResult
     public func pair(link: String) async -> Bool {

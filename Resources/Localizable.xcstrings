@@ -262989,6 +262989,18 @@
       "extractionState": "manual",
       "localizations": { "en": { "stringUnit": { "state": "translated", "value": "%1$@ — %2$@" } }, "ja": { "stringUnit": { "state": "translated", "value": "%1$@ — %2$@" } } }
     },
+    "hive.mirror.actionUnavailable": {
+      "extractionState": "manual",
+      "localizations": { "en": { "stringUnit": { "state": "translated", "value": "Action Unavailable" } }, "ja": { "stringUnit": { "state": "translated", "value": "操作できません" } } }
+    },
+    "hive.mirror.splitUnavailable": {
+      "extractionState": "manual",
+      "localizations": { "en": { "stringUnit": { "state": "translated", "value": "Splitting a pane is not supported in a Remote Mac workspace." } }, "ja": { "stringUnit": { "state": "translated", "value": "リモートMacワークスペースではペインの分割はサポートされていません。" } } }
+    },
+    "hive.mirror.tabRenameUnavailable": {
+      "extractionState": "manual",
+      "localizations": { "en": { "stringUnit": { "state": "translated", "value": "Renaming a terminal tab is not supported in a Remote Mac workspace." } }, "ja": { "stringUnit": { "state": "translated", "value": "リモートMacワークスペースではターミナルタブの名前変更はサポートされていません。" } } }
+    },
     "hive.offline.guidance": {
       "extractionState": "manual",
       "localizations": { "en": { "stringUnit": { "state": "translated", "value": "Open Mochi on the remote Mac, then retry." } }, "ja": { "stringUnit": { "state": "translated", "value": "リモートMacでMochiを開き、もう一度お試しください。" } } }

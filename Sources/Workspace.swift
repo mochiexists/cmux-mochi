@@ -3937,6 +3937,10 @@ final class Workspace: Identifiable, ObservableObject {
     @discardableResult func detachRemoteTmuxMirrorKeptOpenLocallyIfNeeded() -> Bool {
         guard isRemoteTmuxMirror else { return false }
         pendingRemoteDisconnectReplacementsBySurfaceId.removeAll(); remoteTmuxKeepWorkspaceOpenAfterSessionEnd = false; isRemoteTmuxMirror = false; remoteTmuxWindowMirrors.removeAll()
+        isHiveWorkspaceMirror = false
+        hiveNewTerminalRequest = nil
+        hiveWorkspaceRenameRequest = nil
+        bonsplitController.configuration.allowSplits = true
         AppDelegate.shared?.remoteTmuxController.detachMirrorWorkspaceKeptOpenLocally(workspaceId: id)
         return true
     }
@@ -4608,6 +4612,7 @@ final class Workspace: Identifiable, ObservableObject {
     @discardableResult
     func setPanelCustomTitle(panelId: UUID, title: String?, source: CustomTitleSource = .user) -> Bool {
         guard panels[panelId] != nil else { return false }
+        guard remoteMirrorMutationRoute(for: .terminalTabRename) != .unavailable else { return false }
         let previousWorkspaceTitle = self.title
         defer {
             if self.title != previousWorkspaceTitle {
@@ -4646,7 +4651,7 @@ final class Workspace: Identifiable, ObservableObject {
             hasCustomTitle: panelCustomTitles[panelId] != nil
         )
         // A remote tmux mirror tab rename propagates to `rename-window`.
-        if isRemoteTmuxMirror {
+        if remoteMirrorMutationRoute(for: .terminalTabRename) == .remoteTmux {
             AppDelegate.shared?.remoteTmuxController.handleMirrorWindowRenamed(
                 workspaceId: id, panelId: panelId, title: trimmed
             )
@@ -5584,6 +5589,86 @@ final class Workspace: Identifiable, ObservableObject {
 
     /// Ephemeral remote tmux mirror; excluded from cmux session restore.
     var isRemoteTmuxMirror: Bool = false
+    /// Authenticated Mac-to-Mac mirror backed by the mobile host RPCs, not SSH/tmux.
+    var isHiveWorkspaceMirror: Bool = false
+    private var hiveNewTerminalRequest: (() -> Void)?
+    private var hiveWorkspaceRenameRequest: ((String) -> Void)?
+
+    enum RemoteMirrorMutation {
+        case split
+        case newTerminalTab
+        case terminalTabRename
+        case workspaceRename
+    }
+
+    enum RemoteMirrorMutationRoute: Equatable {
+        case local
+        case remoteTmux
+        case hive
+        case unavailable
+    }
+
+    func remoteMirrorMutationRoute(for mutation: RemoteMirrorMutation) -> RemoteMirrorMutationRoute {
+        if isHiveWorkspaceMirror {
+            switch mutation {
+            case .newTerminalTab, .workspaceRename:
+                return .hive
+            case .split, .terminalTabRename:
+                return .unavailable
+            }
+        }
+        return isRemoteTmuxMirror ? .remoteTmux : .local
+    }
+
+    func configureHiveMirror(
+        requestNewTerminal: @escaping () -> Void,
+        requestWorkspaceRename: @escaping (String) -> Void
+    ) {
+        isHiveWorkspaceMirror = true
+        hiveNewTerminalRequest = requestNewTerminal
+        hiveWorkspaceRenameRequest = requestWorkspaceRename
+        bonsplitController.configuration.allowSplits = false
+    }
+
+    func requestHiveWorkspaceRename(_ title: String) {
+        hiveWorkspaceRenameRequest?(title)
+    }
+
+    static var hiveSplitUnavailableReason: String {
+        String(
+            localized: "hive.mirror.splitUnavailable",
+            defaultValue: "Splitting a pane is not supported in a Remote Mac workspace."
+        )
+    }
+
+    static var hiveTabRenameUnavailableReason: String {
+        String(
+            localized: "hive.mirror.tabRenameUnavailable",
+            defaultValue: "Renaming a terminal tab is not supported in a Remote Mac workspace."
+        )
+    }
+
+    func presentHiveUnavailableAction(_ mutation: RemoteMirrorMutation) {
+        guard isHiveWorkspaceMirror else { return }
+        let explanation: String? = switch mutation {
+        case .split:
+            Self.hiveSplitUnavailableReason
+        case .terminalTabRename:
+            Self.hiveTabRenameUnavailableReason
+        case .newTerminalTab, .workspaceRename:
+            nil
+        }
+        guard let explanation else { return }
+        let alert = NSAlert()
+        alert.messageText = String(
+            localized: "hive.mirror.actionUnavailable",
+            defaultValue: "Action Unavailable"
+        )
+        alert.informativeText = explanation
+        _ = alert.runCmuxModal(
+            presentingWindow: AppDelegate.shared?.mainWindowContainingWorkspace(id)
+        )
+    }
     weak var remoteTmuxSessionMirror: RemoteTmuxSessionMirror?
     /// Bound action for this mirror's outbound window-order mutation boundary.
     var remoteTmuxWindowOrderSync: (([UUID], ((Bool) -> Void)?) -> Bool)?
@@ -7593,7 +7678,7 @@ final class Workspace: Identifiable, ObservableObject {
     }
 
     /// Like ``newTerminalSplit(from:orientation:insertFirst:focus:workingDirectory:initialCommand:tmuxStartCommand:startupEnvironment:initialDividerPosition:remotePTYSessionID:)``
-    /// but distinguishes a split routed to the remote tmux mirror from a genuine
+    /// but distinguishes a split routed to a remote mirror from a genuine
     /// failure, so socket/CLI handlers can report the routed request as accepted.
     /// (Reporting an error makes automation retry and duplicate remote panes.)
     func newTerminalSplitOutcome(
@@ -7620,13 +7705,18 @@ final class Workspace: Identifiable, ObservableObject {
         // panel — not the pane's selected tab, which is all the bonsplit-level
         // veto in splitTabBar(_:shouldSplitPane:orientation:) can see — keeps
         // programmatic splits aimed at a background window-tab precise.
-        if isRemoteTmuxMirror {
+        switch remoteMirrorMutationRoute(for: .split) {
+        case .unavailable:
+            return .failed
+        case .remoteTmux:
             let routed = AppDelegate.shared?.remoteTmuxController.handleMirrorTabSplitRequested(
                 workspaceId: id,
                 panelId: panelId,
                 vertical: orientation == .vertical, focusIntent: focus ? .focusCreatedPane : .preserveActivePane
             ) ?? false
             return routed ? .routedToRemote : .failed
+        case .local, .hive:
+            break
         }
         guard let panel = newTerminalSplitLocal(
             from: panelId,
@@ -7909,7 +7999,12 @@ final class Workspace: Identifiable, ObservableObject {
         // In a remote tmux mirror, a new tab means "create a tmux window"; never
         // create a local orphan the mirror can't reconcile. Dead mirrors are
         // torn down via handleSessionEndedRemotely.
-        if isRemoteTmuxMirror {
+        switch remoteMirrorMutationRoute(for: .newTerminalTab) {
+        case .hive:
+            guard let hiveNewTerminalRequest else { return .failed }
+            hiveNewTerminalRequest()
+            return .routedToRemote
+        case .remoteTmux:
             let anchorPanelId = workingDirectoryFallbackSourcePanelId
             let placement = remoteTmuxNewTabPlacement(inPane: paneId, anchorPanelId: anchorPanelId)
             // Inherit the active tab's directory like a local new tab, sourcing it
@@ -7935,6 +8030,10 @@ final class Workspace: Identifiable, ObservableObject {
                     focus: focus ?? (bonsplitController.focusedPaneId == paneId)
                 ) ?? false
             return routed ? .routedToRemote : .failed
+        case .local:
+            break
+        case .unavailable:
+            return .failed
         }
         guard let panel = newTerminalSurfaceLocal(
             inPane: paneId,
@@ -11368,6 +11467,10 @@ final class Workspace: Identifiable, ObservableObject {
     }
 
     private func promptRenamePanel(tabId: TabID) {
+        guard remoteMirrorMutationRoute(for: .terminalTabRename) != .unavailable else {
+            presentHiveUnavailableAction(.terminalTabRename)
+            return
+        }
         guard let panelId = panelIdFromSurfaceId(tabId),
               let panel = panels[panelId] else { return }
 
@@ -12834,7 +12937,12 @@ extension Workspace: BonsplitDelegate {
     func splitTabBar(_ controller: BonsplitController, shouldSplitPane pane: PaneID, orientation: SplitOrientation) -> Bool {
         // In a remote tmux mirror, split means tmux `split-window`; always veto
         // local splits so the mirror never gains an orphan pane.
-        guard isRemoteTmuxMirror else { return true }
+        let route = remoteMirrorMutationRoute(for: .split)
+        guard route != .local else { return true }
+        if route == .unavailable {
+            presentHiveUnavailableAction(.split)
+            return false
+        }
         if let tabId = bonsplitController.selectedTab(inPane: pane)?.id,
            let panelId = panelIdFromSurfaceId(tabId) {
             _ = AppDelegate.shared?.remoteTmuxController.handleMirrorTabSplitRequested(workspaceId: id, panelId: panelId, vertical: orientation == .vertical, focusIntent: .focusCreatedPane)
@@ -13353,6 +13461,10 @@ extension Workspace: BonsplitDelegate {
             promptRenamePanel(tabId: tab.id)
         case .clearName:
             guard let panelId = panelIdFromSurfaceId(tab.id) else { return }
+            guard remoteMirrorMutationRoute(for: .terminalTabRename) != .unavailable else {
+                presentHiveUnavailableAction(.terminalTabRename)
+                return
+            }
             setPanelCustomTitle(panelId: panelId, title: nil)
         case .copyIdentifiers:
             guard let panelId = panelIdFromSurfaceId(tab.id) else { return }

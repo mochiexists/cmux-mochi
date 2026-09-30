@@ -14273,6 +14273,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
 
         if matchConfiguredShortcut(event: event, action: .renameTab) {
             let targetWindow = commandPaletteTargetWindow ?? event.window ?? shortcutRoutingActiveWindow
+            let workspace = preferredMainWindowContextForShortcutRouting(event: event)?.tabManager.selectedWorkspace
+                ?? tabManager?.selectedWorkspace
+            if let workspace, workspace.isHiveWorkspaceMirror {
+                workspace.presentHiveUnavailableAction(.terminalTabRename)
+                return true
+            }
             requestCommandPaletteRenameTab(preferredWindow: targetWindow, source: "shortcut.renameTab")
             return true
         }
@@ -14494,6 +14500,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
             if routeSplitToFocusedDock(kind: .terminal, direction: .right, preferredWindow: event.window) {
                 return true
             }
+            let workspace = preferredMainWindowContextForShortcutRouting(event: event)?.tabManager.selectedWorkspace
+                ?? tabManager?.selectedWorkspace
+            if let workspace, workspace.isHiveWorkspaceMirror {
+                workspace.presentHiveUnavailableAction(.split)
+                return true
+            }
             if shouldSuppressSplitShortcutForTransientTerminalFocusState(direction: .right) {
                 return true
             }
@@ -14509,6 +14521,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
             cmuxDebugLog("shortcut.action name=splitDown \(debugShortcutRouteSnapshot(event: event))")
 #endif
             if routeSplitToFocusedDock(kind: .terminal, direction: .down, preferredWindow: event.window) {
+                return true
+            }
+            let workspace = preferredMainWindowContextForShortcutRouting(event: event)?.tabManager.selectedWorkspace
+                ?? tabManager?.selectedWorkspace
+            if let workspace, workspace.isHiveWorkspaceMirror {
+                workspace.presentHiveUnavailableAction(.split)
                 return true
             }
             if shouldSuppressSplitShortcutForTransientTerminalFocusState(direction: .down) {

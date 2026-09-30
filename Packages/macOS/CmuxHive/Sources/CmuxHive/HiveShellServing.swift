@@ -31,6 +31,12 @@ public protocol HiveShellServing: AnyObject {
     ) async -> Bool
 
     func loadPairedMacs() async
+    func createTerminal(in workspaceID: MobileWorkspacePreview.ID?)
+    func renameWorkspace(
+        id: MobileWorkspacePreview.ID,
+        title: String,
+        refreshAfterMutation: Bool
+    ) async -> Result<Void, MobileWorkspaceMutationFailure>
     func removeComputer(
         representativeID: String,
         aliasIDs: [String]

@@ -14,7 +14,7 @@ import Testing
 @MainActor
 @Suite(.serialized)
 struct HiveWorkspaceMirrorControllerTests {
-    @Test("routes Hive mutations without treating the workspace as an SSH/tmux mirror")
+    @Test("routes Hive mutations independently of SSH/tmux mirrors")
     func routesHiveMutations() throws {
         let terminal = MobileTerminalPreview(id: "surface-a", name: "Alpha")
         var remoteWorkspace = MobileWorkspacePreview(
@@ -43,6 +43,15 @@ struct HiveWorkspaceMirrorControllerTests {
         #expect(mirror.remoteMirrorMutationRoute(for: .workspaceRename) == .hive)
         #expect(mirror.remoteMirrorMutationRoute(for: .split) == .unavailable)
         #expect(mirror.remoteMirrorMutationRoute(for: .terminalTabRename) == .unavailable)
+        #expect(!mirror.bonsplitController.configuration.allowSplits)
+
+        let paneID = try #require(mirror.bonsplitController.focusedPaneId)
+        let outcome = mirror.newTerminalSurfaceOutcome(inPane: paneID)
+        guard case .routedToRemote = outcome else {
+            Issue.record("Expected Hive new-terminal action to route to the host RPC")
+            return
+        }
+        #expect(shell.createdTerminalWorkspaceIDs == [remoteWorkspace.rpcWorkspaceID])
     }
 
     @Test("reopens a locally closed remote terminal in its existing workspace")
@@ -135,6 +144,7 @@ private final class HiveWorkspaceMirrorShellStub: HiveShellServing, HiveTerminal
     var hiveIsReconnecting = false
     var hiveActiveRoute: CmxAttachRoute?
     var hivePairedMacs: [MobilePairedMac] = []
+    private(set) var createdTerminalWorkspaceIDs: [MobileWorkspacePreview.ID?] = []
     private var outputContinuations: [UUID: AsyncStream<MobileTerminalOutputChunk>.Continuation] = [:]
 
     init(workspaces: [MobileWorkspacePreview]) {
@@ -153,6 +163,18 @@ private final class HiveWorkspaceMirrorShellStub: HiveShellServing, HiveTerminal
     }
 
     func loadPairedMacs() async {}
+
+    func createTerminal(in workspaceID: MobileWorkspacePreview.ID?) {
+        createdTerminalWorkspaceIDs.append(workspaceID)
+    }
+
+    func renameWorkspace(
+        id: MobileWorkspacePreview.ID,
+        title: String,
+        refreshAfterMutation: Bool
+    ) async -> Result<Void, MobileWorkspaceMutationFailure> {
+        .success(())
+    }
 
     func removeComputer(
         representativeID: String,
