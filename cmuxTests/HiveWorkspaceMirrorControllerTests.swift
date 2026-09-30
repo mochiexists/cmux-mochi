@@ -138,6 +138,56 @@ struct HiveWorkspaceMirrorControllerTests {
         ])
     }
 
+    @Test("re-sends the viewport after input overflow stops output")
+    func resumesOutputAfterInputOverflow() async throws {
+        let terminal = MobileTerminalPreview(id: "surface-a", name: "Alpha")
+        var remoteWorkspace = MobileWorkspacePreview(
+            id: "remote-workspace",
+            macDeviceID: "mac-a",
+            macDisplayName: "Studio",
+            name: "Remote",
+            terminals: [terminal]
+        )
+        remoteWorkspace.macInstanceTag = "dev-a"
+        remoteWorkspace.macConnectionStatus = .connected
+        let shell = HiveWorkspaceMirrorShellStub(workspaces: [remoteWorkspace])
+        let coordinator = HiveWorkspaceCoordinator(shell: shell)
+        let controller = HiveWorkspaceMirrorController(maximumPendingInputBytes: 1)
+        let manager = TabManager()
+
+        controller.open(
+            workspace: remoteWorkspace,
+            selectedTerminal: terminal,
+            coordinator: coordinator,
+            in: manager
+        )
+        let mirror = try #require(manager.tabs.first { $0.isHiveWorkspaceMirror })
+        let panel = try #require(mirror.focusedTerminalPanel)
+        panel.hostedView.setVisibleInUI(true)
+        panel.hostedView.setActive(true)
+        panel.hostedView.layoutSubtreeIfNeeded()
+        await Self.waitForLiveSurface(panel.surface)
+        let sample = try #require(panel.surface.rawSizingSample())
+        panel.surface.onManualSizeApplied?(sample)
+        shell.resetPreparedViewports()
+
+        #expect(controller.forwardInput(
+            .bytes(Data([0x61, 0x62])),
+            to: panel.id
+        ) == .overflow)
+        await Task.yield()
+        await Task.yield()
+        controller.reconcileMirrors()
+
+        #expect(shell.preparedViewports == [
+            .init(
+                surfaceID: terminal.id.rawValue,
+                columns: sample.columns,
+                rows: sample.rows
+            ),
+        ])
+    }
+
     @Test("promotes the surviving resize owner after the original panel deallocates")
     func promotesResizeOwnerAfterPanelDeallocation() throws {
         let terminal = MobileTerminalPreview(id: "surface-a", name: "Alpha")
@@ -608,6 +658,20 @@ struct HiveWorkspaceMirrorControllerTests {
             backingScale: nil
         )
     }
+
+    private static func waitForLiveSurface(_ surface: TerminalSurface) async {
+        guard !surface.hasLiveSurface else { return }
+        let previousOnRuntimeReady = surface.onRuntimeReady
+        defer { surface.onRuntimeReady = previousOnRuntimeReady }
+        let readiness = AsyncStream<Void> { continuation in
+            surface.onRuntimeReady = {
+                previousOnRuntimeReady?()
+                continuation.yield()
+                continuation.finish()
+            }
+        }
+        for await _ in readiness { break }
+    }
 }
 
 @MainActor
@@ -696,6 +760,10 @@ private final class HiveWorkspaceMirrorShellStub: HiveShellServing, HiveTerminal
             registrationToken: registrationToken,
             stream: stream
         )
+    }
+
+    func resetPreparedViewports() {
+        preparedViewports.removeAll()
     }
 
     func terminalOutputDidProcess(surfaceID: String, streamToken: UUID) {}

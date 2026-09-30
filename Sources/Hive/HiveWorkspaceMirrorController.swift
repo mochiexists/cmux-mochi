@@ -28,11 +28,16 @@ final class HiveWorkspaceMirrorController {
         private let inputForwarder: RemoteTmuxPaneInputForwarder
         private var outputSubscription: HiveTerminalSession.Subscription?
 
-        init(attachment: TerminalAttachment, panel: TerminalPanel) {
+        init(
+            attachment: TerminalAttachment,
+            panel: TerminalPanel,
+            maximumPendingInputBytes: Int
+        ) {
             panelID = panel.id
             self.attachment = attachment
             self.panel = panel
             inputForwarder = RemoteTmuxPaneInputForwarder(
+                maximumPendingBytes: maximumPendingInputBytes,
                 onInput: { [weak attachment] input, _ in
                     guard case let .bytes(data) = input else { return }
                     attachment?.send(data)
@@ -43,8 +48,10 @@ final class HiveWorkspaceMirrorController {
             )
         }
 
-        nonisolated func send(_ input: TerminalManualInput) {
-            _ = inputForwarder.send(input, toPane: 0)
+        nonisolated func send(
+            _ input: TerminalManualInput
+        ) -> RemoteTmuxPaneInputForwarder.SendResult {
+            inputForwarder.send(input, toPane: 0)
         }
 
         func start() {
@@ -170,20 +177,21 @@ final class HiveWorkspaceMirrorController {
         }
 
         func stopOutput() {
+            markOutputStopped()
             bindingsByPanelID.values.forEach { $0.setConnectionActive(false) }
             session.stopOutput()
         }
 
         func connectionStateDidChange(isActive: Bool) {
             if connectionWasActive == true, !isActive {
-                needsViewportAfterReconnect = true
+                markOutputStopped()
             }
             connectionWasActive = isActive
         }
 
         func outputDidEnd() {
             connectionWasActive = false
-            needsViewportAfterReconnect = true
+            markOutputStopped()
         }
 
         func applyViewport(
@@ -226,6 +234,10 @@ final class HiveWorkspaceMirrorController {
             }
         }
 
+        private func markOutputStopped() {
+            needsViewportAfterReconnect = true
+        }
+
         private var currentOwner: TerminalBinding? {
             while let panelID = bindingOrder.first {
                 if let binding = bindingsByPanelID[panelID] {
@@ -252,7 +264,8 @@ final class HiveWorkspaceMirrorController {
         }
 
         nonisolated func send(_ input: TerminalManualInput) {
-            state.withLock { $0.binding?.send(input) }
+            let binding = state.withLock { $0.binding }
+            _ = binding?.send(input)
         }
     }
 
@@ -334,6 +347,14 @@ final class HiveWorkspaceMirrorController {
 
     private var mirrors: [MirrorKey: MirrorRecord] = [:]
     private var terminalAttachments: [TerminalAttachmentKey: TerminalAttachment] = [:]
+    private let maximumPendingInputBytes: Int
+
+    init(
+        maximumPendingInputBytes: Int = RemoteTmuxPaneInputForwarder
+            .defaultMaximumPendingBytes
+    ) {
+        self.maximumPendingInputBytes = maximumPendingInputBytes
+    }
 
     /// Opens every terminal in a remote workspace.
     ///
@@ -517,7 +538,11 @@ final class HiveWorkspaceMirrorController {
                 inputRelay.send(input)
             }
         ) else { return nil }
-        let binding = TerminalBinding(attachment: attachment, panel: panel)
+        let binding = TerminalBinding(
+            attachment: attachment,
+            panel: panel,
+            maximumPendingInputBytes: maximumPendingInputBytes
+        )
         inputRelay.forward(to: binding)
         binding.start()
         return (panel, binding)
@@ -645,6 +670,18 @@ final class HiveWorkspaceMirrorController {
         for (key, record) in Array(mirrors) {
             _ = reconcileMirror(record, for: key)
         }
+    }
+
+    func forwardInput(
+        _ input: TerminalManualInput,
+        to panelID: UUID
+    ) -> RemoteTmuxPaneInputForwarder.SendResult? {
+        for record in mirrors.values {
+            if let binding = record.bindingsByPanelID[panelID] {
+                return binding.send(input)
+            }
+        }
+        return nil
     }
 
     func isMounted(
