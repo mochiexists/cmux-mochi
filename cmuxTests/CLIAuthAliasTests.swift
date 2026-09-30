@@ -2,6 +2,79 @@ import XCTest
 import Darwin
 
 extension CLINotifyProcessIntegrationRegressionTests {
+    func testHiveCommandsRouteToDedicatedSocketMethods() throws {
+        let cliPath = try bundledCLIPath()
+        let socketPath = makeSocketPath("hive-commands")
+        let listenerFD = try bindUnixSocket(at: socketPath)
+        let state = MockSocketServerState()
+        let link = "cmux-ios-dev://attach?v=3&r=127.0.0.1:3939&f=abc&t=ticket&n=Host"
+        let windowID = UUID().uuidString
+
+        defer {
+            Darwin.close(listenerFD)
+            unlink(socketPath)
+        }
+
+        let serverHandled = startMockServer(
+            listenerFD: listenerFD,
+            state: state,
+            connectionCount: 5
+        ) { line in
+            guard let payload = self.jsonObject(line),
+                  let id = payload["id"] as? String,
+                  let method = payload["method"] as? String else {
+                return self.malformedRequestResponse(raw: line)
+            }
+            return self.v2Response(
+                id: id,
+                ok: true,
+                result: ["method": method]
+            )
+        }
+
+        var environment = ProcessInfo.processInfo.environment
+        environment["CMUX_SOCKET_PATH"] = socketPath
+        environment["CMUX_CLI_SENTRY_DISABLED"] = "1"
+        let invocations = [
+            ["hive", "pair", link, "--json"],
+            ["hive", "list", "--json"],
+            [
+                "hive", "open", "remote-workspace",
+                "--surface", "remote-surface",
+                "--window", windowID,
+                "--json",
+            ],
+            ["hive", "status", "--json"],
+            ["hive", "remove", "pairing-id", "--local-only", "--json"],
+        ]
+
+        for arguments in invocations {
+            let result = runProcess(
+                executablePath: cliPath,
+                arguments: arguments,
+                environment: environment,
+                timeout: 5
+            )
+            XCTAssertFalse(result.timedOut, result.stderr)
+            XCTAssertEqual(result.status, 0, result.stderr)
+        }
+
+        wait(for: [serverHandled], timeout: 5)
+        let requests = state.commands.compactMap(jsonObject)
+        XCTAssertEqual(requests.compactMap { $0["method"] as? String }, [
+            "hive.pair", "hive.list", "hive.open", "hive.status", "hive.remove",
+        ])
+        let pairParams = try XCTUnwrap(requests[0]["params"] as? [String: Any])
+        XCTAssertEqual(pairParams["link"] as? String, link)
+        let openParams = try XCTUnwrap(requests[2]["params"] as? [String: Any])
+        XCTAssertEqual(openParams["workspace_id"] as? String, "remote-workspace")
+        XCTAssertEqual(openParams["surface_id"] as? String, "remote-surface")
+        XCTAssertEqual(openParams["window_id"] as? String, windowID)
+        let removeParams = try XCTUnwrap(requests[4]["params"] as? [String: Any])
+        XCTAssertEqual(removeParams["pairing_id"] as? String, "pairing-id")
+        XCTAssertEqual(removeParams["local_only"] as? Bool, true)
+    }
+
     func testTopLevelLoginAliasesAuthLogin() throws {
         let cliPath = try bundledCLIPath()
         let socketPath = makeSocketPath("auth-login")

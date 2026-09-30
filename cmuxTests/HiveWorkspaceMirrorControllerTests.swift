@@ -58,6 +58,44 @@ struct HiveWorkspaceMirrorControllerTests {
         #expect(shell.preparedViewports == [
             .init(surfaceID: terminal.id.rawValue, columns: 80, rows: 24),
         ])
+        #expect(shell.outputRegistrationCountBySurfaceID[terminal.id.rawValue] == 1)
+        let attachment = try #require(
+            controller.statusSnapshot().first {
+                $0.remoteSurfaceID == terminal.id.rawValue
+            }
+        )
+        #expect(attachment.localMountCount == 2)
+        #expect(attachment.remoteRegistrationCount == 1)
+    }
+
+    @Test("automation opens a mirror without changing workspace selection")
+    func automationOpenPreservesWorkspaceSelection() throws {
+        let terminal = MobileTerminalPreview(id: "surface-a", name: "Alpha")
+        var remoteWorkspace = MobileWorkspacePreview(
+            id: "remote-workspace",
+            macDeviceID: "mac-a",
+            macDisplayName: "Studio",
+            name: "Remote",
+            terminals: [terminal]
+        )
+        remoteWorkspace.macInstanceTag = "dev-a"
+        let shell = HiveWorkspaceMirrorShellStub(workspaces: [remoteWorkspace])
+        let coordinator = HiveWorkspaceCoordinator(shell: shell)
+        let controller = HiveWorkspaceMirrorController()
+        let manager = TabManager()
+        let originalWorkspaceID = try #require(manager.selectedWorkspace?.id)
+
+        let opened = try #require(controller.open(
+            workspace: remoteWorkspace,
+            selectedTerminal: terminal,
+            coordinator: coordinator,
+            in: manager,
+            focus: false
+        ))
+
+        #expect(manager.selectedWorkspace?.id == originalWorkspaceID)
+        #expect(opened.workspaceID != originalWorkspaceID)
+        #expect(opened.localPanelIDsByRemoteSurfaceID[terminal.id.rawValue] != nil)
     }
 
     @Test("reconciles terminals added to and closed from the remote workspace")
@@ -282,6 +320,7 @@ private final class HiveWorkspaceMirrorShellStub: HiveShellServing, HiveTerminal
     var hivePairedMacs: [MobilePairedMac] = []
     private(set) var createdTerminalWorkspaceIDs: [MobileWorkspacePreview.ID?] = []
     private(set) var preparedViewports: [PreparedViewport] = []
+    private(set) var outputRegistrationCountBySurfaceID: [String: Int] = [:]
     private var outputContinuations: [UUID: AsyncStream<MobileTerminalOutputChunk>.Continuation] = [:]
 
     init(workspaces: [MobileWorkspacePreview]) {
@@ -335,6 +374,7 @@ private final class HiveWorkspaceMirrorShellStub: HiveShellServing, HiveTerminal
     }
 
     func terminalOutputRegistration(surfaceID: String) -> MobileTerminalOutputRegistration {
+        outputRegistrationCountBySurfaceID[surfaceID, default: 0] += 1
         let registrationToken = UUID()
         let (stream, continuation) = AsyncStream<MobileTerminalOutputChunk>.makeStream()
         outputContinuations[registrationToken] = continuation
