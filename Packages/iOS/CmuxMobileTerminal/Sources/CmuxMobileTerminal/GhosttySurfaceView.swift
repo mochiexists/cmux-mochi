@@ -3406,7 +3406,14 @@ public final class GhosttySurfaceView: UIView, TerminalSurfaceHosting {
     }
 
     public func applyViewSize(cols: Int, rows: Int) {
-        applyViewSize(cols: cols, rows: rows, confirmedViewportEcho: false)
+        guard updateEffectiveGrid(cols: cols, rows: rows) else { return }
+        // Mark dirty instead of recomputing synchronously. This breaks the
+        // feedback loop (didResize → updateTerminalViewport RPC → applyViewSize
+        // → syncSurfaceGeometry → didResize …) that, under fast zoom, drove a
+        // storm of set_size calls + viewport RPCs. Geometry now settles once
+        // per frame, and reassert=false avoids re-reporting the unchanged
+        // natural grid back through the round trip.
+        setNeedsGeometrySync(reassertNaturalSize: false)
     }
 
     /// Apply the daemon's authoritative rendering grid and wait until libghostty
@@ -3416,7 +3423,7 @@ public final class GhosttySurfaceView: UIView, TerminalSurfaceHosting {
     /// - Returns: `false` when the surface reset before the geometry applied.
     @discardableResult
     public func applyViewSizeAndWait(cols: Int, rows: Int) async -> Bool {
-        let changed = updateEffectiveGrid(cols: cols, rows: rows, confirmedViewportEcho: false)
+        let changed = updateEffectiveGrid(cols: cols, rows: rows)
         if changed || needsGeometrySync {
             return await syncSurfaceGeometryAndWait(shouldReassertNaturalSize: false)
         }
@@ -3441,11 +3448,8 @@ public final class GhosttySurfaceView: UIView, TerminalSurfaceHosting {
             )
             return
         }
-        applyViewSize(cols: cols, rows: rows, confirmedViewportEcho: true)
-    }
-
-    public func markViewportReportConfirmed() {
-        viewportReportRetries = 0
+        markViewportReportConfirmed(reportID: reportID)
+        applyViewSize(cols: cols, rows: rows)
     }
 
     /// Mark the round-trip for `reportID` as resolved. Only the NEWEST
@@ -3466,22 +3470,8 @@ public final class GhosttySurfaceView: UIView, TerminalSurfaceHosting {
         }
     }
 
-    private func applyViewSize(cols: Int, rows: Int, confirmedViewportEcho: Bool) {
-        guard updateEffectiveGrid(cols: cols, rows: rows, confirmedViewportEcho: confirmedViewportEcho) else { return }
-        // Mark dirty instead of recomputing synchronously. This breaks the
-        // feedback loop (didResize → updateTerminalViewport RPC → applyViewSize
-        // → syncSurfaceGeometry → didResize …) that, under fast zoom, drove a
-        // storm of set_size calls + viewport RPCs. Geometry now settles once
-        // per frame, and reassert=false avoids re-reporting the unchanged
-        // natural grid back through the round trip.
-        setNeedsGeometrySync(reassertNaturalSize: false)
-    }
-
-    private func updateEffectiveGrid(cols: Int, rows: Int, confirmedViewportEcho: Bool) -> Bool {
+    private func updateEffectiveGrid(cols: Int, rows: Int) -> Bool {
         guard cols > 0, rows > 0 else { return false }
-        if confirmedViewportEcho {
-            markViewportReportConfirmed()
-        }
         if effectiveGrid?.cols == cols && effectiveGrid?.rows == rows { return false }
         MobileDebugLog.anchormux("zoom.applyViewSize eff=\(effectiveGrid.map { "\($0.cols)x\($0.rows)" } ?? "nil")->\(cols)x\(rows)")
         effectiveGrid = (cols, rows)
