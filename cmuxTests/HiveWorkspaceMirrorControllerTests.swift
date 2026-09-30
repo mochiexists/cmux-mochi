@@ -99,7 +99,8 @@ struct HiveWorkspaceMirrorControllerTests {
         controller.reconcileMirrors()
 
         #expect(mirror.panels.count == 1)
-        #expect(mirror.panels.values.first?.displayTitle == second.name)
+        let remainingPanelID = try #require(mirror.panels.keys.first)
+        #expect(mirror.panelTitle(panelId: remainingPanelID) == second.name)
     }
 
     @Test("host workspace list excludes Hive mirrors")
