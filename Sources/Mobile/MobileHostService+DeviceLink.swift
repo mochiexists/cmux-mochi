@@ -162,6 +162,17 @@ extension MobileHostService {
     /// needs.
     func publishRoutesAwaitingMagicDNS() async {
         guard let port = listenerPort else { return }
+        #if DEBUG
+        // The explicit headless E2E mode always has a debug-loopback route and
+        // must not depend on reverse DNS for an unrelated Tailscale interface.
+        // On unattended builders that lookup can wait beyond the socket RPC
+        // deadline even though the simulator can already reach this listener.
+        if ProcessInfo.processInfo.environment["CMUX_E2E_DEVICELINK_STATE_DIR"] != nil {
+            MobileHostPublicStatusCache.update(routes: routeResolver.routes(port: port).routes)
+            logDeviceLinkHost("routes (headless e2e) -> \(Self.routeSummary(MobileHostPublicStatusCache.snapshot()))")
+            return
+        }
+        #endif
         // Capture the generation, not just the port. The port is a fixed
         // service port, so a listener that tore down and rebound during
         // resolution has the *same* port -- comparing ports alone would accept

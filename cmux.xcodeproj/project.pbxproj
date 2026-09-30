@@ -1387,6 +1387,7 @@ C0DE71B10000000000000001 /* AppDelegate+AgentChatNotifications.swift in Sources 
 		B8B0FA000000000000000003 /* MobileHostDeviceLink+Pairing.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8B0FA000000000000000004 /* MobileHostDeviceLink+Pairing.swift */; };
 		B8B0FA000000000000000001 /* MobileHostDeviceLink.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8B0FA000000000000000002 /* MobileHostDeviceLink.swift */; };
 		B8B0FA000000000000000005 /* MobileHostDeviceLinkAdmissionSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8B0FA000000000000000006 /* MobileHostDeviceLinkAdmissionSnapshot.swift */; };
+		B8E2E0000000000000000001 /* MobileHostDeviceLinkE2EStateStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8E2E0000000000000000002 /* MobileHostDeviceLinkE2EStateStore.swift */; };
 		B8B0FA000000000000000011 /* MobileHostDeviceLinkTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8B0FA000000000000000012 /* MobileHostDeviceLinkTests.swift */; };
 		B8B056D90000000000000001 /* MobileHostIdentity.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8B056D90000000000000002 /* MobileHostIdentity.swift */; };
 		B8B056D80000000000000001 /* MobileHostIdentityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8B056D80000000000000002 /* MobileHostIdentityTests.swift */; };
@@ -4032,6 +4033,7 @@ C0DE71B10000000000000002 /* AppDelegate+AgentChatNotifications.swift */ = {isa =
 		B8B0FA000000000000000004 /* MobileHostDeviceLink+Pairing.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = "MobileHostDeviceLink+Pairing.swift"; sourceTree = "<group>"; };
 		B8B0FA000000000000000002 /* MobileHostDeviceLink.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = "MobileHostDeviceLink.swift"; sourceTree = "<group>"; };
 		B8B0FA000000000000000006 /* MobileHostDeviceLinkAdmissionSnapshot.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = "MobileHostDeviceLinkAdmissionSnapshot.swift"; sourceTree = "<group>"; };
+		B8E2E0000000000000000002 /* MobileHostDeviceLinkE2EStateStore.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = "MobileHostDeviceLinkE2EStateStore.swift"; sourceTree = "<group>"; };
 		B8B0FA000000000000000012 /* MobileHostDeviceLinkTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = "MobileHostDeviceLinkTests.swift"; sourceTree = "<group>"; };
 		B8B056D90000000000000002 /* MobileHostIdentity.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MobileHostIdentity.swift; sourceTree = "<group>"; };
 		B8B056D80000000000000002 /* MobileHostIdentityTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MobileHostIdentityTests.swift; sourceTree = "<group>"; };
@@ -5608,6 +5610,7 @@ C0DE71B10000000000000002 /* AppDelegate+AgentChatNotifications.swift */ = {isa =
 				B8B0FA000000000000000006 /* MobileHostDeviceLinkAdmissionSnapshot.swift */,
 				B8B0FA000000000000000004 /* MobileHostDeviceLink+Pairing.swift */,
 				B8B0FA000000000000000002 /* MobileHostDeviceLink.swift */,
+				B8E2E0000000000000000002 /* MobileHostDeviceLinkE2EStateStore.swift */,
 				47BDC06F004C02A52B05E4A0 /* MobileHostRPC.swift */,
 				A1B2C3D4E5F60718293A4C02 /* MobileHostOrderedRequestQueue.swift */,
 				7ACA497A6831165EA879C642 /* MobileHostService.swift */,
@@ -9398,6 +9401,7 @@ C0DE71B10000000000000002 /* AppDelegate+AgentChatNotifications.swift */ = {isa =
 				B8B0FA000000000000000003 /* MobileHostDeviceLink+Pairing.swift in Sources */,
 				B8B0FA000000000000000001 /* MobileHostDeviceLink.swift in Sources */,
 				B8B0FA000000000000000005 /* MobileHostDeviceLinkAdmissionSnapshot.swift in Sources */,
+				B8E2E0000000000000000001 /* MobileHostDeviceLinkE2EStateStore.swift in Sources */,
 				B8B056D90000000000000001 /* MobileHostIdentity.swift in Sources */,
 				A17070900000000000000002 /* MobileHostIrohApplicationLaneRouter.swift in Sources */,
 				C1A070000000000000000002 /* MobileHostIrohAuthObserver.swift in Sources */,
