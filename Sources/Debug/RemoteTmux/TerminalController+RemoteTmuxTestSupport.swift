@@ -275,6 +275,7 @@ extension TerminalController {
         let height = params["height"] as? Double
         let originX = params["x"] as? Double
         let originY = params["y"] as? Double
+        let interactive = params["interactive"] as? Bool ?? false
         if width == nil, height == nil, originX == nil, originY == nil {
             return v2Error(
                 id: id, code: "invalid_params",
@@ -298,6 +299,18 @@ extension TerminalController {
                 guard let window = AppDelegate.shared?.windowForMainWindowId(windowId) else {
                     return nil
                 }
+                if interactive {
+                    // Programmatic setFrame does not set NSWindow.inLiveResize.
+                    // Mark the exact window as interactive so manual-I/O
+                    // mirrors measure their natural grid instead of retaining
+                    // the previous host-assigned grid during an E2E resize.
+                    TerminalWindowPortalRegistry.beginInteractiveGeometryResize(in: window)
+                }
+                defer {
+                    if interactive {
+                        TerminalWindowPortalRegistry.endInteractiveGeometryResize(in: window)
+                    }
+                }
                 var frame = window.frame
                 let newSize = CGSize(
                     width: width.map { CGFloat($0) } ?? frame.size.width,
@@ -309,6 +322,9 @@ extension TerminalController {
                 if let originX { frame.origin.x = CGFloat(originX) }
                 if let originY { frame.origin.y = CGFloat(originY) }
                 window.setFrame(frame, display: true, animate: false)
+                if interactive {
+                    TerminalWindowPortalRegistry.synchronizeExternalGeometryNow(for: window)
+                }
                 return window.frame
             }
             guard let applied else {
