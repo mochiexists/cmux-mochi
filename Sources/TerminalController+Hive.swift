@@ -90,7 +90,7 @@ extension TerminalController {
         guard let coordinator = AppDelegate.shared?.hiveWorkspaceService.coordinator else {
             return hiveUnavailableResult()
         }
-        if coordinator.hasKnownPairing, coordinator.phase != .connected {
+        if coordinator.hasKnownPairing, hivePhaseCanStartReconnect(coordinator.phase) {
             _ = await coordinator.reconnect()
         } else {
             coordinator.refreshWorkspaceSnapshot()
@@ -205,6 +205,15 @@ extension TerminalController {
         case .connected: "connected"
         case .pairedOffline: "paired_offline"
         case .failed: "failed"
+        }
+    }
+
+    private func hivePhaseCanStartReconnect(_ phase: HiveWorkspaceCoordinator.Phase) -> Bool {
+        switch phase {
+        case .idle, .pairedOffline, .failed:
+            true
+        case .pairing, .connecting, .connected:
+            false
         }
     }
 

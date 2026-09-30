@@ -4520,7 +4520,15 @@ struct CMUXCLI {
             default:
                 throw CLIError(message: hiveUsage)
             }
-            let response = try client.sendV2(method: method, params: params)
+            let responseTimeout: TimeInterval? = switch method {
+            case "hive.pair", "hive.status", "hive.remove": 35
+            default: nil
+            }
+            let response = try client.sendV2(
+                method: method,
+                params: params,
+                responseTimeout: responseTimeout
+            )
             if jsonOutput {
                 print(jsonString(response))
             } else if method == "hive.list",
