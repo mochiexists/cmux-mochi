@@ -34,7 +34,8 @@ public protocol HiveShellServing: AnyObject {
     /// Reconnects the foreground and every eligible paired Mac connection.
     func reconnectAllPairedMacs(
         stackUserID: String?,
-        refreshBackupBeforeDial: Bool
+        refreshBackupBeforeDial: Bool,
+        attemptDeadlineNanoseconds: UInt64?
     ) async -> Bool
     func reconnectHiveMac(macDeviceID: String, instanceTag: String?) async
 

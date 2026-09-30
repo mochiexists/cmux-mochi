@@ -85,6 +85,24 @@ struct HiveWorkspaceCoordinatorTests {
         ))
     }
 
+    @Test("status reconnect uses a deadline below the socket timeout")
+    func boundsStatusReconnect() async {
+        let shell = HiveShellStub(
+            pairingResult: .failed,
+            workspaces: [],
+            hasKnownPairing: true,
+            isConnected: false
+        )
+        let coordinator = HiveWorkspaceCoordinator(shell: shell)
+
+        #expect(await !coordinator.reconnectForStatus())
+        #expect(shell.lastReconnectDeadlineNanoseconds == 10_000_000_000)
+        guard case .pairedOffline = coordinator.phase else {
+            Issue.record("Expected a bounded failed status reconnect to report paired offline")
+            return
+        }
+    }
+
     @Test("reconnects every paired Mac instead of only the active Mac")
     func reconnectsEveryPairedMac() async {
         let pairedMacs = [
@@ -408,6 +426,7 @@ private final class HiveShellStub: HiveShellServing {
     private(set) var createdTerminalWorkspaceIDs: [MobileWorkspacePreview.ID?] = []
     private(set) var workspaceRenameRequests: [WorkspaceRenameRequest] = []
     private(set) var reconnectToMacRequests: [ReconnectRequest] = []
+    private(set) var lastReconnectDeadlineNanoseconds: UInt64?
     private var pairingContinuation: CheckedContinuation<Void, Never>?
     private var pairingStartContinuation: CheckedContinuation<Void, Never>?
     private var pairingStarted = false
@@ -485,8 +504,10 @@ private final class HiveShellStub: HiveShellServing {
 
     func reconnectAllPairedMacs(
         stackUserID: String?,
-        refreshBackupBeforeDial: Bool
+        refreshBackupBeforeDial: Bool,
+        attemptDeadlineNanoseconds: UInt64?
     ) async -> Bool {
+        lastReconnectDeadlineNanoseconds = attemptDeadlineNanoseconds
         reconnectedPairingIDs = hivePairedMacs.map(\.id)
         return isHiveMacConnected
     }

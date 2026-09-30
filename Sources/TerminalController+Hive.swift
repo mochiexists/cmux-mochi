@@ -91,7 +91,7 @@ extension TerminalController {
             return hiveUnavailableResult()
         }
         if coordinator.hasKnownPairing, hivePhaseCanStartReconnect(coordinator.phase) {
-            _ = await coordinator.reconnect()
+            _ = await coordinator.reconnectForStatus()
         } else {
             coordinator.refreshWorkspaceSnapshot()
         }

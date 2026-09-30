@@ -8,6 +8,8 @@ public import Observation
 @MainActor
 @Observable
 public final class HiveWorkspaceCoordinator {
+    private static let statusReconnectDeadlineNanoseconds: UInt64 = 10_000_000_000
+
     /// Empty-list presentation for the Remote Macs browser.
     public enum EmptyState: Equatable, Sendable {
         case neverPaired
@@ -213,6 +215,19 @@ public final class HiveWorkspaceCoordinator {
     /// Reconnect every DeviceLink pairing from local storage.
     @discardableResult
     public func reconnect() async -> Bool {
+        await reconnect(attemptDeadlineNanoseconds: nil)
+    }
+
+    /// Reconnects for a status request using a deadline shorter than the
+    /// control-socket request timeout, leaving time to return offline state.
+    @discardableResult
+    public func reconnectForStatus() async -> Bool {
+        await reconnect(
+            attemptDeadlineNanoseconds: Self.statusReconnectDeadlineNanoseconds
+        )
+    }
+
+    private func reconnect(attemptDeadlineNanoseconds: UInt64?) async -> Bool {
         guard hasKnownPairing else {
             phase = .idle
             return false
@@ -220,7 +235,8 @@ public final class HiveWorkspaceCoordinator {
         phase = .connecting
         let connected = await shell.reconnectAllPairedMacs(
             stackUserID: nil,
-            refreshBackupBeforeDial: false
+            refreshBackupBeforeDial: false,
+            attemptDeadlineNanoseconds: attemptDeadlineNanoseconds
         )
         await shell.loadPairedMacs()
         refreshWorkspaceSnapshot(forcePhaseReconciliation: true)

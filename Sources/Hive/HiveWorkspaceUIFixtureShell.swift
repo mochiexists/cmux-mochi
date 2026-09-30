@@ -115,7 +115,8 @@ final class HiveWorkspaceUIFixtureShell: HiveShellServing, HiveTerminalShellServ
 
     func reconnectAllPairedMacs(
         stackUserID: String?,
-        refreshBackupBeforeDial: Bool
+        refreshBackupBeforeDial: Bool,
+        attemptDeadlineNanoseconds: UInt64?
     ) async -> Bool {
         isHiveMacConnected
     }
