@@ -23,7 +23,16 @@ final class HiveWorkspaceService {
         }
     }
 
+    /// Starts the app-lifetime Hive connection owner without opening its window.
+    func start() {
+        guard let composition else { return }
+        Task {
+            await composition.coordinator.startConnectionLifecycle()
+        }
+    }
+
     func show(in tabManager: TabManager) {
+        start()
         guard let composition else {
             let alert = NSAlert()
             alert.messageText = String(

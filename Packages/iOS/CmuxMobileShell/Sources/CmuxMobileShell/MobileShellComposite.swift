@@ -2107,6 +2107,32 @@ public final class MobileShellComposite: MobileTerminalOutputSinking {
         )).didConnect
     }
 
+    /// Reconnects the foreground pairing and every eligible paired Mac in the
+    /// bounded multi-Mac control pool before returning.
+    ///
+    /// - Parameters:
+    ///   - stackUserID: Account scope for Stack-owned pairings, or `nil` for
+    ///     account-free DeviceLink pairings.
+    ///   - refreshBackupBeforeDial: Whether to refresh the paired-Mac backup
+    ///     before selecting the foreground reconnect candidate.
+    /// - Returns: `true` when a foreground pairing connected; otherwise,
+    ///   `false`.
+    @discardableResult
+    public func reconnectAllPairedMacs(
+        stackUserID: String?,
+        refreshBackupBeforeDial: Bool = true
+    ) async -> Bool {
+        let outcome = await reconnectActiveMacOutcome(
+            stackUserID: stackUserID,
+            refreshBackupBeforeDial: refreshBackupBeforeDial,
+            schedulesSecondaryAggregation: false
+        )
+        if outcome.didConnect, multiMacAggregationEnabled {
+            await refreshSecondaryMacWorkspaces()
+        }
+        return outcome.didConnect
+    }
+
     /// Starts one user-requested retry and exposes its loading state before any await.
     @discardableResult
     public func retryActiveMacReconnect(
@@ -2128,7 +2154,8 @@ public final class MobileShellComposite: MobileTerminalOutputSinking {
 
     func reconnectActiveMacOutcome(
         stackUserID: String?,
-        refreshBackupBeforeDial: Bool = true
+        refreshBackupBeforeDial: Bool = true,
+        schedulesSecondaryAggregation: Bool = true
     ) async -> StoredMacReconnectOutcome {
         lastReconnectStackUserID = stackUserID
         startObservingNetworkPathChanges()
@@ -2183,7 +2210,9 @@ public final class MobileShellComposite: MobileTerminalOutputSinking {
             return .superseded
         }
         if let outcome = race.value {
-            if outcome.didConnect, multiMacAggregationEnabled {
+            if outcome.didConnect,
+               multiMacAggregationEnabled,
+               schedulesSecondaryAggregation {
                 // Start secondary dials only after the bounded foreground
                 // operation has handed ownership back to this shared entry.
                 // This preserves foreground-first ordering even though the

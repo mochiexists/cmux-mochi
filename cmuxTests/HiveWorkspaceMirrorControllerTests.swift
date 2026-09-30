@@ -162,6 +162,13 @@ private final class HiveWorkspaceMirrorShellStub: HiveShellServing, HiveTerminal
         true
     }
 
+    func reconnectAllPairedMacs(
+        stackUserID: String?,
+        refreshBackupBeforeDial: Bool
+    ) async -> Bool {
+        true
+    }
+
     func loadPairedMacs() async {}
 
     func createTerminal(in workspaceID: MobileWorkspacePreview.ID?) {

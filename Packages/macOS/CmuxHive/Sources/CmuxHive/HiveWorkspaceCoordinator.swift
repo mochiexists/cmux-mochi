@@ -29,16 +29,57 @@ public final class HiveWorkspaceCoordinator {
 
     @ObservationIgnored private let shell: any HiveShellServing
     @ObservationIgnored private let pairingLinkDecoder: HivePairingLinkDecoder
+    @ObservationIgnored private let lifecycleClock: any Clock<Duration>
+    @ObservationIgnored private let lifecyclePollInterval: Duration
+    @ObservationIgnored private var lifecycleTask: Task<Void, Never>?
+    @ObservationIgnored private var lifecycleStartInProgress = false
 
+    /// Creates a Hive coordinator over the shared mobile-shell engine.
+    ///
+    /// - Parameters:
+    ///   - shell: Connection and workspace capability used by Hive.
+    ///   - pairingLinkDecoder: Decoder for current DeviceLink pairing URLs.
+    ///   - lifecycleClock: Clock that schedules background snapshot refreshes.
+    ///   - lifecyclePollInterval: Delay between background snapshot refreshes.
     public init(
         shell: any HiveShellServing,
-        pairingLinkDecoder: HivePairingLinkDecoder = HivePairingLinkDecoder()
+        pairingLinkDecoder: HivePairingLinkDecoder = HivePairingLinkDecoder(),
+        lifecycleClock: any Clock<Duration> = ContinuousClock(),
+        lifecyclePollInterval: Duration = .seconds(1)
     ) {
         self.shell = shell
         self.pairingLinkDecoder = pairingLinkDecoder
+        self.lifecycleClock = lifecycleClock
+        self.lifecyclePollInterval = lifecyclePollInterval
         workspaces = shell.workspaces
         pairedMacs = shell.hivePairedMacs
         connectionDetail = nil
+    }
+
+    deinit {
+        lifecycleTask?.cancel()
+    }
+
+    /// Starts app-lifetime reconnect and snapshot monitoring when a pairing exists.
+    public func startConnectionLifecycle() async {
+        guard lifecycleTask == nil, !lifecycleStartInProgress else { return }
+        lifecycleStartInProgress = true
+        defer { lifecycleStartInProgress = false }
+
+        if !hasKnownPairing {
+            await shell.loadPairedMacs()
+            refreshWorkspaceSnapshot(forcePhaseReconciliation: true)
+        }
+        guard hasKnownPairing else { return }
+
+        _ = await reconnect()
+        startSnapshotPollingIfNeeded()
+    }
+
+    /// Stops background Hive snapshot monitoring.
+    public func stopConnectionLifecycle() {
+        lifecycleTask?.cancel()
+        lifecycleTask = nil
     }
 
     /// Create a renderer adapter for one terminal exposed by the shell.
@@ -102,10 +143,11 @@ public final class HiveWorkspaceCoordinator {
         }
         await shell.loadPairedMacs()
         refreshWorkspaceSnapshot(forcePhaseReconciliation: true)
+        startSnapshotPollingIfNeeded()
         return true
     }
 
-    /// Reconnect the last active DeviceLink pairing from local storage.
+    /// Reconnect every DeviceLink pairing from local storage.
     @discardableResult
     public func reconnect() async -> Bool {
         guard hasKnownPairing else {
@@ -113,17 +155,12 @@ public final class HiveWorkspaceCoordinator {
             return false
         }
         phase = .connecting
-        let connected = await shell.reconnectActiveMacIfAvailable(
+        let connected = await shell.reconnectAllPairedMacs(
             stackUserID: nil,
             refreshBackupBeforeDial: false
         )
-        if connected {
-            await shell.loadPairedMacs()
-            refreshWorkspaceSnapshot(forcePhaseReconciliation: true)
-        } else {
-            await shell.loadPairedMacs()
-            refreshWorkspaceSnapshot(forcePhaseReconciliation: true)
-        }
+        await shell.loadPairedMacs()
+        refreshWorkspaceSnapshot(forcePhaseReconciliation: true)
         return connected
     }
 
@@ -166,8 +203,29 @@ public final class HiveWorkspaceCoordinator {
         if result == .removed {
             await shell.loadPairedMacs()
             refreshWorkspaceSnapshot(forcePhaseReconciliation: true)
+            if !hasKnownPairing {
+                stopConnectionLifecycle()
+            }
         }
         return result
+    }
+
+    private func startSnapshotPollingIfNeeded() {
+        guard lifecycleTask == nil else { return }
+        let clock = lifecycleClock
+        let interval = lifecyclePollInterval
+        lifecycleTask = Task { @MainActor [weak self] in
+            while !Task.isCancelled {
+                do {
+                    try await clock.sleep(for: interval)
+                } catch {
+                    return
+                }
+                await Task.yield()
+                guard let self else { return }
+                self.refreshWorkspaceSnapshot()
+            }
+        }
     }
 
     private func reconcileConnectionPhase(force: Bool) {

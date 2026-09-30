@@ -1515,6 +1515,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         }
         if !isRunningUnderXCTest {
             CmuxFeatureFlags.shared.start()
+            hiveWorkspaceService.start()
         }
 
         let forceDuplicateLaunchObserver = env["CMUX_UI_TEST_ENABLE_DUPLICATE_LAUNCH_OBSERVER"] == "1"

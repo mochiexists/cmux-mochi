@@ -30,6 +30,12 @@ public protocol HiveShellServing: AnyObject {
         refreshBackupBeforeDial: Bool
     ) async -> Bool
 
+    /// Reconnects the foreground and every eligible paired Mac connection.
+    func reconnectAllPairedMacs(
+        stackUserID: String?,
+        refreshBackupBeforeDial: Bool
+    ) async -> Bool
+
     func loadPairedMacs() async
     func createTerminal(in workspaceID: MobileWorkspacePreview.ID?)
     func renameWorkspace(

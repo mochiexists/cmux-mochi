@@ -35,15 +35,6 @@ public struct HiveWorkspaceBrowserView: View {
         }
         .padding(20)
         .frame(minWidth: 560, minHeight: 480)
-        .task {
-            if coordinator.hasKnownPairing {
-                _ = await coordinator.reconnect()
-            }
-            while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(1))
-                coordinator.refreshWorkspaceSnapshot()
-            }
-        }
         .confirmationDialog(
             String(localized: "hive.remove.localOnly.title", defaultValue: "Forget on this Mac?"),
             isPresented: Binding(
