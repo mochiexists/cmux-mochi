@@ -3,6 +3,7 @@ import CmuxHive
 import CmuxMobilePairedMac
 import CmuxMobileShell
 import CmuxMobileShellModel
+import CmuxTerminal
 import Foundation
 import Testing
 #if canImport(cmux_DEV)
@@ -14,6 +15,121 @@ import Testing
 @MainActor
 @Suite(.serialized)
 struct HiveWorkspaceMirrorControllerTests {
+    @Test("one window owns remote resize reports for a shared terminal")
+    func sharesRemoteTerminalResizeOwnershipAcrossWindows() throws {
+        let terminal = MobileTerminalPreview(id: "surface-a", name: "Alpha")
+        var remoteWorkspace = MobileWorkspacePreview(
+            id: "remote-workspace",
+            macDeviceID: "mac-a",
+            macDisplayName: "Studio",
+            name: "Remote",
+            terminals: [terminal]
+        )
+        remoteWorkspace.macInstanceTag = "dev-a"
+        let shell = HiveWorkspaceMirrorShellStub(workspaces: [remoteWorkspace])
+        let coordinator = HiveWorkspaceCoordinator(shell: shell)
+        let controller = HiveWorkspaceMirrorController()
+        let firstManager = TabManager()
+        let secondManager = TabManager()
+
+        controller.open(
+            workspace: remoteWorkspace,
+            selectedTerminal: terminal,
+            coordinator: coordinator,
+            in: firstManager
+        )
+        controller.open(
+            workspace: remoteWorkspace,
+            selectedTerminal: terminal,
+            coordinator: coordinator,
+            in: secondManager
+        )
+
+        let firstMirror = try #require(firstManager.tabs.first { $0.isHiveWorkspaceMirror })
+        let secondMirror = try #require(secondManager.tabs.first { $0.isHiveWorkspaceMirror })
+        let firstPanelID = try #require(firstMirror.focusedPanelId)
+        let secondPanelID = try #require(secondMirror.focusedPanelId)
+        let firstPanel = try #require(firstMirror.terminalPanel(for: firstPanelID))
+        let secondPanel = try #require(secondMirror.terminalPanel(for: secondPanelID))
+
+        secondPanel.surface.onManualSizeApplied?(Self.sizingSample(columns: 120, rows: 40))
+        firstPanel.surface.onManualSizeApplied?(Self.sizingSample(columns: 80, rows: 24))
+
+        #expect(shell.preparedViewports == [
+            .init(surfaceID: terminal.id.rawValue, columns: 80, rows: 24),
+        ])
+    }
+
+    @Test("reconciles terminals added to and closed from the remote workspace")
+    func reconcilesRemoteTerminalTopology() throws {
+        let first = MobileTerminalPreview(id: "surface-a", name: "Alpha")
+        let second = MobileTerminalPreview(id: "surface-b", name: "Beta")
+        var remoteWorkspace = MobileWorkspacePreview(
+            id: "remote-workspace",
+            macDeviceID: "mac-a",
+            macDisplayName: "Studio",
+            name: "Remote",
+            terminals: [first]
+        )
+        remoteWorkspace.macInstanceTag = "dev-a"
+        let shell = HiveWorkspaceMirrorShellStub(workspaces: [remoteWorkspace])
+        let coordinator = HiveWorkspaceCoordinator(shell: shell)
+        let controller = HiveWorkspaceMirrorController()
+        let manager = TabManager()
+
+        controller.open(
+            workspace: remoteWorkspace,
+            selectedTerminal: first,
+            coordinator: coordinator,
+            in: manager
+        )
+        let mirror = try #require(manager.tabs.first { $0.isHiveWorkspaceMirror })
+        #expect(mirror.panels.count == 1)
+
+        remoteWorkspace.terminals = [first, second]
+        shell.workspaces = [remoteWorkspace]
+        coordinator.refreshWorkspaceSnapshot()
+        controller.reconcileMirrors()
+
+        #expect(mirror.panels.count == 2)
+
+        remoteWorkspace.terminals = [second]
+        shell.workspaces = [remoteWorkspace]
+        coordinator.refreshWorkspaceSnapshot()
+        controller.reconcileMirrors()
+
+        #expect(mirror.panels.count == 1)
+        #expect(mirror.panels.values.first?.displayTitle == second.name)
+    }
+
+    @Test("host workspace list excludes Hive mirrors")
+    func hostWorkspaceListExcludesHiveMirrors() throws {
+        let manager = TabManager()
+        let localWorkspace = try #require(manager.selectedWorkspace)
+        localWorkspace.title = "Local"
+        let mirroredWorkspace = manager.addWorkspace(
+            title: "Mirrored",
+            select: false,
+            autoWelcomeIfNeeded: false,
+            autoRefreshMetadata: false
+        )
+        mirroredWorkspace.isHiveWorkspaceMirror = true
+
+        let result = TerminalController.shared.v2MobileWorkspaceList(
+            params: [:],
+            tabManager: manager
+        )
+        guard case let .ok(rawPayload) = result,
+              let payload = rawPayload as? [String: Any],
+              let workspaces = payload["workspaces"] as? [[String: Any]]
+        else {
+            Issue.record("Expected a workspace-list payload")
+            return
+        }
+
+        #expect(workspaces.compactMap { $0["id"] as? String } == [localWorkspace.id.uuidString])
+    }
+
     @Test("routes Hive mutations independently of SSH/tmux mirrors")
     func routesHiveMutations() throws {
         let terminal = MobileTerminalPreview(id: "surface-a", name: "Alpha")
@@ -130,10 +246,29 @@ struct HiveWorkspaceMirrorControllerTests {
         #expect(!mirror.isRemoteTmuxMirror)
         #expect(mirror.panels.count == 1)
     }
+
+    private static func sizingSample(columns: Int, rows: Int) -> TerminalSurfaceRawSizingSample {
+        TerminalSurfaceRawSizingSample(
+            columns: columns,
+            rows: rows,
+            cellWidthPx: 8,
+            cellHeightPx: 16,
+            surfaceWidthPx: columns * 8,
+            surfaceHeightPx: rows * 16,
+            viewBoundsPt: nil,
+            backingScale: nil
+        )
+    }
 }
 
 @MainActor
 private final class HiveWorkspaceMirrorShellStub: HiveShellServing, HiveTerminalShellServing {
+    struct PreparedViewport: Equatable {
+        let surfaceID: String
+        let columns: Int
+        let rows: Int
+    }
+
     var workspaces: [MobileWorkspacePreview]
     var connectionError: String?
     var connectionErrorGuidance: String?
@@ -145,6 +280,7 @@ private final class HiveWorkspaceMirrorShellStub: HiveShellServing, HiveTerminal
     var hiveActiveRoute: CmxAttachRoute?
     var hivePairedMacs: [MobilePairedMac] = []
     private(set) var createdTerminalWorkspaceIDs: [MobileWorkspacePreview.ID?] = []
+    private(set) var preparedViewports: [PreparedViewport] = []
     private var outputContinuations: [UUID: AsyncStream<MobileTerminalOutputChunk>.Continuation] = [:]
 
     init(workspaces: [MobileWorkspacePreview]) {
@@ -222,7 +358,12 @@ private final class HiveWorkspaceMirrorShellStub: HiveShellServing, HiveTerminal
         columns: Int,
         rows: Int
     ) -> MobileTerminalViewportPreparation? {
-        nil
+        preparedViewports.append(.init(
+            surfaceID: surfaceID,
+            columns: columns,
+            rows: rows
+        ))
+        return nil
     }
 
     func updatePreparedTerminalViewport(
