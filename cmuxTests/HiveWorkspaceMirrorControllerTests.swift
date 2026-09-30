@@ -250,6 +250,58 @@ struct HiveWorkspaceMirrorControllerTests {
         #expect(panel.hiveConnectionState == .disconnected)
     }
 
+    @Test("removes an offline mirror after its exact Mac pairing is forgotten")
+    func removesMirrorAfterPairingIsForgotten() throws {
+        let terminal = MobileTerminalPreview(id: "surface-a", name: "Alpha")
+        var remoteWorkspace = MobileWorkspacePreview(
+            id: "remote-workspace",
+            macDeviceID: "mac-a",
+            macDisplayName: "Studio",
+            name: "Remote",
+            terminals: [terminal]
+        )
+        remoteWorkspace.macInstanceTag = "dev-a"
+        remoteWorkspace.macConnectionStatus = .connected
+        let pairedMac = MobilePairedMac(
+            macDeviceID: "mac-a",
+            displayName: "Studio",
+            routes: [],
+            createdAt: .distantPast,
+            lastSeenAt: .distantPast,
+            isActive: true,
+            stackUserID: nil,
+            instanceTag: "dev-a"
+        )
+        let shell = HiveWorkspaceMirrorShellStub(workspaces: [remoteWorkspace])
+        shell.hivePairedMacs = [pairedMac]
+        shell.hiveMacConnectionStatuses = [pairedMac.id: .connected]
+        let coordinator = HiveWorkspaceCoordinator(shell: shell)
+        coordinator.refreshWorkspaceSnapshot(forcePhaseReconciliation: true)
+        let controller = HiveWorkspaceMirrorController()
+        let manager = TabManager()
+
+        controller.open(
+            workspace: remoteWorkspace,
+            selectedTerminal: terminal,
+            coordinator: coordinator,
+            in: manager
+        )
+        let mirror = try #require(manager.tabs.first { $0.isHiveWorkspaceMirror })
+
+        shell.workspaces = []
+        shell.hivePairedMacs = []
+        shell.hiveMacConnectionStatuses = [:]
+        shell.hasKnownHivePairing = false
+        shell.isHiveMacConnected = false
+        shell.hiveConnectionState = .disconnected
+        shell.hiveMacConnectionStatus = .unavailable
+        coordinator.refreshWorkspaceSnapshot(forcePhaseReconciliation: true)
+        controller.reconcileMirrors()
+
+        #expect(!manager.tabs.contains { $0.id == mirror.id })
+        #expect(controller.statusSnapshot().isEmpty)
+    }
+
     @Test("host workspace list excludes Hive mirrors")
     func hostWorkspaceListExcludesHiveMirrors() throws {
         let manager = TabManager()

@@ -508,6 +508,13 @@ final class HiveWorkspaceMirrorController {
         guard let remoteWorkspace = coordinator.workspaces.first(where: {
             record.remoteWorkspaceKey.matches($0)
         }) else {
+            guard coordinator.pairedMacs.contains(where: {
+                $0.macDeviceID == record.remoteWorkspaceKey.macDeviceID
+                    && $0.instanceTag == record.remoteWorkspaceKey.macInstanceTag
+            }) else {
+                removeMirror(record, for: key, workspace: workspace)
+                return false
+            }
             if connectionState != .connected {
                 return true
             }
