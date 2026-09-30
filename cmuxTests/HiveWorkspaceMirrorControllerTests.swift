@@ -442,9 +442,64 @@ struct HiveWorkspaceMirrorControllerTests {
         controller.reconcileMirrors()
 
         #expect(manager.tabs.count == 1)
-        #expect(manager.tabs.first?.id == mirror.id)
-        #expect(!mirror.isRemoteTmuxMirror)
-        #expect(mirror.panels.count == 1)
+        #expect(manager.tabs.first?.id != mirror.id)
+        #expect(manager.tabs.first?.isRemoteTmuxMirror == false)
+        #expect(manager.tabs.first?.panels.count == 1)
+    }
+
+    @Test("replaces the only workspace with a working local terminal when its remote workspace closes")
+    func replacesOnlyWorkspaceAfterRemoteWorkspaceCloses() throws {
+        let terminal = MobileTerminalPreview(id: "surface-a", name: "Alpha")
+        var remoteWorkspace = MobileWorkspacePreview(
+            id: "remote-workspace",
+            macDeviceID: "mac-a",
+            macDisplayName: "Studio",
+            name: "Remote",
+            terminals: [terminal]
+        )
+        remoteWorkspace.macInstanceTag = "dev-a"
+        remoteWorkspace.macConnectionStatus = .connected
+        let pairedMac = MobilePairedMac(
+            macDeviceID: "mac-a",
+            displayName: "Studio",
+            routes: [],
+            createdAt: .distantPast,
+            lastSeenAt: .distantPast,
+            isActive: true,
+            stackUserID: nil,
+            instanceTag: "dev-a"
+        )
+        let shell = HiveWorkspaceMirrorShellStub(workspaces: [remoteWorkspace])
+        shell.hivePairedMacs = [pairedMac]
+        shell.hiveMacConnectionStatuses = [pairedMac.id: .connected]
+        let coordinator = HiveWorkspaceCoordinator(shell: shell)
+        coordinator.refreshWorkspaceSnapshot(forcePhaseReconciliation: true)
+        let controller = HiveWorkspaceMirrorController()
+        let manager = TabManager()
+
+        controller.open(
+            workspace: remoteWorkspace,
+            selectedTerminal: terminal,
+            coordinator: coordinator,
+            in: manager
+        )
+        let mirror = try #require(manager.tabs.first { $0.isHiveWorkspaceMirror })
+        for workspace in manager.tabs where workspace.id != mirror.id {
+            manager.closeWorkspace(workspace, recordHistory: false)
+        }
+        let remotePanelID = try #require(mirror.focusedPanelId)
+
+        shell.workspaces = []
+        coordinator.refreshWorkspaceSnapshot(forcePhaseReconciliation: true)
+        controller.reconcileMirrors()
+
+        let replacement = try #require(manager.tabs.first)
+        let replacementPanel = try #require(replacement.focusedTerminalPanel)
+        #expect(manager.tabs.count == 1)
+        #expect(replacement.id != mirror.id)
+        #expect(replacementPanel.id != remotePanelID)
+        #expect(!replacement.isRemoteTmuxMirror)
+        #expect(replacementPanel.hiveConnectionState == nil)
     }
 
     private static func sizingSample(columns: Int, rows: Int) -> TerminalSurfaceRawSizingSample {

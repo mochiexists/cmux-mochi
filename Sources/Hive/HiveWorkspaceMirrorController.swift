@@ -584,9 +584,16 @@ final class HiveWorkspaceMirrorController {
             if tabManager.tabs.count > 1 {
                 tabManager.closeWorkspace(workspace, recordHistory: false)
             } else {
-                // Closing the last panel in the last workspace creates a local
-                // replacement. Release Hive policy so that replacement works.
-                workspace.detachRemoteTmuxMirrorKeptOpenLocallyIfNeeded()
+                // TabManager refuses to close its final workspace. Create a
+                // real local workspace first so the remote manual-I/O panels
+                // can be torn down instead of being relabelled as local.
+                _ = tabManager.addWorkspace(
+                    inheritWorkingDirectory: false,
+                    select: true,
+                    autoWelcomeIfNeeded: false,
+                    autoRefreshMetadata: false
+                )
+                tabManager.closeWorkspace(workspace, recordHistory: false)
             }
         }
         pruneTerminalAttachments()
