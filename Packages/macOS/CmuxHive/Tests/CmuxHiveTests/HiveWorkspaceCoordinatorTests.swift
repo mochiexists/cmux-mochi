@@ -126,7 +126,8 @@ struct HiveWorkspaceCoordinatorTests {
         )
         let coordinator = HiveWorkspaceCoordinator(
             shell: shell,
-            lifecyclePollInterval: .zero
+            lifecyclePollInterval: .zero,
+            lifecycleIdlePollInterval: .zero
         )
 
         await coordinator.startConnectionLifecycle()
@@ -490,7 +491,7 @@ private final class HiveShellStub: HiveShellServing {
         return isHiveMacConnected
     }
 
-    func reconnectToMac(macDeviceID: String, instanceTag: String?) async {
+    func reconnectHiveMac(macDeviceID: String, instanceTag: String?) async {
         reconnectToMacRequests.append(.init(
             deviceID: macDeviceID,
             instanceTag: instanceTag

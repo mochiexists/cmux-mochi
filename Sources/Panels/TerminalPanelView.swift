@@ -7,6 +7,7 @@ import CmuxTestSupport
 import CmuxTerminal
 import CmuxFoundation
 import CmuxSettings
+import CmuxCore
 
 /// View for rendering a terminal panel
 struct TerminalPanelView: View {
@@ -34,34 +35,67 @@ struct TerminalPanelView: View {
     let onAutoResumeAgentHibernation: () -> Void
     let onTriggerFlash: () -> Void
 
+    @ViewBuilder
     var body: some View {
-        switch panel.agentHibernationPhase {
-        case .live:
-            terminalBody
-        case .terminating:
-            Color(nsColor: appearance.contentBackgroundColor)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .id("hibernation-terminating-\(panel.id.uuidString)")
-        case .recovering(let hibernationState):
-            AgentHibernationPlaceholderView(
-                state: hibernationState,
-                appearance: appearance,
-                mode: AgentHibernationPlaceholderMode.recovering,
-                onAction: nil
-            )
-            .id("hibernation-termination-recovery-\(panel.id.uuidString)")
-        case .terminationFailed(let hibernationState):
-            AgentHibernationPlaceholderView(
-                state: hibernationState,
-                appearance: appearance,
-                mode: AgentHibernationPlaceholderMode.failed,
-                onAction: {
-                    panel.retryAgentHibernationTermination()
-                }
-            )
-            .id("hibernation-termination-failed-\(panel.id.uuidString)")
-        case .hibernated(let hibernationState):
-            hibernationBody(hibernationState)
+        if panel.hiveConnectionState == .disconnected {
+            hiveDisconnectedBody
+        } else {
+            switch panel.agentHibernationPhase {
+            case .live:
+                terminalBody
+            case .terminating:
+                Color(nsColor: appearance.contentBackgroundColor)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .id("hibernation-terminating-\(panel.id.uuidString)")
+            case .recovering(let hibernationState):
+                AgentHibernationPlaceholderView(
+                    state: hibernationState,
+                    appearance: appearance,
+                    mode: AgentHibernationPlaceholderMode.recovering,
+                    onAction: nil
+                )
+                .id("hibernation-termination-recovery-\(panel.id.uuidString)")
+            case .terminationFailed(let hibernationState):
+                AgentHibernationPlaceholderView(
+                    state: hibernationState,
+                    appearance: appearance,
+                    mode: AgentHibernationPlaceholderMode.failed,
+                    onAction: {
+                        panel.retryAgentHibernationTermination()
+                    }
+                )
+                .id("hibernation-termination-failed-\(panel.id.uuidString)")
+            case .hibernated(let hibernationState):
+                hibernationBody(hibernationState)
+            }
+        }
+    }
+
+    private var hiveDisconnectedBody: some View {
+        VStack(spacing: 12) {
+            Image(systemName: "wifi.slash")
+                .font(.system(size: 30, weight: .medium))
+                .foregroundStyle(.secondary)
+            Text(String(localized: "hive.pane.offline.title", defaultValue: "Remote Mac Offline"))
+                .font(.headline)
+            Text(String(
+                localized: "hive.pane.offline.description",
+                defaultValue: "This terminal is paused until its Mac reconnects."
+            ))
+            .foregroundStyle(.secondary)
+            .multilineTextAlignment(.center)
+            Button(String(localized: "hive.pane.openRemoteMacs", defaultValue: "Open Remote Macs")) {
+                guard let app = AppDelegate.shared,
+                      let manager = app.tabManagerFor(tabId: panel.workspaceId) else { return }
+                app.hiveWorkspaceService.show(in: manager)
+            }
+        }
+        .padding(24)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color(nsColor: appearance.contentBackgroundColor))
+        .overlay(alignment: .topTrailing) {
+            hiveConnectionBadge(.disconnected)
+                .padding(10)
         }
     }
 
@@ -94,6 +128,15 @@ struct TerminalPanelView: View {
         @Bindable var textBoxState = panel.textBoxState
 
         return VStack(spacing: 0) {
+            if let hiveConnectionState = panel.hiveConnectionState {
+                HStack {
+                    Spacer()
+                    hiveConnectionBadge(hiveConnectionState)
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 5)
+                .background(Color(nsColor: appearance.contentBackgroundColor))
+            }
             // Layering contract: terminal find UI is mounted in GhosttySurfaceScrollView (AppKit portal layer)
             // via `searchState`. Rendering `SurfaceSearchOverlay` in this SwiftUI container can hide it.
             GhosttyTerminalView(
@@ -183,6 +226,35 @@ struct TerminalPanelView: View {
         .onReceive(NotificationCenter.default.publisher(for: .ghosttyConfigDidReload)) { _ in
             terminalFontSize = GhosttyConfig.load(globalFontMagnificationPercent: GlobalFontMagnification.storedPercent).fontSize
         }
+    }
+
+    private func hiveConnectionBadge(_ state: WorkspaceRemoteConnectionState) -> some View {
+        let presentation: (String, String, Color) = switch state {
+        case .connected:
+            (
+                String(localized: "hive.connection.connected", defaultValue: "Connected"),
+                "circle.fill",
+                .green
+            )
+        case .connecting, .reconnecting:
+            (
+                String(localized: "hive.connection.reconnecting", defaultValue: "Reconnecting"),
+                "arrow.trianglehead.2.clockwise.rotate.90",
+                .orange
+            )
+        case .error, .disconnected, .suspended:
+            (
+                String(localized: "hive.connection.offline", defaultValue: "Offline"),
+                "circle.fill",
+                .secondary
+            )
+        }
+        return Label(presentation.0, systemImage: presentation.1)
+            .font(.caption.weight(.medium))
+            .foregroundStyle(presentation.2)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(.regularMaterial, in: Capsule())
     }
 
     private var sessionContentWidthPresentation: SessionContentWidthPresentation {

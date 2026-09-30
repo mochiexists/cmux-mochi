@@ -5591,6 +5591,7 @@ final class Workspace: Identifiable, ObservableObject {
     var isRemoteTmuxMirror: Bool = false
     /// Authenticated Mac-to-Mac mirror backed by the mobile host RPCs, not SSH/tmux.
     var isHiveWorkspaceMirror: Bool = false
+    var hiveRemoteDisplayName: String?
     private var hiveNewTerminalRequest: (() -> Void)?
     private var hiveWorkspaceRenameRequest: ((String) -> Void)?
 
@@ -5621,10 +5622,12 @@ final class Workspace: Identifiable, ObservableObject {
     }
 
     func configureHiveMirror(
+        remoteDisplayName: String,
         requestNewTerminal: @escaping () -> Void,
         requestWorkspaceRename: @escaping (String) -> Void
     ) {
         isHiveWorkspaceMirror = true
+        hiveRemoteDisplayName = remoteDisplayName
         hiveNewTerminalRequest = requestNewTerminal
         hiveWorkspaceRenameRequest = requestWorkspaceRename
         bonsplitController.configuration.allowSplits = false

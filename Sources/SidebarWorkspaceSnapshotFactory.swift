@@ -82,10 +82,12 @@ struct SidebarWorkspaceSnapshotFactory {
             isPinned: workspace.isPinned,
             isPrivacyBlurred: workspace.isPrivacyBlurred,
             customColorHex: workspace.customColor,
+            isHiveWorkspaceMirror: workspace.isHiveWorkspaceMirror,
             remoteWorkspaceSidebarText: remoteWorkspaceSidebarText,
             remoteConnectionStatusText: remoteConnectionStatusText,
             remoteStateHelpText: remoteStateHelpText,
-            showsRemoteReconnectAffordance: !workspace.isManagedCloudVMWorkspace
+            showsRemoteReconnectAffordance: !workspace.isHiveWorkspaceMirror
+                && !workspace.isManagedCloudVMWorkspace
                 && (workspace.remoteConnectionState == .suspended
                     || workspace.remoteConnectionState == .disconnected),
             copyableSidebarSSHError: copyableSidebarSSHError,
@@ -151,6 +153,12 @@ struct SidebarWorkspaceSnapshotFactory {
     }
 
     private var remoteWorkspaceSidebarText: String? {
+        if workspace.isHiveWorkspaceMirror {
+            return workspace.hiveRemoteDisplayName ?? String(
+                localized: "hive.sidebar.remoteMac",
+                defaultValue: "Remote Mac"
+            )
+        }
         guard workspace.isRemoteWorkspace else { return nil }
         let target = workspace.remoteDisplayTarget?.trimmingCharacters(in: .whitespacesAndNewlines)
         if let target, !target.isEmpty { return target }
@@ -185,6 +193,16 @@ struct SidebarWorkspaceSnapshotFactory {
     }
 
     private var remoteConnectionStatusText: String {
+        if workspace.isHiveWorkspaceMirror {
+            return switch workspace.remoteConnectionState {
+            case .connected:
+                String(localized: "hive.connection.connected", defaultValue: "Connected")
+            case .connecting, .reconnecting:
+                String(localized: "hive.connection.reconnecting", defaultValue: "Reconnecting")
+            case .error, .disconnected, .suspended:
+                String(localized: "hive.connection.offline", defaultValue: "Offline")
+            }
+        }
         switch workspace.remoteConnectionState {
         case .connected:
             return String(localized: "remote.status.connected", defaultValue: "Connected")

@@ -540,7 +540,9 @@ final class SidebarWorkspaceRowTableCellView: NSTableCellView {
         }
 
         // Remote
-        let showsRemote = !settings.hidesAllDetails && settings.showsSSH && snapshot.remoteWorkspaceSidebarText != nil
+        let showsRemote = !settings.hidesAllDetails
+            && (settings.showsSSH || snapshot.isHiveWorkspaceMirror)
+            && snapshot.remoteWorkspaceSidebarText != nil
         remoteTargetView.isHidden = !showsRemote
         remoteStatusView.isHidden = !showsRemote
         remoteReconnectButton.isHidden = !(showsRemote && snapshot.showsRemoteReconnectAffordance)

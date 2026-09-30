@@ -8,6 +8,13 @@ public import Observation
 @MainActor
 @Observable
 public final class HiveWorkspaceCoordinator {
+    /// Empty-list presentation for the Remote Macs browser.
+    public enum EmptyState: Equatable, Sendable {
+        case neverPaired
+        case pairedOffline
+        case noWorkspaces
+    }
+
     /// User-visible state for pairing and reconnect surfaces.
     public enum Phase: Equatable, Sendable {
         case idle
@@ -26,13 +33,27 @@ public final class HiveWorkspaceCoordinator {
     /// Human-readable route/recovery detail shown under the lifecycle status.
     public private(set) var connectionDetail: String?
     public var hasKnownPairing: Bool { shell.hasKnownHivePairing }
+    /// The empty state to render, or `nil` while remote workspaces are available.
+    public var emptyState: EmptyState? {
+        guard workspaces.isEmpty else { return nil }
+        guard hasKnownPairing || !pairedMacs.isEmpty else { return .neverPaired }
+        let hasOnlineMac = pairedMacs.contains {
+            connectionStatus(for: $0) == .connected
+        }
+        return hasOnlineMac || shell.hiveConnectionState == .connected
+            ? .noWorkspaces
+            : .pairedOffline
+    }
 
     @ObservationIgnored private let shell: any HiveShellServing
     @ObservationIgnored private let pairingLinkDecoder: HivePairingLinkDecoder
     @ObservationIgnored private let lifecycleClock: any Clock<Duration>
     @ObservationIgnored private let lifecyclePollInterval: Duration
+    @ObservationIgnored private let lifecycleIdlePollInterval: Duration
     @ObservationIgnored private var lifecycleTask: Task<Void, Never>?
     @ObservationIgnored private var lifecycleStartInProgress = false
+    @ObservationIgnored private var isBrowserVisible = false
+    @ObservationIgnored private var mountedWorkspaceCount = 0
 
     /// Creates a Hive coordinator over the shared mobile-shell engine.
     ///
@@ -40,17 +61,20 @@ public final class HiveWorkspaceCoordinator {
     ///   - shell: Connection and workspace capability used by Hive.
     ///   - pairingLinkDecoder: Decoder for current DeviceLink pairing URLs.
     ///   - lifecycleClock: Clock that schedules background snapshot refreshes.
-    ///   - lifecyclePollInterval: Delay between background snapshot refreshes.
+    ///   - lifecyclePollInterval: Delay while Hive UI is actively in use.
+    ///   - lifecycleIdlePollInterval: Delay while Hive has no visible or mounted UI.
     public init(
         shell: any HiveShellServing,
         pairingLinkDecoder: HivePairingLinkDecoder = HivePairingLinkDecoder(),
         lifecycleClock: any Clock<Duration> = ContinuousClock(),
-        lifecyclePollInterval: Duration = .seconds(1)
+        lifecyclePollInterval: Duration = .seconds(1),
+        lifecycleIdlePollInterval: Duration = .seconds(30)
     ) {
         self.shell = shell
         self.pairingLinkDecoder = pairingLinkDecoder
         self.lifecycleClock = lifecycleClock
         self.lifecyclePollInterval = lifecyclePollInterval
+        self.lifecycleIdlePollInterval = lifecycleIdlePollInterval
         workspaces = shell.workspaces
         pairedMacs = shell.hivePairedMacs
         connectionDetail = nil
@@ -80,6 +104,45 @@ public final class HiveWorkspaceCoordinator {
     public func stopConnectionLifecycle() {
         lifecycleTask?.cancel()
         lifecycleTask = nil
+    }
+
+    /// Reports whether the Remote Macs browser is currently visible.
+    public func setBrowserVisible(_ visible: Bool) {
+        guard isBrowserVisible != visible else { return }
+        isBrowserVisible = visible
+        restartSnapshotPollingIfNeeded()
+    }
+
+    /// Reports how many local Hive workspaces are currently mounted.
+    public func setMountedWorkspaceCount(_ count: Int) {
+        let count = max(0, count)
+        guard mountedWorkspaceCount != count else { return }
+        mountedWorkspaceCount = count
+        restartSnapshotPollingIfNeeded()
+    }
+
+    /// Returns the live connection state for one exact paired app instance.
+    public func connectionStatus(for mac: MobilePairedMac) -> MobileMacConnectionStatus {
+        if let exact = shell.hiveMacConnectionStatuses[mac.id] {
+            return exact
+        }
+        if let device = shell.hiveMacConnectionStatuses[mac.macDeviceID] {
+            return device
+        }
+        if mac.isActive {
+            return shell.hiveMacConnectionStatus
+        }
+        return .unavailable
+    }
+
+    /// Connects one selected paired Mac and refreshes its projected state.
+    public func connect(_ mac: MobilePairedMac) async {
+        await shell.reconnectHiveMac(
+            macDeviceID: mac.macDeviceID,
+            instanceTag: mac.instanceTag
+        )
+        await shell.loadPairedMacs()
+        refreshWorkspaceSnapshot(forcePhaseReconciliation: true)
     }
 
     /// Create a renderer adapter for one terminal exposed by the shell.
@@ -213,19 +276,32 @@ public final class HiveWorkspaceCoordinator {
     private func startSnapshotPollingIfNeeded() {
         guard lifecycleTask == nil else { return }
         let clock = lifecycleClock
-        let interval = lifecyclePollInterval
         lifecycleTask = Task { @MainActor [weak self] in
             while !Task.isCancelled {
+                guard let self else { return }
+                let interval = self.snapshotPollInterval
                 do {
                     try await clock.sleep(for: interval)
                 } catch {
                     return
                 }
                 await Task.yield()
-                guard let self else { return }
                 self.refreshWorkspaceSnapshot()
             }
         }
+    }
+
+    private var snapshotPollInterval: Duration {
+        isBrowserVisible || mountedWorkspaceCount > 0
+            ? lifecyclePollInterval
+            : lifecycleIdlePollInterval
+    }
+
+    private func restartSnapshotPollingIfNeeded() {
+        guard lifecycleTask != nil else { return }
+        lifecycleTask?.cancel()
+        lifecycleTask = nil
+        startSnapshotPollingIfNeeded()
     }
 
     private func reconcileConnectionPhase(force: Bool) {

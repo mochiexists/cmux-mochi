@@ -20,6 +20,7 @@ public protocol HiveShellServing: AnyObject {
     var hiveIsReconnecting: Bool { get }
     var hiveActiveRoute: CmxAttachRoute? { get }
     var hivePairedMacs: [MobilePairedMac] { get }
+    var hiveMacConnectionStatuses: [String: MobileMacConnectionStatus] { get }
 
     func connectPairingURLResult(
         _ rawValue: String?
@@ -35,6 +36,7 @@ public protocol HiveShellServing: AnyObject {
         stackUserID: String?,
         refreshBackupBeforeDial: Bool
     ) async -> Bool
+    func reconnectHiveMac(macDeviceID: String, instanceTag: String?) async
 
     func loadPairedMacs() async
     func createTerminal(in workspaceID: MobileWorkspacePreview.ID?)
@@ -61,4 +63,11 @@ extension MobileShellComposite: HiveShellServing {
     public var hiveIsReconnecting: Bool { isReconnectingStoredMac }
     public var hiveActiveRoute: CmxAttachRoute? { activeRoute }
     public var hivePairedMacs: [MobilePairedMac] { pairedMacs }
+    public var hiveMacConnectionStatuses: [String: MobileMacConnectionStatus] {
+        macConnectionStatuses
+    }
+
+    public func reconnectHiveMac(macDeviceID: String, instanceTag: String?) async {
+        await reconnectToMac(macDeviceID: macDeviceID, instanceTag: instanceTag)
+    }
 }

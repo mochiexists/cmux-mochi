@@ -143,6 +143,60 @@ struct HiveWorkspaceMirrorControllerTests {
         #expect(mirror.panelTitle(panelId: remainingPanelID) == second.name)
     }
 
+    @Test("keeps a mounted remote pane visible with offline connection chrome")
+    func presentsOfflineMountedPane() throws {
+        let terminal = MobileTerminalPreview(id: "surface-a", name: "Alpha")
+        var remoteWorkspace = MobileWorkspacePreview(
+            id: "remote-workspace",
+            macDeviceID: "mac-a",
+            macDisplayName: "Studio",
+            name: "Remote",
+            terminals: [terminal]
+        )
+        remoteWorkspace.macInstanceTag = "dev-a"
+        remoteWorkspace.macConnectionStatus = .connected
+        let pairedMac = MobilePairedMac(
+            macDeviceID: "mac-a",
+            displayName: "Studio",
+            routes: [],
+            createdAt: .distantPast,
+            lastSeenAt: .distantPast,
+            isActive: true,
+            stackUserID: nil,
+            instanceTag: "dev-a"
+        )
+        let shell = HiveWorkspaceMirrorShellStub(workspaces: [remoteWorkspace])
+        shell.hivePairedMacs = [pairedMac]
+        shell.hiveMacConnectionStatuses = [pairedMac.id: .connected]
+        let coordinator = HiveWorkspaceCoordinator(shell: shell)
+        coordinator.refreshWorkspaceSnapshot(forcePhaseReconciliation: true)
+        let controller = HiveWorkspaceMirrorController()
+        let manager = TabManager()
+
+        controller.open(
+            workspace: remoteWorkspace,
+            selectedTerminal: terminal,
+            coordinator: coordinator,
+            in: manager
+        )
+        let mirror = try #require(manager.tabs.first { $0.isHiveWorkspaceMirror })
+        let panel = try #require(mirror.focusedTerminalPanel)
+        #expect(mirror.remoteConnectionState == .connected)
+        #expect(panel.hiveConnectionState == .connected)
+
+        shell.workspaces = []
+        shell.isHiveMacConnected = false
+        shell.hiveConnectionState = .disconnected
+        shell.hiveMacConnectionStatus = .unavailable
+        shell.hiveMacConnectionStatuses = [pairedMac.id: .unavailable]
+        coordinator.refreshWorkspaceSnapshot(forcePhaseReconciliation: true)
+        controller.reconcileMirrors()
+
+        #expect(manager.tabs.contains { $0.id == mirror.id })
+        #expect(mirror.remoteConnectionState == .disconnected)
+        #expect(panel.hiveConnectionState == .disconnected)
+    }
+
     @Test("host workspace list excludes Hive mirrors")
     func hostWorkspaceListExcludesHiveMirrors() throws {
         let manager = TabManager()
@@ -320,6 +374,7 @@ private final class HiveWorkspaceMirrorShellStub: HiveShellServing, HiveTerminal
     var hiveIsReconnecting = false
     var hiveActiveRoute: CmxAttachRoute?
     var hivePairedMacs: [MobilePairedMac] = []
+    var hiveMacConnectionStatuses: [String: MobileMacConnectionStatus] = [:]
     private(set) var createdTerminalWorkspaceIDs: [MobileWorkspacePreview.ID?] = []
     private(set) var preparedViewports: [PreparedViewport] = []
     private(set) var outputRegistrationCountBySurfaceID: [String: Int] = [:]
@@ -346,6 +401,8 @@ private final class HiveWorkspaceMirrorShellStub: HiveShellServing, HiveTerminal
     ) async -> Bool {
         true
     }
+
+    func reconnectHiveMac(macDeviceID: String, instanceTag: String?) async {}
 
     func loadPairedMacs() async {}
 

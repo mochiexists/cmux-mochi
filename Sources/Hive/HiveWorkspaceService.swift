@@ -8,37 +8,129 @@ import SwiftUI
 @MainActor
 final class HiveWorkspaceService {
     private let composition: HiveComposition?
+    private let coordinatorOverride: HiveWorkspaceCoordinator?
+    private let uiFixtureName: String?
     private let startupError: String?
     private let mirrorController = HiveWorkspaceMirrorController()
     private var browserWindowController: HiveWorkspaceBrowserWindowController?
-    var coordinator: HiveWorkspaceCoordinator? { composition?.coordinator }
+    private var didStartUIFixture = false
+    var coordinator: HiveWorkspaceCoordinator? {
+        coordinatorOverride ?? composition?.coordinator
+    }
 
     init() {
+        #if DEBUG
+        if let fixture = HiveWorkspaceUIFixtureShell() {
+            composition = nil
+            coordinatorOverride = HiveWorkspaceCoordinator(shell: fixture)
+            uiFixtureName = fixture.fixtureName
+            startupError = nil
+            return
+        }
+        #endif
         do {
             composition = try Self.makeComposition()
+            coordinatorOverride = nil
+            uiFixtureName = nil
             startupError = nil
         } catch {
             composition = nil
+            coordinatorOverride = nil
+            uiFixtureName = nil
             startupError = String(describing: error)
         }
     }
 
     init(composition: HiveComposition) {
         self.composition = composition
+        coordinatorOverride = nil
+        uiFixtureName = nil
         startupError = nil
     }
 
     /// Starts the app-lifetime Hive connection owner without opening its window.
     func start() {
-        guard let composition else { return }
+        guard let coordinator else { return }
+        #if DEBUG
+        if let uiFixtureName {
+            guard !didStartUIFixture else { return }
+            didStartUIFixture = true
+            coordinator.refreshWorkspaceSnapshot(forcePhaseReconciliation: true)
+            if uiFixtureName == "pairing" {
+                Task {
+                    _ = await coordinator.pair(
+                        link: HiveWorkspaceUIFixtureShell.pairingLink
+                    )
+                }
+            }
+            Task { [weak self] in
+                guard let self else { return }
+                if let manager = AppDelegate.shared?.activeTabManagerForCommands() {
+                    self.presentUIFixture(
+                        named: uiFixtureName,
+                        coordinator: coordinator,
+                        in: manager
+                    )
+                    return
+                }
+                let keyWindowChanges = NotificationCenter.default.notifications(
+                    named: NSWindow.didBecomeKeyNotification
+                )
+                for await _ in keyWindowChanges {
+                    if let manager = AppDelegate.shared?.activeTabManagerForCommands() {
+                        self.presentUIFixture(
+                            named: uiFixtureName,
+                            coordinator: coordinator,
+                            in: manager
+                        )
+                        return
+                    }
+                }
+            }
+            return
+        }
+        #endif
         Task {
-            await composition.coordinator.startConnectionLifecycle()
+            await coordinator.startConnectionLifecycle()
         }
     }
 
+    #if DEBUG
+    private func presentUIFixture(
+        named fixtureName: String,
+        coordinator: HiveWorkspaceCoordinator,
+        in manager: TabManager
+    ) {
+        if fixtureName.hasPrefix("pane-"),
+           let workspace = coordinator.workspaces.first,
+           let terminal = workspace.terminals.first {
+            _ = mirrorController.open(
+                workspace: workspace,
+                selectedTerminal: terminal,
+                coordinator: coordinator,
+                in: manager,
+                focus: true
+            )
+        } else if fixtureName == "workspace-connected-mounted",
+                  let workspace = coordinator.workspaces.first,
+                  let terminal = workspace.terminals.first {
+            _ = mirrorController.open(
+                workspace: workspace,
+                selectedTerminal: terminal,
+                coordinator: coordinator,
+                in: manager,
+                focus: false
+            )
+            show(in: manager)
+        } else {
+            show(in: manager)
+        }
+    }
+    #endif
+
     func show(in tabManager: TabManager) {
         start()
-        guard let composition else {
+        guard let coordinator else {
             let alert = NSAlert()
             alert.messageText = String(
                 localized: "hive.error.store.title",
@@ -56,7 +148,7 @@ final class HiveWorkspaceService {
             controller = browserWindowController
         } else {
             controller = HiveWorkspaceBrowserWindowController(
-                coordinator: composition.coordinator,
+                coordinator: coordinator,
                 mirrorController: mirrorController
             )
             browserWindowController = controller
@@ -178,6 +270,8 @@ private final class HiveWorkspaceBrowserWindowController: ReleasingWindowControl
                 coordinator: self.coordinator,
                 in: tabManager
             )
+        } isTerminalMounted: { [weak mirrorController] workspace, terminal in
+            mirrorController?.isMounted(workspace: workspace, terminal: terminal) == true
         }
         let window = NSWindow(
             contentViewController: NSHostingController(rootView: root)

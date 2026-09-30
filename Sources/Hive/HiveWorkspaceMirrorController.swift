@@ -1,4 +1,5 @@
 import CmuxHive
+import CmuxCore
 import CmuxMobileShellModel
 import CmuxTerminal
 import Foundation
@@ -372,6 +373,7 @@ final class HiveWorkspaceMirrorController {
         workspace.isRemoteTmuxMirror = true
         let remoteWorkspaceID = remoteWorkspace.rpcWorkspaceID
         workspace.configureHiveMirror(
+            remoteDisplayName: computerName,
             requestNewTerminal: { [weak coordinator] in
                 coordinator?.createTerminal(in: remoteWorkspaceID)
             },
@@ -428,6 +430,12 @@ final class HiveWorkspaceMirrorController {
             knownRemoteSurfaceIDs: Set(remoteWorkspace.terminals.map { $0.id.rawValue })
         )
         mirrors[key] = record
+        applyConnectionPresentation(
+            connectionState(for: record, coordinator: coordinator),
+            to: workspace,
+            record: record
+        )
+        updateMountedWorkspaceCount(for: coordinator)
         record.lifetimeTask = Task { @MainActor [weak self, weak record] in
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(1))
@@ -489,9 +497,18 @@ final class HiveWorkspaceMirrorController {
         }
 
         record.removeClosedLocalPanels(in: workspace)
+        guard !record.bindingsByPanelID.isEmpty else {
+            removeMirror(record, for: key, workspace: workspace)
+            return false
+        }
+        let connectionState = connectionState(for: record, coordinator: coordinator)
+        applyConnectionPresentation(connectionState, to: workspace, record: record)
         guard let remoteWorkspace = coordinator.workspaces.first(where: {
             record.remoteWorkspaceKey.matches($0)
         }) else {
+            if connectionState != .connected {
+                return true
+            }
             removeMirror(record, for: key, workspace: workspace)
             return false
         }
@@ -540,6 +557,7 @@ final class HiveWorkspaceMirrorController {
             removeMirror(record, for: key, workspace: workspace)
             return false
         }
+        applyConnectionPresentation(connectionState, to: workspace, record: record)
         record.bindingsByPanelID.values.forEach { $0.reconnectIfNeeded() }
         pruneTerminalAttachments()
         return true
@@ -552,6 +570,7 @@ final class HiveWorkspaceMirrorController {
     ) {
         record.detach()
         mirrors.removeValue(forKey: key)
+        let coordinator = record.coordinator
         if let workspace, let tabManager = record.tabManager {
             if tabManager.tabs.count > 1 {
                 tabManager.closeWorkspace(workspace, recordHistory: false)
@@ -562,6 +581,9 @@ final class HiveWorkspaceMirrorController {
             }
         }
         pruneTerminalAttachments()
+        if let coordinator {
+            updateMountedWorkspaceCount(for: coordinator)
+        }
     }
 
     private func pruneTerminalAttachments() {
@@ -572,6 +594,77 @@ final class HiveWorkspaceMirrorController {
         for (key, record) in Array(mirrors) {
             _ = reconcileMirror(record, for: key)
         }
+    }
+
+    func isMounted(
+        workspace: MobileWorkspacePreview,
+        terminal: MobileTerminalPreview
+    ) -> Bool {
+        let key = TerminalAttachmentKey(
+            remoteWorkspace: RemoteWorkspaceKey(workspace: workspace),
+            remoteSurfaceID: terminal.id.rawValue
+        )
+        return terminalAttachments[key]?.localMountCount ?? 0 > 0
+    }
+
+    private func connectionState(
+        for record: MirrorRecord,
+        coordinator: HiveWorkspaceCoordinator
+    ) -> WorkspaceRemoteConnectionState {
+        if let workspace = coordinator.workspaces.first(where: {
+            record.remoteWorkspaceKey.matches($0)
+        }), let status = workspace.macConnectionStatus {
+            return connectionState(for: status)
+        }
+        if let mac = coordinator.pairedMacs.first(where: {
+            $0.macDeviceID == record.remoteWorkspaceKey.macDeviceID
+                && $0.instanceTag == record.remoteWorkspaceKey.macInstanceTag
+        }) {
+            return connectionState(for: coordinator.connectionStatus(for: mac))
+        }
+        return switch coordinator.phase {
+        case .connected:
+            .connected
+        case .pairing, .connecting:
+            .reconnecting
+        case .idle, .pairedOffline, .failed:
+            .disconnected
+        }
+    }
+
+    private func connectionState(
+        for status: MobileMacConnectionStatus
+    ) -> WorkspaceRemoteConnectionState {
+        switch status {
+        case .connected:
+            .connected
+        case .reconnecting:
+            .reconnecting
+        case .unavailable:
+            .disconnected
+        }
+    }
+
+    private func applyConnectionPresentation(
+        _ state: WorkspaceRemoteConnectionState,
+        to workspace: Workspace,
+        record: MirrorRecord
+    ) {
+        workspace.remoteConnectionState = state
+        workspace.remoteConnectionDetail = record.coordinator?.connectionDetail
+        for binding in record.bindingsByPanelID.values {
+            binding.panel?.hiveConnectionState = state
+            binding.setConnectionActive(state == .connected)
+        }
+    }
+
+    private func updateMountedWorkspaceCount(for coordinator: HiveWorkspaceCoordinator) {
+        let count = mirrors.values.reduce(into: 0) { result, record in
+            if record.coordinator === coordinator {
+                result += 1
+            }
+        }
+        coordinator.setMountedWorkspaceCount(count)
     }
 
     func statusSnapshot() -> [AttachmentStatus] {

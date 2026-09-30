@@ -263057,6 +263057,98 @@
         }
       }
     },
+    "hive.connect.action": {
+      "extractionState": "manual",
+      "localizations": { "en": { "stringUnit": { "state": "translated", "value": "Connect" } }, "ja": { "stringUnit": { "state": "translated", "value": "接続" } } }
+    },
+    "hive.connection.connected": {
+      "extractionState": "manual",
+      "localizations": { "en": { "stringUnit": { "state": "translated", "value": "Connected" } }, "ja": { "stringUnit": { "state": "translated", "value": "接続済み" } } }
+    },
+    "hive.connection.offline": {
+      "extractionState": "manual",
+      "localizations": { "en": { "stringUnit": { "state": "translated", "value": "Offline" } }, "ja": { "stringUnit": { "state": "translated", "value": "オフライン" } } }
+    },
+    "hive.connection.reconnecting": {
+      "extractionState": "manual",
+      "localizations": { "en": { "stringUnit": { "state": "translated", "value": "Reconnecting" } }, "ja": { "stringUnit": { "state": "translated", "value": "再接続中" } } }
+    },
+    "hive.empty.neverPaired.description": {
+      "extractionState": "manual",
+      "localizations": { "en": { "stringUnit": { "state": "translated", "value": "Open Pair a Device on the other Mac, then paste its link above." } }, "ja": { "stringUnit": { "state": "translated", "value": "もう一方のMacで「デバイスをペアリング」を開き、上にリンクを貼り付けてください。" } } }
+    },
+    "hive.empty.neverPaired.title": {
+      "extractionState": "manual",
+      "localizations": { "en": { "stringUnit": { "state": "translated", "value": "Pair Your First Mac" } }, "ja": { "stringUnit": { "state": "translated", "value": "最初のMacをペアリング" } } }
+    },
+    "hive.empty.noWorkspaces.description": {
+      "extractionState": "manual",
+      "localizations": { "en": { "stringUnit": { "state": "translated", "value": "The remote Mac is connected but does not have an open workspace yet." } }, "ja": { "stringUnit": { "state": "translated", "value": "リモートMacは接続されていますが、開いているワークスペースはまだありません。" } } }
+    },
+    "hive.empty.noWorkspaces.title": {
+      "extractionState": "manual",
+      "localizations": { "en": { "stringUnit": { "state": "translated", "value": "No Workspaces on This Mac" } }, "ja": { "stringUnit": { "state": "translated", "value": "このMacにワークスペースがありません" } } }
+    },
+    "hive.empty.offline.description": {
+      "extractionState": "manual",
+      "localizations": { "en": { "stringUnit": { "state": "translated", "value": "Open Mochi on a paired Mac, then connect to load its workspaces." } }, "ja": { "stringUnit": { "state": "translated", "value": "ペアリング済みのMacでMochiを開き、接続してワークスペースを読み込んでください。" } } }
+    },
+    "hive.empty.offline.title": {
+      "extractionState": "manual",
+      "localizations": { "en": { "stringUnit": { "state": "translated", "value": "Paired Macs Are Offline" } }, "ja": { "stringUnit": { "state": "translated", "value": "ペアリング済みのMacはオフラインです" } } }
+    },
+    "hive.mac.status.offline": {
+      "extractionState": "manual",
+      "localizations": { "en": { "stringUnit": { "state": "translated", "value": "Offline" } }, "ja": { "stringUnit": { "state": "translated", "value": "オフライン" } } }
+    },
+    "hive.mac.status.online": {
+      "extractionState": "manual",
+      "localizations": { "en": { "stringUnit": { "state": "translated", "value": "Online" } }, "ja": { "stringUnit": { "state": "translated", "value": "オンライン" } } }
+    },
+    "hive.mac.status.reconnecting": {
+      "extractionState": "manual",
+      "localizations": { "en": { "stringUnit": { "state": "translated", "value": "Reconnecting" } }, "ja": { "stringUnit": { "state": "translated", "value": "再接続中" } } }
+    },
+    "hive.pane.offline.description": {
+      "extractionState": "manual",
+      "localizations": { "en": { "stringUnit": { "state": "translated", "value": "This terminal is paused until its Mac reconnects." } }, "ja": { "stringUnit": { "state": "translated", "value": "Macが再接続されるまで、このターミナルは一時停止しています。" } } }
+    },
+    "hive.pane.offline.title": {
+      "extractionState": "manual",
+      "localizations": { "en": { "stringUnit": { "state": "translated", "value": "Remote Mac Offline" } }, "ja": { "stringUnit": { "state": "translated", "value": "リモートMacはオフラインです" } } }
+    },
+    "hive.pane.openRemoteMacs": {
+      "extractionState": "manual",
+      "localizations": { "en": { "stringUnit": { "state": "translated", "value": "Open Remote Macs" } }, "ja": { "stringUnit": { "state": "translated", "value": "リモートMacを開く" } } }
+    },
+    "hive.remove.confirm.action": {
+      "extractionState": "manual",
+      "localizations": { "en": { "stringUnit": { "state": "translated", "value": "Remove Mac" } }, "ja": { "stringUnit": { "state": "translated", "value": "Macを削除" } } }
+    },
+    "hive.remove.confirm.message": {
+      "extractionState": "manual",
+      "localizations": { "en": { "stringUnit": { "state": "translated", "value": "This Mac will need to be paired again before you can open its workspaces." } }, "ja": { "stringUnit": { "state": "translated", "value": "このMacのワークスペースを再び開くには、もう一度ペアリングする必要があります。" } } }
+    },
+    "hive.remove.confirm.title": {
+      "extractionState": "manual",
+      "localizations": { "en": { "stringUnit": { "state": "translated", "value": "Remove this remote Mac?" } }, "ja": { "stringUnit": { "state": "translated", "value": "このリモートMacを削除しますか？" } } }
+    },
+    "hive.sidebar.remoteMac": {
+      "extractionState": "manual",
+      "localizations": { "en": { "stringUnit": { "state": "translated", "value": "Remote Mac" } }, "ja": { "stringUnit": { "state": "translated", "value": "リモートMac" } } }
+    },
+    "hive.terminal.mounted": {
+      "extractionState": "manual",
+      "localizations": { "en": { "stringUnit": { "state": "translated", "value": "Mounted" } }, "ja": { "stringUnit": { "state": "translated", "value": "マウント済み" } } }
+    },
+    "hive.terminal.notReady": {
+      "extractionState": "manual",
+      "localizations": { "en": { "stringUnit": { "state": "translated", "value": "Not ready" } }, "ja": { "stringUnit": { "state": "translated", "value": "準備中" } } }
+    },
+    "hive.terminal.notReady.help": {
+      "extractionState": "manual",
+      "localizations": { "en": { "stringUnit": { "state": "translated", "value": "This terminal is still starting on the remote Mac." } }, "ja": { "stringUnit": { "state": "translated", "value": "このターミナルはリモートMacでまだ起動中です。" } } }
+    },
     "hive.empty.description": {
       "extractionState": "manual",
       "localizations": { "en": { "stringUnit": { "state": "translated", "value": "Open Pair a Device on the other Mac, then paste its link above." } }, "ja": { "stringUnit": { "state": "translated", "value": "もう一方のMacで「デバイスをペアリング」を開き、上にリンクを貼り付けてください。" } } }
