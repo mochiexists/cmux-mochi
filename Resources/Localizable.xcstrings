@@ -46826,6 +46826,40 @@
         }
       }
     },
+    "cli.hive.summary": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "hive <pair|list|open|status|remove> [args]"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "hive <pair|list|open|status|remove> [引数]"
+          }
+        }
+      }
+    },
+    "cli.hive.usage": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Usage: cmux hive <pair <link>|list|open <workspace> [--surface <id>] [--window <id>]|status|remove <pairing> [--local-only]>"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "使い方: cmux hive <pair <リンク>|list|open <ワークスペース> [--surface <id>] [--window <id>]|status|remove <ペアリング> [--local-only]>"
+          }
+        }
+      }
+    },
     "cli.mobile.setFont.applied": {
       "extractionState": "manual",
       "localizations": {
@@ -230232,6 +230266,76 @@
             "value": "cmux おやすみモードのロックを解除"
           }
         }
+      }
+    },
+    "socket.hive.localOnlyConfirmation": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "The remote Mac is unavailable; retry with local_only to forget it locally" } },
+        "ja": { "stringUnit": { "state": "translated", "value": "リモート Mac を利用できません。ローカルで削除するには local_only を指定して再試行してください" } }
+      }
+    },
+    "socket.hive.missingLink": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Missing pairing link" } },
+        "ja": { "stringUnit": { "state": "translated", "value": "ペアリングリンクがありません" } }
+      }
+    },
+    "socket.hive.missingPairing": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Missing pairing_id" } },
+        "ja": { "stringUnit": { "state": "translated", "value": "pairing_id がありません" } }
+      }
+    },
+    "socket.hive.missingWorkspace": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Missing workspace_id" } },
+        "ja": { "stringUnit": { "state": "translated", "value": "workspace_id がありません" } }
+      }
+    },
+    "socket.hive.pairedMacNotFound": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Paired Mac not found" } },
+        "ja": { "stringUnit": { "state": "translated", "value": "ペアリング済みの Mac が見つかりません" } }
+      }
+    },
+    "socket.hive.pairingFailed": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Could not pair with the remote Mac" } },
+        "ja": { "stringUnit": { "state": "translated", "value": "リモート Mac とペアリングできませんでした" } }
+      }
+    },
+    "socket.hive.removeFailed": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Could not remove the paired Mac" } },
+        "ja": { "stringUnit": { "state": "translated", "value": "ペアリング済みの Mac を削除できませんでした" } }
+      }
+    },
+    "socket.hive.unavailable": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Hive is unavailable" } },
+        "ja": { "stringUnit": { "state": "translated", "value": "Hive を利用できません" } }
+      }
+    },
+    "socket.hive.workspaceNotFound": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Remote workspace or terminal not found" } },
+        "ja": { "stringUnit": { "state": "translated", "value": "リモートワークスペースまたはターミナルが見つかりません" } }
+      }
+    },
+    "socket.tabManager.unavailable": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "TabManager not available" } },
+        "ja": { "stringUnit": { "state": "translated", "value": "TabManager を利用できません" } }
       }
     },
     "socket.client.accessDenied": {

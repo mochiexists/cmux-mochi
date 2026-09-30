@@ -101,6 +101,12 @@ public enum ControlCommandExecutionPolicy: Sendable, Equatable {
         "mobile.pairing.code.create",
         "mobile.pairing.device.list",
         "mobile.pairing.device.revoke",
+        // Hive pair/status/remove await transport or revocation work. Their
+        // app-side handlers take only narrow main-actor hops into the shared
+        // Hive coordinator, so the socket connection waits off-main.
+        "hive.pair",
+        "hive.status",
+        "hive.remove",
         // `mobile.terminal.set_font` only validates params and emits a push
         // event via thread-safe MobileHostService statics, so it runs on the worker
         // like the other mobile data-plane verbs. Without this entry the policy

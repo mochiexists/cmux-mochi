@@ -4478,6 +4478,69 @@ struct CMUXCLI {
                 throw CLIError(message: mobileUsage)
             }
 
+        case "hive":
+            let sub = commandArgs.first?.lowercased()
+            let rest = Array(commandArgs.dropFirst())
+            let hiveUsage = String(
+                localized: "cli.hive.usage",
+                defaultValue: "Usage: cmux hive <pair <link>|list|open <workspace> [--surface <id>] [--window <id>]|status|remove <pairing> [--local-only]>"
+            )
+            let method: String
+            var params: [String: Any] = [:]
+            switch sub {
+            case "pair":
+                guard let link = rest.first(where: { !$0.hasPrefix("--") }) else {
+                    throw CLIError(message: hiveUsage)
+                }
+                method = "hive.pair"
+                params["link"] = link
+            case "list":
+                method = "hive.list"
+            case "open":
+                guard let workspaceID = rest.first(where: { !$0.hasPrefix("--") }) else {
+                    throw CLIError(message: hiveUsage)
+                }
+                method = "hive.open"
+                params["workspace_id"] = workspaceID
+                if let surfaceID = optionValue(rest, name: "--surface") {
+                    params["surface_id"] = surfaceID
+                }
+                if let windowID = optionValue(rest, name: "--window") {
+                    params["window_id"] = windowID
+                }
+            case "status":
+                method = "hive.status"
+            case "remove":
+                guard let pairingID = rest.first(where: { !$0.hasPrefix("--") }) else {
+                    throw CLIError(message: hiveUsage)
+                }
+                method = "hive.remove"
+                params["pairing_id"] = pairingID
+                params["local_only"] = hasFlag(rest, name: "--local-only")
+            default:
+                throw CLIError(message: hiveUsage)
+            }
+            let response = try client.sendV2(method: method, params: params)
+            if jsonOutput {
+                print(jsonString(response))
+            } else if method == "hive.list",
+                      let workspaces = response["workspaces"] as? [[String: Any]] {
+                for workspace in workspaces {
+                    let id = workspace["id"] as? String ?? "?"
+                    let name = workspace["name"] as? String ?? "?"
+                    let mac = workspace["mac_name"] as? String ?? "?"
+                    print("\(id)\t\(name)\t\(mac)")
+                }
+            } else if let phase = response["phase"] as? String {
+                print(phase)
+            } else if let workspaceID = response["workspace_id"] as? String {
+                print(workspaceID)
+            } else if let pairingID = response["pairing_id"] as? String {
+                print(pairingID)
+            } else {
+                print(jsonString(response))
+            }
+
         case "rpc":
             guard let method = commandArgs.first?.trimmingCharacters(in: .whitespacesAndNewlines),
                   !method.isEmpty else {
@@ -15646,6 +15709,11 @@ struct CMUXCLI {
         switch command {
         case "remotes", "remote":
             return Self.remotesUsage
+        case "hive":
+            return String(
+                localized: "cli.hive.usage",
+                defaultValue: "Usage: cmux hive <pair <link>|list|open <workspace> [--surface <id>] [--window <id>]|status|remove <pairing> [--local-only]>"
+            )
         case "todo":
             return Self.todoUsage
         case "ai-accounts":
@@ -36329,6 +36397,7 @@ export default CMUXSessionRestore;
           remotes <list|add|remove> [--route <host:port>] [--tag <tag>] [--json]    (alias: remote)
           ai-accounts <list|upload|remove> [--team <id>] [--json]
           rpc <method> [json-params]
+          \(String(localized: "cli.hive.summary", defaultValue: "hive <pair|list|open|status|remove> [args]"))
           \(simulatorCommandUsageLine)
           \(iosCommandUsageLine)
           identify [--workspace <id|ref|index>] [--surface <id|ref|index>] [--window <id|ref|index>] [--no-caller]

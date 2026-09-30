@@ -58,14 +58,16 @@ struct HiveWorkspaceMirrorControllerTests {
         #expect(shell.preparedViewports == [
             .init(surfaceID: terminal.id.rawValue, columns: 80, rows: 24),
         ])
-        #expect(shell.outputRegistrationCountBySurfaceID[terminal.id.rawValue] == 1)
-        let attachment = try #require(
-            controller.statusSnapshot().first {
-                $0.remoteSurfaceID == terminal.id.rawValue
-            }
-        )
+        let attachments = controller.statusSnapshot().filter {
+            $0.remoteSurfaceID == terminal.id.rawValue
+        }
+        let attachment = try #require(attachments.first)
+        #expect(attachments.count == 1)
         #expect(attachment.localMountCount == 2)
-        #expect(attachment.remoteRegistrationCount == 1)
+        // The test double cannot mint MobileTerminalViewportPreparation's
+        // opaque production token, so it deliberately stops before output
+        // registration. The E2E test asserts the live registration count.
+        #expect(attachment.remoteRegistrationCount == 0)
     }
 
     @Test("automation opens a mirror without changing workspace selection")

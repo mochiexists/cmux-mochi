@@ -1,6 +1,7 @@
 import AppKit
 import CmuxHive
 import CmuxHiveUI
+import CmuxMobileShell
 import SwiftUI
 
 /// App-composition owner for account-free remote Mac workspaces.
@@ -10,17 +11,21 @@ final class HiveWorkspaceService {
     private let startupError: String?
     private let mirrorController = HiveWorkspaceMirrorController()
     private var browserWindowController: HiveWorkspaceBrowserWindowController?
+    var coordinator: HiveWorkspaceCoordinator? { composition?.coordinator }
 
     init() {
         do {
-            composition = try HiveComposition(
-                allowsLoopbackRoutes: Self.allowsLoopbackRoutes
-            )
+            composition = try Self.makeComposition()
             startupError = nil
         } catch {
             composition = nil
             startupError = String(describing: error)
         }
+    }
+
+    init(composition: HiveComposition) {
+        self.composition = composition
+        startupError = nil
     }
 
     /// Starts the app-lifetime Hive connection owner without opening its window.
@@ -57,6 +62,73 @@ final class HiveWorkspaceService {
             browserWindowController = controller
         }
         controller.show(in: tabManager)
+    }
+
+    func open(
+        workspaceID: String,
+        surfaceID: String?,
+        in tabManager: TabManager
+    ) -> HiveWorkspaceMirrorController.OpenResult? {
+        guard let coordinator,
+              let workspace = coordinator.workspaces.first(where: {
+                  $0.id.rawValue == workspaceID
+                      || $0.rpcWorkspaceID.rawValue == workspaceID
+              }),
+              let terminal = surfaceID.flatMap({ requestedID in
+                  workspace.terminals.first { $0.id.rawValue == requestedID }
+              }) ?? workspace.terminals.first else {
+            return nil
+        }
+        return mirrorController.open(
+            workspace: workspace,
+            selectedTerminal: terminal,
+            coordinator: coordinator,
+            in: tabManager,
+            focus: false
+        )
+    }
+
+    func attachmentStatus() -> [HiveWorkspaceMirrorController.AttachmentStatus] {
+        mirrorController.statusSnapshot()
+    }
+
+    private static func makeComposition() throws -> HiveComposition {
+        #if DEBUG
+        if let rawDirectory = ProcessInfo.processInfo.environment["CMUX_E2E_HIVE_STATE_DIR"]?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+           !rawDirectory.isEmpty {
+            let directory = URL(fileURLWithPath: rawDirectory, isDirectory: true)
+                .standardizedFileURL
+            let home = FileManager.default.homeDirectoryForCurrentUser.standardizedFileURL
+            guard directory.path != "/", directory != home else {
+                throw CocoaError(.fileWriteInvalidFileName)
+            }
+            try FileManager.default.createDirectory(
+                at: directory,
+                withIntermediateDirectories: true,
+                attributes: [.posixPermissions: 0o700]
+            )
+            let credentialStore = HiveE2EDeviceLinkCredentialStore()
+            let tag = ProcessInfo.processInfo.environment["CMUX_TAG"] ?? UUID().uuidString
+            guard let defaults = UserDefaults(suiteName: "dev.cmux.hive-e2e.\(tag)") else {
+                throw CocoaError(.fileWriteUnknown)
+            }
+            let client = MobileDeviceLinkClient(
+                identityStore: credentialStore,
+                pinStore: credentialStore,
+                pairingIndexDefaults: defaults
+            )
+            return try HiveComposition(
+                databaseURL: directory.appendingPathComponent("paired-computers.sqlite3"),
+                defaults: defaults,
+                deviceLinkClient: client,
+                allowsLoopbackRoutes: true
+            )
+        }
+        #endif
+        return try HiveComposition(
+            allowsLoopbackRoutes: Self.allowsLoopbackRoutes
+        )
     }
 
     private static var allowsLoopbackRoutes: Bool {
