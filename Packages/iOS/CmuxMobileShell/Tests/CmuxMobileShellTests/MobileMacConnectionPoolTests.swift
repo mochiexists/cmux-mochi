@@ -80,6 +80,115 @@ import Testing
         ))
     }
 
+    @Test func statusDeadlineReturnsBeforeSecondaryMacAggregation() async throws {
+        let router = LivenessHostRouter()
+        await router.holdHostStatusRequest(number: 1)
+        await router.setHostIdentity(
+            deviceID: "unexpected-mac",
+            instanceTag: "unexpected-tag"
+        )
+        let route = try CmxAttachRoute(
+            id: "status-deadline-route",
+            kind: .debugLoopback,
+            endpoint: .hostPort(host: "127.0.0.1", port: 56_600)
+        )
+        let secondaryMacs = (1 ... 3).map { index in
+            MobilePairedMac(
+                macDeviceID: "secondary-\(index)",
+                displayName: "Secondary \(index)",
+                routes: [route],
+                createdAt: .distantPast,
+                lastSeenAt: Date(),
+                isActive: false,
+                stackUserID: "user-1",
+                teamID: "team-1",
+                instanceTag: "secondary-tag-\(index)"
+            )
+        }
+        let pairedStore = DelayedTeamPairedMacStore(
+            recordsByTeam: ["team-1": secondaryMacs],
+            blockedTeams: []
+        )
+        var runtime = LivenessTestRuntime(
+            transportFactory: LivenessTransportFactory(
+                router: router,
+                box: TransportBox()
+            ),
+            now: { Date() }
+        )
+        runtime.pairingRequestTimeoutNanoseconds = 100_000_000
+        let clock = ControlPoolManualClock()
+        let foregroundTicket = try CmxAttachTicket(
+            workspaceID: "",
+            terminalID: nil,
+            macDeviceID: "foreground-mac",
+            macDisplayName: "Foreground Mac",
+            routes: [route],
+            expiresAt: Date().addingTimeInterval(3_600)
+        )
+        let foregroundClient = MobileCoreRPCClient(
+            runtime: runtime,
+            route: route,
+            ticket: foregroundTicket
+        )
+        let shell = MobileShellComposite(
+            runtime: runtime,
+            isSignedIn: true,
+            connectionState: .connected,
+            pairedMacStore: pairedStore,
+            presence: IdlePresence(),
+            identityProvider: StaticIdentityProvider(userID: "user-1"),
+            teamIDProvider: { "team-1" },
+            controlPlaneSchedulingClock: clock
+        )
+        shell.remoteClient = foregroundClient
+        shell.setWorkspaceStatesForTesting(
+            Dictionary(uniqueKeysWithValues: secondaryMacs.map { mac in
+                (
+                    mac.id,
+                    MacWorkspaceState(
+                        macDeviceID: mac.macDeviceID,
+                        instanceTag: mac.instanceTag,
+                        displayName: mac.displayName,
+                        status: .connected
+                    )
+                )
+            }),
+            foregroundMacDeviceID: "foreground-mac"
+        )
+
+        let completion = PromotionFenceCompletion()
+        let reconnect = Task { @MainActor in
+            let connected = await shell.reconnectAllPairedMacs(
+                stackUserID: "user-1",
+                refreshBackupBeforeDial: false,
+                attemptDeadlineNanoseconds: 10_000_000_000
+            )
+            await completion.finish()
+            return connected
+        }
+
+        #expect(await router.waitForCount(
+            of: "mobile.host.status",
+            atLeast: 1
+        ))
+        for _ in 0 ..< 4 { await Task.yield() }
+        #expect(await completion.isFinished)
+        #expect(await reconnect.value)
+
+        await router.releaseAllHeld()
+        #expect(try await pollUntil {
+            secondaryMacs.allSatisfy {
+                shell.macConnectionStatuses[MacPairingKey($0).pairingID]
+                    == .unavailable
+            }
+        })
+        #expect(try await pollUntil { clock.sleeperCount == 1 })
+
+        shell.cancelSecondaryAggregationRetry()
+        await foregroundClient.disconnect()
+    }
+
     @Test func presenceLimitsControlPoolCandidatesToOnlinePairedMacs() throws {
         let store = MobileShellComposite(
             isSignedIn: false,

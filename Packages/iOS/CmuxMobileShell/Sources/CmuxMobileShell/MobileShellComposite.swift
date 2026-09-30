@@ -2108,7 +2108,7 @@ public final class MobileShellComposite: MobileTerminalOutputSinking {
     }
 
     /// Reconnects the foreground pairing and every eligible paired Mac in the
-    /// bounded multi-Mac control pool before returning.
+    /// bounded multi-Mac control pool.
     ///
     /// - Parameters:
     ///   - stackUserID: Account scope for Stack-owned pairings, or `nil` for
@@ -2116,7 +2116,9 @@ public final class MobileShellComposite: MobileTerminalOutputSinking {
     ///   - refreshBackupBeforeDial: Whether to refresh the paired-Mac backup
     ///     before selecting the foreground reconnect candidate.
     ///   - attemptDeadlineNanoseconds: Optional deadline for this reconnect,
-    ///     overriding the runtime default.
+    ///     overriding the runtime default. Deadline-bound callers return after
+    ///     the foreground attempt and continue secondary aggregation in the
+    ///     tracked background task.
     /// - Returns: `true` when a foreground pairing connected; otherwise,
     ///   `false`.
     @discardableResult
@@ -2132,7 +2134,11 @@ public final class MobileShellComposite: MobileTerminalOutputSinking {
             attemptDeadlineNanoseconds: attemptDeadlineNanoseconds
         )
         if outcome.didConnect, multiMacAggregationEnabled {
-            await refreshSecondaryMacWorkspaces()
+            if attemptDeadlineNanoseconds == nil {
+                await refreshSecondaryMacWorkspaces()
+            } else {
+                scheduleSecondaryAggregation()
+            }
         }
         return outcome.didConnect
     }
