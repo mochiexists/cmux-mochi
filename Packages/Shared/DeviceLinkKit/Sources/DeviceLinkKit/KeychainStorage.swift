@@ -1,4 +1,5 @@
 public import Foundation
+internal import MachO
 internal import Security
 
 /// Errors from the keychain-backed stores.
@@ -11,6 +12,51 @@ public enum KeychainStorageError: Error, Equatable {
     case locked
     /// Any other `OSStatus` failure, carried for diagnosis.
     case unexpectedStatus(OSStatus)
+}
+
+/// Immutable evidence used to decide whether the current process is a real test host.
+struct KeychainTestProcessEvidence: Sendable {
+    let executablePath: String
+    let processName: String
+    let loadedImagePaths: [String]
+
+    init(
+        environment _: [String: String],
+        executablePath: String,
+        processName: String,
+        loadedImagePaths: [String]
+    ) {
+        self.executablePath = executablePath
+        self.processName = processName
+        self.loadedImagePaths = loadedImagePaths
+    }
+
+    var isTestHost: Bool {
+        let normalizedExecutable = executablePath.lowercased()
+        if normalizedExecutable.contains(".xctest/")
+            || processName == "swiftpm-testing-helper" {
+            return true
+        }
+        return loadedImagePaths.contains { path in
+            let normalizedPath = path.lowercased()
+            return normalizedPath.contains("/xctest.framework/")
+                || normalizedPath.contains("/testing.framework/")
+                || normalizedPath.hasSuffix("/libxctestswiftsupport.dylib")
+                || normalizedPath.hasSuffix("/libxctestbundleinject.dylib")
+        }
+    }
+
+    static func current(process: ProcessInfo = .processInfo) -> Self {
+        let loadedImagePaths = (0..<_dyld_image_count()).compactMap { index in
+            _dyld_get_image_name(index).map { String(cString: $0) }
+        }
+        return Self(
+            environment: process.environment,
+            executablePath: process.arguments.first ?? "",
+            processName: process.processName,
+            loadedImagePaths: loadedImagePaths
+        )
+    }
 }
 
 /// Namespacing for keychain items.
@@ -204,16 +250,7 @@ struct KeychainItem {
     }
 
     private func rejectTestProcessAccess() throws {
-        let process = ProcessInfo.processInfo
-        let environment = process.environment
-        let executable = process.arguments.first ?? ""
-        let isTestProcess = environment["XCTestConfigurationFilePath"] != nil
-            || environment["XCTestBundlePath"] != nil
-            || environment["SWIFT_TESTING_ENABLED"] != nil
-            || executable.contains(".xctest/")
-            || process.processName.hasSuffix("Tests")
-            || process.processName == "swiftpm-testing-helper"
-        guard !isTestProcess else {
+        guard !KeychainTestProcessEvidence.current().isTestHost else {
             throw KeychainStorageError.testProcessAccess
         }
     }
