@@ -1,5 +1,5 @@
 name: Mobile to Mac DeviceLink E2E
-run-name: Mobile to Mac E2E on ${{ inputs.runner }} @ ${{ inputs.ref || github.ref_name }}
+run-name: Mobile to Mac E2E on ${{ (!inputs.runner || inputs.runner == 'auto') && (vars.MACOS_RUNNER_26 || 'blacksmith-6vcpu-macos-26') || inputs.runner }} @ ${{ inputs.ref || github.ref_name }}
 
 on:
   workflow_dispatch:
@@ -9,21 +9,21 @@ on:
         required: false
         default: ""
       runner:
-        description: Self-hosted macOS 26 runner label
+        description: macOS 26 runner label (auto follows MACOS_RUNNER_26)
         required: false
-        default: cmux-macos-26
+        default: auto
         type: string
 
 permissions:
   contents: read
 
 concurrency:
-  group: mobile-mac-e2e-${{ inputs.runner }}-${{ inputs.ref || github.ref_name }}
+  group: mobile-mac-e2e-${{ (!inputs.runner || inputs.runner == 'auto') && (vars.MACOS_RUNNER_26 || 'blacksmith-6vcpu-macos-26') || inputs.runner }}-${{ inputs.ref || github.ref_name }}
   cancel-in-progress: true
 
 jobs:
   mobile-mac-e2e:
-    runs-on: ${{ inputs.runner }}
+    runs-on: ${{ (!inputs.runner || inputs.runner == 'auto') && (vars.MACOS_RUNNER_26 || 'blacksmith-6vcpu-macos-26') || inputs.runner }}
     timeout-minutes: 60
     steps:
       - name: Checkout
@@ -65,5 +65,7 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: mobile-mac-e2e-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/mobile-mac-e2e-artifacts
+          path: |
+            ${{ runner.temp }}/mobile-mac-e2e-artifacts/**
+            !${{ runner.temp }}/mobile-mac-e2e-artifacts/mac-devicelink-state/**
           if-no-files-found: warn
