@@ -2,6 +2,7 @@ import AppKit
 import CmuxHive
 import CmuxHiveUI
 import CmuxMobileShell
+import CmuxMobileShellModel
 import SwiftUI
 
 /// App-composition owner for account-free remote Mac workspaces.
@@ -44,6 +45,13 @@ final class HiveWorkspaceService {
     init(composition: HiveComposition) {
         self.composition = composition
         coordinatorOverride = nil
+        uiFixtureName = nil
+        startupError = nil
+    }
+
+    init(coordinator: HiveWorkspaceCoordinator) {
+        composition = nil
+        coordinatorOverride = coordinator
         uiFixtureName = nil
         startupError = nil
     }
@@ -165,11 +173,18 @@ final class HiveWorkspaceService {
               let workspace = coordinator.workspaces.first(where: {
                   $0.id.rawValue == workspaceID
                       || $0.rpcWorkspaceID.rawValue == workspaceID
-              }),
-              let terminal = surfaceID.flatMap({ requestedID in
-                  workspace.terminals.first { $0.id.rawValue == requestedID }
-              }) ?? workspace.terminals.first else {
+              }) else {
             return nil
+        }
+        let terminal: MobileTerminalPreview
+        if let surfaceID {
+            guard let matched = workspace.terminals.first(where: {
+                $0.id.rawValue == surfaceID
+            }) else { return nil }
+            terminal = matched
+        } else {
+            guard let first = workspace.terminals.first else { return nil }
+            terminal = first
         }
         return mirrorController.open(
             workspace: workspace,

@@ -153,6 +153,32 @@ struct HiveWorkspaceMirrorControllerTests {
         #expect(opened.localPanelIDsByRemoteSurfaceID[terminal.id.rawValue] != nil)
     }
 
+    @Test("automation rejects an explicit surface that is not in the remote workspace")
+    func automationRejectsUnknownSurface() {
+        let terminal = MobileTerminalPreview(id: "surface-a", name: "Alpha")
+        let remoteWorkspace = MobileWorkspacePreview(
+            id: "remote-workspace",
+            macDeviceID: "mac-a",
+            macDisplayName: "Studio",
+            name: "Remote",
+            terminals: [terminal]
+        )
+        let coordinator = HiveWorkspaceCoordinator(
+            shell: HiveWorkspaceMirrorShellStub(workspaces: [remoteWorkspace])
+        )
+        let service = HiveWorkspaceService(coordinator: coordinator)
+        let manager = TabManager()
+
+        let opened = service.open(
+            workspaceID: remoteWorkspace.id.rawValue,
+            surfaceID: "missing-surface",
+            in: manager
+        )
+
+        #expect(opened == nil)
+        #expect(!manager.tabs.contains { $0.isHiveWorkspaceMirror })
+    }
+
     @Test("reconciles terminals added to and closed from the remote workspace")
     func reconcilesRemoteTerminalTopology() throws {
         let first = MobileTerminalPreview(id: "surface-a", name: "Alpha")
