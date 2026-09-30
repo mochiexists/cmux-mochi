@@ -1,8 +1,10 @@
 # Don't lose saved hosts/IPs on iOS upgrade (paired-Mac backup + restore)
 
-Status: in progress. Builds on the local-first sync substrate from
-`plans/feat-do-device-list/DESIGN.md` (read that first). This document is the
-deliverable for the durability work; the code proves it.
+Status: implementation complete; production rollout pending. Migration
+hardening, the per-user server backup API, iOS upload/restore, privacy filtering,
+and focused tests are present. `mobilePairedMacBackup` remains DEBUG-on and
+Release-off by default until dogfood approves the production flag flip. Builds
+on the local-first sync substrate from `plans/feat-do-device-list/DESIGN.md`.
 
 ## 1. Problem
 
