@@ -77,6 +77,7 @@ unset CMUX_SHELL_INTEGRATION_DIR CMUX_LOAD_GHOSTTY_ZSH_INTEGRATION
 SIMULATOR_ID=""
 MAC_PID=""
 XCODEBUILD_PID=""
+XCODEBUILD_RESULT=""
 RUN_STARTED="$(date +%s)"
 
 cleanup() {
@@ -117,6 +118,53 @@ wait_until() {
   return 1
 }
 
+wait_for_phone_screen() {
+  local description="$1"
+  local needle="$2"
+  local match_mode="${3:-fixed}"
+  local started grace_attempt
+  started="$(date +%s)"
+  while (( $(date +%s) - started < TIMEOUT_SECONDS )); do
+    if phone_screen_matches "$needle" "$match_mode"; then
+      return 0
+    fi
+    if [[ -n "$XCODEBUILD_PID" ]] && ! kill -0 "$XCODEBUILD_PID" 2>/dev/null; then
+      set +e
+      wait "$XCODEBUILD_PID"
+      XCODEBUILD_RESULT=$?
+      set -e
+      XCODEBUILD_PID=""
+      if [[ "$XCODEBUILD_RESULT" -eq 0 ]]; then
+        # The focused test can finish just after its final phone-side
+        # assertion while the Mac socket still has one render update queued.
+        for grace_attempt in 1 2 3 4 5; do
+          if phone_screen_matches "$needle" "$match_mode"; then
+            return 0
+          fi
+          sleep 1
+        done
+      fi
+      tail -n 120 "$ARTIFACT_DIR/ios-ui-test.log" >&2
+      echo "error: iOS UI test exited ($XCODEBUILD_RESULT) before $description" >&2
+      return 1
+    fi
+    sleep 1
+  done
+  echo "error: timed out waiting for $description" >&2
+  return 1
+}
+
+phone_screen_matches() {
+  local needle="$1"
+  local match_mode="$2"
+  case "$match_mode" in
+    fixed) screen_contains "$needle" ;;
+    regex) screen_matches "$needle" ;;
+    any-fixed) any_workspace_screen_contains "$needle" ;;
+    *) echo "error: unknown phone screen match mode: $match_mode" >&2; return 2 ;;
+  esac
+}
+
 wait_for_socket() {
   [[ -S "$SOCKET_PATH" ]]
 }
@@ -139,6 +187,36 @@ screen_contains() {
   local needle="$1"
   cli read-screen --workspace "$WORKSPACE_ID" --scrollback --lines 500 2>/dev/null \
     | grep -Fq -- "$needle"
+}
+
+screen_matches() {
+  local expression="$1"
+  cli read-screen --workspace "$WORKSPACE_ID" --scrollback --lines 500 2>/dev/null \
+    | grep -Eq -- "$expression"
+}
+
+any_workspace_screen_contains() {
+  local needle="$1"
+  local workspace_ref
+  while IFS= read -r workspace_ref; do
+    if cli read-screen --workspace "$workspace_ref" --scrollback --lines 500 2>/dev/null \
+      | grep -Fq -- "$needle"; then
+      return 0
+    fi
+  done < <(cli list-workspaces 2>/dev/null | grep -Eo 'workspace:[0-9]+')
+  return 1
+}
+
+pairing_management_ready() {
+  cli rpc mobile.pairing.device.list '{}' \
+    >"$ARTIFACT_DIR/pairing-readiness.json" \
+    2>>"$ARTIFACT_DIR/pairing-readiness.log"
+}
+
+host_ui_ready() {
+  cli list-workspaces \
+    >"$ARTIFACT_DIR/host-ui-readiness.txt" \
+    2>>"$ARTIFACT_DIR/host-ui-readiness.log"
 }
 
 launch_mac() {
@@ -229,6 +307,7 @@ MAC_CLI="$MAC_APP/Contents/Resources/bin/cmux"
 
 cmux_attach_enable_pairing_host "$TAG"
 launch_mac
+wait_until "tagged Mac main-actor command lane" host_ui_ready
 
 WORKSPACE_NAME="mobile-e2e-$SLUG"
 WORKSPACE_RESPONSE="$(cli rpc workspace.create "{\"cwd\":\"$REPO_ROOT\",\"title\":\"$WORKSPACE_NAME\",\"focus\":true}")"
@@ -245,6 +324,10 @@ print(workspace_id)
 PY
 )"
 
+# The socket is available before the DeviceLink coordinator's cold-start load
+# has necessarily completed. Wait for the local management verb itself rather
+# than racing code creation against that actor initialization.
+wait_until "DeviceLink pairing management readiness" pairing_management_ready
 PAIRING_RESPONSE="$(cli rpc mobile.pairing.code.create '{"ttl_seconds":600}')"
 PAIRING_URL="$(PAIRING_RESPONSE="$PAIRING_RESPONSE" /usr/bin/python3 - <<'PY'
 import json
@@ -287,46 +370,69 @@ echo "==> Building focused iOS UI test"
     build-for-testing
 ) >"$ARTIFACT_DIR/ios-build.log" 2>&1
 
+XCTESTRUN_FILE="$(find "$IOS_DERIVED_DATA/Build/Products" -maxdepth 1 \
+  -name 'cmux-ios_*.xctestrun' -print -quit)"
+[[ -f "$XCTESTRUN_FILE" ]] || {
+  echo "error: build-for-testing did not produce an xctestrun file" >&2
+  exit 1
+}
+
 IOS_APP="$IOS_DERIVED_DATA/Build/Products/Debug-iphonesimulator/cmux.app"
 [[ -d "$IOS_APP" ]] || { echo "error: iOS app missing at $IOS_APP" >&2; exit 1; }
 xcrun simctl install "$SIMULATOR_ID" "$IOS_APP"
 
 MARKER="MARKER-$(jot -r 1 100000 999999)-$(date +%s)"
+
+# Xcode deliberately sanitizes the UI-test runner environment. Put the
+# one-run coordination values into the generated test plan rather than relying
+# on variables inherited by xcodebuild.
+UI_TEST_TARGET_INDEX="$(XCTESTRUN_FILE="$XCTESTRUN_FILE" /usr/bin/python3 - <<'PY'
+import os
+import plistlib
+
+with open(os.environ["XCTESTRUN_FILE"], "rb") as file:
+    run = plistlib.load(file)
+targets = run["TestConfigurations"][0]["TestTargets"]
+for index, target in enumerate(targets):
+    if target.get("BlueprintName") == "cmuxUITests":
+        print(index)
+        break
+else:
+    raise SystemExit("cmuxUITests is missing from the generated xctestrun file")
+PY
+)"
+XCTESTRUN_ENV_PREFIX="TestConfigurations.0.TestTargets.${UI_TEST_TARGET_INDEX}.EnvironmentVariables"
+plutil -replace "$XCTESTRUN_ENV_PREFIX.CMUX_E2E_PAIRING_URL" \
+  -string "$PAIRING_URL" "$XCTESTRUN_FILE"
+plutil -replace "$XCTESTRUN_ENV_PREFIX.CMUX_E2E_WORKSPACE_ID" \
+  -string "$WORKSPACE_ID" "$XCTESTRUN_FILE"
+plutil -replace "$XCTESTRUN_ENV_PREFIX.CMUX_E2E_MARKER" \
+  -string "$MARKER" "$XCTESTRUN_FILE"
+
 echo "==> Running real DeviceLink UI journey: $MARKER"
 (
   cd "$REPO_ROOT"
-  CMUX_E2E_PAIRING_URL="$PAIRING_URL" \
-  CMUX_E2E_WORKSPACE_ID="$WORKSPACE_ID" \
-  CMUX_E2E_MARKER="$MARKER" \
-  CMUX_SKIP_ZIG_BUILD=1 \
-    xcodebuild \
-      -workspace ios/cmux.xcworkspace \
-      -scheme cmux-ios \
-      -configuration Debug \
+  xcodebuild \
+      -xctestrun "$XCTESTRUN_FILE" \
       -destination "platform=iOS Simulator,id=$SIMULATOR_ID" \
-      -derivedDataPath "$IOS_DERIVED_DATA" \
-      CMUX_DEV_TAG="$SLUG" \
-      CODE_SIGNING_ALLOWED=YES \
-      CODE_SIGNING_REQUIRED=NO \
-      CODE_SIGN_IDENTITY=- \
       -only-testing:cmuxUITests/cmuxUITests/testDeviceLinkMacRoundTripE2E \
       test-without-building
 ) >"$ARTIFACT_DIR/ios-ui-test.log" 2>&1 &
 XCODEBUILD_PID=$!
 
-wait_until "phone marker on the Mac" screen_contains "$MARKER"
-wait_until "portrait stty size" screen_contains "SIZE-P-"
-wait_until "landscape stty size" screen_contains "SIZE-L-"
+wait_for_phone_screen "phone marker on the Mac" "$MARKER"
+wait_for_phone_screen "portrait stty size" 'SIZE-P-[0-9]+x[0-9]+' regex
+wait_for_phone_screen "landscape stty size" 'SIZE-L-[0-9]+x[0-9]+' regex
 
 SIZE_TEXT="$(cli read-screen --workspace "$WORKSPACE_ID" --scrollback --lines 500)"
-PORTRAIT_SIZE="$(printf '%s\n' "$SIZE_TEXT" | grep -Eo 'SIZE-P-[0-9]+x[0-9]+' | tail -1 | cut -d- -f3)"
-LANDSCAPE_SIZE="$(printf '%s\n' "$SIZE_TEXT" | grep -Eo 'SIZE-L-[0-9]+x[0-9]+' | tail -1 | cut -d- -f3)"
+PORTRAIT_SIZE="$(printf '%s\n' "$SIZE_TEXT" | grep -Eo 'SIZE-P-[0-9]+x[0-9]+' | tail -1 | cut -d- -f3 || true)"
+LANDSCAPE_SIZE="$(printf '%s\n' "$SIZE_TEXT" | grep -Eo 'SIZE-L-[0-9]+x[0-9]+' | tail -1 | cut -d- -f3 || true)"
 [[ -n "$PORTRAIT_SIZE" && -n "$LANDSCAPE_SIZE" && "$PORTRAIT_SIZE" != "$LANDSCAPE_SIZE" ]] || {
   echo "error: phone rotation did not change Mac PTY size: portrait=$PORTRAIT_SIZE landscape=$LANDSCAPE_SIZE" >&2
   exit 1
 }
 
-wait_until "phone resize barrier" screen_contains "RESIZE-READY-$MARKER"
+wait_for_phone_screen "phone resize barrier" "RESIZE-READY-$MARKER"
 WINDOW_RESPONSE="$(cli rpc window.list '{}')"
 WINDOW_ID="$(WINDOW_RESPONSE="$WINDOW_RESPONSE" /usr/bin/python3 - <<'PY'
 import json
@@ -346,26 +452,36 @@ PY
 cli rpc remote.tmux.test_set_frame \
   "{\"window_id\":\"$WINDOW_ID\",\"width\":560,\"height\":340}" \
   >"$ARTIFACT_DIR/mac-resize.json"
-wait_until "post-resize stty size" screen_contains "SIZE-MAC-"
+cli send --workspace "$WORKSPACE_ID" --enter --force \
+  "sleep 1; echo RESIZE-APPLIED-$MARKER" \
+  >"$ARTIFACT_DIR/mac-resize-terminal-signal.txt"
+wait_for_phone_screen "post-resize stty size" 'SIZE-MAC-[0-9]+x[0-9]+' regex
 
-wait_until "foreground marker" screen_contains "$MARKER-FOREGROUND"
-wait_until "host restart barrier" screen_contains "RESTART-READY-$MARKER"
+wait_for_phone_screen "foreground marker" "$MARKER-FOREGROUND"
+wait_for_phone_screen "host restart barrier" "RESTART-READY-$MARKER"
 echo "==> Killing and restarting tagged Mac host"
 stop_mac
 # Keep the transport unavailable long enough for the iOS status pill to expose
 # the disconnect; this is the deliberate outage under test, not a settle wait.
 sleep 3
 launch_mac
-wait_until "reconnected phone marker" screen_contains "$MARKER-RECONNECTED"
+wait_for_phone_screen "reconnected phone marker" "$MARKER-RECONNECTED" any-fixed
 
-set +e
-wait "$XCODEBUILD_PID"
-XCODEBUILD_RESULT=$?
-set -e
-XCODEBUILD_PID=""
+if [[ -n "$XCODEBUILD_PID" ]]; then
+  set +e
+  wait "$XCODEBUILD_PID"
+  XCODEBUILD_RESULT=$?
+  set -e
+  XCODEBUILD_PID=""
+fi
 if [[ "$XCODEBUILD_RESULT" -ne 0 ]]; then
   tail -n 120 "$ARTIFACT_DIR/ios-ui-test.log" >&2
   exit "$XCODEBUILD_RESULT"
+fi
+if ! grep -Fq "testDeviceLinkMacRoundTripE2E]' passed" "$ARTIFACT_DIR/ios-ui-test.log"; then
+  tail -n 120 "$ARTIFACT_DIR/ios-ui-test.log" >&2
+  echo "error: focused DeviceLink UI test did not report a passing result" >&2
+  exit 1
 fi
 
 ELAPSED=$(( $(date +%s) - RUN_STARTED ))

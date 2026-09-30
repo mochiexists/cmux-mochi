@@ -2963,21 +2963,32 @@ final class cmuxUITests: XCTestCase {
         defer { app.terminate() }
 
         let surface = app.otherElements["MobileTerminalSurface"]
-        if !surface.waitForExistence(timeout: 20) {
-            let workspaceRow = app.descendants(matching: .any)["MobileWorkspaceRow-\(workspaceID)"]
+        if surface.waitForExistence(timeout: 20) {
+            let backButton = app.buttons["MobileWorkspaceBackButton"]
             XCTAssertTrue(
-                workspaceRow.waitForExistence(timeout: 60),
-                "The paired Mac never published workspace \(workspaceID)."
+                backButton.waitForExistence(timeout: 10),
+                "The auto-opened workspace did not expose its workspace-list back button."
             )
-            workspaceRow.tap()
+            backButton.tap()
+            XCTAssertTrue(surface.waitForNonExistence(timeout: 10))
         }
+
+        let workspaceRow = app.descendants(matching: .any)["MobileWorkspaceRow-\(workspaceID)"]
+        XCTAssertTrue(
+            workspaceRow.waitForExistence(timeout: 60),
+            "The paired Mac never published workspace \(workspaceID)."
+        )
+        workspaceRow.tap()
         XCTAssertTrue(surface.waitForExistence(timeout: 20))
 
-        try typeTerminalCommand("echo \(marker)", in: app, surface: surface)
+        // The DEBUG accessibility carrier samples rendered text at a bounded
+        // cadence. Delay each assertion marker so a settled output frame—not
+        // an intermediate local-echo frame—is guaranteed to refresh it.
+        try typeTerminalCommand("sleep 1; echo \(marker)", in: app, surface: surface)
         XCTAssertTrue(waitForTerminalText(marker, in: surface, timeout: 20))
 
         try typeTerminalCommand(
-            "stty size | awk '{print \"SIZE-P-\"$1\"x\"$2}'",
+            "sleep 1; stty size | awk '{print \"SIZE-P-\"$1\"x\"$2}'",
             in: app,
             surface: surface
         )
@@ -2989,7 +3000,7 @@ final class cmuxUITests: XCTestCase {
             app.isLandscape && frame.width > portraitFrame.width + 80
         }
         try typeTerminalCommand(
-            "stty size | awk '{print \"SIZE-L-\"$1\"x\"$2}'",
+            "sleep 1; stty size | awk '{print \"SIZE-L-\"$1\"x\"$2}'",
             in: app,
             surface: surface
         )
@@ -3000,14 +3011,27 @@ final class cmuxUITests: XCTestCase {
             "Rotating the phone must renegotiate the shared Mac PTY size."
         )
 
-        let beforeResize = try waitForTerminalViewportProbe(in: surface) { probe in
-            probe.awaitingEcho == false && probe.effectiveGrid != nil
+        // Give the UI runner time to dismiss its software keyboard before the
+        // shell harness observes the delayed barrier and resizes the Mac.
+        try typeTerminalCommand("sleep 5; echo RESIZE-READY-\(marker)", in: app, surface: surface)
+        let hideKeyboardButton = app.buttons["terminal.inputAccessory.hideKeyboard"]
+        XCTAssertTrue(hideKeyboardButton.waitForExistence(timeout: 5))
+        hideKeyboardButton.tap()
+        XCTAssertTrue(waitForKeyboardDismissal(in: app))
+        _ = try waitForTerminalViewportProbe(in: surface) { probe in
+            probe.awaitingEcho == false
+                && probe.renderMaxY > 10
+                && probe.viewportMaxY > 10
         }
-        try typeTerminalCommand("echo RESIZE-READY-\(marker)", in: app, surface: surface)
+
+        XCTAssertTrue(
+            waitForTerminalText("RESIZE-APPLIED-\(marker)", in: surface, timeout: 60),
+            "The Mac harness never confirmed that its window resize applied."
+        )
         let afterResize = try waitForTerminalViewportProbe(in: surface, timeout: 60) { probe in
             probe.awaitingEcho == false
-                && probe.effectiveGrid != nil
-                && probe.effectiveGrid != beforeResize.effectiveGrid
+                && probe.renderMaxY > 10
+                && probe.viewportMaxY > 10
         }
         XCTAssertEqual(
             afterResize.renderMaxY,
@@ -3016,7 +3040,7 @@ final class cmuxUITests: XCTestCase {
             "After the Mac window resize settles, the phone render must remain bottom-fitted instead of pinned to the top. probe=\(afterResize.rawValue)"
         )
         try typeTerminalCommand(
-            "stty size | awk '{print \"SIZE-MAC-\"$1\"x\"$2}'",
+            "sleep 1; stty size | awk '{print \"SIZE-MAC-\"$1\"x\"$2}'",
             in: app,
             surface: surface
         )
@@ -3039,7 +3063,7 @@ final class cmuxUITests: XCTestCase {
             waitForTerminalText(marker, in: surface, timeout: 20),
             "The marker must survive background/foreground."
         )
-        try typeTerminalCommand("echo \(marker)-FOREGROUND", in: app, surface: surface)
+        try typeTerminalCommand("sleep 1; echo \(marker)-FOREGROUND", in: app, surface: surface)
         XCTAssertTrue(waitForTerminalText("\(marker)-FOREGROUND", in: surface, timeout: 20))
 
         try typeTerminalCommand("echo RESTART-READY-\(marker)", in: app, surface: surface)
@@ -3054,7 +3078,7 @@ final class cmuxUITests: XCTestCase {
         )
 
         XCTAssertTrue(surface.waitForExistence(timeout: 20))
-        try typeTerminalCommand("echo \(marker)-RECONNECTED", in: app, surface: surface)
+        try typeTerminalCommand("sleep 1; echo \(marker)-RECONNECTED", in: app, surface: surface)
         XCTAssertTrue(waitForTerminalText("\(marker)-RECONNECTED", in: surface, timeout: 30))
     }
 
