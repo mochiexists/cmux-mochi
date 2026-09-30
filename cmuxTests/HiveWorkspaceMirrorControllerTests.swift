@@ -14,6 +14,37 @@ import Testing
 @MainActor
 @Suite(.serialized)
 struct HiveWorkspaceMirrorControllerTests {
+    @Test("routes Hive mutations without treating the workspace as an SSH/tmux mirror")
+    func routesHiveMutations() throws {
+        let terminal = MobileTerminalPreview(id: "surface-a", name: "Alpha")
+        var remoteWorkspace = MobileWorkspacePreview(
+            id: "remote-workspace",
+            macDeviceID: "mac-a",
+            macDisplayName: "Studio",
+            name: "Remote",
+            terminals: [terminal]
+        )
+        remoteWorkspace.macInstanceTag = "dev-a"
+        let shell = HiveWorkspaceMirrorShellStub(workspaces: [remoteWorkspace])
+        let coordinator = HiveWorkspaceCoordinator(shell: shell)
+        let controller = HiveWorkspaceMirrorController()
+        let manager = TabManager()
+
+        controller.open(
+            workspace: remoteWorkspace,
+            selectedTerminal: terminal,
+            coordinator: coordinator,
+            in: manager
+        )
+
+        let mirror = try #require(manager.tabs.first { $0.isHiveWorkspaceMirror })
+        #expect(mirror.isRemoteTmuxMirror)
+        #expect(mirror.remoteMirrorMutationRoute(for: .newTerminalTab) == .hive)
+        #expect(mirror.remoteMirrorMutationRoute(for: .workspaceRename) == .hive)
+        #expect(mirror.remoteMirrorMutationRoute(for: .split) == .unavailable)
+        #expect(mirror.remoteMirrorMutationRoute(for: .terminalTabRename) == .unavailable)
+    }
+
     @Test("reopens a locally closed remote terminal in its existing workspace")
     func reopensClosedTerminal() throws {
         let first = MobileTerminalPreview(id: "surface-a", name: "Alpha")
