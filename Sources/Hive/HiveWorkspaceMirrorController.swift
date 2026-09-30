@@ -22,12 +22,14 @@ final class HiveWorkspaceMirrorController {
 
     @MainActor
     private final class TerminalBinding {
+        let panelID: UUID
         weak var panel: TerminalPanel?
         weak var attachment: TerminalAttachment?
         private let inputForwarder: RemoteTmuxPaneInputForwarder
         private var outputSubscription: HiveTerminalSession.Subscription?
 
         init(attachment: TerminalAttachment, panel: TerminalPanel) {
+            panelID = panel.id
             self.attachment = attachment
             self.panel = panel
             inputForwarder = RemoteTmuxPaneInputForwarder(
@@ -127,16 +129,16 @@ final class HiveWorkspaceMirrorController {
         var remoteRegistrationCount: Int { session.phase == .attached ? 1 : 0 }
 
         func add(_ binding: TerminalBinding) {
-            guard let panelID = binding.panel?.id,
-                  bindingsByPanelID[panelID] == nil else { return }
+            let panelID = binding.panelID
+            guard bindingsByPanelID[panelID] == nil else { return }
             bindingsByPanelID[panelID] = binding
             bindingOrder.append(panelID)
             binding.subscribe(to: session)
         }
 
         func remove(_ binding: TerminalBinding) {
-            guard let panelID = binding.panel?.id,
-                  bindingsByPanelID.removeValue(forKey: panelID) != nil else { return }
+            let panelID = binding.panelID
+            guard bindingsByPanelID.removeValue(forKey: panelID) != nil else { return }
             let wasOwner = bindingOrder.first == panelID
             bindingOrder.removeAll { $0 == panelID }
             binding.unsubscribe(from: session)

@@ -70,6 +70,59 @@ struct HiveWorkspaceMirrorControllerTests {
         #expect(attachment.remoteRegistrationCount == 0)
     }
 
+    @Test("promotes the surviving resize owner after the original panel deallocates")
+    func promotesResizeOwnerAfterPanelDeallocation() throws {
+        let terminal = MobileTerminalPreview(id: "surface-a", name: "Alpha")
+        var remoteWorkspace = MobileWorkspacePreview(
+            id: "remote-workspace",
+            macDeviceID: "mac-a",
+            macDisplayName: "Studio",
+            name: "Remote",
+            terminals: [terminal]
+        )
+        remoteWorkspace.macInstanceTag = "dev-a"
+        let shell = HiveWorkspaceMirrorShellStub(workspaces: [remoteWorkspace])
+        let coordinator = HiveWorkspaceCoordinator(shell: shell)
+        let controller = HiveWorkspaceMirrorController()
+        let firstManager = TabManager()
+        let secondManager = TabManager()
+
+        controller.open(
+            workspace: remoteWorkspace,
+            selectedTerminal: terminal,
+            coordinator: coordinator,
+            in: firstManager
+        )
+        controller.open(
+            workspace: remoteWorkspace,
+            selectedTerminal: terminal,
+            coordinator: coordinator,
+            in: secondManager
+        )
+
+        let firstMirror = try #require(firstManager.tabs.first { $0.isHiveWorkspaceMirror })
+        let secondMirror = try #require(secondManager.tabs.first { $0.isHiveWorkspaceMirror })
+        let firstPanelID = try #require(firstMirror.focusedPanelId)
+        let secondPanelID = try #require(secondMirror.focusedPanelId)
+        var firstPanel: TerminalPanel? = try #require(firstMirror.terminalPanel(for: firstPanelID))
+        weak var releasedFirstPanel = firstPanel
+        let secondPanel = try #require(secondMirror.terminalPanel(for: secondPanelID))
+
+        #expect(firstMirror.removeRemoteTmuxDisplayPane(firstPanelID))
+        firstPanel = nil
+        #expect(releasedFirstPanel == nil)
+        controller.reconcileMirrors()
+        secondPanel.surface.onManualSizeApplied?(Self.sizingSample(columns: 120, rows: 40))
+
+        let attachment = try #require(controller.statusSnapshot().first {
+            $0.remoteSurfaceID == terminal.id.rawValue
+        })
+        #expect(attachment.localMountCount == 1)
+        #expect(shell.preparedViewports == [
+            .init(surfaceID: terminal.id.rawValue, columns: 120, rows: 40),
+        ])
+    }
+
     @Test("automation opens a mirror without changing workspace selection")
     func automationOpenPreservesWorkspaceSelection() throws {
         let terminal = MobileTerminalPreview(id: "surface-a", name: "Alpha")
