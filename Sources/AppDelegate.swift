@@ -658,6 +658,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
     weak var tabManager: TabManager?
     weak var notificationStore: TerminalNotificationStore?
     weak var sidebarState: SidebarState?
+    private var workspaceWorkingDirectoryResolver: (String) -> String = { $0 }
 #if DEBUG
     private(set) var pullRequestProbeService = PullRequestProbeService(debugLog: { cmuxDebugLog($0) })
 #else
@@ -2210,9 +2211,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         notificationStore: TerminalNotificationStore,
         sidebarState: SidebarState,
         settingsRuntime: SettingsRuntime,
-        auth: MacAuthComposition
+        auth: MacAuthComposition,
+        workspaceWorkingDirectoryResolver: @escaping (String) -> String
     ) {
         self.tabManager = tabManager
+        self.workspaceWorkingDirectoryResolver = workspaceWorkingDirectoryResolver
         // SwiftUI constructs the initial TabManager before this delegate is
         // available; adopt its coordinator so every later window shares it.
         pullRequestProbeService = tabManager.pullRequestProbeService
@@ -6370,8 +6373,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         let socketPath = TerminalController.shared.activeSocketPath(
             preferredPath: SocketControlSettings.socketPath()
         )
-        let fallbackCwd = workspace.resolvedWorkingDirectory()
-            ?? FileManager.default.homeDirectoryForCurrentUser.path
+        let fallbackCwd = workspaceWorkingDirectoryResolver(
+            workspace.resolvedWorkingDirectory()
+                ?? FileManager.default.homeDirectoryForCurrentUser.path
+        )
         if preferAgentContext,
            let surfaceId = workspace.focusedPanelId,
            let snapshot = SharedLiveAgentIndex.shared.snapshot(workspaceId: workspace.id, panelId: surfaceId),
@@ -9008,7 +9013,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
             pullRequestProbeService: pullRequestProbeService,
             workspaceCustomizationStore: self.tabManager?.workspaceCustomizationStore
                 ?? WorkspaceCustomizationStore(defaults: .standard),
-            nativeSSHConnectionBroker: TerminalController.shared.nativeSSHConnectionBroker
+            nativeSSHConnectionBroker: TerminalController.shared.nativeSSHConnectionBroker,
+            workspaceWorkingDirectoryResolver: workspaceWorkingDirectoryResolver
         )
         tabManager.windowId = windowId
         if let sessionWindowSnapshot {
@@ -16149,8 +16155,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
                 return false
             }
             let rawCwd = context.tabManager.selectedWorkspace?.currentDirectory
-            let baseCwd = (rawCwd?.isEmpty == false) ? rawCwd!
-                : FileManager.default.homeDirectoryForCurrentUser.path
+            let baseCwd = workspaceWorkingDirectoryResolver(
+                (rawCwd?.isEmpty == false) ? rawCwd!
+                    : FileManager.default.homeDirectoryForCurrentUser.path
+            )
             return CmuxConfigExecutor.execute(
                 action: action,
                 commands: cmuxConfigStore.loadedCommands,

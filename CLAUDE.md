@@ -8,6 +8,10 @@
 
 Always build with a tag. **Never run bare `xcodebuild` or `open` an untagged `cmux DEV.app`**: untagged builds share the default debug socket and bundle ID with other agents, causing conflicts and stealing focus.
 
+### STRICT: Safe dev and test launch directories
+
+Never launch a cmux session, tagged/dev build, or test app whose workspace cwd is `/` or `$HOME`. E2E and agent launches use fixed, reusable tags instead of per-run tags; the standard E2E tags are `e2e-mobile`, `e2e-hive-host`, and `e2e-hive-client`. Pass the repository root explicitly as `CMUXTERM_REPO_ROOT` when launching a tagged app. After the first GUI launch on a headless host, a human must check the physical screen for permission dialogs because agents cannot see those dialogs over SSH.
+
 ```bash
 ./scripts/reload.sh --tag <branch-slug>            # build Debug, kill same-tag app, do not launch
 ./scripts/reload.sh --tag <branch-slug> --launch   # also open it

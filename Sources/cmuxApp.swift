@@ -185,6 +185,7 @@ struct cmuxApp: App {
         let workspaceCustomizationStore = WorkspaceCustomizationStore(
             defaults: defaults
         )
+        let workspaceWorkingDirectoryResolver = Self.makeWorkspaceWorkingDirectoryResolver()
         AppBundleIconPersistencePolicy.updateDisableDefault(
             defaults: defaults,
             launchArguments: ProcessInfo.processInfo.arguments
@@ -194,7 +195,8 @@ struct cmuxApp: App {
         StartupBreadcrumbLog.append("app.init.tabManager.begin")
         let tabManager = TabManager(
             workspaceCustomizationStore: workspaceCustomizationStore,
-            nativeSSHConnectionBroker: TerminalController.shared.nativeSSHConnectionBroker
+            nativeSSHConnectionBroker: TerminalController.shared.nativeSSHConnectionBroker,
+            workspaceWorkingDirectoryResolver: workspaceWorkingDirectoryResolver
         )
         _tabManager = StateObject(wrappedValue: tabManager)
         _notificationStore = StateObject(wrappedValue: notificationStore)
@@ -234,7 +236,8 @@ struct cmuxApp: App {
             notificationStore: notificationStore,
             sidebarState: sidebarState,
             settingsRuntime: settingsRuntime,
-            auth: authComposition
+            auth: authComposition,
+            workspaceWorkingDirectoryResolver: workspaceWorkingDirectoryResolver
         )
         StartupBreadcrumbLog.append("app.init.delegate.configured")
     }
@@ -245,6 +248,64 @@ struct cmuxApp: App {
         fflush(stderr)
         NSLog("%@", message)
         Darwin.exit(64)
+    }
+
+    private static func makeWorkspaceWorkingDirectoryResolver() -> (String) -> String {
+#if DEBUG
+        let fileManager = FileManager.default
+        let environment = ProcessInfo.processInfo.environment
+        let homeDirectory = fileManager.homeDirectoryForCurrentUser.path
+        let tag: String = {
+            switch SocketPathMarkerFiles.variant(
+                bundleIdentifier: Bundle.main.bundleIdentifier,
+                environment: environment
+            ) {
+            case .dev(let slug):
+                return slug ?? "untagged"
+            case .stable, .nightly, .staging:
+                return "debug"
+            }
+        }()
+        let applicationSupportDirectory = fileManager.urls(
+            for: .applicationSupportDirectory,
+            in: .userDomainMask
+        ).first ?? fileManager.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/Application Support", isDirectory: true)
+        let preferredScratchDirectory = applicationSupportDirectory
+            .appendingPathComponent("cmux/dev-scratch", isDirectory: true)
+            .appendingPathComponent(tag, isDirectory: true)
+        let temporaryScratchDirectory = fileManager.temporaryDirectory
+            .appendingPathComponent("cmux-dev-scratch", isDirectory: true)
+            .appendingPathComponent(tag, isDirectory: true)
+        let scratchDirectory = [preferredScratchDirectory, temporaryScratchDirectory]
+            .first { directory in
+                do {
+                    try fileManager.createDirectory(
+                        at: directory,
+                        withIntermediateDirectories: true
+                    )
+                    return true
+                } catch {
+                    return false
+                }
+            } ?? fileManager.temporaryDirectory
+
+        let policy = DefaultWorkspaceWorkingDirectoryPolicy(
+            isDebugBuild: true,
+            homeDirectory: homeDirectory,
+            repositoryRoot: environment["CMUXTERM_REPO_ROOT"],
+            scratchDirectory: scratchDirectory.path
+        )
+        return { candidate in
+            policy.resolve(candidate: candidate) { path in
+                var isDirectory: ObjCBool = false
+                return fileManager.fileExists(atPath: path, isDirectory: &isDirectory)
+                    && isDirectory.boolValue
+            }
+        }
+#else
+        return { $0 }
+#endif
     }
 
     private static func configureGhosttyEnvironment() {

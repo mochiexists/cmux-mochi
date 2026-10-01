@@ -11,7 +11,7 @@ one Mac. The apps communicate over DeviceLink's debug loopback route.
 EOF
 }
 
-TAG="hive-e2e-${GITHUB_RUN_ID:-$$}"
+TAG="e2e-hive"
 ARTIFACT_DIR=""
 DERIVED_DATA_ROOT="${CMUX_E2E_DERIVED_DATA_ROOT:-$HOME/src/dd-cmux-remote-nightly/phase3b}"
 TIMEOUT_SECONDS="${CMUX_E2E_TIMEOUT_SECONDS:-180}"
