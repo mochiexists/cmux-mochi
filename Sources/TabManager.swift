@@ -459,6 +459,7 @@ class TabManager: ObservableObject {
     private let settings: any SettingsWriting
     private let settingsCatalog = SettingCatalog()
     private let defaultWorkspaceWorkingDirectoryProvider: () -> String
+    private let workspaceWorkingDirectoryResolver: (String) -> String
     let workspaceCustomizationStore: WorkspaceCustomizationStore
     private var lastFocusHistoryIncludesPanesAndTabs: Bool
     let nativeSSHConnectionBroker: NativeSSHConnectionBroker
@@ -554,10 +555,12 @@ class TabManager: ObservableObject {
         },
         workspaceCustomizationStore: WorkspaceCustomizationStore? = nil,
         nativeSSHConnectionBroker: NativeSSHConnectionBroker = NativeSSHConnectionBroker(),
+        workspaceWorkingDirectoryResolver: @escaping (String) -> String = { $0 },
         closeTabWarningDefaults: UserDefaults = .standard
     ) {
         self.settings = settings
         self.defaultWorkspaceWorkingDirectoryProvider = defaultWorkspaceWorkingDirectoryProvider
+        self.workspaceWorkingDirectoryResolver = workspaceWorkingDirectoryResolver
         self.workspaceCustomizationStore = workspaceCustomizationStore ?? WorkspaceCustomizationStore()
         let focusHistoryScopeKey = SettingCatalog().app.focusHistoryIncludesPanesAndTabs
         self.lastFocusHistoryIncludesPanesAndTabs = settings.value(for: focusHistoryScopeKey)
@@ -1215,13 +1218,14 @@ class TabManager: ObservableObject {
             let nextTabCount = snapshot.tabs.count + 1
             sentryBreadcrumb("workspace.create", data: ["tabCount": nextTabCount])
             let explicitWorkingDirectory = normalizedWorkingDirectory(overrideWorkingDirectory)
-            let workingDirectory = WorkspaceCreationWorkingDirectoryPolicy(
+            let selectedWorkingDirectory = WorkspaceCreationWorkingDirectoryPolicy(
                 inheritanceEnabled: inheritanceEnabled
             ).resolve(
                 explicitWorkingDirectory: explicitWorkingDirectory,
                 inheritedWorkingDirectory: snapshot.preferredWorkingDirectory,
                 defaultWorkingDirectory: defaultWorkspaceWorkingDirectoryProvider()
             )
+            let workingDirectory = workspaceWorkingDirectoryResolver(selectedWorkingDirectory)
             let inheritedConfig = workspaceCreationConfigTemplate(
                 inheritedTerminalFontSizeLineage: snapshot.inheritedTerminalFontSizeLineage
             )
