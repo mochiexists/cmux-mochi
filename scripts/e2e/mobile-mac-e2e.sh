@@ -13,7 +13,7 @@ the focused cmuxUITests/testDeviceLinkMacRoundTripE2E XCUITest.
 EOF
 }
 
-TAG="mobile-mac-e2e-${GITHUB_RUN_ID:-$$}"
+TAG="e2e-mobile"
 ARTIFACT_DIR=""
 DERIVED_DATA_ROOT="${CMUX_E2E_DERIVED_DATA_ROOT:-$HOME/src/dd-cmux-remote-nightly/phase3a}"
 TIMEOUT_SECONDS="${CMUX_E2E_TIMEOUT_SECONDS:-180}"
