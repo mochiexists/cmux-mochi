@@ -1821,9 +1821,13 @@ final class TerminalNotificationStore: ObservableObject {
             surfaceId: surfaceId
         )
         var didMoveNotification = false
+        var keepsSourceConfinedNotification = false
         let updated = notifications.map { notification -> TerminalNotification in
-            guard notification.retargetsToLiveSurfaceOwner,
-                  notification.matches(tabId: sourceTabId, surfaceId: surfaceId) else {
+            guard notification.matches(tabId: sourceTabId, surfaceId: surfaceId) else {
+                return notification
+            }
+            guard notification.retargetsToLiveSurfaceOwner else {
+                keepsSourceConfinedNotification = true
                 return notification
             }
             didMoveNotification = true
@@ -1846,7 +1850,10 @@ final class TerminalNotificationStore: ObservableObject {
         if didMoveNotification {
             notifications = updated
         }
-        if focusedReadIndicatorByTabId[sourceTabId] == surfaceId {
+        // The focused-read marker belongs to the surface's notification. A source-confined
+        // notification stays in the source workspace, so its marker stays with it.
+        if !keepsSourceConfinedNotification || didMoveNotification,
+           focusedReadIndicatorByTabId[sourceTabId] == surfaceId {
             focusedReadIndicatorByTabId.removeValue(forKey: sourceTabId)
             if focusedReadIndicatorByTabId[destinationTabId] == nil {
                 focusedReadIndicatorByTabId[destinationTabId] = surfaceId
