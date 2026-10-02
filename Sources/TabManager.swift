@@ -3392,7 +3392,7 @@ class TabManager: ObservableObject {
         notificationDismissal.dismissFocusedPanelNotificationIfActive(workspaceId: tabId, context: context)
     }
 
-    private func dismissPanelNotificationOnFocus(tabId: UUID, panelId: UUID, explicitFocusIntent: Bool) {
+    func dismissPanelNotificationOnFocus(tabId: UUID, panelId: UUID, explicitFocusIntent: Bool) {
         notificationDismissal.dismissPanelNotificationOnFocus(
             workspaceId: tabId,
             panelId: panelId,

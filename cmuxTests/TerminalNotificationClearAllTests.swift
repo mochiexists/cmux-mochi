@@ -284,9 +284,12 @@ final class TerminalNotificationClearAllTests: XCTestCase {
 
         let firstPIDKey = "codex.agent-session-a"
         let secondPIDKey = "codex.agent-session-b"
+        let port = 54323
         workspace.statusEntries["codex"] = SidebarStatusEntry(key: "codex", value: "Running")
         workspace.recordAgentPID(key: firstPIDKey, pid: pid_t(12345), panelId: firstPanelId)
         workspace.recordAgentPID(key: secondPIDKey, pid: pid_t(12346), panelId: secondPanel.id)
+        workspace.agentListeningPorts = [port]
+        workspace.recomputeListeningPorts()
 
         XCTAssertTrue(workspace.bonsplitController.closePane(firstPaneId))
 
@@ -294,6 +297,8 @@ final class TerminalNotificationClearAllTests: XCTestCase {
         XCTAssertNil(workspace.agentPIDs[firstPIDKey])
         XCTAssertEqual(workspace.agentPIDs[secondPIDKey].map(Int.init), 12346)
         XCTAssertEqual(workspace.statusEntries["codex"]?.value, "Running")
+        XCTAssertEqual(workspace.agentListeningPorts, [port])
+        XCTAssertTrue(workspace.listeningPorts.contains(port))
     }
 
     func testStructuredAgentHookRuntimeSuppressesRawTerminalNotificationsForOwnedPanelOnly() throws {
@@ -646,6 +651,8 @@ final class TerminalNotificationClearAllTests: XCTestCase {
 
         XCTAssertEqual(destinationWorkspace.statusEntries["codex"]?.value, status.value)
         XCTAssertEqual(destinationWorkspace.agentPIDs[pidKey].map(Int.init), 12346)
+        XCTAssertEqual(destinationWorkspace.agentListeningPorts, [port])
+        XCTAssertTrue(destinationWorkspace.listeningPorts.contains(port))
         XCTAssertEqual(
             destinationWorkspace.restoredAgentSnapshotForTesting(panelId: movingPanelId)?.sessionId,
             "agent-session-detach"

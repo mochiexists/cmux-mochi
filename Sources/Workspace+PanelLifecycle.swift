@@ -96,12 +96,16 @@ extension Workspace {
                 || !lifecycleStates.isEmpty else {
             return nil
         }
+        let agentListeningPortsForPanel = Set(agentPIDs.keys).isSubset(of: pidKeys)
+            ? agentListeningPorts
+            : []
         return DetachedAgentRuntimeState(
             panelId: panelId,
             statusEntries: statusEntriesForPanel,
             agentPIDs: agentPIDsForPanel,
             agentPIDProcessIdentities: agentPIDIdentitiesForPanel,
             agentPIDKeys: pidKeys,
+            agentListeningPorts: agentListeningPortsForPanel,
             agentLifecycleStates: lifecycleStates
         )
     }
@@ -378,6 +382,11 @@ extension Workspace {
                 didChange = true
             }
         }
+        if agentPIDs.isEmpty, !runtimeState.agentListeningPorts.isEmpty {
+            agentListeningPorts.removeAll()
+            recomputeListeningPorts()
+            didChange = true
+        }
         if didChange {
             refreshTrackedAgentPorts()
         }
@@ -402,6 +411,12 @@ extension Workspace {
         }
         for (key, lifecycle) in runtimeState.agentLifecycleStates {
             setAgentLifecycle(key: key, panelId: runtimeState.panelId, lifecycle: lifecycle)
+        }
+        if !runtimeState.agentListeningPorts.isEmpty {
+            agentListeningPorts = Array(
+                Set(agentListeningPorts).union(runtimeState.agentListeningPorts)
+            ).sorted()
+            recomputeListeningPorts()
         }
         if didAdoptAgentPID {
             refreshTrackedAgentPorts()

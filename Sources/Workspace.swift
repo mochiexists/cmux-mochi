@@ -10377,6 +10377,11 @@ final class Workspace: Identifiable, ObservableObject {
             )
         }
         if currentlyFocusedPanelId != panelId {
+            owningTabManager?.dismissPanelNotificationOnFocus(
+                tabId: id,
+                panelId: panelId,
+                explicitFocusIntent: true
+            )
             syncUnreadBadgeStateForAllPanels()
         }
 
