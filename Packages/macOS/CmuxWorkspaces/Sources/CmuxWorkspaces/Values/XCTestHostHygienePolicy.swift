@@ -41,7 +41,7 @@ public struct XCTestHostHygienePolicy: Sendable, Equatable {
             || environment["XCTestSessionIdentifier"] != nil
     }
 
-    /// The `HOME` children see.
+    /// The home folder in-process readers of other apps' and agents' data use.
     public var homeDirectory: String { sandboxRoot + "/home" }
 
     /// Directories that must exist before the environment is applied.
@@ -57,14 +57,13 @@ public struct XCTestHostHygienePolicy: Sendable, Equatable {
     }
 
     /// The environment changes for the test host: a value sets the key, `nil` removes it.
+    ///
+    /// `HOME` and the XDG variables are deliberately left alone: libghostty runs inside
+    /// the host and resolves its own config from them, so redirecting them splits the
+    /// in-process terminal config from the Swift-side config. In-process readers of other
+    /// apps' and agents' data use ``homeDirectory`` instead.
     public var environmentChanges: [String: String?] {
         var changes: [String: String?] = [
-            "HOME": homeDirectory,
-            "ZDOTDIR": homeDirectory,
-            "XDG_CONFIG_HOME": homeDirectory + "/.config",
-            "XDG_DATA_HOME": homeDirectory + "/.local/share",
-            "XDG_CACHE_HOME": homeDirectory + "/.cache",
-            "XDG_STATE_HOME": homeDirectory + "/.local/state",
             "TMUX_TMPDIR": sandboxRoot + "/tmux",
             "PATH": Self.minimalPath,
         ]

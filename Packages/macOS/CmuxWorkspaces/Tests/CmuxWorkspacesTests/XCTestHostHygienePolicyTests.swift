@@ -12,21 +12,15 @@ import Testing
         #expect(!XCTestHostHygienePolicy.isRunningUnderXCTest(environment: ["HOME": realHome]))
     }
 
-    @Test func childEnvironmentNeverPointsAtTheRealHomeOrDotfiles() {
+    @Test func childEnvironmentGetsAMinimalPathAndKeepsTheRest() {
         let environment = policy.hermeticEnvironment(from: [
             "HOME": realHome,
-            "ZDOTDIR": realHome,
-            "XDG_CONFIG_HOME": realHome + "/.config",
             "PATH": "/opt/homebrew/bin:\(realHome)/.local/bin:/usr/bin:/bin",
             "LANG": "en_GB.UTF-8",
         ])
 
-        for key in ["HOME", "ZDOTDIR", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_CACHE_HOME", "XDG_STATE_HOME"] {
-            let value = environment[key] ?? ""
-            #expect(value.hasPrefix(policy.sandboxRoot + "/"), "\(key)=\(value)")
-            #expect(!value.hasPrefix(realHome), "\(key)=\(value)")
-        }
         #expect(environment["PATH"] == "/usr/bin:/bin:/usr/sbin:/sbin")
+        #expect(environment["HOME"] == realHome)
         #expect(environment["LANG"] == "en_GB.UTF-8")
     }
 
@@ -45,7 +39,7 @@ import Testing
         #expect(environment["TMUX_TMPDIR"] == policy.sandboxRoot + "/tmux")
     }
 
-    @Test func everyHermeticDirectoryIsCreatedInsideTheSandbox() {
+    @Test func everySandboxedLocationIsCreatedInsideTheSandbox() {
         let sandboxed = policy.environmentChanges.compactMap { key, value -> String? in
             guard let value, key != "PATH" else { return nil }
             return value
