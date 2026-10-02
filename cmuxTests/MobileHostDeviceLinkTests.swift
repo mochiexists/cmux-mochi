@@ -18,6 +18,47 @@ import Testing
 @Suite("DeviceLink host boundaries", .serialized)
 struct MobileHostDeviceLinkTests {
     @MainActor
+    @Test func e2eStateSelectionRejectsRegularFileInsteadOfUsingKeychain() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("devicelink-e2e-regular-file-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let statePath = root.appendingPathComponent("state", isDirectory: false)
+        try Data("not a directory".utf8).write(to: statePath)
+
+        #expect(throws: (any Error).self) {
+            _ = try MobileHostDeviceLink.makeShared(environment: [
+                "CMUX_E2E_DEVICELINK_STATE_DIR": statePath.path,
+            ])
+        }
+    }
+
+    @MainActor
+    @Test func e2eStateSelectionRejectsUnwritableParentInsteadOfUsingKeychain() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("devicelink-e2e-unwritable-parent-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer {
+            try? FileManager.default.setAttributes(
+                [.posixPermissions: 0o700],
+                ofItemAtPath: root.path
+            )
+            try? FileManager.default.removeItem(at: root)
+        }
+        try FileManager.default.setAttributes(
+            [.posixPermissions: 0o500],
+            ofItemAtPath: root.path
+        )
+        let stateDirectory = root.appendingPathComponent("state", isDirectory: true)
+
+        #expect(throws: (any Error).self) {
+            _ = try MobileHostDeviceLink.makeShared(environment: [
+                "CMUX_E2E_DEVICELINK_STATE_DIR": stateDirectory.path,
+            ])
+        }
+    }
+
+    @MainActor
     @Test func identityKeychainLoaderNeverRunsOnMainThread() async throws {
         let material = try DeviceIdentityMaterial.generate(commonName: "cmux-test")
         let threadProbe = IdentityLoaderThreadProbe()
