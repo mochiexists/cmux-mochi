@@ -240,7 +240,10 @@ extension CLINotifyProcessIntegrationRegressionTests {
         try writeShellFile(at: fakeCLI, lines: [
             "#!/bin/sh",
             "printf '%s\\n' \"$*\" >> \"${CMUX_TEST_CLI_LOG}\"",
-            "exit 1",
+            "case \"$*\" in",
+            "  *'rpc workspace.remote.terminal_session_launching '*) exit 1 ;;",
+            "  *) exit 0 ;;",
+            "esac",
         ])
         try writeShellFile(at: fakeSSH, lines: [
             "#!/bin/sh",
@@ -253,7 +256,7 @@ extension CLINotifyProcessIntegrationRegressionTests {
         let startupCommand = try generatedSSHStartupCommand(sshExecutablePath: fakeSSH.path)
         var environment = ProcessInfo.processInfo.environment
         environment["PATH"] = "\(root.path):\(environment["PATH"] ?? "/usr/bin:/bin")"
-        environment["CMUX_BUNDLED_CLI_PATH"] = ""
+        environment["CMUX_BUNDLED_CLI_PATH"] = fakeCLI.path
         environment["CMUX_SOCKET_PATH"] = "/tmp/cmux-debug-test.sock"
         environment["CMUX_WORKSPACE_ID"] = "11111111-1111-1111-1111-111111111111"
         environment["CMUX_SURFACE_ID"] = "22222222-2222-2222-2222-222222222222"
@@ -270,7 +273,7 @@ extension CLINotifyProcessIntegrationRegressionTests {
         )
 
         XCTAssertFalse(result.timedOut, result.stderr)
-        XCTAssertEqual(result.status, 0, result.stderr)
+        XCTAssertNotEqual(result.status, 0, result.stderr)
         let cliCalls = (try? String(contentsOf: cliLog, encoding: .utf8)) ?? ""
         XCTAssertGreaterThan(
             cliCalls
@@ -306,7 +309,12 @@ extension CLINotifyProcessIntegrationRegressionTests {
         try writeShellFile(at: fakeCLI, lines: [
             "#!/bin/sh",
             "printf '%s\\n' \"$*\" >> \"${CMUX_TEST_CLI_LOG}\"",
-            "kill -TERM \"$PPID\"",
+            "case \"$*\" in",
+            "  *'rpc workspace.remote.terminal_session_launching '*)",
+            "    kill -TERM \"$PPID\"",
+            "    exit 0",
+            "    ;;",
+            "esac",
             "exit 0",
         ])
         try writeShellFile(at: fakeSSH, lines: [
@@ -320,7 +328,7 @@ extension CLINotifyProcessIntegrationRegressionTests {
         let startupCommand = try generatedSSHStartupCommand(sshExecutablePath: fakeSSH.path)
         var environment = ProcessInfo.processInfo.environment
         environment["PATH"] = "\(root.path):\(environment["PATH"] ?? "/usr/bin:/bin")"
-        environment["CMUX_BUNDLED_CLI_PATH"] = ""
+        environment["CMUX_BUNDLED_CLI_PATH"] = fakeCLI.path
         environment["CMUX_SOCKET_PATH"] = "/tmp/cmux-debug-test.sock"
         environment["CMUX_WORKSPACE_ID"] = "11111111-1111-1111-1111-111111111111"
         environment["CMUX_SURFACE_ID"] = "22222222-2222-2222-2222-222222222222"
@@ -337,7 +345,7 @@ extension CLINotifyProcessIntegrationRegressionTests {
         )
 
         XCTAssertFalse(result.timedOut, result.stderr)
-        XCTAssertEqual(result.status, 0, result.stderr)
+        XCTAssertEqual(result.status, 143, result.stderr)
         let cliCalls = (try? String(contentsOf: cliLog, encoding: .utf8)) ?? ""
         XCTAssertTrue(
             cliCalls.contains("rpc workspace.remote.terminal_session_launching"),
