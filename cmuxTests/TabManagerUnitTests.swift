@@ -3542,6 +3542,50 @@ final class TabManagerFocusedNotificationIndicatorTests: XCTestCase {
         }
     }
 
+    /// `focusPanel` dismisses synchronously and the deferred focus broadcast
+    /// dismisses again; the second pass must find nothing left and not flash.
+    func testFocusPanelThenFocusBroadcastFlashesDismissedNotificationOnce() throws {
+        // The flash token counts only on the tmux-overlay pane flash path.
+        let defaults = UserDefaults.standard
+        let originalExperimentEnabled = defaults.object(forKey: TmuxOverlayExperimentSettings.enabledKey)
+        let originalExperimentTarget = defaults.object(forKey: TmuxOverlayExperimentSettings.targetKey)
+        defaults.set(true, forKey: TmuxOverlayExperimentSettings.enabledKey)
+        defaults.set(TmuxOverlayExperimentTarget.bonsplitPane.rawValue, forKey: TmuxOverlayExperimentSettings.targetKey)
+        defer {
+            defaults.set(originalExperimentEnabled, forKey: TmuxOverlayExperimentSettings.enabledKey)
+            defaults.set(originalExperimentTarget, forKey: TmuxOverlayExperimentSettings.targetKey)
+        }
+
+        try withSplitNotificationFixture(appIsFocused: true) { _, store, workspace, leftPanelId in
+            store.addNotification(
+                tabId: workspace.id,
+                surfaceId: leftPanelId,
+                title: "Unread",
+                subtitle: "",
+                body: "Focus should flash this pane once"
+            )
+
+            workspace.focusPanel(leftPanelId)
+            XCTAssertEqual(workspace.tmuxWorkspaceFlashToken, 1)
+
+            // The deferred broadcast `focusPanel` scheduled, plus one carrying
+            // direct-interaction intent, the widest dismissal context.
+            NotificationCenter.default.post(
+                name: .ghosttyDidFocusSurface,
+                object: nil,
+                userInfo: [
+                    GhosttyNotificationKey.tabId: workspace.id,
+                    GhosttyNotificationKey.surfaceId: leftPanelId,
+                    GhosttyNotificationKey.explicitFocusIntent: true,
+                ]
+            )
+            RunLoop.main.run(until: Date().addingTimeInterval(0.2))
+
+            XCTAssertFalse(store.hasUnreadNotification(forTabId: workspace.id, surfaceId: leftPanelId))
+            XCTAssertEqual(workspace.tmuxWorkspaceFlashToken, 1)
+        }
+    }
+
     /// Selected workspace split into two terminals with the right one focused;
     /// `body` receives the left panel id.
     private func withSplitNotificationFixture(
