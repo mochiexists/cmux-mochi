@@ -3798,11 +3798,21 @@ final class CLINotifyProcessIntegrationRegressionTests: XCTestCase {
                 configureParams["terminal_startup_command"] as? String,
                 testCase.name
             )
-            let initialScript = decodedReusableStartupScript(from: initialCommand) ?? initialCommand
+            let initialScript = decodedReusableStartupScript(from: initialCommand)
+                ?? startupScriptFileContents(from: initialCommand)
+                ?? initialCommand
             let terminalStartupScript = decodedReusableStartupScript(from: terminalStartupCommand) ?? terminalStartupCommand
 
             XCTAssertFalse(initialScript.contains("ssh-pty-attach"), testCase.name)
             XCTAssertFalse(terminalStartupScript.contains("ssh-pty-attach"), testCase.name)
+            XCTAssertTrue(
+                initialScript.contains("workspace.remote.terminal_session_connected"),
+                testCase.name
+            )
+            XCTAssertTrue(
+                terminalStartupScript.contains("workspace.remote.terminal_session_connected"),
+                testCase.name
+            )
             XCTAssertEqual(configureParams["auto_connect"] as? Bool, true, testCase.name)
             XCTAssertNil(configureParams["foreground_auth_token"], testCase.name)
             XCTAssertNil(configureParams["preserve_after_terminal_exit"], testCase.name)
@@ -4055,16 +4065,25 @@ final class CLINotifyProcessIntegrationRegressionTests: XCTestCase {
             result.stderr
         )
         let methods = state.commands.compactMap { self.jsonObject($0)?["method"] as? String }
+        // The initial resize travels on its own socket from SSHPTYResizeMonitor,
+        // concurrently with bridge reconciliation, and is dropped if the bridge
+        // closes first. Only its count is defined; every other call stays ordered.
         XCTAssertEqual(
-            methods.filter { $0 != "workspace.remote.terminal_session_connected" },
+            methods.filter {
+                $0 != "workspace.remote.terminal_session_connected"
+                    && $0 != "workspace.remote.pty_resize"
+            },
             [
                 "workspace.remote.pty_bridge",
                 "workspace.remote.pty_sessions",
-                "workspace.remote.pty_resize",
                 "workspace.remote.pty_detach",
                 "workspace.remote.pty_sessions",
                 "workspace.remote.pty_attach_end",
             ]
+        )
+        XCTAssertLessThanOrEqual(
+            methods.filter { $0 == "workspace.remote.pty_resize" }.count,
+            1
         )
         XCTAssertEqual(
             methods.filter {
@@ -4298,7 +4317,15 @@ final class CLINotifyProcessIntegrationRegressionTests: XCTestCase {
         XCTAssertTrue(result.stdout.isEmpty, result.stdout)
         XCTAssertTrue(result.stderr.isEmpty, result.stderr)
         let methods = state.commands.compactMap { self.jsonObject($0)?["method"] as? String }
-        XCTAssertEqual(methods, ["workspace.remote.pty_bridge", "workspace.remote.pty_sessions", "workspace.remote.pty_resize"])
+        // The initial resize is sent concurrently on its own socket (SSHPTYResizeMonitor).
+        XCTAssertEqual(
+            methods.filter { $0 != "workspace.remote.pty_resize" },
+            ["workspace.remote.pty_bridge", "workspace.remote.pty_sessions"]
+        )
+        XCTAssertLessThanOrEqual(
+            methods.filter { $0 == "workspace.remote.pty_resize" }.count,
+            1
+        )
     }
 
     func testSSHPTYAttachBridgeResetWhenSessionGoneClearsLocalState() throws {
@@ -4412,12 +4439,22 @@ final class CLINotifyProcessIntegrationRegressionTests: XCTestCase {
         XCTAssertTrue(result.stdout.isEmpty, result.stdout)
         XCTAssertTrue(result.stderr.isEmpty, result.stderr)
         let methods = state.commands.compactMap { self.jsonObject($0)?["method"] as? String }
-        XCTAssertEqual(Set(methods), Set([
-            "workspace.remote.pty_bridge",
-            "workspace.remote.pty_resize",
-            "workspace.remote.pty_sessions",
-            "workspace.remote.pty_attach_end",
-        ]))
+        // The initial resize is sent concurrently on its own socket (SSHPTYResizeMonitor).
+        XCTAssertEqual(
+            methods.filter {
+                $0 != "workspace.remote.terminal_session_connected"
+                    && $0 != "workspace.remote.pty_resize"
+            },
+            [
+                "workspace.remote.pty_bridge",
+                "workspace.remote.pty_sessions",
+                "workspace.remote.pty_attach_end",
+            ]
+        )
+        XCTAssertLessThanOrEqual(
+            methods.filter { $0 == "workspace.remote.pty_resize" }.count,
+            1
+        )
         XCTAssertEqual(
             methods.filter {
                 $0 == "workspace.remote.terminal_session_connected"
@@ -5285,6 +5322,7 @@ final class CLINotifyProcessIntegrationRegressionTests: XCTestCase {
         XCTAssertFalse(result.timedOut, result.stderr)
         XCTAssertEqual(result.status, 253, result.stderr)
         XCTAssertTrue(result.stderr.contains("remote session was lost; starting a new shell"), result.stderr)
+        XCTAssertTrue(result.stderr.contains("persistent SSH PTY session is no longer running"), result.stderr)
         let requests = state.commands.compactMap(self.jsonObject)
         let bridgeRequests = requests.filter { ($0["method"] as? String) == "workspace.remote.pty_bridge" }
         XCTAssertEqual(
@@ -5738,7 +5776,7 @@ final class CLINotifyProcessIntegrationRegressionTests: XCTestCase {
         XCTAssertFalse(state.snapshot().contains { $0.contains("workspace.remote.pty_close") })
         XCTAssertTrue(result.stderr.contains("ssh-session-cleanup failed for 1 persisted SSH PTY session"), result.stderr)
         XCTAssertTrue(result.stderr.contains(sessionId), result.stderr)
-        XCTAssertTrue(result.stderr.contains("remote PTY operation failed"), result.stderr)
+        XCTAssertTrue(result.stderr.contains("persistent SSH PTY session is no longer running"), result.stderr)
     }
 
     func testSSHSessionCleanupAllWorkspacesSessionIDCountsDuplicateIDsPerWorkspace() throws {
@@ -9874,6 +9912,17 @@ final class CLINotifyProcessIntegrationRegressionTests: XCTestCase {
         let createParams = try XCTUnwrap(params(for: "workspace.create", in: try runMockedSSH(arguments: []).requests))
         return try XCTUnwrap(decodedReusableStartupScript(from: try XCTUnwrap(createParams["initial_command"] as? String)))
     }
+    /// Non-reusable startup commands are written to a temporary script file
+    /// (`writeSSHStartupScript`) and passed as its quoted path.
+    private func startupScriptFileContents(from command: String) -> String? {
+        var path = command.trimmingCharacters(in: .whitespacesAndNewlines)
+        if path.hasPrefix("'"), path.hasSuffix("'"), path.count >= 2 {
+            path = String(path.dropFirst().dropLast())
+        }
+        guard path.hasPrefix("/"), !path.contains("'") else { return nil }
+        return try? String(contentsOfFile: path, encoding: .utf8)
+    }
+
     private func decodedReusableStartupScript(from command: String) -> String? {
         guard let markerRange = command.range(of: "printf %s ") else {
             return nil

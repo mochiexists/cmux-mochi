@@ -171,6 +171,10 @@ extension CLINotifyProcessIntegrationRegressionTests {
         ])
         try writeShellFile(at: fakeSSH, lines: [
             "#!/bin/sh",
+            // Answer config resolution like OpenSSH so the CLI generates its
+            // managed bootstrap path; a failing `ssh -G` selects the unmanaged
+            // OpenSSH fallback instead (`fallsBackToOpenSSHInteractiveSession`).
+            "case \" $* \" in *\" -G \"*) printf 'hostname cmux-macmini\\n'; exit 0 ;; esac",
             "count=0",
             "if [ -r \"${CMUX_TEST_ATTEMPT_FILE}\" ]; then count=$(cat \"${CMUX_TEST_ATTEMPT_FILE}\"); fi",
             "count=$((count + 1))",
@@ -199,9 +203,11 @@ extension CLINotifyProcessIntegrationRegressionTests {
 
         XCTAssertFalse(result.timedOut, result.stderr)
         XCTAssertEqual(result.status, 0, result.stderr)
-        // The generated startup wrapper launches one SSH process per attempt.
-        // A transient failure followed by success therefore launches twice.
-        XCTAssertEqual((try? String(contentsOf: attemptFile, encoding: .utf8))?.trimmingCharacters(in: .whitespacesAndNewlines), "2")
+        // The regular `cmux ssh` bootstrap path runs one SSH command to install
+        // the remote bootstrap and another to open the session. A transient
+        // install-channel failure therefore yields three raw SSH invocations:
+        // failed install, retried install, successful session.
+        XCTAssertEqual((try? String(contentsOf: attemptFile, encoding: .utf8))?.trimmingCharacters(in: .whitespacesAndNewlines), "3")
         XCTAssertEqual(try String(contentsOf: sleepLog, encoding: .utf8), "2\n")
         let recordedCalls = (try? String(contentsOf: logFile, encoding: .utf8)) ?? ""
         let sessionEndCalls = recordedCalls.split(separator: "\n").filter { $0.contains("ssh-session-end") }

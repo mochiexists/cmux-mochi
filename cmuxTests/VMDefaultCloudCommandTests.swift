@@ -1036,8 +1036,8 @@ extension CLINotifyProcessIntegrationRegressionTests {
                     id: id,
                     ok: false,
                     error: [
-                        "code": "vm_cloud_state_unavailable",
-                        "message": "The Cloud VM service is unavailable.",
+                        "code": "vm_cloud_service_unavailable",
+                        "message": "The Cloud VM service could not complete this request.",
                     ]
                 )
             default:
