@@ -1185,26 +1185,22 @@ final class ShortcutHintModifierPolicyTests: XCTestCase {
 
 
 final class RightSidebarModeShortcutHintTests: XCTestCase {
-    private let touchedShortcutActions: [KeyboardShortcutSettings.Action] = [
-        .focusRightSidebar,
-        .switchRightSidebarToFiles,
-        .switchRightSidebarToFind,
-        .switchRightSidebarToSessions,
-        .switchRightSidebarToFeed,
-        .switchRightSidebarToDock,
-    ]
     private var originalSettingsFileStore: KeyboardShortcutSettingsFileStore!
-    private var savedShortcutData: [KeyboardShortcutSettings.Action: Data?] = [:]
+    private var originalPersistenceDefaults: UserDefaults!
+    private var persistenceDefaults: UserDefaults!
+    private var persistenceDefaultsSuiteName: String!
     private var temporaryDirectoryURL: URL?
 
     override func setUpWithError() throws {
         try super.setUpWithError()
         originalSettingsFileStore = KeyboardShortcutSettings.settingsFileStore
-        savedShortcutData = Dictionary(
-            uniqueKeysWithValues: touchedShortcutActions.map { action in
-                (action, UserDefaults.standard.data(forKey: action.defaultsKey))
-            }
-        )
+        originalPersistenceDefaults = KeyboardShortcutSettings.persistenceDefaults
+        persistenceDefaultsSuiteName = "RightSidebarModeShortcutHintTests.\(UUID().uuidString)"
+        persistenceDefaults = try XCTUnwrap(UserDefaults(suiteName: persistenceDefaultsSuiteName))
+        persistenceDefaults.removePersistentDomain(forName: persistenceDefaultsSuiteName)
+        persistenceDefaults.set(true, forKey: RightSidebarBetaFeatureSettings.feedEnabledKey)
+        persistenceDefaults.set(true, forKey: RightSidebarBetaFeatureSettings.dockEnabledKey)
+        KeyboardShortcutSettings.persistenceDefaults = persistenceDefaults
 
         let directoryURL = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
@@ -1213,23 +1209,17 @@ final class RightSidebarModeShortcutHintTests: XCTestCase {
         KeyboardShortcutSettings.settingsFileStore = KeyboardShortcutSettingsFileStore(
             primaryPath: directoryURL.appendingPathComponent("cmux.json", isDirectory: false).path,
             fallbackPath: nil,
+            additionalFallbackPaths: [],
+            defaults: persistenceDefaults,
             startWatching: false
         )
-        for action in touchedShortcutActions {
-            UserDefaults.standard.removeObject(forKey: action.defaultsKey)
-        }
         KeyboardShortcutSettings.notifySettingsFileDidChange()
     }
 
     override func tearDownWithError() throws {
-        for action in touchedShortcutActions {
-            if case let .some(.some(data)) = savedShortcutData[action] {
-                UserDefaults.standard.set(data, forKey: action.defaultsKey)
-            } else {
-                UserDefaults.standard.removeObject(forKey: action.defaultsKey)
-            }
-        }
         KeyboardShortcutSettings.settingsFileStore = originalSettingsFileStore
+        KeyboardShortcutSettings.persistenceDefaults = originalPersistenceDefaults
+        persistenceDefaults.removePersistentDomain(forName: persistenceDefaultsSuiteName)
         KeyboardShortcutSettings.notifySettingsFileDidChange()
         if let temporaryDirectoryURL {
             try? FileManager.default.removeItem(at: temporaryDirectoryURL)
@@ -1247,23 +1237,43 @@ final class RightSidebarModeShortcutHintTests: XCTestCase {
 
     func testModeShortcutsUsePrivateControlDigitDefaults() {
         XCTAssertEqual(
-            RightSidebarMode.modeShortcut(for: makeKeyDownEvent(key: "1", modifiers: [.control], keyCode: 18)),
+            RightSidebarMode.modeShortcut(
+                for: makeKeyDownEvent(key: "1", modifiers: [.control], keyCode: 18),
+                allowingAction: { _ in true },
+                defaults: persistenceDefaults
+            ),
             .files
         )
         XCTAssertEqual(
-            RightSidebarMode.modeShortcut(for: makeKeyDownEvent(key: "2", modifiers: [.control], keyCode: 19)),
+            RightSidebarMode.modeShortcut(
+                for: makeKeyDownEvent(key: "2", modifiers: [.control], keyCode: 19),
+                allowingAction: { _ in true },
+                defaults: persistenceDefaults
+            ),
             .find
         )
         XCTAssertEqual(
-            RightSidebarMode.modeShortcut(for: makeKeyDownEvent(key: "3", modifiers: [.control], keyCode: 20)),
+            RightSidebarMode.modeShortcut(
+                for: makeKeyDownEvent(key: "3", modifiers: [.control], keyCode: 20),
+                allowingAction: { _ in true },
+                defaults: persistenceDefaults
+            ),
             .sessions
         )
         XCTAssertEqual(
-            RightSidebarMode.modeShortcut(for: makeKeyDownEvent(key: "4", modifiers: [.control], keyCode: 21)),
+            RightSidebarMode.modeShortcut(
+                for: makeKeyDownEvent(key: "4", modifiers: [.control], keyCode: 21),
+                allowingAction: { _ in true },
+                defaults: persistenceDefaults
+            ),
             .feed
         )
         XCTAssertEqual(
-            RightSidebarMode.modeShortcut(for: makeKeyDownEvent(key: "5", modifiers: [.control], keyCode: 23)),
+            RightSidebarMode.modeShortcut(
+                for: makeKeyDownEvent(key: "5", modifiers: [.control], keyCode: 23),
+                allowingAction: { _ in true },
+                defaults: persistenceDefaults
+            ),
             .dock
         )
     }
@@ -1291,14 +1301,18 @@ final class RightSidebarModeShortcutHintTests: XCTestCase {
         let feedEvent = makeKeyDownEvent(key: "4", modifiers: [.control], keyCode: 21)
 
         XCTAssertNil(
-            RightSidebarMode.modeShortcut(for: feedEvent) { action in
-                action != .switchRightSidebarToFeed
-            }
+            RightSidebarMode.modeShortcut(
+                for: feedEvent,
+                allowingAction: { action in action != .switchRightSidebarToFeed },
+                defaults: persistenceDefaults
+            )
         )
         XCTAssertEqual(
-            RightSidebarMode.modeShortcut(for: feedEvent) { action in
-                action == .switchRightSidebarToFeed
-            },
+            RightSidebarMode.modeShortcut(
+                for: feedEvent,
+                allowingAction: { action in action == .switchRightSidebarToFeed },
+                defaults: persistenceDefaults
+            ),
             .feed
         )
     }

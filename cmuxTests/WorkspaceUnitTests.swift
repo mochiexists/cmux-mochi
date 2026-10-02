@@ -844,6 +844,10 @@ final class WorkspaceRenameShortcutDefaultsTests: XCTestCase {
 
 final class KeyboardShortcutSettingsFileStoreTests: XCTestCase {
     private var originalSettingsFileStore: KeyboardShortcutSettingsFileStore!
+    private var originalPersistenceDefaults: UserDefaults!
+    private var persistenceDefaults: UserDefaults!
+    private var persistenceDefaultsSuiteName: String!
+    private var isolatedSettingsDirectoryURL: URL!
     private let settingsFileBackupsDefaultsKey = "cmux.settingsFile.backups.v1"
 
     func testShortcutConfigStringCanonicalizesNumberedDigitsWhenRequested() {
@@ -866,16 +870,37 @@ final class KeyboardShortcutSettingsFileStoreTests: XCTestCase {
         XCTAssertNil(ShortcutStroke.parseConfig("cmd+f21"))
     }
 
-    override func setUp() {
-        super.setUp()
+    override func setUpWithError() throws {
+        try super.setUpWithError()
         originalSettingsFileStore = KeyboardShortcutSettings.settingsFileStore
+        originalPersistenceDefaults = KeyboardShortcutSettings.persistenceDefaults
+        persistenceDefaultsSuiteName = "KeyboardShortcutSettingsFileStoreTests.\(UUID().uuidString)"
+        persistenceDefaults = try XCTUnwrap(UserDefaults(suiteName: persistenceDefaultsSuiteName))
+        persistenceDefaults.removePersistentDomain(forName: persistenceDefaultsSuiteName)
+        KeyboardShortcutSettings.persistenceDefaults = persistenceDefaults
         KeyboardShortcutSettings.resetAll()
+        isolatedSettingsDirectoryURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(
+            at: isolatedSettingsDirectoryURL,
+            withIntermediateDirectories: true
+        )
+        KeyboardShortcutSettings.settingsFileStore = KeyboardShortcutSettingsFileStore(
+            primaryPath: isolatedSettingsDirectoryURL.appendingPathComponent("cmux.json").path,
+            fallbackPath: nil,
+            additionalFallbackPaths: [],
+            defaults: persistenceDefaults,
+            startWatching: false
+        )
     }
 
     override func tearDown() {
         KeyboardShortcutSettings.settingsFileStore = originalSettingsFileStore
         AppIconSettings.resetLiveEnvironmentProviderForTesting()
         KeyboardShortcutSettings.resetAll()
+        KeyboardShortcutSettings.persistenceDefaults = originalPersistenceDefaults
+        persistenceDefaults.removePersistentDomain(forName: persistenceDefaultsSuiteName)
+        try? FileManager.default.removeItem(at: isolatedSettingsDirectoryURL)
         super.tearDown()
     }
 
@@ -1635,12 +1660,22 @@ final class KeyboardShortcutSettingsFileStoreTests: XCTestCase {
         KeyboardShortcutSettings.settingsFileStore = KeyboardShortcutSettingsFileStore(
             primaryPath: settingsFileURL.path,
             fallbackPath: nil,
+            additionalFallbackPaths: [],
+            defaults: persistenceDefaults,
             startWatching: false
         )
 
         XCTAssertEqual(
             KeyboardShortcutSettings.shortcut(for: .newTab),
-            StoredShortcut(key: "n", command: true, shift: false, option: false, control: false)
+            StoredShortcut(
+                key: "b",
+                command: false,
+                shift: false,
+                option: false,
+                control: true,
+                chordKey: "c"
+            ),
+            "A settings-file-managed shortcut remains authoritative over an earlier persisted value"
         )
         XCTAssertTrue(KeyboardShortcutSettings.isManagedBySettingsFile(.newTab))
     }
@@ -1665,6 +1700,8 @@ final class KeyboardShortcutSettingsFileStoreTests: XCTestCase {
         KeyboardShortcutSettings.settingsFileStore = KeyboardShortcutSettingsFileStore(
             primaryPath: settingsFileURL.path,
             fallbackPath: nil,
+            additionalFallbackPaths: [],
+            defaults: persistenceDefaults,
             startWatching: false
         )
 
@@ -1684,7 +1721,11 @@ final class KeyboardShortcutSettingsFileStoreTests: XCTestCase {
             to: settingsFileURL
         )
 
-        GhosttyApp.shared.reloadConfiguration(source: "test.reload_config")
+        let reloadExpectation = expectation(description: "Reload configuration applies the settings file")
+        GhosttyApp.shared.reloadConfiguration(source: "test.reload_config") {
+            reloadExpectation.fulfill()
+        }
+        wait(for: [reloadExpectation], timeout: 5.0)
 
         XCTAssertEqual(
             KeyboardShortcutSettings.shortcut(for: .newTab),
@@ -1821,6 +1862,8 @@ final class KeyboardShortcutSettingsFileStoreTests: XCTestCase {
         KeyboardShortcutSettings.settingsFileStore = KeyboardShortcutSettingsFileStore(
             primaryPath: settingsFileURL.path,
             fallbackPath: nil,
+            additionalFallbackPaths: [],
+            defaults: persistenceDefaults,
             startWatching: false
         )
 
@@ -1831,7 +1874,11 @@ final class KeyboardShortcutSettingsFileStoreTests: XCTestCase {
             for: .newTab
         )
 
-        XCTAssertEqual(KeyboardShortcutSettings.shortcut(for: .newTab), editedShortcut)
+        XCTAssertEqual(
+            KeyboardShortcutSettings.shortcut(for: .newTab),
+            managedShortcut,
+            "UI persistence must not replace a settings-file-managed shortcut"
+        )
 
         KeyboardShortcutSettings.resetShortcut(for: .newTab)
 
@@ -1840,6 +1887,8 @@ final class KeyboardShortcutSettingsFileStoreTests: XCTestCase {
         KeyboardShortcutSettings.settingsFileStore = KeyboardShortcutSettingsFileStore(
             primaryPath: missingSettingsFileURL.path,
             fallbackPath: nil,
+            additionalFallbackPaths: [],
+            defaults: persistenceDefaults,
             startWatching: false
         )
 
@@ -1866,6 +1915,8 @@ final class KeyboardShortcutSettingsFileStoreTests: XCTestCase {
         KeyboardShortcutSettings.settingsFileStore = KeyboardShortcutSettingsFileStore(
             primaryPath: settingsFileURL.path,
             fallbackPath: nil,
+            additionalFallbackPaths: [],
+            defaults: persistenceDefaults,
             startWatching: false
         )
 
@@ -1898,7 +1949,7 @@ final class KeyboardShortcutSettingsFileStoreTests: XCTestCase {
             chordKey: "c"
         )
         let encodedShortcut = try XCTUnwrap(try? JSONEncoder().encode(invalidShortcut))
-        let defaults = UserDefaults.standard
+        let defaults = persistenceDefaults!
         defaults.set(encodedShortcut, forKey: SystemWideHotkeySettings.legacyShortcutKey)
 
         let migratedShortcut = SystemWideHotkeySettings.shortcut()
@@ -2262,10 +2313,12 @@ final class KeyboardShortcutSettingsFileStoreTests: XCTestCase {
         KeyboardShortcutSettings.settingsFileStore = KeyboardShortcutSettingsFileStore(
             primaryPath: settingsFileURL.path,
             fallbackPath: nil,
+            additionalFallbackPaths: [],
+            defaults: persistenceDefaults,
             startWatching: false
         )
 
-        XCTAssertEqual(UserDefaultsSettingsClient(defaults: .standard).value(for: SettingCatalog().app.newWorkspacePlacement), .top)
+        XCTAssertEqual(UserDefaultsSettingsClient(defaults: persistenceDefaults).value(for: SettingCatalog().app.newWorkspacePlacement), .top)
 
         try writeSettingsFile(
             """
@@ -2280,7 +2333,7 @@ final class KeyboardShortcutSettingsFileStoreTests: XCTestCase {
 
         GhosttyApp.shared.reloadConfiguration(source: "test.reload_config_app_setting")
 
-        XCTAssertEqual(UserDefaultsSettingsClient(defaults: .standard).value(for: SettingCatalog().app.newWorkspacePlacement), .end)
+        XCTAssertEqual(UserDefaultsSettingsClient(defaults: persistenceDefaults).value(for: SettingCatalog().app.newWorkspacePlacement), .end)
     }
 
     @MainActor
@@ -2402,6 +2455,41 @@ final class KeyboardShortcutSettingsFileStoreTests: XCTestCase {
 }
 
 final class StoredShortcutMatchingTests: XCTestCase {
+    private var originalSettingsFileStore: KeyboardShortcutSettingsFileStore!
+    private var originalPersistenceDefaults: UserDefaults!
+    private var persistenceDefaults: UserDefaults!
+    private var persistenceDefaultsSuiteName: String!
+    private var settingsDirectoryURL: URL!
+
+    override func setUpWithError() throws {
+        try super.setUpWithError()
+        originalSettingsFileStore = KeyboardShortcutSettings.settingsFileStore
+        originalPersistenceDefaults = KeyboardShortcutSettings.persistenceDefaults
+        persistenceDefaultsSuiteName = "StoredShortcutMatchingTests.\(UUID().uuidString)"
+        persistenceDefaults = try XCTUnwrap(UserDefaults(suiteName: persistenceDefaultsSuiteName))
+        persistenceDefaults.removePersistentDomain(forName: persistenceDefaultsSuiteName)
+        KeyboardShortcutSettings.persistenceDefaults = persistenceDefaults
+
+        settingsDirectoryURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: settingsDirectoryURL, withIntermediateDirectories: true)
+        KeyboardShortcutSettings.settingsFileStore = KeyboardShortcutSettingsFileStore(
+            primaryPath: settingsDirectoryURL.appendingPathComponent("cmux.json").path,
+            fallbackPath: nil,
+            additionalFallbackPaths: [],
+            defaults: persistenceDefaults,
+            startWatching: false
+        )
+    }
+
+    override func tearDown() {
+        KeyboardShortcutSettings.settingsFileStore = originalSettingsFileStore
+        KeyboardShortcutSettings.persistenceDefaults = originalPersistenceDefaults
+        persistenceDefaults.removePersistentDomain(forName: persistenceDefaultsSuiteName)
+        try? FileManager.default.removeItem(at: settingsDirectoryURL)
+        super.tearDown()
+    }
+
     private func makeMediaKeyEvent(
         keyCode: UInt16,
         modifierFlags: NSEvent.ModifierFlags = [],

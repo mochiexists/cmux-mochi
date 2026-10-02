@@ -10,18 +10,19 @@ import XCTest
 @MainActor
 final class CommandPaletteShortcutCustomizationTests: XCTestCase {
     private var originalSettingsFileStore: KeyboardShortcutSettingsFileStore!
+    private var originalPersistenceDefaults: UserDefaults!
+    private var persistenceDefaults: UserDefaults!
+    private var persistenceDefaultsSuiteName: String!
     private var settingsDirectoryURL: URL!
-    private var savedCommandPaletteNext: Any?
-    private var savedCommandPalettePrevious: Any?
 
     override func setUpWithError() throws {
         try super.setUpWithError()
         executionTimeAllowance = 30
-        let defaults = UserDefaults.standard
-        savedCommandPaletteNext = defaults.object(forKey: KeyboardShortcutSettings.Action.commandPaletteNext.defaultsKey)
-        savedCommandPalettePrevious = defaults.object(forKey: KeyboardShortcutSettings.Action.commandPalettePrevious.defaultsKey)
-        defaults.removeObject(forKey: KeyboardShortcutSettings.Action.commandPaletteNext.defaultsKey)
-        defaults.removeObject(forKey: KeyboardShortcutSettings.Action.commandPalettePrevious.defaultsKey)
+        persistenceDefaultsSuiteName = "CommandPaletteShortcutCustomizationTests.\(UUID().uuidString)"
+        persistenceDefaults = try XCTUnwrap(UserDefaults(suiteName: persistenceDefaultsSuiteName))
+        persistenceDefaults.removePersistentDomain(forName: persistenceDefaultsSuiteName)
+        originalPersistenceDefaults = KeyboardShortcutSettings.persistenceDefaults
+        KeyboardShortcutSettings.persistenceDefaults = persistenceDefaults
         originalSettingsFileStore = KeyboardShortcutSettings.settingsFileStore
         settingsDirectoryURL = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
@@ -29,28 +30,20 @@ final class CommandPaletteShortcutCustomizationTests: XCTestCase {
         KeyboardShortcutSettings.settingsFileStore = KeyboardShortcutSettingsFileStore(
             primaryPath: settingsDirectoryURL.appendingPathComponent("cmux.json").path,
             fallbackPath: nil,
+            additionalFallbackPaths: [],
+            defaults: persistenceDefaults,
             startWatching: false
         )
     }
 
     override func tearDown() {
-        restoreDefault(savedCommandPaletteNext, forKey: KeyboardShortcutSettings.Action.commandPaletteNext.defaultsKey)
-        restoreDefault(savedCommandPalettePrevious, forKey: KeyboardShortcutSettings.Action.commandPalettePrevious.defaultsKey)
-        savedCommandPaletteNext = nil
-        savedCommandPalettePrevious = nil
         KeyboardShortcutSettings.settingsFileStore = originalSettingsFileStore
+        KeyboardShortcutSettings.persistenceDefaults = originalPersistenceDefaults
+        persistenceDefaults.removePersistentDomain(forName: persistenceDefaultsSuiteName)
         if let settingsDirectoryURL {
             try? FileManager.default.removeItem(at: settingsDirectoryURL)
         }
         super.tearDown()
-    }
-
-    private func restoreDefault(_ value: Any?, forKey key: String) {
-        if let value {
-            UserDefaults.standard.set(value, forKey: key)
-        } else {
-            UserDefaults.standard.removeObject(forKey: key)
-        }
     }
 
     func testFieldEditorMoveCommandHonorsClearedCommandPalettePreviousShortcut() {
@@ -340,10 +333,16 @@ final class CommandPaletteShortcutCustomizationTests: XCTestCase {
 
         withCommandPaletteFieldEditor(appDelegate: appDelegate) { window, _ in
             withTemporaryCommandPaletteShortcut(.commandPaletteNext) {
-                KeyboardShortcutSettings.setShortcut(
-                    StoredShortcut(key: "b", command: false, shift: false, option: false, control: true, chordKey: "n"),
-                    for: .commandPaletteNext
+                let configuredShortcut = StoredShortcut(
+                    key: "b",
+                    command: false,
+                    shift: false,
+                    option: false,
+                    control: true,
+                    chordKey: "n"
                 )
+                KeyboardShortcutSettings.setShortcut(configuredShortcut, for: .commandPaletteNext)
+                XCTAssertEqual(KeyboardShortcutSettings.shortcut(for: .commandPaletteNext), configuredShortcut)
                 let moveExpectation = expectation(description: "Expected chorded next shortcut to move selection")
                 var observedDeltas: [Int] = []
                 var observedWindow: NSWindow?
@@ -509,11 +508,12 @@ final class CommandPaletteShortcutCustomizationTests: XCTestCase {
             return
         }
 
-        let overlayContainer = NSView(frame: contentView.bounds)
+        let overlayHost = contentView.superview ?? contentView
+        let overlayContainer = NSView(frame: overlayHost.bounds)
         overlayContainer.identifier = commandPaletteOverlayContainerIdentifier
         overlayContainer.alphaValue = 1
         overlayContainer.isHidden = false
-        contentView.addSubview(overlayContainer)
+        overlayHost.addSubview(overlayContainer)
 
         defer {
             appDelegate.setCommandPaletteVisible(false, for: window)
@@ -531,7 +531,7 @@ final class CommandPaletteShortcutCustomizationTests: XCTestCase {
         _ action: KeyboardShortcutSettings.Action,
         _ body: () -> Void
     ) {
-        let hadPersistedShortcut = UserDefaults.standard.object(forKey: action.defaultsKey) != nil
+        let hadPersistedShortcut = KeyboardShortcutSettings.persistenceDefaults.object(forKey: action.defaultsKey) != nil
         let originalShortcut = KeyboardShortcutSettings.shortcut(for: action)
         defer {
             if hadPersistedShortcut {
