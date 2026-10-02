@@ -10377,10 +10377,12 @@ final class Workspace: Identifiable, ObservableObject {
             )
         }
         if currentlyFocusedPanelId != panelId {
+            // Same intent the deferred focus broadcast carries: programmatic and
+            // restore focus stay generic active focus, not direct interaction.
             owningTabManager?.dismissPanelNotificationOnFocus(
                 tabId: id,
                 panelId: panelId,
-                explicitFocusIntent: true
+                explicitFocusIntent: shouldTreatCurrentEventAsExplicitFocusIntent()
             )
             syncUnreadBadgeStateForAllPanels()
         }
