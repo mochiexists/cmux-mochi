@@ -33,31 +33,157 @@ extension CLINotifyProcessIntegrationRegressionTests {
     }
 
     final class MockSocketServerState: @unchecked Sendable {
+        private struct ServerConfiguration: @unchecked Sendable {
+            let expectation: XCTestExpectation?
+            let fulfillWhen: (@Sendable (String) -> Bool)?
+            let socketPassword: String
+            let handler: @Sendable (String) -> String?
+            var didFulfill = false
+        }
+
         private let lock = NSLock()
-        private(set) var commands: [String] = []
+        private let commandSemaphore = DispatchSemaphore(value: 0)
+        private var recordedCommands: [String] = []
         private var commandTimestamps: [TimeInterval] = []
+        private var serverListenerFD: Int32?
+        private var serverConfiguration: ServerConfiguration?
+
+        var commands: [String] {
+            settledSnapshot()
+        }
 
         func append(_ command: String) {
             lock.lock()
-            commands.append(command)
+            recordedCommands.append(command)
             commandTimestamps.append(ProcessInfo.processInfo.systemUptime)
             lock.unlock()
+            commandSemaphore.signal()
         }
 
         func snapshot() -> [String] {
             lock.lock()
-            let value = commands
+            let value = recordedCommands
             lock.unlock()
             return value
         }
 
         func timestampedSnapshot() -> [(command: String, timestamp: TimeInterval)] {
             lock.lock()
-            let value = zip(commands, commandTimestamps).map {
+            let value = zip(recordedCommands, commandTimestamps).map {
                 (command: $0.0, timestamp: $0.1)
             }
             lock.unlock()
             return value
+        }
+
+        private func settledSnapshot() -> [String] {
+            while commandSemaphore.wait(timeout: .now()) == .success {}
+            while commandSemaphore.wait(timeout: .now() + 0.1) == .success {
+                while commandSemaphore.wait(timeout: .now()) == .success {}
+            }
+            return snapshot()
+        }
+
+        func configureServer(
+            listenerFD: Int32,
+            expectation: XCTestExpectation?,
+            fulfillWhen: (@Sendable (String) -> Bool)?,
+            socketPassword: String,
+            handler: @escaping @Sendable (String) -> String?
+        ) -> Bool {
+            lock.lock()
+            defer { lock.unlock() }
+            serverConfiguration = ServerConfiguration(
+                expectation: expectation,
+                fulfillWhen: fulfillWhen,
+                socketPassword: socketPassword,
+                handler: handler
+            )
+            guard serverListenerFD != listenerFD else { return false }
+            serverListenerFD = listenerFD
+            return true
+        }
+
+        func response(to line: String) -> String? {
+            lock.lock()
+            guard let configuration = serverConfiguration else {
+                lock.unlock()
+                return nil
+            }
+            lock.unlock()
+
+            if let authentication = CLIMockSocketAuthentication.response(
+                to: line,
+                password: configuration.socketPassword
+            ) {
+                return authentication.trimmingCharacters(in: .newlines)
+            }
+
+            append(line)
+            if configuration.fulfillWhen?(line) == true || configuration.fulfillWhen == nil {
+                fulfillCurrentServerExpectation()
+            }
+            if let request = Self.jsonObject(line),
+               let method = request["method"] as? String {
+                if method == "system.top", let id = request["id"] as? String {
+                    return Self.v2Response(id: id, result: ["windows": []])
+                }
+                if method == "vm.attach_info",
+                   let translated = Self.jsonLine(request, replacingMethod: "vm.ssh_info"),
+                   let response = configuration.handler(translated),
+                   Self.isSuccessfulV2Response(response) {
+                    return response
+                }
+                if method == "vm.ssh_info",
+                   let translated = Self.jsonLine(request, replacingMethod: "vm.attach_info"),
+                   let response = configuration.handler(translated),
+                   Self.isSuccessfulV2Response(response) {
+                    return response
+                }
+            }
+            return configuration.handler(line)
+        }
+
+        private static func jsonObject(_ line: String) -> [String: Any]? {
+            guard let data = line.data(using: .utf8) else { return nil }
+            return try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        }
+
+        private static func jsonLine(
+            _ request: [String: Any],
+            replacingMethod method: String
+        ) -> String? {
+            var translated = request
+            translated["method"] = method
+            guard let data = try? JSONSerialization.data(withJSONObject: translated) else { return nil }
+            return String(data: data, encoding: .utf8)
+        }
+
+        private static func isSuccessfulV2Response(_ response: String?) -> Bool {
+            guard let response,
+                  let payload = jsonObject(response) else { return false }
+            return payload["ok"] as? Bool == true
+        }
+
+        private static func v2Response(id: String, result: [String: Any]) -> String {
+            let payload: [String: Any] = ["id": id, "ok": true, "result": result]
+            guard let data = try? JSONSerialization.data(withJSONObject: payload) else { return "{}" }
+            return String(data: data, encoding: .utf8) ?? "{}"
+        }
+
+        func fulfillCurrentServerExpectation() {
+            let expectation: XCTestExpectation?
+            lock.lock()
+            if var configuration = serverConfiguration,
+               !configuration.didFulfill {
+                configuration.didFulfill = true
+                serverConfiguration = configuration
+                expectation = configuration.expectation
+            } else {
+                expectation = nil
+            }
+            lock.unlock()
+            expectation?.fulfill()
         }
     }
 
@@ -405,7 +531,25 @@ extension CLINotifyProcessIntegrationRegressionTests {
         let stdinPipe = standardInput == nil ? nil : Pipe()
         process.executableURL = URL(fileURLWithPath: executablePath)
         process.arguments = arguments
-        process.environment = CLIMockSocketAuthentication.environment(environment, password: socketPassword)
+        var processEnvironment = CLIMockSocketAuthentication.environment(
+            environment,
+            password: socketPassword
+        )
+        if processEnvironment["CMUX_CLI_TEST_SSH_EXECUTABLE"] == nil,
+           let path = processEnvironment["PATH"] {
+            for directory in path.split(separator: ":").map(String.init) {
+                let candidate = URL(fileURLWithPath: directory, isDirectory: true)
+                    .appendingPathComponent("ssh", isDirectory: false)
+                    .path
+                if candidate != "/usr/bin/ssh",
+                   FileManager.default.isExecutableFile(atPath: candidate) {
+                    processEnvironment["CMUX_CLI_TESTING"] = "1"
+                    processEnvironment["CMUX_CLI_TEST_SSH_EXECUTABLE"] = candidate
+                    break
+                }
+            }
+        }
+        process.environment = processEnvironment
         process.standardInput = stdinPipe ?? FileHandle.nullDevice
         process.standardOutput = stdoutPipe
         process.standardError = stderrPipe

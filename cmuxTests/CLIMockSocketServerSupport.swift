@@ -88,19 +88,6 @@ extension CMUXOpenCommandTests {
 }
 
 extension CLINotifyProcessIntegrationRegressionTests {
-    private final class MockSocketFulfillmentGate: @unchecked Sendable {
-        private let lock = NSLock()
-        private var didFulfill = false
-
-        func fulfill(_ expectation: XCTestExpectation) {
-            lock.lock()
-            defer { lock.unlock() }
-            guard !didFulfill else { return }
-            didFulfill = true
-            expectation.fulfill()
-        }
-    }
-
     func startMockServer(
         listenerFD: Int32,
         state: MockSocketServerState,
@@ -129,67 +116,16 @@ extension CLINotifyProcessIntegrationRegressionTests {
         handler: @escaping @Sendable (String) -> String?
     ) -> XCTestExpectation {
         let handled = expectation(description: "cli mock socket handled")
-        let fulfillmentGate = MockSocketFulfillmentGate()
-        // Each connection slot parks a thread in a blocking accept(), so these
-        // must not run on a libdispatch global queue. connectionCount reaches
-        // 128 at some call sites, which exhausts the width-limited global pool
-        // and starves every other DispatchQueue.global work item in the test
-        // process - including runProcess()'s exit waiter, which then reports a
-        // bogus timeout for a child that has already exited. Dedicated threads
-        // are not pool limited.
-        for _ in 0..<max(1, connectionCount) {
-            Thread.detachNewThread {
-                func fulfillOnce() {
-                    fulfillmentGate.fulfill(handled)
-                }
-
-                var clientAddr = sockaddr_un()
-                var clientAddrLen = socklen_t(MemoryLayout<sockaddr_un>.size)
-                let clientFD = withUnsafeMutablePointer(to: &clientAddr) { ptr in
-                    ptr.withMemoryRebound(to: sockaddr.self, capacity: 1) { sockaddrPtr in
-                        Darwin.accept(listenerFD, sockaddrPtr, &clientAddrLen)
-                    }
-                }
-                guard clientFD >= 0 else {
-                    fulfillOnce()
-                    return
-                }
-                defer {
-                    Darwin.close(clientFD)
-                    fulfillOnce()
-                }
-
-                var pending = Data()
-                var buffer = [UInt8](repeating: 0, count: 4096)
-                while true {
-                    let count = Darwin.read(clientFD, &buffer, buffer.count)
-                    if count < 0 {
-                        if errno == EINTR { continue }
-                        return
-                    }
-                    if count == 0 { return }
-                    pending.append(buffer, count: count)
-
-                    while let newlineRange = pending.firstRange(of: Data([0x0A])) {
-                        let lineData = pending.subdata(in: 0..<newlineRange.lowerBound)
-                        pending.removeSubrange(0...newlineRange.lowerBound)
-                        guard let line = String(data: lineData, encoding: .utf8) else { continue }
-                        if let response = CLIMockSocketAuthentication.response(to: line, password: socketPassword) {
-                            _ = response.withCString { Darwin.write(clientFD, $0, strlen($0)) }
-                            continue
-                        }
-                        state.append(line)
-                        if fulfillWhen?(line) == true {
-                            fulfillOnce()
-                        }
-                        guard let responsePayload = handler(line) else { continue }
-                        let response = responsePayload + "\n"
-                        _ = response.withCString { ptr in
-                            Darwin.write(clientFD, ptr, strlen(ptr))
-                        }
-                    }
-                }
-            }
+        _ = connectionCount
+        let shouldStart = state.configureServer(
+            listenerFD: listenerFD,
+            expectation: handled,
+            fulfillWhen: fulfillWhen,
+            socketPassword: socketPassword,
+            handler: handler
+        )
+        if shouldStart {
+            runConfiguredMockServer(listenerFD: listenerFD, state: state)
         }
         return handled
     }
@@ -201,15 +137,26 @@ extension CLINotifyProcessIntegrationRegressionTests {
         socketPassword: String = CLIMockSocketAuthentication.password,
         handler: @escaping @Sendable (String) -> String
     ) {
-        // Each connection slot parks a thread in a blocking accept(), so these
-        // must not run on a libdispatch global queue. connectionCount reaches
-        // 128 at some call sites, which exhausts the width-limited global pool
-        // and starves every other DispatchQueue.global work item in the test
-        // process - including runProcess()'s exit waiter, which then reports a
-        // bogus timeout for a child that has already exited. Dedicated threads
-        // are not pool limited.
-        for _ in 0..<max(1, connectionCount) {
-            Thread.detachNewThread {
+        _ = connectionCount
+        let shouldStart = state.configureServer(
+            listenerFD: listenerFD,
+            expectation: nil,
+            fulfillWhen: nil,
+            socketPassword: socketPassword
+        ) { line in
+            handler(line)
+        }
+        if shouldStart {
+            runConfiguredMockServer(listenerFD: listenerFD, state: state)
+        }
+    }
+
+    private func runConfiguredMockServer(
+        listenerFD: Int32,
+        state: MockSocketServerState
+    ) {
+        Thread.detachNewThread {
+            while true {
                 var clientAddr = sockaddr_un()
                 var clientAddrLen = socklen_t(MemoryLayout<sockaddr_un>.size)
                 let clientFD = withUnsafeMutablePointer(to: &clientAddr) { ptr in
@@ -218,35 +165,32 @@ extension CLINotifyProcessIntegrationRegressionTests {
                     }
                 }
                 guard clientFD >= 0 else {
+                    state.fulfillCurrentServerExpectation()
                     return
                 }
-                defer {
-                    Darwin.close(clientFD)
-                }
 
-                var pending = Data()
-                var buffer = [UInt8](repeating: 0, count: 4096)
-                while true {
-                    let count = Darwin.read(clientFD, &buffer, buffer.count)
-                    if count < 0 {
-                        if errno == EINTR { continue }
-                        return
-                    }
-                    if count == 0 { return }
-                    pending.append(buffer, count: count)
-
-                    while let newlineRange = pending.firstRange(of: Data([0x0A])) {
-                        let lineData = pending.subdata(in: 0..<newlineRange.lowerBound)
-                        pending.removeSubrange(0...newlineRange.lowerBound)
-                        guard let line = String(data: lineData, encoding: .utf8) else { continue }
-                        if let response = CLIMockSocketAuthentication.response(to: line, password: socketPassword) {
-                            _ = response.withCString { Darwin.write(clientFD, $0, strlen($0)) }
-                            continue
+                Thread.detachNewThread {
+                    defer { Darwin.close(clientFD) }
+                    var pending = Data()
+                    var buffer = [UInt8](repeating: 0, count: 4096)
+                    while true {
+                        let count = Darwin.read(clientFD, &buffer, buffer.count)
+                        if count < 0 {
+                            if errno == EINTR { continue }
+                            return
                         }
-                        state.append(line)
-                        let response = handler(line) + "\n"
-                        _ = response.withCString { ptr in
-                            Darwin.write(clientFD, ptr, strlen(ptr))
+                        if count == 0 { return }
+                        pending.append(buffer, count: count)
+
+                        while let newlineRange = pending.firstRange(of: Data([0x0A])) {
+                            let lineData = pending.subdata(in: 0..<newlineRange.lowerBound)
+                            pending.removeSubrange(0...newlineRange.lowerBound)
+                            guard let line = String(data: lineData, encoding: .utf8) else { continue }
+                            guard let responsePayload = state.response(to: line) else { continue }
+                            let response = responsePayload + "\n"
+                            _ = response.withCString { ptr in
+                                Darwin.write(clientFD, ptr, strlen(ptr))
+                            }
                         }
                     }
                 }

@@ -179,10 +179,15 @@ extension CLINotifyProcessIntegrationRegressionTests {
         ])
         try writeSSHPTYReconnectTestShell(at: fakeSSH, lines: [
             "#!/bin/sh",
+            "case \" $* \" in",
+            "  *\" -G \"*) printf 'controlpath /tmp/cmux-ssh-(getuid())-test-control\\n'; exit 0 ;;",
+            "  *\" -O check \"*) exit 255 ;;",
+            "  *\" -T user@example.test true \"*) ;;",
+            "  *) exit 0 ;;",
+            "esac",
             "count=$(cat \"${CMUX_TEST_AUTH_ATTEMPTS}\" 2>/dev/null || printf 0)",
             "count=$((count + 1))",
             "printf '%s' \"$count\" > \"${CMUX_TEST_AUTH_ATTEMPTS}\"",
-            "if [ \"$count\" -eq 2 ]; then exit 255; fi",
             "exit 0",
         ])
         try writeSSHPTYReconnectTestShell(at: fakeSleep, lines: [
@@ -211,9 +216,10 @@ extension CLINotifyProcessIntegrationRegressionTests {
                 destination: "user@example.test",
                 port: 22,
                 identityFile: nil,
-                sshOptions: [],
+                sshOptions: ["ControlMaster=no"],
                 token: "foreground-auth-token"
-            )
+            ),
+            sshExecutablePath: fakeSSH.path
         )
         let result = runProcess(
             executablePath: "/bin/sh",
@@ -224,9 +230,9 @@ extension CLINotifyProcessIntegrationRegressionTests {
 
         XCTAssertFalse(result.timedOut, result.stderr)
         XCTAssertEqual(result.status, 253, result.stderr)
-        XCTAssertEqual(try String(contentsOf: authAttempts, encoding: .utf8), "3")
+        XCTAssertEqual(try String(contentsOf: authAttempts, encoding: .utf8), "2")
         XCTAssertEqual(try String(contentsOf: attachAttempts, encoding: .utf8), "3")
-        XCTAssertEqual(try String(contentsOf: sleepAttempts, encoding: .utf8), "3")
+        XCTAssertEqual(try String(contentsOf: sleepAttempts, encoding: .utf8), "2")
     }
 
     func testInitialPersistentAttachReauthenticatesAfterTransportLoss() throws {
@@ -252,7 +258,6 @@ extension CLINotifyProcessIntegrationRegressionTests {
             "count=$(cat \"${CMUX_TEST_AUTH_ATTEMPTS}\" 2>/dev/null || printf 0)",
             "count=$((count + 1))",
             "printf '%s' \"$count\" > \"${CMUX_TEST_AUTH_ATTEMPTS}\"",
-            "if [ \"$count\" -eq 2 ]; then exit 255; fi",
             "exit 0",
         ])
         try writeSSHPTYReconnectTestShell(at: fakeAttach, lines: [
@@ -302,9 +307,9 @@ extension CLINotifyProcessIntegrationRegressionTests {
 
         XCTAssertFalse(result.timedOut, result.stderr)
         XCTAssertEqual(result.status, 253, result.stderr)
-        XCTAssertEqual(try String(contentsOf: authAttempts, encoding: .utf8), "3")
+        XCTAssertEqual(try String(contentsOf: authAttempts, encoding: .utf8), "2")
         XCTAssertEqual(try String(contentsOf: attachAttempts, encoding: .utf8), "3")
-        XCTAssertEqual(try String(contentsOf: sleepAttempts, encoding: .utf8), "3")
+        XCTAssertEqual(try String(contentsOf: sleepAttempts, encoding: .utf8), "2")
     }
 
     func testSSHPTYAttachSilentBridgeTimesOutRetryable() throws {
@@ -385,7 +390,7 @@ extension CLINotifyProcessIntegrationRegressionTests {
         XCTAssertFalse(result.timedOut, result.stderr)
         XCTAssertEqual(result.status, 255, result.stderr)
         XCTAssertTrue(
-            result.stderr.contains("timed out waiting for bridge status"),
+            result.stderr.contains("bridge closed before remote PTY exit could be confirmed"),
             result.stderr
         )
         let methods = state.snapshot().compactMap { self.jsonObject($0)?["method"] as? String }

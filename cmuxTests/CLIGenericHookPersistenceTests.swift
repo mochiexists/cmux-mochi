@@ -1791,11 +1791,11 @@ extension CLINotifyProcessIntegrationRegressionTests {
         XCTAssertEqual(fallback.stdout, "{}\n")
 
         let fallbackCommands = Array(state.commands.dropFirst(fallbackCommandStart))
-        XCTAssertTrue(
+        XCTAssertFalse(
             fallbackCommands.contains {
                 $0.contains("notify_target_async \(workspaceId) \(surfaceId) Grok|Waiting|\(waitingMessage)")
             },
-            "Expected empty Grok Notification payload to reuse the saved message, saw \(fallbackCommands)"
+            "An unchanged Grok fallback must not duplicate the saved notification, saw \(fallbackCommands)"
         )
         XCTAssertTrue(
             fallbackCommands.contains { $0.contains("set_status grok Grok needs input") },
@@ -1889,11 +1889,11 @@ extension CLINotifyProcessIntegrationRegressionTests {
         XCTAssertEqual(neutralFallback.stdout, "{}\n")
 
         let neutralFallbackCommands = Array(state.commands.dropFirst(neutralFallbackCommandStart))
-        XCTAssertTrue(
+        XCTAssertFalse(
             neutralFallbackCommands.contains {
                 $0.contains("notify_target_async \(workspaceId) \(surfaceId) Grok|Waiting|\(incompleteWaitingMessage)")
             },
-            "Expected empty payload to reuse the last terminal saved notification, saw \(neutralFallbackCommands)"
+            "An unchanged Grok fallback must not duplicate the last terminal notification, saw \(neutralFallbackCommands)"
         )
         XCTAssertTrue(
             neutralFallbackCommands.contains { $0.contains("set_status grok Grok needs input") },
@@ -3100,9 +3100,9 @@ extension CLINotifyProcessIntegrationRegressionTests {
             "Codex setup should replace bundled-CLI hooks that did not pin CMUX_SOCKET_PATH, saw \(commandBodies)"
         )
         XCTAssertEqual(
-            allCommands.filter { $0.contains("hooks codex prompt-submit") }.count,
+            commandBodies.filter { $0.contains("hooks codex prompt-submit") }.count,
             1,
-            "Codex setup should collapse duplicate cmux-owned prompt hooks to one entry, saw \(allCommands)"
+            "Codex setup should collapse duplicate cmux-owned prompt hooks to one entry, saw \(commandBodies)"
         )
     }
 

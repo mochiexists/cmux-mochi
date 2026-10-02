@@ -2,6 +2,12 @@ import CmuxFoundation
 import Foundation
 
 extension CMUXCLI {
+    func sshExecutablePath() -> String {
+        let environment = ProcessInfo.processInfo.environment
+        guard environment["CMUX_CLI_TESTING"] == "1" else { return "/usr/bin/ssh" }
+        return environment["CMUX_CLI_TEST_SSH_EXECUTABLE"] ?? "/usr/bin/ssh"
+    }
+
     func resolvedUserSSHControlOptions(for options: SSHCommandOptions) -> [String]? {
         guard let output = resolvedSSHConfigurationOutput(for: options) else { return nil }
         return SSHConnectionSharingOptions()
@@ -58,7 +64,7 @@ extension CMUXCLI {
         }
         arguments.append(options.destination)
         return CLIProcessRunner.runProcess(
-            executablePath: "/usr/bin/ssh",
+            executablePath: sshExecutablePath(),
             arguments: arguments,
             timeout: timeout
         )
