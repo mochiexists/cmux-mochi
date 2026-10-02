@@ -54,6 +54,7 @@ public final class HiveWorkspaceCoordinator {
     @ObservationIgnored private let lifecycleIdlePollInterval: Duration
     @ObservationIgnored private var lifecycleTask: Task<Void, Never>?
     @ObservationIgnored private var lifecycleStartInProgress = false
+    @ObservationIgnored private var reconnectInProgress = false
     @ObservationIgnored private var isBrowserVisible = false
     @ObservationIgnored private var mountedWorkspaceCount = 0
 
@@ -232,6 +233,10 @@ public final class HiveWorkspaceCoordinator {
             phase = .idle
             return false
         }
+        guard !reconnectInProgress else { return shell.isHiveMacConnected }
+        reconnectInProgress = true
+        defer { reconnectInProgress = false }
+
         phase = .connecting
         let connected = await shell.reconnectAllPairedMacs(
             stackUserID: nil,
