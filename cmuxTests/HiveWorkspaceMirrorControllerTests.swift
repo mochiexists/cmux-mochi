@@ -15,6 +15,34 @@ import Testing
 @MainActor
 @Suite(.serialized)
 struct HiveWorkspaceMirrorControllerTests {
+    @Test("launch does not create Hive storage before any Mac is paired")
+    func launchWithoutPairingLeavesHiveStorageUntouched() throws {
+        let stateDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("cmux-hive-lazy-\(UUID().uuidString)", isDirectory: true)
+        let tag = "hive-lazy-\(UUID().uuidString)"
+        try FileManager.default.createDirectory(
+            at: stateDirectory,
+            withIntermediateDirectories: true
+        )
+        defer {
+            try? FileManager.default.removeItem(at: stateDirectory)
+            UserDefaults.standard.removePersistentDomain(forName: "dev.cmux.hive-e2e.\(tag)")
+            unsetenv("CMUX_E2E_HIVE_STATE_DIR")
+            unsetenv("CMUX_TAG")
+        }
+        setenv("CMUX_E2E_HIVE_STATE_DIR", stateDirectory.path, 1)
+        setenv("CMUX_TAG", tag, 1)
+
+        var service: HiveWorkspaceService? = HiveWorkspaceService()
+        service?.start()
+
+        #expect(
+            try FileManager.default.contentsOfDirectory(atPath: stateDirectory.path).isEmpty,
+            "launch should not create SQLite storage or the mobile shell without a pairing"
+        )
+        service = nil
+    }
+
     @Test("one window owns remote resize reports for a shared terminal")
     func sharesRemoteTerminalResizeOwnershipAcrossWindows() throws {
         let terminal = MobileTerminalPreview(id: "surface-a", name: "Alpha")
