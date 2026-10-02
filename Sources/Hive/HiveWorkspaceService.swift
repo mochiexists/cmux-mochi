@@ -8,7 +8,7 @@ import SwiftUI
 /// App-composition owner for account-free remote Mac workspaces.
 @MainActor
 final class HiveWorkspaceService {
-    private var composition: HiveComposition?
+    private(set) var composition: HiveComposition?
     private let coordinatorOverride: HiveWorkspaceCoordinator?
     private let uiFixtureName: String?
     private let hasKnownPairingAtLaunch: () -> Bool
