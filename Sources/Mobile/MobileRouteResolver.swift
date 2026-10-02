@@ -318,16 +318,19 @@ final class MobileRouteResolver: @unchecked Sendable {
     private static func localNetworkRouteHosts() -> [String] {
         localNetworkRouteHosts(
             localIPv4Addresses: MobileHostNetworkPathMonitor.systemLocalIPv4Addresses(),
-            hostName: systemBonjourHostName() ?? ""
+            hostNameSource: .system
         )
     }
 
-    /// The name mDNSResponder publishes for this Mac, read from configd.
-    /// `ProcessInfo.hostName` is not used: it does a blocking reverse-DNS
-    /// lookup (35 s on the main actor at listener start on a slow resolver)
-    /// and can return a name that `.local` does not resolve.
-    static func systemBonjourHostName() -> String? {
-        SCDynamicStoreCopyLocalHostName(nil) as String?
+    /// Builds LAN locators from the name mDNSResponder publishes for this Mac.
+    static func localNetworkRouteHosts(
+        localIPv4Addresses: [String],
+        hostNameSource: MobileBonjourHostNameSource
+    ) -> [String] {
+        localNetworkRouteHosts(
+            localIPv4Addresses: localIPv4Addresses,
+            hostName: hostNameSource.bonjourHostName() ?? ""
+        )
     }
 
     /// Builds LAN locators only when this Mac owns a phone-reachable LAN
@@ -604,5 +607,30 @@ extension Array where Element == CmxAttachRoute {
         compactMap { route in
             route.disclosed(for: disclosure, at: now)?.mobileHostJSONObject(at: now)
         }
+    }
+}
+
+/// Reads the name mDNSResponder publishes for this Mac from configd.
+///
+/// `ProcessInfo.hostName` is not used: it does a blocking reverse-DNS lookup
+/// (35 s on the main actor at listener start on a slow resolver) and can
+/// return a name that `.local` does not resolve. configd reads do not touch
+/// the network.
+struct MobileBonjourHostNameSource {
+    var localHostName: () -> String?
+
+    static var system: MobileBonjourHostNameSource {
+        MobileBonjourHostNameSource(
+            localHostName: { SCDynamicStoreCopyLocalHostName(nil) as String? }
+        )
+    }
+
+    func bonjourHostName() -> String? {
+        guard let name = localHostName()?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+              !name.isEmpty else {
+            return nil
+        }
+        return name
     }
 }
