@@ -71,6 +71,7 @@ struct cmuxApp: App {
     }
 
     init() {
+        XCTestHostHygiene.activateIfNeeded()
         // Gather settings package dependencies once. The runtime itself
         // is assigned after the saved language override below, because
         // it owns localized search-index text for the process lifetime.
@@ -5571,4 +5572,62 @@ enum TelemetrySettings {
 func openCmuxSettingsFileInEditor() {
     let url = KeyboardShortcutSettings.settingsFileStore.settingsFileURLForEditing()
     PreferredEditorService(defaults: .standard).open(url)
+}
+
+/// Applies ``XCTestHostHygienePolicy`` to the Debug app when it runs as the `xcodebuild test` host.
+///
+/// Release builds compile this to no-ops, so their behavior does not change.
+enum XCTestHostHygiene {
+#if DEBUG
+    nonisolated static let policy: XCTestHostHygienePolicy? = {
+        guard XCTestHostHygienePolicy.isRunningUnderXCTest(
+            environment: ProcessInfo.processInfo.environment
+        ) else {
+            return nil
+        }
+        let sandboxRoot = FileManager.default.temporaryDirectory
+            .appendingPathComponent("cmux-xctest-host-\(getpid())", isDirectory: true)
+        let policy = XCTestHostHygienePolicy(sandboxRoot: sandboxRoot.path)
+        for directory in policy.directoriesToCreate {
+            try? FileManager.default.createDirectory(
+                atPath: directory,
+                withIntermediateDirectories: true
+            )
+        }
+        return policy
+    }()
+#else
+    nonisolated static let policy: XCTestHostHygienePolicy? = nil
+#endif
+
+    nonisolated private static let realHomeDirectory = FileManager.default.homeDirectoryForCurrentUser.path
+
+    /// Gives every child process of the test host a hermetic `HOME`, `PATH` and tmux socket.
+    nonisolated static func activateIfNeeded() {
+        guard let policy else { return }
+        for (key, value) in policy.environmentChanges {
+            if let value {
+                setenv(key, value, 1)
+            } else {
+                unsetenv(key)
+            }
+        }
+    }
+
+    /// The home folder product code may read for other apps' data; the sandbox under XCTest.
+    nonisolated static var userHomeDirectoryURL: URL {
+        if let policy {
+            return URL(fileURLWithPath: policy.homeDirectory, isDirectory: true)
+        }
+        return FileManager.default.homeDirectoryForCurrentUser
+    }
+
+    /// Whether a recursive file scan may start at `rootPath` in this process.
+    nonisolated static func allowsRecursiveScan(rootPath: String) -> Bool {
+        guard policy != nil else { return true }
+        return XCTestHostHygienePolicy.allowsRecursiveScan(
+            rootPath: rootPath,
+            realHomeDirectory: realHomeDirectory
+        )
+    }
 }

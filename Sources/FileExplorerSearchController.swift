@@ -472,7 +472,8 @@ final class FileSearchController: FileSearchControlling {
             emit(status: .unsupported, isSearching: false)
             return
         }
-        guard !rootPath.isEmpty else {
+        guard !rootPath.isEmpty,
+              XCTestHostHygiene.allowsRecursiveScan(rootPath: rootPath) else {
             emit(status: .noMatches, isSearching: false)
             return
         }

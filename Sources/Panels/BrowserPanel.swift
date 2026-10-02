@@ -10556,7 +10556,9 @@ final class BrowserDataImportCoordinator {
     /// Held detector instance; the coordinator detects and summarizes installed
     /// browsers through this rather than the former `BrowserInstalledBrowserDetector`
     /// static namespace.
-    private let installedBrowserDetector = BrowserInstalledBrowserDetector()
+    private let installedBrowserDetector = BrowserInstalledBrowserDetector(
+        homeDirectoryURL: XCTestHostHygiene.userHomeDirectoryURL
+    )
 
     private init() {}
 
@@ -10794,7 +10796,9 @@ final class BrowserDataImportCoordinator {
         private let defaultScope: BrowserImportScope?
         /// Held detector instance used to summarize the detected browsers, rather
         /// than the former `BrowserInstalledBrowserDetector` static namespace.
-        private let installedBrowserDetector = BrowserInstalledBrowserDetector()
+        private let installedBrowserDetector = BrowserInstalledBrowserDetector(
+            homeDirectoryURL: XCTestHostHygiene.userHomeDirectoryURL
+        )
 
         private var step: Step = .source
         private var didFinishModal = false

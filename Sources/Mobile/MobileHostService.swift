@@ -1115,7 +1115,7 @@ final class MobileHostService {
             if listener == nil {
                 mobileHostLog.info("legacy mobile host listener disabled; starting Iroh only")
             }
-            if plan.activatesIroh {
+            if plan.activatesIroh && Self.activatesIrohAutomatically {
                 MobileHostIrohRuntime.shared.setDesiredActive(true)
             }
             return
@@ -1125,6 +1125,14 @@ final class MobileHostService {
             startTCP: { scheduleListenerStart(usePreferredPort: true) },
             scheduleIroh: { MobileHostIrohRuntime.shared.setDesiredActive(true) }
         )
+    }
+
+    /// Whether launch and settings changes bring up Iroh's real network endpoint.
+    /// The unit-test host never does: Iroh binds sockets and probes the LAN, which
+    /// raises the Local Network prompt. Tests that need Iroh inject or drive
+    /// `MobileHostIrohRuntime` directly.
+    nonisolated static var activatesIrohAutomatically: Bool {
+        XCTestHostHygiene.policy == nil
     }
 
     #if DEBUG
@@ -1435,7 +1443,9 @@ final class MobileHostService {
         let defaults = UserDefaults.standard
         // Settings control only the legacy TCP/Tailscale listener. Account-
         // authenticated Iroh stays available for signed-in Macs.
-        MobileHostIrohRuntime.shared.setDesiredActive(true)
+        if Self.activatesIrohAutomatically {
+            MobileHostIrohRuntime.shared.setDesiredActive(true)
+        }
         // An invalid stored port (`resolvedDesiredPort == nil`, e.g. mid-edit)
         // must not restart a running listener. Treat it as "no change" by
         // reusing the applied port; a fresh start still binds the default via

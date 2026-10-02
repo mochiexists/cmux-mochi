@@ -400,7 +400,7 @@ enum BrowserProfileAutomation {
 
 enum BrowserImportAutomation {
     static func importCookies(params: [String: Any]) async throws -> BrowserImportOutcome {
-        let browsers = BrowserInstalledBrowserDetector().detectInstalledBrowsers()
+        let browsers = BrowserInstalledBrowserDetector(homeDirectoryURL: XCTestHostHygiene.userHomeDirectoryURL).detectInstalledBrowsers()
         guard !browsers.isEmpty else {
             throw BrowserImportAutomationError.noBrowsers
         }
