@@ -1,6 +1,7 @@
 import CMUXMobileCore
 import Darwin
 import Foundation
+import SystemConfiguration
 
 struct MobileHostRouteSnapshot: Sendable {
     let routes: [CmxAttachRoute]
@@ -321,8 +322,12 @@ final class MobileRouteResolver: @unchecked Sendable {
         )
     }
 
+    /// The name mDNSResponder publishes for this Mac, read from configd.
+    /// `ProcessInfo.hostName` is not used: it does a blocking reverse-DNS
+    /// lookup (35 s on the main actor at listener start on a slow resolver)
+    /// and can return a name that `.local` does not resolve.
     static func systemBonjourHostName() -> String? {
-        ProcessInfo.processInfo.hostName
+        SCDynamicStoreCopyLocalHostName(nil) as String?
     }
 
     /// Builds LAN locators only when this Mac owns a phone-reachable LAN
