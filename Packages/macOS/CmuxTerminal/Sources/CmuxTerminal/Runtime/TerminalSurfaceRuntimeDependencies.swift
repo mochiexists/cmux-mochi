@@ -1,4 +1,5 @@
 public import CmuxTerminalCore
+public import GhosttyKit
 
 /// The injected collaborators a ``TerminalSurface`` needs to run.
 ///
@@ -33,6 +34,9 @@ public struct TerminalSurfaceRuntimeDependencies {
     /// The serialized native-surface free queue.
     public let runtimeTeardown: TerminalSurfaceRuntimeTeardownCoordinator
 
+    /// Releases one native Ghostty surface on the teardown coordinator.
+    public let runtimeSurfaceDeallocator: @Sendable (ghostty_surface_t) -> Void
+
     /// The paced native-surface creation queue for restored terminal sessions.
     public let restoreSpawnScheduler: any TerminalSurfaceRuntimeSpawnScheduling
 
@@ -55,6 +59,10 @@ public struct TerminalSurfaceRuntimeDependencies {
     public let globalFontMagnificationPercent: @Sendable () -> Int
 
     /// Creates the dependency bundle.
+    ///
+    /// - Parameter runtimeSurfaceDeallocator: Releases one native surface.
+    ///   The teardown coordinator retains this closure until it executes the
+    ///   corresponding asynchronous teardown request.
     public init(
         registry: any TerminalSurfaceRegistering,
         engine: any TerminalEngineHosting,
@@ -64,6 +72,9 @@ public struct TerminalSurfaceRuntimeDependencies {
         rendererRealization: any TerminalRendererRealizationScheduling,
         hibernationRecorder: any AgentHibernationRecording,
         runtimeTeardown: TerminalSurfaceRuntimeTeardownCoordinator,
+        runtimeSurfaceDeallocator: @escaping @Sendable (ghostty_surface_t) -> Void = {
+            ghostty_surface_free($0)
+        },
         restoreSpawnScheduler: any TerminalSurfaceRuntimeSpawnScheduling,
         runtimeFilesystem: TerminalSurfaceRuntimeFilesystem,
         sessionPortBase: Int,
@@ -79,6 +90,7 @@ public struct TerminalSurfaceRuntimeDependencies {
         self.rendererRealization = rendererRealization
         self.hibernationRecorder = hibernationRecorder
         self.runtimeTeardown = runtimeTeardown
+        self.runtimeSurfaceDeallocator = runtimeSurfaceDeallocator
         self.restoreSpawnScheduler = restoreSpawnScheduler
         self.runtimeFilesystem = runtimeFilesystem
         self.sessionPortBase = sessionPortBase

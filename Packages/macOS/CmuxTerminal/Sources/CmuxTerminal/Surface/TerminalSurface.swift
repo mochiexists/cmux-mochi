@@ -85,6 +85,14 @@ public final class TerminalSurface: Identifiable, ObservableObject {
     let rendererRealization: any TerminalRendererRealizationScheduling
     let hibernationRecorder: any AgentHibernationRecording
     let runtimeTeardown: TerminalSurfaceRuntimeTeardownCoordinator
+    var runtimeSurfaceDeallocator: @Sendable (ghostty_surface_t) -> Void
+#if DEBUG
+    var runtimeTeardownProbeForTesting: (
+        coordinator: TerminalSurfaceRuntimeTeardownCoordinator,
+        surface: ghostty_surface_t,
+        deallocator: @Sendable (ghostty_surface_t) -> Void
+    )?
+#endif
     let restoreSpawnScheduler: any TerminalSurfaceRuntimeSpawnScheduling
     let runtimeFilesystem: TerminalSurfaceRuntimeFilesystem
     /// Port ordinal base/range for CMUX_PORT assignment, snapshotted by the app composition root.
@@ -323,11 +331,6 @@ public final class TerminalSurface: Identifiable, ObservableObject {
     // Same off-isolation-reader carve-out as debugMetadataLock.
     let debugForceRefreshCountLock = NSLock()
     var debugForceRefreshCountValue = 0
-    /// Test-only override for the native free used by teardown paths.
-    // nonisolated(unsafe) so the nonisolated deinit teardown path can read it,
-    // like the @MainActor teardownSurface/suspend paths already do; tests only
-    // set and clear it on the main actor.
-    public nonisolated(unsafe) static var runtimeSurfaceFreeOverrideForTesting: (@Sendable (ghostty_surface_t) -> Void)?
 #endif
     var portalLifecycleState: PortalLifecycleState = .live
     var portalLifecycleGeneration: UInt64 = 1
@@ -539,6 +542,7 @@ public final class TerminalSurface: Identifiable, ObservableObject {
         self.rendererRealization = dependencies.rendererRealization
         self.hibernationRecorder = dependencies.hibernationRecorder
         self.runtimeTeardown = dependencies.runtimeTeardown
+        self.runtimeSurfaceDeallocator = dependencies.runtimeSurfaceDeallocator
         self.restoreSpawnScheduler = dependencies.restoreSpawnScheduler
         self.runtimeFilesystem = dependencies.runtimeFilesystem
         self.requiresRestoreSpawnPacing = runtimeSpawnPolicy == .pacedSessionRestore
@@ -654,11 +658,22 @@ public final class TerminalSurface: Identifiable, ObservableObject {
         // reconcile dispatched via DispatchQueue.main.async) that read self.surface
         // before this object is fully deallocated will see nil and bail out,
         // rather than passing a freed pointer to ghostty_surface_refresh (#432).
-        let surfaceToFree = surface
-        if let surfaceToFree {
-            registry.unregisterRuntimeSurface(surfaceToFree, ownerId: id)
+        let registeredSurface = surface
+        if let registeredSurface {
+            registry.unregisterRuntimeSurface(registeredSurface, ownerId: id)
         }
         surface = nil
+#if DEBUG
+        let teardownProbe = runtimeTeardownProbeForTesting
+        runtimeTeardownProbeForTesting = nil
+        let surfaceToFree = registeredSurface ?? teardownProbe?.surface
+        let teardownCoordinator = teardownProbe?.coordinator ?? runtimeTeardown
+        let surfaceDeallocator = teardownProbe?.deallocator ?? runtimeSurfaceDeallocator
+#else
+        let surfaceToFree = registeredSurface
+        let teardownCoordinator = runtimeTeardown
+        let surfaceDeallocator = runtimeSurfaceDeallocator
+#endif
 
         guard let surfaceToFree else {
 #if DEBUG
@@ -696,29 +711,15 @@ public final class TerminalSurface: Identifiable, ObservableObject {
         // io_write_cb) until ghostty_surface_free joins those threads, so releasing
         // manualIOContext or teeLease here would leave a use-after-free window until
         // the coordinator's deferred free runs.
-#if DEBUG
-        if let freeSurface = Self.runtimeSurfaceFreeOverrideForTesting {
-            runtimeTeardown.enqueueRuntimeTeardown(
-                id: id,
-                workspaceId: tabId,
-                reason: "deinit",
-                surface: surfaceToFree,
-                callbackContext: callbackContext,
-                manualIOContext: manualIOContext,
-                byteTeeLease: teeLease,
-                freeSurface: freeSurface
-            )
-            return
-        }
-#endif
-        runtimeTeardown.enqueueRuntimeTeardown(
+        teardownCoordinator.enqueueRuntimeTeardown(
             id: id,
             workspaceId: tabId,
             reason: "deinit",
             surface: surfaceToFree,
             callbackContext: callbackContext,
             manualIOContext: manualIOContext,
-            byteTeeLease: teeLease
+            byteTeeLease: teeLease,
+            freeSurface: surfaceDeallocator
         )
     }
 }

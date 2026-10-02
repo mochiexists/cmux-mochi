@@ -1510,7 +1510,7 @@ final class TabManagerCloseCurrentTabSpamTests: XCTestCase {
         XCTAssertEqual(manager.tabs.count, 5, "Expected only one workspace to close after the first accepted confirmation")
     }
 
-    func testCloseWorkspaceEnqueuesTerminalRuntimeTeardownOffMainThread() {
+    func testCloseWorkspaceEnqueuesTerminalRuntimeTeardownOffMainThread() async {
         let manager = TabManager()
         let workspace = manager.addWorkspace()
         manager.selectWorkspace(workspace)
@@ -1521,18 +1521,15 @@ final class TabManagerCloseCurrentTabSpamTests: XCTestCase {
             return
         }
 
-        let fakeSurface: ghostty_surface_t = UnsafeMutableRawPointer(bitPattern: 0x5282)!
-        terminalPanel.surface.installRuntimeSurfaceForTesting(fakeSurface)
-        terminalPanel.surface.setNeedsConfirmCloseOverrideForTesting(true)
-
         let nativeFreeStarted = expectation(description: "native free started")
-        TerminalSurface.runtimeSurfaceFreeOverrideForTesting = { _ in
-            XCTAssertFalse(Thread.isMainThread, "Native surface free must not run on the main thread")
-            nativeFreeStarted.fulfill()
-        }
-        defer {
-            TerminalSurface.runtimeSurfaceFreeOverrideForTesting = nil
-        }
+        terminalPanel.surface.installRuntimeTeardownProbeForTesting(
+            teardownCoordinator: TerminalSurfaceRuntimeTeardownCoordinator(),
+            onDeallocate: {
+                XCTAssertFalse(Thread.isMainThread, "Native surface free must not run on the main thread")
+                nativeFreeStarted.fulfill()
+            }
+        )
+        terminalPanel.surface.setNeedsConfirmCloseOverrideForTesting(true)
 
         manager.confirmCloseHandler = { _, _, _ in true }
 
@@ -1541,7 +1538,7 @@ final class TabManagerCloseCurrentTabSpamTests: XCTestCase {
         XCTAssertFalse(manager.tabs.contains(where: { $0.id == workspace.id }))
         XCTAssertNil(terminalPanel.surface.surface)
 
-        wait(for: [nativeFreeStarted], timeout: 3.0)
+        await fulfillment(of: [nativeFreeStarted], timeout: 3.0)
     }
 
     func testCloseCurrentTabSpamWithConfirmationDisabledClosesEveryRequestedWorkspace() {

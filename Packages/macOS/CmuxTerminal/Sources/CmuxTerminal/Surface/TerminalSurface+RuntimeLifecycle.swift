@@ -245,11 +245,22 @@ extension TerminalSurface {
         mobileByteTeeLease = nil
         byteTee.dropSurface(surfaceID: id)
 
-        let surfaceToFree = surface
-        if let surfaceToFree {
-            registry.unregisterRuntimeSurface(surfaceToFree, ownerId: id)
+        let registeredSurface = surface
+        if let registeredSurface {
+            registry.unregisterRuntimeSurface(registeredSurface, ownerId: id)
         }
         surface = nil
+#if DEBUG
+        let teardownProbe = runtimeTeardownProbeForTesting
+        runtimeTeardownProbeForTesting = nil
+        let surfaceToFree = registeredSurface ?? teardownProbe?.surface
+        let teardownCoordinator = teardownProbe?.coordinator ?? runtimeTeardown
+        let surfaceDeallocator = teardownProbe?.deallocator ?? runtimeSurfaceDeallocator
+#else
+        let surfaceToFree = registeredSurface
+        let teardownCoordinator = runtimeTeardown
+        let surfaceDeallocator = runtimeSurfaceDeallocator
+#endif
 
         guard let surfaceToFree else {
             callbackContext?.release()
@@ -268,33 +279,18 @@ extension TerminalSurface {
         }
 #endif
 
-#if DEBUG
-        if let freeSurface = Self.runtimeSurfaceFreeOverrideForTesting {
-            // Transport manualIOContext and teeLease through the request too:
-            // the coordinator releases all callback userdata only after the
-            // native free, which is what joins ghostty's IO threads.
-            runtimeTeardown.enqueueRuntimeTeardown(
-                id: id,
-                workspaceId: tabId,
-                reason: "teardown",
-                surface: surfaceToFree,
-                callbackContext: callbackContext,
-                manualIOContext: manualIOContext,
-                byteTeeLease: teeLease,
-                freeSurface: freeSurface
-            )
-            return
-        }
-#endif
-
-        Task { @MainActor in
-            // Keep free behavior aligned with deinit: perform the runtime teardown on
-            // the next main-actor turn so SIGHUP delivery is deterministic but non-reentrant.
-            ghostty_surface_free(surfaceToFree)
-            callbackContext?.release()
-            manualIOContext?.release()
-            teeLease?.release()
-        }
+        // Transport callback userdata through the request too: the coordinator
+        // releases it only after the native free joins Ghostty's IO threads.
+        teardownCoordinator.enqueueRuntimeTeardown(
+            id: id,
+            workspaceId: tabId,
+            reason: "teardown",
+            surface: surfaceToFree,
+            callbackContext: callbackContext,
+            manualIOContext: manualIOContext,
+            byteTeeLease: teeLease,
+            freeSurface: surfaceDeallocator
+        )
     }
 
     /// Frees the runtime surface while keeping the model alive for an
@@ -356,27 +352,6 @@ extension TerminalSurface {
         )
 #endif
 
-#if DEBUG
-        if let freeSurface = Self.runtimeSurfaceFreeOverrideForTesting {
-            // Transport manualIOContext and teeLease through the request too:
-            // the coordinator releases all callback userdata only after the
-            // native free, which is what joins ghostty's IO threads.
-            agentHibernationRuntimeTeardownTicket = runtimeTeardown.enqueueRuntimeTeardown(
-                id: id,
-                workspaceId: tabId,
-                reason: reason,
-                surface: surfaceToFree,
-                callbackContext: callbackContext,
-                manualIOContext: manualIOContext,
-                byteTeeLease: teeLease,
-                executionLane: .isolatedHibernation,
-                isolatedHibernationReservation: teardownReservation,
-                freeSurface: freeSurface
-            )
-            return true
-        }
-#endif
-
         agentHibernationRuntimeTeardownTicket = runtimeTeardown.enqueueRuntimeTeardown(
             id: id,
             workspaceId: tabId,
@@ -386,7 +361,8 @@ extension TerminalSurface {
             manualIOContext: manualIOContext,
             byteTeeLease: teeLease,
             executionLane: .isolatedHibernation,
-            isolatedHibernationReservation: teardownReservation
+            isolatedHibernationReservation: teardownReservation,
+            freeSurface: runtimeSurfaceDeallocator
         )
         return true
     }
