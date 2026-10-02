@@ -159,6 +159,49 @@ struct HiveWorkspaceCoordinatorTests {
         coordinator.stopConnectionLifecycle()
     }
 
+    @Test("removing the last pairing cancels the deferred launch retry without rewriting phase")
+    func removingLastPairingCancelsDeferredLaunchRetry() async {
+        let mac = MobilePairedMac(
+            macDeviceID: "mac-a",
+            displayName: "Studio",
+            routes: [],
+            createdAt: Date(),
+            lastSeenAt: Date(),
+            isActive: true,
+            stackUserID: nil,
+            instanceTag: "nightly"
+        )
+        let shell = HiveShellStub(
+            pairingResult: .failed,
+            workspaces: [],
+            hasKnownPairing: true,
+            isConnected: false,
+            pairedMacs: [mac],
+            reconnectIsSuspended: true
+        )
+        let coordinator = HiveWorkspaceCoordinator(shell: shell)
+
+        let statusTask = Task { await coordinator.reconnectForStatus() }
+        await shell.waitUntilReconnectCount(1)
+        await coordinator.startConnectionLifecycle()
+        shell.resumeReconnects()
+        #expect(await !statusTask.value)
+        await shell.waitUntilReconnectCount(2)
+
+        #expect(await coordinator.removePairing(mac, localOnly: true) == .removed)
+        #expect(coordinator.phase == .idle)
+
+        // The retry's dial completes after the pairing is gone.
+        shell.hiveConnectionState = .connected
+        shell.resumeReconnects()
+        await Self.yieldUntil { shell.completedReconnectCount == 2 }
+        for _ in 0..<10 { await Task.yield() }
+
+        #expect(shell.cancelledReconnectCount == 1)
+        #expect(coordinator.phase == .idle)
+        #expect(shell.reconnectAllCount == 2)
+    }
+
     @Test("reconnects every paired Mac instead of only the active Mac")
     func reconnectsEveryPairedMac() async {
         let pairedMacs = [
@@ -484,6 +527,8 @@ private final class HiveShellStub: HiveShellServing {
     private(set) var reconnectToMacRequests: [ReconnectRequest] = []
     private(set) var lastReconnectDeadlineNanoseconds: UInt64?
     private(set) var reconnectAllCount = 0
+    private(set) var completedReconnectCount = 0
+    private(set) var cancelledReconnectCount = 0
     private var pairingContinuation: CheckedContinuation<Void, Never>?
     private var pairingStartContinuation: CheckedContinuation<Void, Never>?
     private var reconnectContinuations: [CheckedContinuation<Void, Never>] = []
@@ -582,6 +627,10 @@ private final class HiveShellStub: HiveShellServing {
             await withCheckedContinuation { continuation in
                 reconnectContinuations.append(continuation)
             }
+        }
+        completedReconnectCount += 1
+        if Task.isCancelled {
+            cancelledReconnectCount += 1
         }
         return isHiveMacConnected
     }

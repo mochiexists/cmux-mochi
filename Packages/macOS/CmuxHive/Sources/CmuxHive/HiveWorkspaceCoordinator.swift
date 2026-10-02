@@ -267,6 +267,9 @@ public final class HiveWorkspaceCoordinator {
             refreshBackupBeforeDial: false,
             attemptDeadlineNanoseconds: attemptDeadlineNanoseconds
         )
+        // A cancelled attempt (the lifecycle stopped, e.g. the last pairing
+        // was removed) must not overwrite the phase that the stop settled.
+        guard !Task.isCancelled else { return connected }
         await shell.loadPairedMacs()
         refreshWorkspaceSnapshot(forcePhaseReconciliation: true)
         return connected
@@ -322,9 +325,10 @@ public final class HiveWorkspaceCoordinator {
         guard lifecycleReconnectDeferred else { return }
         lifecycleReconnectDeferred = false
         guard !shell.isHiveMacConnected else { return }
+        // The handle outlives the attempt so `stopConnectionLifecycle()` can
+        // cancel a retry that is already dialling; a finished handle is inert.
         deferredLifecycleReconnectTask = Task { @MainActor [weak self] in
             guard let self, !Task.isCancelled else { return }
-            self.deferredLifecycleReconnectTask = nil
             _ = await self.reconnect()
         }
     }
