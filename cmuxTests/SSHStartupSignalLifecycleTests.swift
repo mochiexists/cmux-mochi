@@ -823,7 +823,9 @@ extension CLINotifyProcessIntegrationRegressionTests {
         )
 
         XCTAssertFalse(result.timedOut, result.stderr)
-        XCTAssertEqual(result.status, 0, result.stderr)
+        // This fixture has no app socket for the attach phase, so the startup
+        // wrapper must propagate that failure after removing the stale control socket.
+        XCTAssertEqual(result.status, 1, result.stderr)
         XCTAssertFalse(fileManager.fileExists(atPath: staleControlPath.path))
 
         let sshLog = (try? String(contentsOf: logFile, encoding: .utf8)) ?? ""
