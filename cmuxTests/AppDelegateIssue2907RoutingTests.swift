@@ -1067,8 +1067,9 @@ final class AppDelegateIssue2907RoutingTests: XCTestCase {
         )
         XCTAssertNil(resumeLaunchEnvironment["OPENAI_API_KEY"])
         let legacyCommand = try XCTUnwrap(restoreRecord["legacy_command"] as? String)
-        XCTAssertTrue(legacyCommand.contains("resume"), legacyCommand)
-        XCTAssertTrue(legacyCommand.contains(currentSessionID), legacyCommand)
+        // The executable is the Codex wrapper-shim expression, so only the
+        // subcommand and session id are literal and adjacent.
+        XCTAssertTrue(legacyCommand.contains(" resume \(currentSessionID)"), legacyCommand)
 
         let ompSessionID = UUID().uuidString.lowercased()
         XCTAssertTrue(workspace.setSurfaceResumeBinding(

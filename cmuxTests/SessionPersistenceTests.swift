@@ -3800,13 +3800,25 @@ final class SocketListenerAcceptPolicyTests: XCTestCase {
             )
         )
 
+        // The convenience `supportsFork(snapshot:)` builds a fresh probe cache per
+        // call, so caching is only observable through one shared cache.
+        let executableIdentityResolver = AgentForkExecutableIdentityResolver()
+        let capabilityProbeCache = ForkCapabilityProbeResultCache()
+        func supportsFork() async -> Bool {
+            await AgentForkSupport.supportsFork(
+                snapshot: snapshot,
+                executableIdentityResolver: executableIdentityResolver,
+                forkCapabilityProbeCache: capabilityProbeCache
+            )
+        }
+
         try "opencode 1.14.48\n".write(to: versionFile, atomically: true, encoding: .utf8)
-        let unsupportedVersionSupportsFork = await AgentForkSupport.supportsFork(snapshot: snapshot)
+        let unsupportedVersionSupportsFork = await supportsFork()
         XCTAssertFalse(unsupportedVersionSupportsFork)
 
         try "opencode 1.14.50\n".write(to: versionFile, atomically: true, encoding: .utf8)
-        let supportedVersionSupportsFork = await AgentForkSupport.supportsFork(snapshot: snapshot)
-        XCTAssertTrue(supportedVersionSupportsFork)
+        let cachedVersionSupportsFork = await supportsFork()
+        XCTAssertFalse(cachedVersionSupportsFork)
     }
 
     func testOpenCodeVersionProbeEnvironmentIsSanitized() {

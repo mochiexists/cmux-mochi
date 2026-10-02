@@ -2473,7 +2473,8 @@ final class TabManagerSessionSnapshotTests: XCTestCase {
         XCTAssertEqual(restoredWorkspace.remoteConfiguration?.persistentDaemonSlot, persistentDaemonSlot)
         XCTAssertEqual(restoredWorkspace.remoteConfiguration?.localSocketPath, reservedSocketPath)
         XCTAssertTrue(
-            restoredWorkspace.remoteConfiguration?.sshOptions.contains(where: { $0.hasPrefix("ControlPath=") }) == true
+            restoredWorkspace.remoteConfiguration?.sshOptions.contains("ControlPath=/tmp/cmux-ssh-\(getuid())-%C") == true,
+            "\(restoredWorkspace.remoteConfiguration?.sshOptions ?? [])"
         )
         XCTAssertNotEqual(restoredWorkspace.remoteConfiguration?.relayID, "relay-persist-test")
         XCTAssertNotEqual(restoredWorkspace.remoteConfiguration?.relayToken, String(repeating: "e", count: 64))
