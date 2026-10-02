@@ -24,7 +24,7 @@ extension Workspace {
         transferredRemoteCleanupConfigurationsByPanelId.removeValue(forKey: surfaceId)
         surfaceTTYNames.removeValue(forKey: surfaceId)
         let removedTrustedDirectory = clearRemoteDirectoryReportForPersistentPTYFailure(surfaceId: surfaceId)
-        if !sessionEnded { trackRemoteTerminalSurface(surfaceId) }
+        untrackRemoteTerminalSurface(surfaceId)
         syncRemotePortScanTTYs()
         refreshPersistentPTYFailurePresentation(
             previousDirectory: previousPresentedDirectory,
