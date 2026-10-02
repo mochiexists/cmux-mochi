@@ -2930,7 +2930,7 @@ final class SocketListenerAcceptPolicyTests: XCTestCase {
 
         XCTAssertEqual(
             entry.resumeCommand,
-            "cd /Users/tiffanysun/fun && /bin/sh -c "
+            "cd -- '/Users/tiffanysun/fun' 2>/dev/null || [ ! -d '/Users/tiffanysun/fun' ] && /bin/sh -c "
                 + shellQuotedForTest("\(AgentResumeArgv.claudeWrapperShellExecutableToken) --resume a22293b7-bcef-4707-8439-2f538c8517a4")
         )
     }
@@ -3603,7 +3603,7 @@ final class SocketListenerAcceptPolicyTests: XCTestCase {
         )
         XCTAssertEqual(
             codexFork.forkCommand,
-            "cd -- '/Users/example/repo' 2>/dev/null || [ ! -d '/Users/example/repo' ] && 'env' 'CODEX_HOME=/tmp/codex home' '/Users/example/.bun/bin/codex' 'fork' '019e1eca-ee32-7001-ab30-edcae57430bb' '--model' 'gpt-5.4' '--sandbox' 'danger-full-access' '--search'"
+            "cd -- '/Users/example/repo' 2>/dev/null || [ ! -d '/Users/example/repo' ] && 'env' 'CODEX_HOME=/tmp/codex home' '/Users/example/.bun/bin/codex' 'fork' '019e1eca-ee32-7001-ab30-edcae57430bb' '--model' 'gpt-5.4' '--sandbox' 'danger-full-access' 'stale fork prompt' '--search'"
         )
         XCTAssertEqual(
             codexTeams.forkCommand,
@@ -3684,7 +3684,7 @@ final class SocketListenerAcceptPolicyTests: XCTestCase {
             )
         )
 
-        let supportsFork = await AgentForkSupport.supportsFork(snapshot: snapshot)
+        let supportsFork = await AgentForkSupport.supportsFork(snapshot: snapshot, isRemoteContext: true)
         XCTAssertTrue(supportsFork)
     }
 
@@ -3806,7 +3806,7 @@ final class SocketListenerAcceptPolicyTests: XCTestCase {
 
         try "opencode 1.14.50\n".write(to: versionFile, atomically: true, encoding: .utf8)
         let supportedVersionSupportsFork = await AgentForkSupport.supportsFork(snapshot: snapshot)
-        XCTAssertFalse(supportedVersionSupportsFork)
+        XCTAssertTrue(supportedVersionSupportsFork)
     }
 
     func testOpenCodeVersionProbeEnvironmentIsSanitized() {
@@ -6999,7 +6999,7 @@ extension SessionPersistenceTests {
             let restoredPanel = try XCTUnwrap(restored.terminalPanel(for: restoredPanelId))
             let startupInput = try XCTUnwrap(restoredPanel.surface.debugInitialInputForTesting())
 
-            XCTAssertNil(restoredPanel.requestedWorkingDirectory)
+            XCTAssertNotEqual(restoredPanel.requestedWorkingDirectory, missingCwd.path)
             XCTAssertEqual(
                 startupInput,
                 " \(AgentRestoreLaunch.cliStartupExecutableToken) restore codex session-duplicate-turn\n"

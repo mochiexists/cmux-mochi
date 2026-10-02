@@ -3571,22 +3571,20 @@ final class WorkspaceCreationPlacementTests: XCTestCase {
 @MainActor
 final class WorkspaceCreationConfigSanitizationTests: XCTestCase {
     private final class UnsafeConfigSnapshotTabManager: TabManager {
-        private var injectedConfig: CmuxSurfaceConfigTemplate?
+        private var injectedFontSizeLineage: TerminalFontSizeLineage?
         var capturedConfigTemplate: CmuxSurfaceConfigTemplate?
 
         func installInjectedConfig(fontSize: Float) {
-            var config = CmuxSurfaceConfigTemplate()
-            config.fontSize = fontSize
-            config.workingDirectory = "/tmp/cmux-workspace-snapshot"
-            config.command = "echo snapshot"
-            config.environmentVariables = ["CMUX_INHERITED_ENV": "1"]
-            injectedConfig = config
+            injectedFontSizeLineage = TerminalFontSizeLineage(
+                basePoints: fontSize,
+                isExplicitOverride: true
+            )
         }
 
-        override func inheritedTerminalConfigForNewWorkspace(
+        override func inheritedTerminalFontSizeLineageForNewWorkspace(
             workspace: Workspace?
-        ) -> CmuxSurfaceConfigTemplate? {
-            injectedConfig ?? super.inheritedTerminalConfigForNewWorkspace(workspace: workspace)
+        ) -> TerminalFontSizeLineage? {
+            injectedFontSizeLineage ?? super.inheritedTerminalFontSizeLineageForNewWorkspace(workspace: workspace)
         }
 
         override func makeWorkspaceForCreation(
@@ -6436,7 +6434,7 @@ final class WorkspacePanelGitBranchTests: XCTestCase {
         XCTAssertFalse(startupCommand.contains("ssh-pty-attach"), startupCommand)
         XCTAssertEqual(
             startupCommand,
-            "ssh -p 2222 -i /Users/example/.ssh/cmux -tt cmux-macmini"
+            "/usr/bin/ssh -p 2222 -i /Users/example/.ssh/cmux -tt cmux-macmini"
         )
     }
 
@@ -6758,7 +6756,7 @@ final class WorkspacePanelGitBranchTests: XCTestCase {
         }
 
         var publishCount = 0
-        let cancellable = workspace.objectWillChange.sink { _ in
+        let cancellable = workspace.sidebarObservationPublisher.dropFirst().sink { _ in
             publishCount += 1
         }
         defer { cancellable.cancel() }
@@ -6791,7 +6789,7 @@ final class WorkspacePanelGitBranchTests: XCTestCase {
         workspace.updatePanelGitBranch(panelId: panelId, branch: "feature/sidebar-pr", isDirty: false)
 
         var publishCount = 0
-        let cancellable = workspace.objectWillChange.sink { _ in
+        let cancellable = workspace.sidebarObservationPublisher.dropFirst().sink { _ in
             publishCount += 1
         }
         defer { cancellable.cancel() }
@@ -6880,9 +6878,10 @@ final class WorkspacePanelGitBranchTests: XCTestCase {
         )
 
         XCTAssertNil(workspace.pullRequest)
-        XCTAssertTrue(
-            workspace.sidebarPullRequestsInDisplayOrder().isEmpty,
-            "Expected background panel PRs to stay hidden while the focused panel has no PR"
+        XCTAssertEqual(
+            workspace.sidebarPullRequestsInDisplayOrder().map(\.number),
+            [1629],
+            "Expected sidebar ordering to include PRs from background panels"
         )
 
         workspace.focusPanel(secondPanel.id)
@@ -7309,7 +7308,7 @@ final class WorkspacePanelGitBranchTests: XCTestCase {
         )
     }
 
-    func testForkConversationContextMenuDefaultActionWorksForCodexSnapshot() throws {
+    func testForkConversationContextMenuDefaultActionWorksForCodexSnapshot() async throws {
         // Parity coverage with the Claude path: Codex sessions are also `.supportedWithoutProbe`
         // and should reach the default right-split path through the context-menu dispatcher.
         let defaults = UserDefaults.standard
@@ -7342,6 +7341,8 @@ final class WorkspacePanelGitBranchTests: XCTestCase {
             for: anchorTab,
             inPane: sourcePaneId
         )
+        await Task.yield()
+        await Task.yield()
 
         let forkPanelId = try XCTUnwrap(workspace.focusedPanelId)
         XCTAssertNotEqual(forkPanelId, sourcePanelId, "Codex fork should focus the new split")
@@ -7360,7 +7361,7 @@ final class WorkspacePanelGitBranchTests: XCTestCase {
         XCTAssertEqual(try paneId(in: split.second), forkPaneUUID)
     }
 
-    func testForkConversationContextMenuNewTabActionCreatesSiblingTab() throws {
+    func testForkConversationContextMenuNewTabActionCreatesSiblingTab() async throws {
         // Drive the same code path the bonsplit context menu triggers, end-to-end,
         // to lock in that the menu wiring stays connected.
         let workspace = Workspace()
@@ -7378,6 +7379,8 @@ final class WorkspacePanelGitBranchTests: XCTestCase {
             for: anchorTab,
             inPane: sourcePaneId
         )
+        await Task.yield()
+        await Task.yield()
 
         XCTAssertEqual(
             workspace.bonsplitController.tabs(inPane: sourcePaneId).count,
@@ -7391,7 +7394,7 @@ final class WorkspacePanelGitBranchTests: XCTestCase {
         )
     }
 
-    func testForkConversationContextMenuPrimaryActionUsesConfiguredDefault() throws {
+    func testForkConversationContextMenuPrimaryActionUsesConfiguredDefault() async throws {
         let defaults = UserDefaults.standard
         let previousValue = defaults.object(forKey: AgentConversationForkDefaultSettings.key)
         defer {
@@ -7419,6 +7422,8 @@ final class WorkspacePanelGitBranchTests: XCTestCase {
             for: anchorTab,
             inPane: sourcePaneId
         )
+        await Task.yield()
+        await Task.yield()
 
         XCTAssertEqual(
             workspace.bonsplitController.tabs(inPane: sourcePaneId).count,

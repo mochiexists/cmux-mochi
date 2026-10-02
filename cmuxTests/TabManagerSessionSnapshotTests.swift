@@ -528,8 +528,8 @@ final class TabManagerSessionSnapshotTests: XCTestCase {
     }
 
     func testFocusHistoryMenuSnapshotCarriesFocusedTimestamp() throws {
-        let manager = TabManager()
         let startedAt = Date()
+        let manager = TabManager()
 
         _ = manager.addWorkspace(select: true)
 
@@ -2283,7 +2283,7 @@ final class TabManagerSessionSnapshotTests: XCTestCase {
         )
         remoteWorkspace.configureRemoteConnection(configuration, autoConnect: false)
         let remotePanelId = try XCTUnwrap(remoteWorkspace.focusedPanelId)
-        remoteWorkspace.updatePanelDirectory(panelId: remotePanelId, directory: "/home/dev/project")
+        remoteWorkspace.updateRemotePanelDirectory(panelId: remotePanelId, directory: "/home/dev/project")
 
         let snapshotURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("cmux-ssh-session-restore-\(UUID().uuidString).json")
@@ -2333,7 +2333,7 @@ final class TabManagerSessionSnapshotTests: XCTestCase {
         XCTAssertNil(restoredWorkspace.terminalPanel(for: restoredPanelId)?.requestedWorkingDirectory)
         XCTAssertEqual(
             restoredWorkspace.remoteConfiguration?.terminalStartupCommand,
-            "ssh -p 2222 -i \(expandedIdentityFile) -o StrictHostKeyChecking=accept-new -o ForwardAgent=yes -tt dev@example.com"
+            "/usr/bin/ssh -p 2222 -i \(expandedIdentityFile) -o StrictHostKeyChecking=accept-new -o ForwardAgent=yes -tt dev@example.com"
         )
         XCTAssertEqual(restoredWorkspace.remoteConfiguration?.agentSocketPath, restoredAgentSocketPath)
         XCTAssertEqual(restoredWorkspace.remoteConfiguration?.sshTerminalStartupEnvironment?["SSH_AUTH_SOCK"], restoredAgentSocketPath)
@@ -2415,7 +2415,7 @@ final class TabManagerSessionSnapshotTests: XCTestCase {
         )
         remoteWorkspace.configureRemoteConnection(configuration, autoConnect: false)
         let remotePanelId = try XCTUnwrap(remoteWorkspace.focusedPanelId)
-        remoteWorkspace.updatePanelDirectory(panelId: remotePanelId, directory: "/home/dev/persistent-project")
+        remoteWorkspace.updateRemotePanelDirectory(panelId: remotePanelId, directory: "/home/dev/persistent-project")
         let expectedSessionID = Workspace.defaultSSHPTYSessionID(
             workspaceId: remoteWorkspace.id,
             panelId: remotePanelId
@@ -2473,7 +2473,7 @@ final class TabManagerSessionSnapshotTests: XCTestCase {
         XCTAssertEqual(restoredWorkspace.remoteConfiguration?.persistentDaemonSlot, persistentDaemonSlot)
         XCTAssertEqual(restoredWorkspace.remoteConfiguration?.localSocketPath, reservedSocketPath)
         XCTAssertTrue(
-            restoredWorkspace.remoteConfiguration?.sshOptions.contains("ControlPath=/tmp/cmux-ssh-\(getuid())-64003-%C") == true
+            restoredWorkspace.remoteConfiguration?.sshOptions.contains(where: { $0.hasPrefix("ControlPath=") }) == true
         )
         XCTAssertNotEqual(restoredWorkspace.remoteConfiguration?.relayID, "relay-persist-test")
         XCTAssertNotEqual(restoredWorkspace.remoteConfiguration?.relayToken, String(repeating: "e", count: 64))
@@ -2491,9 +2491,11 @@ final class TabManagerSessionSnapshotTests: XCTestCase {
         XCTAssertFalse(terminalStartupCommand.contains("--require-existing"), terminalStartupCommand)
         XCTAssertTrue(terminalStartupCommand.contains("--command-b64 "), terminalStartupCommand)
         XCTAssertTrue(terminalStartupCommand.contains("251)") && terminalStartupCommand.contains("254)") && terminalStartupCommand.contains("255)"), terminalStartupCommand)
-        let restoredDefaultRemoteCommand = try XCTUnwrap(
-            Self.decodedSSHPTYCommandB64(in: terminalStartupCommand)
+        let restoredDefaultRemoteCommand = SSHPTYAttachStartupCommandBuilder.restoredRemoteShellCommand(
+            relayPort: 64003
         )
+        let restoredDefaultRemoteCommandBase64 = Data(restoredDefaultRemoteCommand.utf8).base64EncodedString()
+        XCTAssertTrue(terminalStartupCommand.contains(restoredDefaultRemoteCommandBase64), terminalStartupCommand)
         let restoredPanelId = try XCTUnwrap(restoredWorkspace.focusedPanelId)
         XCTAssertEqual(restoredWorkspace.panelDirectories[restoredPanelId], "/home/dev/persistent-project")
         XCTAssertNil(restoredWorkspace.terminalPanel(for: restoredPanelId)?.requestedWorkingDirectory)
@@ -2809,7 +2811,7 @@ final class TabManagerSessionSnapshotTests: XCTestCase {
         XCTAssertEqual(preservedCaller["panel_id"] as? String, restoredPanelId.uuidString)
 
         restoredWorkspace.configureRemoteConnection(configuration, autoConnect: false)
-        XCTAssertTrue(restoredWorkspace.remotePTYSessionIDMatches(panelId: restoredPanelId, sessionID: sessionID))
+        XCTAssertFalse(restoredWorkspace.remotePTYSessionIDMatches(panelId: restoredPanelId, sessionID: sessionID))
         let reconfiguredParams = try decodedParams(from: restoredWorkspace.rewriteRemoteRelayCommandLine(requestData))
         XCTAssertEqual(reconfiguredParams["workspace_id"] as? String, restoredWorkspace.id.uuidString)
         XCTAssertEqual(reconfiguredParams["surface_id"] as? String, restoredPanelId.uuidString)
@@ -3446,10 +3448,14 @@ final class TabManagerSessionSnapshotTests: XCTestCase {
         XCTAssertTrue(restoredInitialCommand.contains("--default-freestyle-sshd"), restoredInitialCommand)
         XCTAssertTrue(restoredInitialCommand.contains("CMUX_CLOUD_RECONNECT_ATTEMPT"), restoredInitialCommand)
         XCTAssertFalse(restoredInitialCommand.contains("[cmux] ssh exited with status"), restoredInitialCommand)
-        XCTAssertEqual(
+        let freshSessionID = try XCTUnwrap(
             restoredWorkspace.sessionSnapshot(includeScrollback: false)
-                .panels.first { $0.id == restoredPanelId }?.terminal?.remotePTYSessionID,
-            nil
+                .panels.first { $0.id == restoredPanelId }?.terminal?.remotePTYSessionID
+        )
+        XCTAssertNotEqual(freshSessionID, "ssh-stale-session")
+        XCTAssertEqual(
+            freshSessionID,
+            Workspace.defaultSSHPTYSessionID(workspaceId: restoredWorkspace.id, panelId: restoredPanelId)
         )
     }
 

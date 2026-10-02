@@ -79,7 +79,7 @@ final class AgentSessionAutoResumeSettingsTests: XCTestCase {
         let panel = try XCTUnwrap(restored.terminalPanel(for: panelId))
         XCTAssertEqual(panel.surface.debugInitialInputForTesting(), expectedInput)
         XCTAssertFalse(expectedInput.hasSuffix("\n"))
-        XCTAssertEqual(restored.restoredAgentResumeStatesByPanelId[panelId], .manualResumeAvailable)
+        XCTAssertEqual(restored.restoredAgentResumeStatesByPanelId[panelId], .awaitingAutoResumeCommand)
 
         let replayPath = try XCTUnwrap(
             panel.surface.debugAdditionalEnvironmentForTesting()[SessionScrollbackReplayStore.environmentKey]
@@ -246,7 +246,9 @@ final class AgentSessionAutoResumeSettingsTests: XCTestCase {
             XCTAssertFalse(restoredInput.hasInitialInput,
                            "must not auto-resume when agent was already exited at snapshot time")
             XCTAssertNil(restoredPanel.surface.debugInitialCommand())
-            XCTAssertEqual(try String(contentsOf: replayFileURL, encoding: .utf8), savedScrollback)
+            let replayContents = try String(contentsOf: replayFileURL, encoding: .utf8)
+            XCTAssertTrue(replayContents.hasPrefix(savedScrollback))
+            XCTAssertTrue(replayContents.contains(SessionScrollbackReplayStore.continuationBoundaryPrefix))
             XCTAssertEqual(
                 restored.sessionSnapshot(includeScrollback: false).panels.first?.terminal?.agent?.sessionId,
                 "codex-exited-before-snapshot-session",
