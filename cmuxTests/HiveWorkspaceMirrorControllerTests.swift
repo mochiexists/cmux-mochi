@@ -68,7 +68,7 @@ struct HiveWorkspaceMirrorControllerTests {
         service.start()
 
         let composition = try #require(
-            service.composition,
+            service.compositionForTesting,
             "launch with a pairing hint should create the Hive composition"
         )
         #expect(

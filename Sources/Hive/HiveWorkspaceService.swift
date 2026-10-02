@@ -8,7 +8,7 @@ import SwiftUI
 /// App-composition owner for account-free remote Mac workspaces.
 @MainActor
 final class HiveWorkspaceService {
-    private(set) var composition: HiveComposition?
+    private var composition: HiveComposition?
     private let coordinatorOverride: HiveWorkspaceCoordinator?
     private let uiFixtureName: String?
     private let hasKnownPairingAtLaunch: () -> Bool
@@ -21,6 +21,11 @@ final class HiveWorkspaceService {
     var coordinator: HiveWorkspaceCoordinator? {
         resolveCompositionIfNeeded()
         return coordinatorOverride ?? composition?.coordinator
+    }
+
+    /// The composition created so far, without resolving it.
+    var compositionForTesting: HiveComposition? {
+        composition
     }
 
     init() {
