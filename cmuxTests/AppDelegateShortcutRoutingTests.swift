@@ -1264,6 +1264,81 @@ final class AppDelegateShortcutRoutingTests: XCTestCase {
         XCTAssertTrue(rightSidebarIsVisible, "Cmd+Option+B should target the shared right-sidebar action")
     }
 
+    /// End-to-end coverage through AppDelegate key handling with a registered window.
+    func testWelcomeWindowSidebarShortcutsToggleRegisteredWindowSidebars() {
+        guard let appDelegate = AppDelegate.shared else {
+            XCTFail("Expected AppDelegate.shared")
+            return
+        }
+
+        let defaults = UserDefaults.standard
+        let previousRightSidebarVisibility = defaults.object(forKey: "fileExplorer.isVisible")
+        defer {
+            restoreDefaultsValue(previousRightSidebarVisibility, forKey: "fileExplorer.isVisible", defaults: defaults)
+        }
+
+        let windowId = UUID()
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 320, height: 240),
+            styleMask: [.titled, .closable, .resizable],
+            backing: .buffered,
+            defer: false
+        )
+        // A programmatic NSWindow defaults to releasing itself on close, which
+        // over-releases it under ARC when the test's reference is dropped.
+        window.isReleasedWhenClosed = false
+        window.identifier = NSUserInterfaceItemIdentifier("cmux.main.\(windowId.uuidString)")
+
+        let tabManager = TabManager()
+        let sidebarState = SidebarState(isVisible: true)
+        let sidebarSelectionState = SidebarSelectionState()
+        let fileExplorerState = FileExplorerState()
+        fileExplorerState.setVisible(false)
+
+        appDelegate.registerMainWindow(
+            window,
+            windowId: windowId,
+            tabManager: tabManager,
+            sidebarState: sidebarState,
+            sidebarSelectionState: sidebarSelectionState,
+            fileExplorerState: fileExplorerState
+        )
+
+        defer {
+            window.performClose(nil)
+            RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.05))
+        }
+
+        window.makeKeyAndOrderFront(nil)
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.05))
+
+        guard let leftSidebarEvent = makeKeyDownEvent(
+            key: "b",
+            modifiers: [.command],
+            keyCode: 11,
+            windowNumber: window.windowNumber
+        ), let rightSidebarEvent = makeKeyDownEvent(
+            key: "b",
+            modifiers: [.command, .option],
+            keyCode: 11,
+            windowNumber: window.windowNumber
+        ) else {
+            XCTFail("Failed to construct sidebar shortcut events")
+            return
+        }
+
+#if DEBUG
+        XCTAssertTrue(appDelegate.debugHandleCustomShortcut(event: leftSidebarEvent))
+        XCTAssertFalse(sidebarState.isVisible, "Cmd+B should toggle the Welcome window left sidebar")
+
+        XCTAssertTrue(appDelegate.debugHandleCustomShortcut(event: rightSidebarEvent))
+        _ = waitForCondition { fileExplorerState.isVisible }
+        XCTAssertTrue(fileExplorerState.isVisible, "Cmd+Option+B should toggle the Welcome window right sidebar")
+#else
+        XCTFail("debugHandleCustomShortcut is only available in DEBUG")
+#endif
+    }
+
     func testCmdNResolvesEventWindowWhenObjectKeyLookupIsMismatched() {
         guard let appDelegate = AppDelegate.shared else {
             XCTFail("Expected AppDelegate.shared")
