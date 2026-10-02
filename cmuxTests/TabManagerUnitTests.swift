@@ -3507,6 +3507,75 @@ final class TabManagerFocusedNotificationIndicatorTests: XCTestCase {
         XCTAssertEqual(workspace.tmuxWorkspaceFlashPanelId, panelId)
         XCTAssertEqual(workspace.tmuxWorkspaceFlashReason, .notificationDismiss)
     }
+
+    func testProgrammaticFocusPanelKeepsUnreadNotificationWhileAppInactive() throws {
+        try withSplitNotificationFixture(appIsFocused: false) { _, store, workspace, leftPanelId in
+            store.addNotification(
+                tabId: workspace.id,
+                surfaceId: leftPanelId,
+                title: "Unread",
+                subtitle: "",
+                body: "A background focus change must not consume this"
+            )
+            XCTAssertTrue(store.hasUnreadNotification(forTabId: workspace.id, surfaceId: leftPanelId))
+
+            workspace.focusPanel(leftPanelId)
+
+            XCTAssertEqual(workspace.focusedPanelId, leftPanelId)
+            XCTAssertTrue(store.hasUnreadNotification(forTabId: workspace.id, surfaceId: leftPanelId))
+            XCTAssertEqual(workspace.tmuxWorkspaceFlashToken, 0)
+        }
+    }
+
+    func testProgrammaticFocusPanelKeepsRestoredUnreadIndicator() throws {
+        try withSplitNotificationFixture(appIsFocused: true) { _, _, workspace, leftPanelId in
+            workspace.restorePanelUnreadIndicator(leftPanelId)
+            XCTAssertTrue(workspace.hasRestoredUnreadIndicator(panelId: leftPanelId))
+
+            workspace.focusPanel(leftPanelId)
+
+            XCTAssertEqual(workspace.focusedPanelId, leftPanelId)
+            XCTAssertTrue(
+                workspace.hasRestoredUnreadIndicator(panelId: leftPanelId),
+                "Restore and programmatic focus are generic active focus, which must not clear restored unread"
+            )
+        }
+    }
+
+    /// Selected workspace split into two terminals with the right one focused;
+    /// `body` receives the left panel id.
+    private func withSplitNotificationFixture(
+        appIsFocused: Bool,
+        _ body: (TabManager, TerminalNotificationStore, Workspace, UUID) throws -> Void
+    ) throws {
+        let appDelegate = AppDelegate.shared ?? AppDelegate()
+        let manager = TabManager()
+        let store = TerminalNotificationStore.shared
+        let originalTabManager = appDelegate.tabManager
+        let originalNotificationStore = appDelegate.notificationStore
+        let originalAppFocusOverride = AppFocusState.overrideIsFocused
+
+        store.replaceNotificationsForTesting([])
+        store.configureNotificationDeliveryHandlerForTesting { _, _ in }
+        appDelegate.tabManager = manager
+        appDelegate.notificationStore = store
+        AppFocusState.overrideIsFocused = appIsFocused
+        defer {
+            store.replaceNotificationsForTesting([])
+            store.resetNotificationDeliveryHandlerForTesting()
+            appDelegate.tabManager = originalTabManager
+            appDelegate.notificationStore = originalNotificationStore
+            AppFocusState.overrideIsFocused = originalAppFocusOverride
+        }
+
+        let workspace = try XCTUnwrap(manager.selectedWorkspace)
+        let leftPanelId = try XCTUnwrap(workspace.focusedPanelId)
+        let rightPanel = try XCTUnwrap(
+            workspace.newTerminalSplit(from: leftPanelId, orientation: .horizontal)
+        )
+        XCTAssertEqual(workspace.focusedPanelId, rightPanel.id)
+        try body(manager, store, workspace, leftPanelId)
+    }
 }
 
 @MainActor
