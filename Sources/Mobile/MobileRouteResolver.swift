@@ -317,8 +317,12 @@ final class MobileRouteResolver: @unchecked Sendable {
     private static func localNetworkRouteHosts() -> [String] {
         localNetworkRouteHosts(
             localIPv4Addresses: MobileHostNetworkPathMonitor.systemLocalIPv4Addresses(),
-            hostName: ProcessInfo.processInfo.hostName
+            hostName: systemBonjourHostName() ?? ""
         )
+    }
+
+    static func systemBonjourHostName() -> String? {
+        ProcessInfo.processInfo.hostName
     }
 
     /// Builds LAN locators only when this Mac owns a phone-reachable LAN

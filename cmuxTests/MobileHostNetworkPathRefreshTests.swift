@@ -1,4 +1,5 @@
 import Foundation
+import SystemConfiguration
 import Testing
 
 #if canImport(cmux_DEV)
@@ -150,6 +151,17 @@ import Testing
             localIPv4Addresses: ["192.168.1.20"],
             hostName: "timapple-m5"
         ) == ["192.168.1.20", "timapple-m5.local"])
+    }
+
+    /// The `.local` locator must be the name mDNSResponder actually publishes
+    /// (the Bonjour LocalHostName). `ProcessInfo.hostName` is a reverse-DNS
+    /// answer instead: it blocked the main actor for 35 s at listener start in
+    /// the Hive e2e run and returned `mac`, `tim-apple.local` or `Tim-Apple-M4`
+    /// for a Mac whose Bonjour name is `tim-apple`.
+    @Test func mdnsLocatorUsesTheBonjourLocalHostName() {
+        let published = SCDynamicStoreCopyLocalHostName(nil) as String?
+        #expect(published != nil)
+        #expect(MobileRouteResolver.systemBonjourHostName() == published)
     }
 
     // MARK: - Republish policy
