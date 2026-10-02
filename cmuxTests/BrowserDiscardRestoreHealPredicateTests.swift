@@ -225,9 +225,23 @@ private final class BrowserDiscardRestoreDeferredPolicyAlert: NSAlert {
     }
 }
 
+/// Returns a navigation object issued by WebKit.
+///
+/// `WKNavigation()` has no backing WebKit navigation: releasing its last reference crashes in
+/// `-[WKNavigation dealloc]` with `CFRetain() called with NULL`, which took down the test host
+/// whenever the panel dropped `pendingDiscardRestoreNavigation`. Real navigations come from
+/// WebKit's load methods, so the tests use one of those.
+@MainActor
+private func makeWebKitNavigation() throws -> WKNavigation {
+    let webView = WKWebView(frame: .zero)
+    let navigation = try #require(webView.loadHTMLString("", baseURL: nil))
+    webView.stopLoading()
+    return navigation
+}
+
 @MainActor
 struct BrowserDiscardRestorePolicyCancelTests {
-    @Test func stalledRestoreClearsTrackedNavigationBeforeReactivation() {
+    @Test func stalledRestoreClearsTrackedNavigationBeforeReactivation() throws {
         let panel = BrowserPanel(
             workspaceId: UUID(),
             initialURL: nil,
@@ -240,7 +254,7 @@ struct BrowserDiscardRestorePolicyCancelTests {
             now: Date(timeIntervalSince1970: 100)
         )
         panel.hiddenWebViewDiscardManager.noteRestoreNavigationStarted(reason: "test.restore")
-        panel.pendingDiscardRestoreNavigation = WKNavigation()
+        panel.pendingDiscardRestoreNavigation = try makeWebKitNavigation()
 
         #expect(panel.restoreDiscardedWebViewIfNeeded(reason: "test.reveal"))
 
@@ -275,8 +289,8 @@ struct BrowserDiscardRestorePolicyCancelTests {
     @Test func staleRestoreCancelDoesNotClearCurrentAttemptedRequest() throws {
         let staleURL = try #require(URL(string: "https://example.com/cmux-issue-7504-stale"))
         let currentURL = try #require(URL(string: "https://example.com/cmux-issue-7504-current"))
-        let staleNavigation = WKNavigation()
-        let currentNavigation = WKNavigation()
+        let staleNavigation = try makeWebKitNavigation()
+        let currentNavigation = try makeWebKitNavigation()
         let panel = BrowserPanel(
             workspaceId: UUID(),
             initialURL: nil,
@@ -445,6 +459,9 @@ struct BrowserDiscardRestorePolicyCancelTests {
             backing: .buffered,
             defer: false
         )
+        // A programmatic NSWindow defaults to releasing itself on close; ARC then
+        // releases it again and the autorelease pool pop crashes the test host.
+        window.isReleasedWhenClosed = false
         defer {
             panel.resetInsecureHTTPAlertHooksForTesting()
             window.close()
@@ -465,7 +482,7 @@ struct BrowserDiscardRestorePolicyCancelTests {
             now: Date(timeIntervalSince1970: 300)
         )
         panel.noteDiscardedWebViewRestoreNavigationStarted()
-        panel.pendingDiscardRestoreNavigation = WKNavigation()
+        panel.pendingDiscardRestoreNavigation = try makeWebKitNavigation()
         panel.navigationDelegate?.recordAttemptedRequest(URLRequest(url: url))
 
         let alert = BrowserDiscardRestoreDeferredPolicyAlert()
@@ -477,7 +494,7 @@ struct BrowserDiscardRestorePolicyCancelTests {
         let staleCompletion = try #require(alert.completionHandler)
 
         panel.noteDiscardedWebViewRestoreNavigationDidNotCommit(reason: "test.old_cancel")
-        let currentNavigation = WKNavigation()
+        let currentNavigation = try makeWebKitNavigation()
         panel.noteDiscardedWebViewRestoreNavigationStarted()
         panel.pendingDiscardRestoreNavigation = currentNavigation
         panel.navigationDelegate?.recordAttemptedRequest(URLRequest(url: url))
