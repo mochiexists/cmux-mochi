@@ -5602,7 +5602,7 @@ enum XCTestHostHygiene {
 
     nonisolated private static let realHomeDirectory = FileManager.default.homeDirectoryForCurrentUser.path
 
-    /// Gives every child process of the test host a hermetic `HOME`, `PATH` and tmux socket.
+    /// Gives every child process of the test host a minimal `PATH`, no agent config and a private tmux socket.
     nonisolated static func activateIfNeeded() {
         guard let policy else { return }
         for (key, value) in policy.environmentChanges {
@@ -5620,6 +5620,11 @@ enum XCTestHostHygiene {
             return URL(fileURLWithPath: policy.homeDirectory, isDirectory: true)
         }
         return FileManager.default.homeDirectoryForCurrentUser
+    }
+
+    /// A path under ``userHomeDirectoryURL``, such as `.codex/sessions`.
+    nonisolated static func userHomePath(_ relativePath: String) -> String {
+        userHomeDirectoryURL.appendingPathComponent(relativePath).path
     }
 
     /// Whether a recursive file scan may start at `rootPath` in this process.

@@ -428,7 +428,7 @@ struct CmuxVaultAgentRegistry: Sendable {
     }
 
     static func load(
-        homeDirectory: String = NSHomeDirectory(),
+        homeDirectory: String = XCTestHostHygiene.userHomeDirectoryURL.path,
         workingDirectory: String? = nil,
         environment: [String: String] = ProcessInfo.processInfo.environment,
         fileManager: FileManager = .default

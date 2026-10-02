@@ -40,8 +40,6 @@ import CmuxWorkspaces
         }
         let policy = try #require(XCTestHostHygiene.policy)
 
-        #expect(environment["HOME"] == policy.homeDirectory)
-        #expect(environment["ZDOTDIR"] == policy.homeDirectory)
         #expect(environment["PATH"] == XCTestHostHygienePolicy.minimalPath)
         #expect(environment["TMUX"] == nil)
         #expect(environment["TMUX_PANE"] == nil)
@@ -57,6 +55,13 @@ import CmuxWorkspaces
     @Test func otherAppsDataIsLookedUpInsideTheSandbox() throws {
         let policy = try #require(XCTestHostHygiene.policy)
         #expect(XCTestHostHygiene.userHomeDirectoryURL.path == policy.homeDirectory)
+    }
+
+    @Test func agentCredentialsAndSessionsAreReadFromTheSandbox() throws {
+        let policy = try #require(XCTestHostHygiene.policy)
+        #expect(AIAccountCredentialSources().homeDirectory.path == policy.homeDirectory)
+        #expect(XCTestHostHygiene.userHomePath(".codex/state_5.sqlite") == policy.homeDirectory + "/.codex/state_5.sqlite")
+        #expect(!XCTestHostHygiene.userHomePath(".claude").hasPrefix(realHome + "/"))
     }
 
     @Test func mobileHostDoesNotBringUpIrohOnItsOwn() {

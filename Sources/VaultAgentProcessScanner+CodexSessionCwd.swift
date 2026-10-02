@@ -16,7 +16,8 @@ final class CodexSessionCwdLookupCache {
     ) -> String? {
         guard kind == .codex else { return nil }
         guard let sessionId = normalizedCodexCwdValue(sessionId) else { return nil }
-        let codexHome = ((normalizedCodexCwdValue(launchCommand?.environment?["CODEX_HOME"]) ?? "~/.codex") as NSString)
+        let codexHome = ((normalizedCodexCwdValue(launchCommand?.environment?["CODEX_HOME"])
+            ?? XCTestHostHygiene.userHomePath(".codex")) as NSString)
             .expandingTildeInPath
         let dbPath = URL(fileURLWithPath: codexHome, isDirectory: true)
             .appendingPathComponent("state_5.sqlite", isDirectory: false)

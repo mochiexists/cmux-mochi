@@ -130,7 +130,7 @@ struct AIAccountCredentialSources {
     let environment: [String: String]
 
     init(
-        homeDirectory: URL = FileManager.default.homeDirectoryForCurrentUser,
+        homeDirectory: URL = XCTestHostHygiene.userHomeDirectoryURL,
         environment: [String: String] = ProcessInfo.processInfo.environment
     ) {
         self.homeDirectory = homeDirectory
