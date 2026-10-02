@@ -660,6 +660,45 @@ final class TerminalNotificationClearAllTests: XCTestCase {
         XCTAssertTrue(destinationWorkspace.restoredAgentAutoResumePendingForTesting(panelId: movingPanelId))
     }
 
+    /// Ports still published after the last agent PID cleared have no owning panel.
+    /// A panel carrying only lifecycle state must not take them to another workspace,
+    /// where no PortScanner refresh would ever clear them.
+    func testDetachingPanelWithoutAgentPIDsDoesNotTransferOwnerlessAgentListeningPorts() throws {
+        let appDelegate = AppDelegate.shared ?? AppDelegate()
+        let manager = TabManager()
+        let originalTabManager = appDelegate.tabManager
+        appDelegate.tabManager = manager
+
+        let sourceWorkspace = manager.addWorkspace(select: true)
+        let destinationWorkspace = manager.addWorkspace(select: false)
+        defer {
+            if manager.tabs.contains(where: { $0.id == destinationWorkspace.id }) {
+                manager.closeWorkspace(destinationWorkspace)
+            }
+            if manager.tabs.contains(where: { $0.id == sourceWorkspace.id }) {
+                manager.closeWorkspace(sourceWorkspace)
+            }
+            appDelegate.tabManager = originalTabManager
+        }
+
+        let movingPanelId = try XCTUnwrap(sourceWorkspace.focusedPanelId)
+        let port = 54323
+        sourceWorkspace.setAgentLifecycle(key: "codex", panelId: movingPanelId, lifecycle: .idle)
+        sourceWorkspace.agentListeningPorts = [port]
+        sourceWorkspace.recomputeListeningPorts()
+        XCTAssertTrue(sourceWorkspace.agentPIDs.isEmpty)
+
+        let transfer = try XCTUnwrap(sourceWorkspace.detachSurface(panelId: movingPanelId))
+        XCTAssertEqual(transfer.agentRuntime?.agentListeningPorts ?? [], [])
+
+        let destinationPaneId = try XCTUnwrap(destinationWorkspace.bonsplitController.allPaneIds.first)
+        XCTAssertNotNil(
+            destinationWorkspace.attachDetachedSurface(transfer, inPane: destinationPaneId, focus: false)
+        )
+        XCTAssertEqual(destinationWorkspace.agentListeningPorts, [])
+        XCTAssertFalse(destinationWorkspace.listeningPorts.contains(port))
+    }
+
     func testDetachingRestoredSnapshotWithoutPanelPIDDoesNotTransferAgentRuntimeStatus() throws {
         let appDelegate = AppDelegate.shared ?? AppDelegate()
         let manager = TabManager()

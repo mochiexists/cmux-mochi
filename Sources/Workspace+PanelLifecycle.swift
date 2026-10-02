@@ -96,9 +96,11 @@ extension Workspace {
                 || !lifecycleStates.isEmpty else {
             return nil
         }
-        let agentListeningPortsForPanel = Set(agentPIDs.keys).isSubset(of: pidKeys)
-            ? agentListeningPorts
-            : []
+        // With no agent PID left, the published ports have no owner (PortScanner
+        // has not yet published the empty set), so no panel may carry them.
+        let ownsEveryAgentPID = !agentPIDsForPanel.isEmpty
+            && Set(agentPIDs.keys).isSubset(of: pidKeys)
+        let agentListeningPortsForPanel = ownsEveryAgentPID ? agentListeningPorts : []
         return DetachedAgentRuntimeState(
             panelId: panelId,
             statusEntries: statusEntriesForPanel,
