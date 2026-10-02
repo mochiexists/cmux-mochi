@@ -5,6 +5,11 @@ public import SwiftUI
 
 /// Pairing, connection status, and remote workspace picker for Hive.
 public struct HiveWorkspaceBrowserView: View {
+    enum Action: Equatable, Sendable {
+        case connect
+        case retry
+    }
+
     @Bindable private var coordinator: HiveWorkspaceCoordinator
     @State private var pairingLink = ""
     @State private var pendingRemoval: MobilePairedMac?
@@ -33,6 +38,21 @@ public struct HiveWorkspaceBrowserView: View {
         self.coordinator = coordinator
         self.openTerminal = openTerminal
         self.isTerminalMounted = isTerminalMounted
+    }
+
+    /// Maps the global lifecycle phase to the action shown beside its status.
+    nonisolated static func statusAction(
+        for phase: HiveWorkspaceCoordinator.Phase
+    ) -> Action? {
+        guard case .failed = phase else { return nil }
+        return .retry
+    }
+
+    /// Maps one paired Mac's connection state to its row action.
+    nonisolated static func pairedMacAction(
+        for status: MobileMacConnectionStatus
+    ) -> Action? {
+        status == .connected ? nil : .connect
     }
 
     public var body: some View {
@@ -191,13 +211,25 @@ public struct HiveWorkspaceBrowserView: View {
                 connectionDetail
             }
         case let .pairedOffline(message, guidance):
-            statusFailure(message: message, guidance: guidance)
+            statusFailure(
+                message: message,
+                guidance: guidance,
+                action: Self.statusAction(for: coordinator.phase)
+            )
         case let .failed(message, guidance):
-            statusFailure(message: message, guidance: guidance)
+            statusFailure(
+                message: message,
+                guidance: guidance,
+                action: Self.statusAction(for: coordinator.phase)
+            )
         }
     }
 
-    private func statusFailure(message: String, guidance: String?) -> some View {
+    private func statusFailure(
+        message: String,
+        guidance: String?,
+        action: Action?
+    ) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Label(message, systemImage: "exclamationmark.triangle")
                 .foregroundStyle(.orange)
@@ -205,8 +237,10 @@ public struct HiveWorkspaceBrowserView: View {
                 Text(guidance).foregroundStyle(.secondary)
             }
             connectionDetail
-            Button(String(localized: "hive.retry.action", defaultValue: "Retry")) {
-                Task { _ = await coordinator.reconnect() }
+            if action == .retry {
+                Button(String(localized: "hive.retry.action", defaultValue: "Retry")) {
+                    Task { _ = await coordinator.reconnect() }
+                }
             }
         }
     }
@@ -333,6 +367,7 @@ public struct HiveWorkspaceBrowserView: View {
                 Text(String(localized: "hive.paired.title", defaultValue: "Paired Macs"))
                     .font(.headline)
                 ForEach(coordinator.pairedMacs) { mac in
+                    let status = coordinator.connectionStatus(for: mac)
                     HStack {
                         VStack(alignment: .leading, spacing: 2) {
                             Text(mac.resolvedName)
@@ -343,12 +378,12 @@ public struct HiveWorkspaceBrowserView: View {
                             }
                         }
                         Spacer()
-                        pairedMacStatus(coordinator.connectionStatus(for: mac))
-                        if coordinator.connectionStatus(for: mac) != .connected {
+                        pairedMacStatus(status)
+                        if Self.pairedMacAction(for: status) == .connect {
                             Button(String(localized: "hive.connect.action", defaultValue: "Connect")) {
                                 Task { await coordinator.connect(mac) }
                             }
-                            .disabled(coordinator.connectionStatus(for: mac) == .reconnecting)
+                            .disabled(status == .reconnecting)
                         }
                         Button(
                             String(localized: "hive.remove.action", defaultValue: "Remove"),
