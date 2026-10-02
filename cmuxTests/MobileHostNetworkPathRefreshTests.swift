@@ -174,6 +174,34 @@ import Testing
         #expect(publishedLANHosts(hostNameSource: blank) == ["192.168.1.20"])
     }
 
+    /// With no LocalHostName in configd, mDNSResponder answers to a label it
+    /// derives from the ComputerName; the route must use that same label.
+    @Test func publishedLANRoutesFallBackToTheComputerNameLabelMDNSResponderUses() {
+        let source = MobileBonjourHostNameSource(
+            localHostName: { nil },
+            computerName: { "Tim\u{2019}s MacBook Pro (2)" }
+        )
+        #expect(publishedLANHosts(hostNameSource: source) == ["192.168.1.20", "tims-macbook-pro-2.local"])
+    }
+
+    @Test func publishedLANRoutesPreferLocalHostNameOverComputerName() {
+        let source = MobileBonjourHostNameSource(
+            localHostName: { "studio-2" },
+            computerName: { "Studio" }
+        )
+        #expect(publishedLANHosts(hostNameSource: source) == ["192.168.1.20", "studio-2.local"])
+    }
+
+    @Test func bonjourHostLabelMatchesMDNSResponderConversion() {
+        #expect(MobileBonjourHostNameSource.bonjourHostLabel(fromComputerName: "Tim's Mac") == "Tims-Mac")
+        #expect(MobileBonjourHostNameSource.bonjourHostLabel(fromComputerName: "--Mac mini--") == "Mac-mini")
+        #expect(MobileBonjourHostNameSource.bonjourHostLabel(fromComputerName: "Café Mac") == "Caf-Mac")
+        #expect(MobileBonjourHostNameSource.bonjourHostLabel(fromComputerName: "***") == nil)
+        #expect(MobileBonjourHostNameSource.bonjourHostLabel(
+            fromComputerName: String(repeating: "a", count: 70)
+        ) == String(repeating: "a", count: 63))
+    }
+
     private func publishedLANHosts(hostNameSource: MobileBonjourHostNameSource) -> [String] {
         let snapshot = MobileRouteResolver().routes(
             port: 61_234,
