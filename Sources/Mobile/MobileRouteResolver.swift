@@ -616,56 +616,28 @@ extension Array where Element == CmxAttachRoute {
 /// (35 s on the main actor at listener start on a slow resolver) and can
 /// return a name that `.local` does not resolve. configd reads do not touch
 /// the network.
+///
+/// There is deliberately no fallback when LocalHostName is unset: mDNSResponder
+/// then registers `<model prefix>-<primary Ethernet address>`, and macOS masks
+/// link addresses (`02:00:00:00:00:00`) for unprivileged processes, so the
+/// label cannot be rebuilt here. No `.local` route is published in that case.
 struct MobileBonjourHostNameSource {
+    /// configd's LocalHostName. After a name clash mDNSResponder writes the
+    /// renamed label (for example `name-2`) back here through its helper.
     var localHostName: () -> String?
-    var computerName: () -> String? = { nil }
 
     static var system: MobileBonjourHostNameSource {
         MobileBonjourHostNameSource(
-            localHostName: { SCDynamicStoreCopyLocalHostName(nil) as String? },
-            computerName: { SCDynamicStoreCopyComputerName(nil, nil) as String? }
+            localHostName: { SCDynamicStoreCopyLocalHostName(nil) as String? }
         )
     }
 
     func bonjourHostName() -> String? {
-        if let name = localHostName()?.trimmingCharacters(in: .whitespacesAndNewlines),
-           !name.isEmpty {
-            return name
+        guard let name = localHostName()?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+              !name.isEmpty else {
+            return nil
         }
-        // Without a LocalHostName, mDNSResponder derives its label from the
-        // ComputerName (mDNSMacOSX.c, `ConvertUTF8PstringToRFC1034HostLabel`).
-        return computerName().flatMap(Self.bonjourHostLabel(fromComputerName:))
-    }
-
-    private static let maximumDNSLabelLength = 63
-
-    /// mDNSResponder's ComputerName → host label conversion: drop straight
-    /// and curly apostrophes, keep ASCII letters and digits, keep `-` only
-    /// between other characters, turn every other UTF-8 byte run into one
-    /// `-`, cap at 63 bytes, and trim trailing `-`.
-    static func bonjourHostLabel(fromComputerName computerName: String) -> String? {
-        let name = computerName
-            .replacingOccurrences(of: "'", with: "")
-            .replacingOccurrences(of: "\u{2019}", with: "")
-        let bytes = Array(name.utf8)
-        var label: [UInt8] = []
-        for (index, byte) in bytes.enumerated() where label.count < maximumDNSLabelLength {
-            let isLetterOrDigit = (byte >= UInt8(ascii: "a") && byte <= UInt8(ascii: "z"))
-                || (byte >= UInt8(ascii: "A") && byte <= UInt8(ascii: "Z"))
-                || (byte >= UInt8(ascii: "0") && byte <= UInt8(ascii: "9"))
-            let isInnerHyphen = byte == UInt8(ascii: "-")
-                && !label.isEmpty
-                && index < bytes.count - 1
-            if isLetterOrDigit || isInnerHyphen {
-                label.append(byte)
-            } else if let last = label.last, last != UInt8(ascii: "-") {
-                label.append(UInt8(ascii: "-"))
-            }
-        }
-        while label.last == UInt8(ascii: "-") {
-            label.removeLast()
-        }
-        return label.isEmpty ? nil : String(decoding: label, as: UTF8.self)
+        return name
     }
 }
-
