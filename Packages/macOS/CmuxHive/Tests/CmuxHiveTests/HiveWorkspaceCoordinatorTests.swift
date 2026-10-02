@@ -133,6 +133,32 @@ struct HiveWorkspaceCoordinatorTests {
         coordinator.stopConnectionLifecycle()
     }
 
+    @Test("retries the launch reconnect once when an early status reconnect fails")
+    func retriesLifecycleReconnectAfterFailedStatusRequest() async {
+        let shell = HiveShellStub(
+            pairingResult: .failed,
+            workspaces: [],
+            hasKnownPairing: true,
+            isConnected: false,
+            reconnectIsSuspended: true
+        )
+        let coordinator = HiveWorkspaceCoordinator(shell: shell)
+
+        let statusTask = Task { await coordinator.reconnectForStatus() }
+        await shell.waitUntilReconnectCount(1)
+        await coordinator.startConnectionLifecycle()
+        #expect(shell.reconnectAllCount == 1)
+
+        shell.resumeReconnects()
+        #expect(await !statusTask.value)
+        await Self.yieldUntil { shell.reconnectAllCount == 2 }
+
+        #expect(shell.reconnectAllCount == 2)
+        #expect(shell.lastReconnectDeadlineNanoseconds == nil)
+        shell.resumeReconnects()
+        coordinator.stopConnectionLifecycle()
+    }
+
     @Test("reconnects every paired Mac instead of only the active Mac")
     func reconnectsEveryPairedMac() async {
         let pairedMacs = [
