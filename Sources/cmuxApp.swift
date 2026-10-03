@@ -71,6 +71,7 @@ struct cmuxApp: App {
     }
 
     init() {
+        XCTestHostHygiene.activateIfNeeded()
         // Gather settings package dependencies once. The runtime itself
         // is assigned after the saved language override below, because
         // it owns localized search-index text for the process lifetime.
@@ -5571,4 +5572,86 @@ enum TelemetrySettings {
 func openCmuxSettingsFileInEditor() {
     let url = KeyboardShortcutSettings.settingsFileStore.settingsFileURLForEditing()
     PreferredEditorService(defaults: .standard).open(url)
+}
+
+/// Applies ``XCTestHostHygienePolicy`` to the Debug app when it runs as the `xcodebuild test` host.
+///
+/// Release builds compile this to no-ops, so their behavior does not change.
+enum XCTestHostHygiene {
+#if DEBUG
+    nonisolated static let policy: XCTestHostHygienePolicy? = {
+        guard XCTestHostHygienePolicy.isRunningUnderXCTest(
+            environment: ProcessInfo.processInfo.environment
+        ) else {
+            return nil
+        }
+        let sandboxRoot = FileManager.default.temporaryDirectory
+            .appendingPathComponent("cmux-xctest-host-\(getpid())", isDirectory: true)
+        let policy = XCTestHostHygienePolicy(sandboxRoot: sandboxRoot.path)
+        for directory in policy.directoriesToCreate {
+            try? FileManager.default.createDirectory(
+                atPath: directory,
+                withIntermediateDirectories: true
+            )
+        }
+        return policy
+    }()
+#else
+    nonisolated static let policy: XCTestHostHygienePolicy? = nil
+#endif
+
+    nonisolated private static let realHomeDirectory = FileManager.default.homeDirectoryForCurrentUser.path
+
+    /// Gives every child process of the test host a minimal `PATH`, no agent config and a private tmux socket.
+    nonisolated static func activateIfNeeded() {
+        guard let policy else { return }
+        for (key, value) in policy.environmentChanges {
+            if let value {
+                setenv(key, value, 1)
+            } else {
+                unsetenv(key)
+            }
+        }
+    }
+
+    /// The home folder product code may read for other apps' data; the sandbox under XCTest.
+    nonisolated static var userHomeDirectoryURL: URL {
+        if let policy {
+            return URL(fileURLWithPath: policy.homeDirectory, isDirectory: true)
+        }
+        return FileManager.default.homeDirectoryForCurrentUser
+    }
+
+    /// A path under ``userHomeDirectoryURL``, such as `.codex/sessions`.
+    nonisolated static func userHomePath(_ relativePath: String) -> String {
+        userHomeDirectoryURL.appendingPathComponent(relativePath).path
+    }
+
+    /// ``userHomeDirectoryURL`` as a path, for readers that take a home folder string.
+    nonisolated static var userHomeDirectoryPath: String { userHomeDirectoryURL.path }
+
+    /// Expands a leading `~` against ``userHomeDirectoryURL``; `expandingTildeInPath` outside XCTest.
+    nonisolated static func expandingUserTilde(in path: String) -> String {
+        guard policy != nil else { return (path as NSString).expandingTildeInPath }
+        if path == "~" { return userHomeDirectoryPath }
+        if path.hasPrefix("~/") { return userHomePath(String(path.dropFirst(2))) }
+        return (path as NSString).expandingTildeInPath
+    }
+
+    /// The process environment for readers that resolve agent data from `HOME`; under XCTest
+    /// `HOME` is the sandbox.
+    nonisolated static var agentEnvironment: [String: String] {
+        let environment = ProcessInfo.processInfo.environment
+        guard let policy else { return environment }
+        return policy.agentDataEnvironment(from: environment)
+    }
+
+    /// Whether a recursive file scan may start at `rootPath` in this process.
+    nonisolated static func allowsRecursiveScan(rootPath: String) -> Bool {
+        guard policy != nil else { return true }
+        return XCTestHostHygienePolicy.allowsRecursiveScan(
+            rootPath: rootPath,
+            realHomeDirectory: realHomeDirectory
+        )
+    }
 }

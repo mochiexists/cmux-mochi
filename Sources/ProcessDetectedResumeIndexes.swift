@@ -5,7 +5,7 @@ struct ProcessDetectedResumeIndexes: Sendable {
     let surfaceResumeBindingIndex: SurfaceResumeBindingIndex
 
     static func load(
-        homeDirectory: String = NSHomeDirectory(),
+        homeDirectory: String = XCTestHostHygiene.userHomeDirectoryURL.path,
         fileManager: FileManager = .default
     ) async -> ProcessDetectedResumeIndexes {
         await Task.detached(priority: .utility) {
@@ -14,7 +14,7 @@ struct ProcessDetectedResumeIndexes: Sendable {
     }
 
     static func loadSynchronously(
-        homeDirectory: String = NSHomeDirectory(),
+        homeDirectory: String = XCTestHostHygiene.userHomeDirectoryURL.path,
         fileManager: FileManager = .default,
         maximumSnapshotAge: TimeInterval? = nil
     ) -> ProcessDetectedResumeIndexes {

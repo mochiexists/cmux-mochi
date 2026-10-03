@@ -55,7 +55,7 @@ extension GrokSessionLocator {
     private func processHomeDirectory(for process: VaultObservedAgentProcess) -> String {
         guard let homeDirectory = Self.normalizedWorkingDirectory(process.environment["HOME"]),
               (homeDirectory as NSString).isAbsolutePath else {
-            return NSHomeDirectory()
+            return XCTestHostHygiene.userHomeDirectoryPath
         }
         return homeDirectory
     }

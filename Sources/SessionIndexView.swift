@@ -1411,7 +1411,11 @@ enum SessionTranscriptLoader {
 
     private static func loadHermesAgentSynchronously(sessionId: String) throws -> [SessionTranscriptTurn] {
         do {
-            let turns = try HermesAgentIndex.loadTranscript(sessionId: sessionId, limit: maxPreviewTurns + 1)
+            let turns = try HermesAgentIndex.loadTranscript(
+                sessionId: sessionId,
+                limit: maxPreviewTurns + 1,
+                stateDBPath: SessionIndexStore.defaultHermesStateDBPath()
+            )
             let didHitTurnLimit = turns.count > maxPreviewTurns
             var previewTurns: [SessionTranscriptTurn] = turns.prefix(maxPreviewTurns).enumerated().compactMap { index, turn -> SessionTranscriptTurn? in
                 let role: SessionTranscriptRole = (turn.toolName?.isEmpty == false) ? .tool : (transcriptRole(from: turn.role) ?? .event)

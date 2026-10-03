@@ -15,7 +15,7 @@ enum AgentHibernationTranscriptGuard {
     static func resolveTranscriptPath(
         agent: SessionRestorableAgentSnapshot,
         panelKey: AgentHibernationPanelKey? = nil,
-        homeDirectory: String = NSHomeDirectory(),
+        homeDirectory: String = XCTestHostHygiene.userHomeDirectoryPath,
         fileManager: FileManager = .default
     ) -> String? {
         guard agent.kind == .claude,
@@ -81,7 +81,7 @@ enum AgentHibernationTranscriptGuard {
     static func snapshotBeforeTeardown(
         agent: SessionRestorableAgentSnapshot,
         panelKey: AgentHibernationPanelKey? = nil,
-        homeDirectory: String = NSHomeDirectory(),
+        homeDirectory: String = XCTestHostHygiene.userHomeDirectoryPath,
         snapshotDirectory: URL? = nil,
         fileManager: FileManager = .default
     ) -> TeardownSnapshotOutcome {

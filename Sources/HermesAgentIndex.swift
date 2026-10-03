@@ -8,7 +8,7 @@ extension SessionIndexStore {
         offset: Int,
         limit: Int,
         errorBag: ErrorBag,
-        stateDBPath: String = HermesAgentIndex.defaultStateDBPath()
+        stateDBPath: String = defaultHermesStateDBPath()
     ) -> [SessionEntry] {
         let result = HermesAgentIndex.loadSessions(
             needle: needle,
@@ -40,11 +40,16 @@ extension SessionIndexStore {
         }
     }
 
+    /// Hermes' `state.db`, resolved from ``XCTestHostHygiene/agentEnvironment``.
+    nonisolated static func defaultHermesStateDBPath() -> String {
+        HermesAgentIndex.defaultStateDBPath(env: XCTestHostHygiene.agentEnvironment)
+    }
+
     private nonisolated static func hermesHomeForResume(stateDBPath: String) -> String? {
         let stateDBURL = URL(fileURLWithPath: stateDBPath).standardizedFileURL
         let homeURL = stateDBURL.deletingLastPathComponent()
         let defaultStateDBURL = URL(
-            fileURLWithPath: HermesAgentIndex.defaultStateDBPath(env: ["HOME": NSHomeDirectory()])
+            fileURLWithPath: HermesAgentIndex.defaultStateDBPath(env: ["HOME": XCTestHostHygiene.userHomeDirectoryPath])
         ).standardizedFileURL
         let defaultHomeURL = defaultStateDBURL.deletingLastPathComponent()
         return homeURL == defaultHomeURL ? nil : homeURL.path

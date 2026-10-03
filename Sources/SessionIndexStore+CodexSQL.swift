@@ -27,7 +27,7 @@ extension SessionIndexStore {
     nonisolated static func loadCodexEntriesViaSQL(
         needle: String, cwdFilter: String?, offset: Int, limit: Int,
         errorBag: ErrorBag,
-        dbPath: String = ("~/.codex/state_5.sqlite" as NSString).expandingTildeInPath,
+        dbPath: String = XCTestHostHygiene.userHomePath(".codex/state_5.sqlite"),
         sessionsRoot: String = defaultCodexSessionsRoot()
     ) async -> [SessionEntry]? {
         let fm = FileManager.default
@@ -209,7 +209,7 @@ extension SessionIndexStore {
     }
 
     nonisolated private static func defaultCodexSessionsRoot() -> String {
-        let root = ("~/.codex/sessions" as NSString).expandingTildeInPath
+        let root = XCTestHostHygiene.userHomePath(".codex/sessions")
         return (root as NSString).standardizingPath
     }
 

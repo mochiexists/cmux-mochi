@@ -559,4 +559,30 @@ struct AgentExecutableResolverTests {
         expectEqual(plan.executableURL.path, executable.standardizedFileURL.path)
         expectTrue(runtimePath.contains(nodeBin.standardizedFileURL.path))
     }
+
+    @Test
+    func testHostDefaultsSearchNeitherStandardFoldersNorTheRealHome() throws {
+        let policy = try #require(XCTestHostHygiene.policy)
+        let realHome = FileManager.default.homeDirectoryForCurrentUser.standardizedFileURL.path
+        let sandboxHome = URL(fileURLWithPath: policy.homeDirectory).standardizedFileURL.path
+
+        let directories = AgentExecutableResolver().resolvedSearchDirectories()
+
+        expectFalse(directories.contains("/opt/homebrew/bin"))
+        expectFalse(directories.contains("/usr/local/bin"))
+        expectTrue(directories.contains("\(sandboxHome)/.local/bin"))
+        for directory in directories {
+            expectFalse(directory == realHome || directory.hasPrefix(realHome + "/"), directory)
+        }
+    }
+
+    @Test
+    func testStandardFoldersAreSearchedWhenRequested() {
+        let directories = AgentExecutableResolver(
+            environment: ["PATH": ""],
+            includeStandardSearchDirectories: true
+        ).resolvedSearchDirectories()
+
+        expectEqual(directories, ["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin"])
+    }
 }

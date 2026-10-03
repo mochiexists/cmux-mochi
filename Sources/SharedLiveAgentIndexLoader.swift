@@ -19,7 +19,7 @@ struct SharedLiveAgentIndexLoader {
     private let cachedAgentProcessValidator: CachedAgentProcessIdentityValidator
 
     init(
-        homeDirectory: String = NSHomeDirectory(),
+        homeDirectory: String = XCTestHostHygiene.userHomeDirectoryPath,
         fileManager: FileManager = .default,
         registry: CmuxVaultAgentRegistry? = nil,
         processSnapshotProvider: @escaping () -> CmuxTopProcessSnapshot = {

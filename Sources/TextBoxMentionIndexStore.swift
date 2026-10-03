@@ -302,6 +302,7 @@ actor TextBoxMentionIndexStore {
     }
 
     private static func scanFiles(rootURL: URL) async -> [TextBoxMentionCandidate] {
+        guard XCTestHostHygiene.allowsRecursiveScan(rootPath: rootURL.path) else { return [] }
         if let ripgrepCandidates = await scanFilesWithRipgrep(rootURL: rootURL) {
             return ripgrepCandidates
         }
@@ -369,6 +370,7 @@ actor TextBoxMentionIndexStore {
     }
 
     private static func scanRootFileSystemCandidates(rootURL: URL) async -> [TextBoxMentionCandidate] {
+        guard XCTestHostHygiene.allowsRecursiveScan(rootPath: rootURL.path) else { return [] }
         let fileManager = FileManager.default
         guard let children = try? fileManager.contentsOfDirectory(
             at: rootURL,
@@ -558,6 +560,7 @@ actor TextBoxMentionIndexStore {
     private static func scanDirectoryCandidateSeed(
         rootURL: URL
     ) async -> (candidates: [TextBoxMentionCandidate], seenRelativePaths: Set<String>) {
+        guard XCTestHostHygiene.allowsRecursiveScan(rootPath: rootURL.path) else { return ([], []) }
         let fileManager = FileManager.default
         let rootPath = rootURL.standardizedFileURL.path
         let gitIgnoreProbe = TextBoxGitIgnoreProbe(rootURL: rootURL)
@@ -735,7 +738,7 @@ actor TextBoxMentionIndexStore {
             }
         }
 
-        let home = fileManager.homeDirectoryForCurrentUser
+        let home = XCTestHostHygiene.userHomeDirectoryURL
         roots.append(home.appendingPathComponent(".codex/skills", isDirectory: true))
         roots.append(home.appendingPathComponent(".codex/skills/.system", isDirectory: true))
         roots.append(home.appendingPathComponent(".agents/skills", isDirectory: true))

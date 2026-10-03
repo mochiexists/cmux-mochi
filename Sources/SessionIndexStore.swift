@@ -755,7 +755,7 @@ final class SessionIndexStore: ObservableObject {
         let environmentConfigDir = ProcessInfo.processInfo.environment["CLAUDE_CONFIG_DIR"]
         appendRoot(environmentConfigDir, requireConfigured: false)
 
-        let accountRoot = ("~/.codex-accounts/claude" as NSString).expandingTildeInPath
+        let accountRoot = XCTestHostHygiene.userHomePath(".codex-accounts/claude")
         if let accountDirs = try? fm.contentsOfDirectory(atPath: accountRoot) {
             for accountDir in accountDirs.sorted() {
                 appendRoot(
@@ -766,7 +766,7 @@ final class SessionIndexStore: ObservableObject {
         }
 
         appendRoot(
-            ("~/.claude" as NSString).expandingTildeInPath,
+            XCTestHostHygiene.userHomePath(".claude"),
             requireConfigured: false
         )
 
@@ -1595,7 +1595,7 @@ final class SessionIndexStore: ObservableObject {
     nonisolated private static func loadCodexEntriesFromDisk(
         needle: String, cwdFilter: String?, offset: Int, limit: Int
     ) async -> [SessionEntry] {
-        let root = ("~/.codex/sessions" as NSString).expandingTildeInPath
+        let root = XCTestHostHygiene.userHomePath(".codex/sessions")
         let fm = FileManager.default
 
         var rgFiltered = false

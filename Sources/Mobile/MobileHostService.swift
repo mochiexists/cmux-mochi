@@ -1116,15 +1116,36 @@ final class MobileHostService {
                 mobileHostLog.info("legacy mobile host listener disabled; starting Iroh only")
             }
             if plan.activatesIroh {
-                MobileHostIrohRuntime.shared.setDesiredActive(true)
+                Self.activateIrohAutomaticallyIfAllowed()
             }
             return
         }
 
         CmxIrohTCPFirstActivation.start(
             startTCP: { scheduleListenerStart(usePreferredPort: true) },
-            scheduleIroh: { MobileHostIrohRuntime.shared.setDesiredActive(true) }
+            scheduleIroh: { Self.activateIrohAutomaticallyIfAllowed() }
         )
+    }
+
+    /// Whether launch and settings changes bring up Iroh's real network endpoint.
+    /// The unit-test host never does: Iroh binds sockets and probes the LAN, which
+    /// raises the Local Network prompt. Tests that need Iroh inject or drive
+    /// `MobileHostIrohRuntime` directly.
+    nonisolated static var activatesIrohAutomatically: Bool {
+        XCTestHostHygiene.policy == nil
+    }
+
+    /// The one path launch and settings changes use to bring up Iroh. It does nothing
+    /// when ``activatesIrohAutomatically`` is false, whichever startup branch calls it.
+    ///
+    /// - Parameter activate: Brings Iroh up; `nil` uses `MobileHostIrohRuntime.shared`.
+    static func activateIrohAutomaticallyIfAllowed(activate: (() -> Void)? = nil) {
+        guard activatesIrohAutomatically else { return }
+        if let activate {
+            activate()
+        } else {
+            MobileHostIrohRuntime.shared.setDesiredActive(true)
+        }
     }
 
     #if DEBUG
@@ -1435,7 +1456,7 @@ final class MobileHostService {
         let defaults = UserDefaults.standard
         // Settings control only the legacy TCP/Tailscale listener. Account-
         // authenticated Iroh stays available for signed-in Macs.
-        MobileHostIrohRuntime.shared.setDesiredActive(true)
+        Self.activateIrohAutomaticallyIfAllowed()
         // An invalid stored port (`resolvedDesiredPort == nil`, e.g. mid-edit)
         // must not restart a running listener. Treat it as "no change" by
         // reusing the applied port; a fresh start still binds the default via

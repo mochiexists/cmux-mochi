@@ -261,7 +261,9 @@ struct BrowserPanelView: View {
     /// Held detector instance; the view detects and summarizes installed browsers
     /// through this rather than the former `BrowserInstalledBrowserDetector` static
     /// namespace.
-    private let installedBrowserDetector = BrowserInstalledBrowserDetector()
+    private let installedBrowserDetector = BrowserInstalledBrowserDetector(
+        homeDirectoryURL: XCTestHostHygiene.userHomeDirectoryURL
+    )
     @State private var omnibarState = OmnibarState()
     @State private var addressBarFocused: Bool = false
     @AppStorage(BrowserSearchSettingsStore.searchEngineKey) private var searchEngineRaw = BrowserSearchSettingsStore.defaultSearchEngine.rawValue

@@ -1,3 +1,4 @@
+import CMUXAgentLaunch
 import Darwin
 import Foundation
 import os
@@ -3677,7 +3678,9 @@ struct WorkspaceForkConversationContextMenuTests {
     @Test
     func openCodeValidationIdentityUsesCapturedClaudeConfigDirWithoutMigrationProbe() throws {
         let fm = FileManager.default
-        let home = fm.homeDirectoryForCurrentUser
+        // The hygiene home, never the developer's real `~/.codex-accounts`.
+        try #require(XCTestHostHygiene.policy != nil)
+        let home = XCTestHostHygiene.userHomeDirectoryURL
         let codexAccountsRoot = home.appendingPathComponent(".codex-accounts", isDirectory: true)
         let claudeAccountRoot = codexAccountsRoot.appendingPathComponent("claude", isDirectory: true)
         let accountsRootExisted = fm.fileExists(atPath: codexAccountsRoot.path)
@@ -3690,6 +3693,11 @@ struct WorkspaceForkConversationContextMenuTests {
             .appendingPathComponent(uniqueName, isDirectory: true)
         let migratedConfigDir = claudeAccountRoot.appendingPathComponent(uniqueName, isDirectory: true)
         try fm.createDirectory(at: migratedConfigDir, withIntermediateDirectories: true)
+        // The fixture is a real migration target for a probe rooted at this home.
+        #expect(
+            ClaudeConfigDirectoryPath.preferredPath(legacyConfigDir.path, homeDirectory: home.path)
+                == migratedConfigDir.standardizedFileURL.path
+        )
         let executableRoot = fm.temporaryDirectory
             .appendingPathComponent("cmux-opencode-identity-\(UUID().uuidString)", isDirectory: true)
         let executable = executableRoot.appendingPathComponent("opencode", isDirectory: false)

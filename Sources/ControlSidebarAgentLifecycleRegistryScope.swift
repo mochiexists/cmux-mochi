@@ -5,7 +5,7 @@ enum ControlSidebarAgentLifecycleRegistryScope: Sendable {
     case globalOnly
 
     func loadRegistry(
-        homeDirectory: String = NSHomeDirectory(),
+        homeDirectory: String = XCTestHostHygiene.userHomeDirectoryPath,
         environment: [String: String] = ProcessInfo.processInfo.environment,
         fileManager: FileManager = .default
     ) -> CmuxVaultAgentRegistry {
