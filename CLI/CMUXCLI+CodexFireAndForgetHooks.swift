@@ -67,7 +67,9 @@ extension CMUXCLI {
     /// `~/.cmux/hooks` (NOT the user's `~/.codex`), created on demand. Returns
     /// nil if it cannot be created, so the caller falls back to inline commands.
     static func codexHookScriptsDirectory() -> URL? {
-        let home = FileManager.default.homeDirectoryForCurrentUser
+        let home = ProcessInfo.processInfo.environment["HOME"].map {
+            URL(fileURLWithPath: $0, isDirectory: true)
+        } ?? FileManager.default.homeDirectoryForCurrentUser
         let dir = home
             .appendingPathComponent(".cmux", isDirectory: true)
             .appendingPathComponent("hooks", isDirectory: true)

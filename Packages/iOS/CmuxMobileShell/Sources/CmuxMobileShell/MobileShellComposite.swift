@@ -114,6 +114,21 @@ public final class MobileShellComposite: MobileTerminalOutputSinking {
     }
 
     private static let hasKnownPairedMacDefaultsKey = "cmux.mobile.hasKnownPairedMac"
+
+    /// Returns whether the persisted pairing hint requires launch-time reconnect work.
+    ///
+    /// Composition roots can use this before constructing ``MobileShellComposite``
+    /// so a device that has never paired a Mac does not initialize the shell or its
+    /// persistent store during launch.
+    ///
+    /// - Parameter defaults: Defaults store that owns the pairing hint.
+    /// - Returns: `true` when a previously paired Mac should reconnect at launch.
+    public static func hasKnownPairedMac(
+        in defaults: UserDefaults = .standard
+    ) -> Bool {
+        defaults.bool(forKey: hasKnownPairedMacDefaultsKey)
+    }
+
     /// Max seconds a stored-Mac reconnect may own its attempt flags before the
     /// onboarding connection scene exposes retry and QR fallback. The launch
     /// ``RestoringSessionView`` has its own shorter gate in ``CMUXMobileRootView``;

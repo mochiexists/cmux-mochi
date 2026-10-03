@@ -15,6 +15,9 @@ extension Workspace {
         /// an unrelated process" (same contract as `isRecordedAgentPIDLive`).
         var agentPIDProcessIdentities: [String: AgentPIDProcessIdentity]
         var agentPIDKeys: Set<String>
+        /// Workspace-level ports can follow a panel only when that panel owns
+        /// every tracked agent process in the source workspace.
+        var agentListeningPorts: [Int] = []
         /// Active lifecycle values follow a live panel into and out of a Dock,
         /// alongside its structured PID ownership.
         var agentLifecycleStates: [String: AgentHibernationLifecycleState] = [:]

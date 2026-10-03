@@ -83,18 +83,23 @@ enum FileExplorerRootSyncPolicy {
 
 extension RightSidebarMode {
     static func modeShortcut(for event: NSEvent) -> RightSidebarMode? {
-        modeShortcut(for: event, allowingAction: { _ in true })
+        modeShortcut(
+            for: event,
+            allowingAction: { _ in true },
+            defaults: KeyboardShortcutSettings.persistenceDefaults
+        )
     }
 
     static func modeShortcut(
         for event: NSEvent,
-        allowingAction: (KeyboardShortcutSettings.Action) -> Bool
+        allowingAction: (KeyboardShortcutSettings.Action) -> Bool,
+        defaults: UserDefaults = KeyboardShortcutSettings.persistenceDefaults
     ) -> RightSidebarMode? {
         guard event.type == .keyDown else { return nil }
         for mode in RightSidebarMode.allCases {
             guard let action = mode.shortcutAction,
                   allowingAction(action),
-                  mode.isAvailable(),
+                  mode.isAvailable(defaults: defaults),
                   KeyboardShortcutSettings.shortcut(for: action).matches(event: event) else {
                 continue
             }

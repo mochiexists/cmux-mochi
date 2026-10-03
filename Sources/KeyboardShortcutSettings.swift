@@ -13,6 +13,7 @@ enum KeyboardShortcutSettings {
     static var settingsFileStore: KeyboardShortcutSettingsFileStore = .appLive {
         didSet { notifySettingsFileDidChange() }
     }
+    static var persistenceDefaults: UserDefaults = .standard
     #if DEBUG
     static var shortcutLookupObserver: ((Action) -> Void)?
     #endif
@@ -714,14 +715,17 @@ enum KeyboardShortcutSettings {
                 return .accepted(.unbound)
             }
 
-            let resolved = resolvedRecordedShortcutIgnoringConflicts(shortcut)
-            guard case .accepted = resolved else { return resolved }
+            let shapeResolution = resolvedRecordedShortcutIgnoringConflicts(
+                shortcut,
+                checkingSystemWideConflicts: false
+            )
+            guard case .accepted = shapeResolution else { return shapeResolution }
 
             if let conflictingAction = KeyboardShortcutSettings.conflictingAction(for: shortcut, excluding: self) {
                 return .rejected(.conflictsWithAction(conflictingAction))
             }
 
-            return resolved
+            return resolvedRecordedShortcutIgnoringConflicts(shortcut)
         }
 
         func normalizedSettingsFileShortcut(_ shortcut: StoredShortcut) -> StoredShortcut? {
@@ -976,10 +980,10 @@ enum KeyboardShortcutSettings {
     private static func persistShortcut(
         _ shortcut: StoredShortcut,
         for action: Action,
-        defaults: UserDefaults = .standard
+        defaults: UserDefaults? = nil
     ) {
         guard let data = try? JSONEncoder().encode(shortcut) else { return }
-        defaults.set(data, forKey: action.defaultsKey)
+        (defaults ?? persistenceDefaults).set(data, forKey: action.defaultsKey)
     }
 
     static func setShortcut(_ shortcut: StoredShortcut, for action: Action) {
@@ -1024,7 +1028,7 @@ enum KeyboardShortcutSettings {
     static func notifySettingsFileDidChange(center: NotificationCenter = .default) { postDidChangeNotification(center: center) }
 
     static func resetShortcut(for action: Action) {
-        UserDefaults.standard.removeObject(forKey: action.defaultsKey)
+        persistenceDefaults.removeObject(forKey: action.defaultsKey)
         postDidChangeNotification(action: action)
     }
 
@@ -1032,7 +1036,7 @@ enum KeyboardShortcutSettings {
 
     static func resetAll() {
         for action in Action.allCases {
-            UserDefaults.standard.removeObject(forKey: action.defaultsKey)
+            persistenceDefaults.removeObject(forKey: action.defaultsKey)
         }
         postDidChangeNotification()
     }
@@ -1116,12 +1120,12 @@ enum SystemWideHotkeySettings {
     }
 
     static func shortcut() -> StoredShortcut {
-        migrateLegacyShortcutIfNeeded()
-        return KeyboardShortcutSettings.shortcut(for: action)
+        migrateLegacyShortcutIfNeeded(defaults: KeyboardShortcutSettings.persistenceDefaults)
+        return storedShortcut(defaults: KeyboardShortcutSettings.persistenceDefaults) ?? defaultShortcut
     }
 
     static func setShortcut(_ shortcut: StoredShortcut) {
-        migrateLegacyShortcutIfNeeded()
+        migrateLegacyShortcutIfNeeded(defaults: KeyboardShortcutSettings.persistenceDefaults)
         KeyboardShortcutSettings.setShortcut(shortcut, for: action)
     }
 
@@ -1161,9 +1165,12 @@ enum SystemWideHotkeySettings {
     }
 
     private static func storedShortcut(defaults: UserDefaults = .standard) -> StoredShortcut? {
+        if KeyboardShortcutSettings.settingsFileStore.isManagedByFile(action) {
+            return KeyboardShortcutSettings.settingsFileStore.override(for: action)
+        }
         guard let data = defaults.data(forKey: action.defaultsKey),
               let shortcut = try? JSONDecoder().decode(StoredShortcut.self, from: data) else {
-            return KeyboardShortcutSettings.settingsFileStore.override(for: action)
+            return nil
         }
         return shortcut
     }
@@ -1200,7 +1207,7 @@ final class SystemWideHotkeyController {
 
         defaultsObserver = NotificationCenter.default.addObserver(
             forName: UserDefaults.didChangeNotification,
-            object: nil,
+            object: KeyboardShortcutSettings.persistenceDefaults,
             queue: .main
         ) { [weak self] _ in
             self?.refreshRegistration()

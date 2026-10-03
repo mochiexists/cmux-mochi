@@ -8,59 +8,79 @@ import SwiftUI
 /// App-composition owner for account-free remote Mac workspaces.
 @MainActor
 final class HiveWorkspaceService {
-    private let composition: HiveComposition?
+    private var composition: HiveComposition?
     private let coordinatorOverride: HiveWorkspaceCoordinator?
     private let uiFixtureName: String?
-    private let startupError: String?
+    private let hasKnownPairingAtLaunch: () -> Bool
+    private let compositionFactory: (() throws -> HiveComposition)?
+    private var startupError: String?
+    private var didResolveComposition = false
     private let mirrorController = HiveWorkspaceMirrorController()
     private var browserWindowController: HiveWorkspaceBrowserWindowController?
     private var didStartUIFixture = false
     var coordinator: HiveWorkspaceCoordinator? {
-        coordinatorOverride ?? composition?.coordinator
+        resolveCompositionIfNeeded()
+        return coordinatorOverride ?? composition?.coordinator
+    }
+
+    /// The composition created so far, without resolving it.
+    var compositionForTesting: HiveComposition? {
+        composition
     }
 
     init() {
+        let environment = ProcessInfo.processInfo.environment
         #if DEBUG
-        if let fixture = HiveWorkspaceUIFixtureShell() {
+        if let fixture = HiveWorkspaceUIFixtureShell(environment: environment) {
             composition = nil
             coordinatorOverride = HiveWorkspaceCoordinator(shell: fixture)
             uiFixtureName = fixture.fixtureName
+            hasKnownPairingAtLaunch = { true }
+            compositionFactory = nil
             startupError = nil
+            didResolveComposition = true
             return
         }
         #endif
-        do {
-            composition = try Self.makeComposition()
-            coordinatorOverride = nil
-            uiFixtureName = nil
-            startupError = nil
-        } catch {
-            composition = nil
-            coordinatorOverride = nil
-            uiFixtureName = nil
-            startupError = String(describing: error)
+        composition = nil
+        coordinatorOverride = nil
+        uiFixtureName = nil
+        hasKnownPairingAtLaunch = Self.makeLaunchPairingHint(environment: environment)
+        compositionFactory = {
+            try Self.makeComposition(environment: environment)
         }
+        startupError = nil
     }
 
     init(composition: HiveComposition) {
         self.composition = composition
         coordinatorOverride = nil
         uiFixtureName = nil
+        hasKnownPairingAtLaunch = { true }
+        compositionFactory = { composition }
         startupError = nil
+        didResolveComposition = true
     }
 
     init(coordinator: HiveWorkspaceCoordinator) {
         composition = nil
         coordinatorOverride = coordinator
         uiFixtureName = nil
+        hasKnownPairingAtLaunch = { true }
+        compositionFactory = nil
         startupError = nil
+        didResolveComposition = true
     }
 
     /// Starts the app-lifetime Hive connection owner without opening its window.
     func start() {
-        guard let coordinator else { return }
+        start(forceComposition: false)
+    }
+
+    private func start(forceComposition: Bool) {
         #if DEBUG
         if let uiFixtureName {
+            guard let coordinator else { return }
             guard !didStartUIFixture else { return }
             didStartUIFixture = true
             coordinator.refreshWorkspaceSnapshot(forcePhaseReconciliation: true)
@@ -98,6 +118,8 @@ final class HiveWorkspaceService {
             return
         }
         #endif
+        guard forceComposition || hasKnownPairingAtLaunch() else { return }
+        guard let coordinator else { return }
         Task {
             await coordinator.startConnectionLifecycle()
         }
@@ -137,7 +159,7 @@ final class HiveWorkspaceService {
     #endif
 
     func show(in tabManager: TabManager) {
-        start()
+        start(forceComposition: true)
         guard let coordinator else {
             let alert = NSAlert()
             alert.messageText = String(
@@ -199,9 +221,43 @@ final class HiveWorkspaceService {
         mirrorController.statusSnapshot()
     }
 
-    private static func makeComposition() throws -> HiveComposition {
+    private func resolveCompositionIfNeeded() {
+        guard !didResolveComposition, coordinatorOverride == nil else { return }
+        didResolveComposition = true
+        guard let compositionFactory else { return }
+        do {
+            composition = try compositionFactory()
+        } catch {
+            startupError = String(describing: error)
+        }
+    }
+
+    private static func makeLaunchPairingHint(
+        environment: [String: String]
+    ) -> () -> Bool {
         #if DEBUG
-        if let rawDirectory = ProcessInfo.processInfo.environment["CMUX_E2E_HIVE_STATE_DIR"]?
+        if let rawDirectory = environment["CMUX_E2E_HIVE_STATE_DIR"]?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+           !rawDirectory.isEmpty {
+            let tag = environment["CMUX_TAG"] ?? ""
+            return {
+                guard let defaults = UserDefaults(suiteName: "dev.cmux.hive-e2e.\(tag)") else {
+                    return false
+                }
+                return MobileShellComposite.hasKnownPairedMac(in: defaults)
+            }
+        }
+        #endif
+        return {
+            MobileShellComposite.hasKnownPairedMac()
+        }
+    }
+
+    private static func makeComposition(
+        environment: [String: String]
+    ) throws -> HiveComposition {
+        #if DEBUG
+        if let rawDirectory = environment["CMUX_E2E_HIVE_STATE_DIR"]?
             .trimmingCharacters(in: .whitespacesAndNewlines),
            !rawDirectory.isEmpty {
             let directory = URL(fileURLWithPath: rawDirectory, isDirectory: true)
@@ -216,7 +272,7 @@ final class HiveWorkspaceService {
                 attributes: [.posixPermissions: 0o700]
             )
             let credentialStore = HiveE2EDeviceLinkCredentialStore()
-            let tag = ProcessInfo.processInfo.environment["CMUX_TAG"] ?? UUID().uuidString
+            let tag = environment["CMUX_TAG"] ?? UUID().uuidString
             guard let defaults = UserDefaults(suiteName: "dev.cmux.hive-e2e.\(tag)") else {
                 throw CocoaError(.fileWriteUnknown)
             }

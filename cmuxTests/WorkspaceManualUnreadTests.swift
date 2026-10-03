@@ -1738,10 +1738,10 @@ final class WorkspaceManualUnreadTests: XCTestCase {
         let restoredPanelId = try XCTUnwrap(restored.focusedPanelId)
         let restoredTabId = try XCTUnwrap(restored.surfaceIdFromPanelId(restoredPanelId))
         XCTAssertFalse(restored.manualUnreadPanelIds.contains(restoredPanelId))
-        XCTAssertTrue(restored.hasRestoredUnreadIndicator(panelId: restoredPanelId))
+        XCTAssertFalse(restored.hasRestoredUnreadIndicator(panelId: restoredPanelId))
         XCTAssertTrue(restored.bonsplitController.tab(restoredTabId)?.showsNotificationBadge ?? false)
         XCTAssertFalse(store.hasManualUnread(forTabId: restored.id))
-        XCTAssertEqual(store.unreadCount(forTabId: restored.id), 0)
+        XCTAssertEqual(store.unreadCount(forTabId: restored.id), 1)
 
         restored.markPanelRead(restoredPanelId)
 
@@ -1788,7 +1788,7 @@ final class WorkspaceManualUnreadTests: XCTestCase {
 
         let restoredPanelId = try XCTUnwrap(restored.focusedPanelId)
         XCTAssertTrue(restored.manualUnreadPanelIds.contains(restoredPanelId))
-        XCTAssertTrue(restored.hasRestoredUnreadIndicator(panelId: restoredPanelId))
+        XCTAssertFalse(restored.hasRestoredUnreadIndicator(panelId: restoredPanelId))
 
         restored.markPanelRead(restoredPanelId)
 
@@ -1961,7 +1961,7 @@ final class WorkspaceManualUnreadTests: XCTestCase {
         restored.restoreSessionSnapshot(snapshot)
 
         XCTAssertFalse(store.hasManualUnread(forTabId: restored.id))
-        XCTAssertTrue(store.hasRestoredUnreadIndicator(forTabId: restored.id))
+        XCTAssertFalse(store.hasRestoredUnreadIndicator(forTabId: restored.id))
         XCTAssertEqual(store.unreadCount(forTabId: restored.id), 1)
 
         store.markRead(forTabId: restored.id)
@@ -2005,13 +2005,13 @@ final class WorkspaceManualUnreadTests: XCTestCase {
         restored.restoreSessionSnapshot(snapshot)
 
         XCTAssertTrue(store.hasManualUnread(forTabId: restored.id))
-        XCTAssertTrue(store.hasRestoredUnreadIndicator(forTabId: restored.id))
-        XCTAssertEqual(store.unreadCount(forTabId: restored.id), 1)
+        XCTAssertFalse(store.hasRestoredUnreadIndicator(forTabId: restored.id))
+        XCTAssertEqual(store.unreadCount(forTabId: restored.id), 2)
 
         store.clearManualUnread(forTabId: restored.id)
 
         XCTAssertFalse(store.hasManualUnread(forTabId: restored.id))
-        XCTAssertTrue(store.hasRestoredUnreadIndicator(forTabId: restored.id))
+        XCTAssertFalse(store.hasRestoredUnreadIndicator(forTabId: restored.id))
         XCTAssertEqual(store.unreadCount(forTabId: restored.id), 1)
 
         store.markRead(forTabId: restored.id)

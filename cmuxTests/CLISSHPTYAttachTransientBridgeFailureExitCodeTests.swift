@@ -179,10 +179,16 @@ extension CLINotifyProcessIntegrationRegressionTests {
         ])
         try writeSSHPTYReconnectTestShell(at: fakeSSH, lines: [
             "#!/bin/sh",
+            "case \" $* \" in",
+            "  *\" -G \"*) printf 'controlpath /tmp/cmux-ssh-(getuid())-test-control\\n'; exit 0 ;;",
+            "  *\" -O check \"*) exit 255 ;;",
+            "  *\" -T user@example.test true \"*) ;;",
+            "  *) exit 0 ;;",
+            "esac",
             "count=$(cat \"${CMUX_TEST_AUTH_ATTEMPTS}\" 2>/dev/null || printf 0)",
             "count=$((count + 1))",
             "printf '%s' \"$count\" > \"${CMUX_TEST_AUTH_ATTEMPTS}\"",
-            "if [ \"$count\" -eq 2 ]; then exit 255; fi",
+            "if [ \"$count\" -eq 2 ]; then printf '%s\\n' 'ssh: connect to host example.test port 22: Connection refused' >&2; exit 255; fi",
             "exit 0",
         ])
         try writeSSHPTYReconnectTestShell(at: fakeSleep, lines: [
@@ -211,9 +217,10 @@ extension CLINotifyProcessIntegrationRegressionTests {
                 destination: "user@example.test",
                 port: 22,
                 identityFile: nil,
-                sshOptions: [],
+                sshOptions: ["ControlMaster=no"],
                 token: "foreground-auth-token"
-            )
+            ),
+            sshExecutablePath: fakeSSH.path
         )
         let result = runProcess(
             executablePath: "/bin/sh",
@@ -252,7 +259,7 @@ extension CLINotifyProcessIntegrationRegressionTests {
             "count=$(cat \"${CMUX_TEST_AUTH_ATTEMPTS}\" 2>/dev/null || printf 0)",
             "count=$((count + 1))",
             "printf '%s' \"$count\" > \"${CMUX_TEST_AUTH_ATTEMPTS}\"",
-            "if [ \"$count\" -eq 2 ]; then exit 255; fi",
+            "if [ \"$count\" -eq 2 ]; then printf '%s\\n' 'ssh: connect to host example.test port 22: Connection refused' >&2; exit 255; fi",
             "exit 0",
         ])
         try writeSSHPTYReconnectTestShell(at: fakeAttach, lines: [
@@ -350,6 +357,10 @@ extension CLINotifyProcessIntegrationRegressionTests {
                         "attachment_id": surfaceId,
                     ]
                 )
+            case "workspace.remote.pty_sessions":
+                return self.v2Response(id: id, ok: true, result: [
+                    "sessions": [["session_id": sessionId, "workspace_id": workspaceId]],
+                ])
             case "workspace.remote.pty_detach":
                 return self.v2Response(id: id, ok: true, result: ["detached": true])
             case "workspace.remote.pty_attach_end":

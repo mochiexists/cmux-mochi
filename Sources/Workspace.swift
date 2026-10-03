@@ -8797,7 +8797,7 @@ final class Workspace: Identifiable, ObservableObject {
 
         // Keyboard/browser-open paths want "new tab at end" regardless of global new-tab placement.
         if insertAtEnd {
-            let targetIndex = max(0, bonsplitController.tabs(inPane: paneId).count - 1)
+            let targetIndex = bonsplitController.tabs(inPane: paneId).count
             _ = bonsplitController.reorderTab(newTabId, toIndex: targetIndex)
         }
         publishCmuxSurfaceCreated(browserPanel.id, paneId: paneId, kind: "browser", origin: "browser_tab", focused: shouldFocusNewTab)
@@ -10377,6 +10377,13 @@ final class Workspace: Identifiable, ObservableObject {
             )
         }
         if currentlyFocusedPanelId != panelId {
+            // Same intent the deferred focus broadcast carries: programmatic and
+            // restore focus stay generic active focus, not direct interaction.
+            owningTabManager?.dismissPanelNotificationOnFocus(
+                tabId: id,
+                panelId: panelId,
+                explicitFocusIntent: shouldTreatCurrentEventAsExplicitFocusIntent()
+            )
             syncUnreadBadgeStateForAllPanels()
         }
 
@@ -11825,7 +11832,7 @@ final class Workspace: Identifiable, ObservableObject {
         if let forkedPanel,
            remoteStartupCommand != nil,
            let workingDirectory {
-            updatePanelDirectory(panelId: forkedPanel.id, directory: workingDirectory)
+            updateRemotePanelDirectory(panelId: forkedPanel.id, directory: workingDirectory)
         }
         if forkedPanel == nil, let zoomedPaneId {
             _ = bonsplitController.togglePaneZoom(inPane: zoomedPaneId)
@@ -11892,7 +11899,7 @@ final class Workspace: Identifiable, ObservableObject {
         if let forkedPanel {
             _ = reorderSurface(panelId: forkedPanel.id, toIndex: targetIndex)
             if remoteStartupCommand != nil, let workingDirectory {
-                updatePanelDirectory(panelId: forkedPanel.id, directory: workingDirectory)
+                updateRemotePanelDirectory(panelId: forkedPanel.id, directory: workingDirectory)
             }
         } else if let zoomedPaneId {
             _ = bonsplitController.togglePaneZoom(inPane: zoomedPaneId)

@@ -284,9 +284,12 @@ final class TerminalNotificationClearAllTests: XCTestCase {
 
         let firstPIDKey = "codex.agent-session-a"
         let secondPIDKey = "codex.agent-session-b"
+        let port = 54323
         workspace.statusEntries["codex"] = SidebarStatusEntry(key: "codex", value: "Running")
         workspace.recordAgentPID(key: firstPIDKey, pid: pid_t(12345), panelId: firstPanelId)
         workspace.recordAgentPID(key: secondPIDKey, pid: pid_t(12346), panelId: secondPanel.id)
+        workspace.agentListeningPorts = [port]
+        workspace.recomputeListeningPorts()
 
         XCTAssertTrue(workspace.bonsplitController.closePane(firstPaneId))
 
@@ -294,6 +297,8 @@ final class TerminalNotificationClearAllTests: XCTestCase {
         XCTAssertNil(workspace.agentPIDs[firstPIDKey])
         XCTAssertEqual(workspace.agentPIDs[secondPIDKey].map(Int.init), 12346)
         XCTAssertEqual(workspace.statusEntries["codex"]?.value, "Running")
+        XCTAssertEqual(workspace.agentListeningPorts, [port])
+        XCTAssertTrue(workspace.listeningPorts.contains(port))
     }
 
     func testStructuredAgentHookRuntimeSuppressesRawTerminalNotificationsForOwnedPanelOnly() throws {
@@ -646,11 +651,52 @@ final class TerminalNotificationClearAllTests: XCTestCase {
 
         XCTAssertEqual(destinationWorkspace.statusEntries["codex"]?.value, status.value)
         XCTAssertEqual(destinationWorkspace.agentPIDs[pidKey].map(Int.init), 12346)
+        XCTAssertEqual(destinationWorkspace.agentListeningPorts, [port])
+        XCTAssertTrue(destinationWorkspace.listeningPorts.contains(port))
         XCTAssertEqual(
             destinationWorkspace.restoredAgentSnapshotForTesting(panelId: movingPanelId)?.sessionId,
             "agent-session-detach"
         )
         XCTAssertTrue(destinationWorkspace.restoredAgentAutoResumePendingForTesting(panelId: movingPanelId))
+    }
+
+    /// Ports still published after the last agent PID cleared have no owning panel.
+    /// A panel carrying only lifecycle state must not take them to another workspace,
+    /// where no PortScanner refresh would ever clear them.
+    func testDetachingPanelWithoutAgentPIDsDoesNotTransferOwnerlessAgentListeningPorts() throws {
+        let appDelegate = AppDelegate.shared ?? AppDelegate()
+        let manager = TabManager()
+        let originalTabManager = appDelegate.tabManager
+        appDelegate.tabManager = manager
+
+        let sourceWorkspace = manager.addWorkspace(select: true)
+        let destinationWorkspace = manager.addWorkspace(select: false)
+        defer {
+            if manager.tabs.contains(where: { $0.id == destinationWorkspace.id }) {
+                manager.closeWorkspace(destinationWorkspace)
+            }
+            if manager.tabs.contains(where: { $0.id == sourceWorkspace.id }) {
+                manager.closeWorkspace(sourceWorkspace)
+            }
+            appDelegate.tabManager = originalTabManager
+        }
+
+        let movingPanelId = try XCTUnwrap(sourceWorkspace.focusedPanelId)
+        let port = 54323
+        sourceWorkspace.setAgentLifecycle(key: "codex", panelId: movingPanelId, lifecycle: .idle)
+        sourceWorkspace.agentListeningPorts = [port]
+        sourceWorkspace.recomputeListeningPorts()
+        XCTAssertTrue(sourceWorkspace.agentPIDs.isEmpty)
+
+        let transfer = try XCTUnwrap(sourceWorkspace.detachSurface(panelId: movingPanelId))
+        XCTAssertEqual(transfer.agentRuntime?.agentListeningPorts ?? [], [])
+
+        let destinationPaneId = try XCTUnwrap(destinationWorkspace.bonsplitController.allPaneIds.first)
+        XCTAssertNotNil(
+            destinationWorkspace.attachDetachedSurface(transfer, inPane: destinationPaneId, focus: false)
+        )
+        XCTAssertEqual(destinationWorkspace.agentListeningPorts, [])
+        XCTAssertFalse(destinationWorkspace.listeningPorts.contains(port))
     }
 
     func testDetachingRestoredSnapshotWithoutPanelPIDDoesNotTransferAgentRuntimeStatus() throws {

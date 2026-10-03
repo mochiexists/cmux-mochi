@@ -96,12 +96,18 @@ extension Workspace {
                 || !lifecycleStates.isEmpty else {
             return nil
         }
+        // With no agent PID left, the published ports have no owner (PortScanner
+        // has not yet published the empty set), so no panel may carry them.
+        let ownsEveryAgentPID = !agentPIDsForPanel.isEmpty
+            && Set(agentPIDs.keys).isSubset(of: pidKeys)
+        let agentListeningPortsForPanel = ownsEveryAgentPID ? agentListeningPorts : []
         return DetachedAgentRuntimeState(
             panelId: panelId,
             statusEntries: statusEntriesForPanel,
             agentPIDs: agentPIDsForPanel,
             agentPIDProcessIdentities: agentPIDIdentitiesForPanel,
             agentPIDKeys: pidKeys,
+            agentListeningPorts: agentListeningPortsForPanel,
             agentLifecycleStates: lifecycleStates
         )
     }
@@ -378,6 +384,11 @@ extension Workspace {
                 didChange = true
             }
         }
+        if agentPIDs.isEmpty, !runtimeState.agentListeningPorts.isEmpty {
+            agentListeningPorts.removeAll()
+            recomputeListeningPorts()
+            didChange = true
+        }
         if didChange {
             refreshTrackedAgentPorts()
         }
@@ -402,6 +413,12 @@ extension Workspace {
         }
         for (key, lifecycle) in runtimeState.agentLifecycleStates {
             setAgentLifecycle(key: key, panelId: runtimeState.panelId, lifecycle: lifecycle)
+        }
+        if !runtimeState.agentListeningPorts.isEmpty {
+            agentListeningPorts = Array(
+                Set(agentListeningPorts).union(runtimeState.agentListeningPorts)
+            ).sorted()
+            recomputeListeningPorts()
         }
         if didAdoptAgentPID {
             refreshTrackedAgentPorts()
@@ -447,6 +464,7 @@ extension Workspace {
         let shouldPreserveRemoteDisconnectOnClose =
             origin == "tab_close" ||
             origin == "pane_close"
+        cancelPendingRemoteDisconnectReplacement(surfaceId: panelId)
         if shouldPreserveRemoteDisconnectOnClose,
            panel is TerminalPanel {
             markRemoteTerminalSessionClosingIfLast(surfaceId: panelId)
@@ -455,7 +473,6 @@ extension Workspace {
             shouldPreserveRemoteDisconnectOnClose &&
             remoteDisconnectPlaceholderPanelIds.remove(panelId) != nil &&
             panels.count == 1
-        cancelPendingRemoteDisconnectReplacement(surfaceId: panelId)
         if shouldRefreshRemoteDisconnectPlaceholder,
            let remoteConfiguration {
             rememberPendingRemoteDisconnectReplacement(

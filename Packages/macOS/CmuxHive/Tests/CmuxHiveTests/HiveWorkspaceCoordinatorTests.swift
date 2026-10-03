@@ -103,6 +103,105 @@ struct HiveWorkspaceCoordinatorTests {
         }
     }
 
+    @Test("keeps lifecycle reconnect single-flight with an early status request")
+    func coalescesLifecycleReconnectWithStatusRequest() async {
+        let shell = HiveShellStub(
+            pairingResult: .failed,
+            workspaces: [],
+            hasKnownPairing: true,
+            isConnected: true,
+            reconnectIsSuspended: true
+        )
+        let coordinator = HiveWorkspaceCoordinator(shell: shell)
+
+        let statusTask = Task { await coordinator.reconnectForStatus() }
+        await shell.waitUntilReconnectCount(1)
+
+        var lifecycleFinished = false
+        let lifecycleTask = Task {
+            await coordinator.startConnectionLifecycle()
+            lifecycleFinished = true
+        }
+        await Self.yieldUntil {
+            lifecycleFinished || shell.reconnectAllCount > 1
+        }
+
+        #expect(shell.reconnectAllCount == 1)
+        shell.resumeReconnects()
+        #expect(await statusTask.value)
+        await lifecycleTask.value
+        coordinator.stopConnectionLifecycle()
+    }
+
+    @Test("retries the launch reconnect once when an early status reconnect fails")
+    func retriesLifecycleReconnectAfterFailedStatusRequest() async {
+        let shell = HiveShellStub(
+            pairingResult: .failed,
+            workspaces: [],
+            hasKnownPairing: true,
+            isConnected: false,
+            reconnectIsSuspended: true
+        )
+        let coordinator = HiveWorkspaceCoordinator(shell: shell)
+
+        let statusTask = Task { await coordinator.reconnectForStatus() }
+        await shell.waitUntilReconnectCount(1)
+        await coordinator.startConnectionLifecycle()
+        #expect(shell.reconnectAllCount == 1)
+
+        shell.resumeReconnects()
+        #expect(await !statusTask.value)
+        await Self.yieldUntil { shell.reconnectAllCount == 2 }
+
+        #expect(shell.reconnectAllCount == 2)
+        #expect(shell.lastReconnectDeadlineNanoseconds == nil)
+        shell.resumeReconnects()
+        coordinator.stopConnectionLifecycle()
+    }
+
+    @Test("removing the last pairing cancels the deferred launch retry without rewriting phase")
+    func removingLastPairingCancelsDeferredLaunchRetry() async {
+        let mac = MobilePairedMac(
+            macDeviceID: "mac-a",
+            displayName: "Studio",
+            routes: [],
+            createdAt: Date(),
+            lastSeenAt: Date(),
+            isActive: true,
+            stackUserID: nil,
+            instanceTag: "nightly"
+        )
+        let shell = HiveShellStub(
+            pairingResult: .failed,
+            workspaces: [],
+            hasKnownPairing: true,
+            isConnected: false,
+            pairedMacs: [mac],
+            reconnectIsSuspended: true
+        )
+        let coordinator = HiveWorkspaceCoordinator(shell: shell)
+
+        let statusTask = Task { await coordinator.reconnectForStatus() }
+        await shell.waitUntilReconnectCount(1)
+        await coordinator.startConnectionLifecycle()
+        shell.resumeReconnects()
+        #expect(await !statusTask.value)
+        await shell.waitUntilReconnectCount(2)
+
+        #expect(await coordinator.removePairing(mac, localOnly: true) == .removed)
+        #expect(coordinator.phase == .idle)
+
+        // The retry's dial completes after the pairing is gone.
+        shell.hiveConnectionState = .connected
+        shell.resumeReconnects()
+        await Self.yieldUntil { shell.completedReconnectCount == 2 }
+        for _ in 0..<10 { await Task.yield() }
+
+        #expect(shell.cancelledReconnectCount == 1)
+        #expect(coordinator.phase == .idle)
+        #expect(shell.reconnectAllCount == 2)
+    }
+
     @Test("reconnects every paired Mac instead of only the active Mac")
     func reconnectsEveryPairedMac() async {
         let pairedMacs = [
@@ -427,10 +526,19 @@ private final class HiveShellStub: HiveShellServing {
     private(set) var workspaceRenameRequests: [WorkspaceRenameRequest] = []
     private(set) var reconnectToMacRequests: [ReconnectRequest] = []
     private(set) var lastReconnectDeadlineNanoseconds: UInt64?
+    private(set) var reconnectAllCount = 0
+    private(set) var completedReconnectCount = 0
+    private(set) var cancelledReconnectCount = 0
     private var pairingContinuation: CheckedContinuation<Void, Never>?
     private var pairingStartContinuation: CheckedContinuation<Void, Never>?
+    private var reconnectContinuations: [CheckedContinuation<Void, Never>] = []
+    private var reconnectCountWaiters: [(
+        count: Int,
+        continuation: CheckedContinuation<Void, Never>
+    )] = []
     private var pairingStarted = false
     private let pairingIsSuspended: Bool
+    private let reconnectIsSuspended: Bool
 
     struct WorkspaceRenameRequest: Equatable {
         let id: MobileWorkspacePreview.ID
@@ -449,6 +557,7 @@ private final class HiveShellStub: HiveShellServing {
         pairedMacs: [MobilePairedMac] = [],
         connectionStatuses: [String: MobileMacConnectionStatus] = [:],
         pairingIsSuspended: Bool = false,
+        reconnectIsSuspended: Bool = false,
         removalResult: MobileComputerRemovalResult = .removed
     ) {
         self.pairingResult = pairingResult
@@ -464,6 +573,7 @@ private final class HiveShellStub: HiveShellServing {
         hivePairedMacs = pairedMacs
         hiveMacConnectionStatuses = connectionStatuses
         self.pairingIsSuspended = pairingIsSuspended
+        self.reconnectIsSuspended = reconnectIsSuspended
         self.removalResult = removalResult
     }
 
@@ -507,9 +617,35 @@ private final class HiveShellStub: HiveShellServing {
         refreshBackupBeforeDial: Bool,
         attemptDeadlineNanoseconds: UInt64?
     ) async -> Bool {
+        reconnectAllCount += 1
         lastReconnectDeadlineNanoseconds = attemptDeadlineNanoseconds
         reconnectedPairingIDs = hivePairedMacs.map(\.id)
+        let ready = reconnectCountWaiters.filter { reconnectAllCount >= $0.count }
+        reconnectCountWaiters.removeAll { reconnectAllCount >= $0.count }
+        ready.forEach { $0.continuation.resume() }
+        if reconnectIsSuspended {
+            await withCheckedContinuation { continuation in
+                reconnectContinuations.append(continuation)
+            }
+        }
+        completedReconnectCount += 1
+        if Task.isCancelled {
+            cancelledReconnectCount += 1
+        }
         return isHiveMacConnected
+    }
+
+    func waitUntilReconnectCount(_ count: Int) async {
+        if reconnectAllCount >= count { return }
+        await withCheckedContinuation { continuation in
+            reconnectCountWaiters.append((count, continuation))
+        }
+    }
+
+    func resumeReconnects() {
+        let continuations = reconnectContinuations
+        reconnectContinuations.removeAll()
+        continuations.forEach { $0.resume() }
     }
 
     func reconnectHiveMac(macDeviceID: String, instanceTag: String?) async {

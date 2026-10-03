@@ -189,7 +189,7 @@ extension TerminalSurface {
 
         registry.unregisterRuntimeSurface(surfaceToFree, ownerId: id)
         surface = nil
-        ghostty_surface_free(surfaceToFree)
+        runtimeSurfaceDeallocator(surfaceToFree)
         callbackContext?.release()
     }
 
@@ -208,7 +208,7 @@ extension TerminalSurface {
         }
 
         registry.unregisterRuntimeSurface(surfaceToFree, ownerId: id)
-        ghostty_surface_free(surfaceToFree)
+        runtimeSurfaceDeallocator(surfaceToFree)
         runtimeSurfaceFreedOutOfBandForTesting = true
         callbackContext?.release()
     }
@@ -239,6 +239,32 @@ extension TerminalSurface {
         installFontSizeActionObservation(
             on: runtimeSurface,
             callbackContext: callbackContext
+        )
+    }
+
+    /// Test-only helper to enqueue an inert token when this surface tears down.
+    ///
+    /// The token never occupies ``surface`` and is therefore invisible to
+    /// Ghostty APIs and session snapshots. It exercises the normal asynchronous
+    /// teardown path for fixtures that intentionally have no native runtime.
+    ///
+    /// - Parameters:
+    ///   - teardownCoordinator: An isolated coordinator owned by the test.
+    ///   - onDeallocate: Called from the coordinator's native-free worker.
+    @MainActor
+    public func installRuntimeTeardownProbeForTesting(
+        teardownCoordinator: TerminalSurfaceRuntimeTeardownCoordinator,
+        onDeallocate: @escaping @Sendable () -> Void
+    ) {
+        precondition(surface == nil, "Teardown probes require an empty runtime")
+        let token = UnsafeMutableRawPointer.allocate(byteCount: 1, alignment: 1)
+        runtimeTeardownProbeForTesting = (
+            coordinator: teardownCoordinator,
+            surface: token,
+            deallocator: { token in
+                token.deallocate()
+                onDeallocate()
+            }
         )
     }
 #endif

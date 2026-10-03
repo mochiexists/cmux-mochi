@@ -34,7 +34,7 @@ extension CLINotifyProcessIntegrationRegressionTests {
         ]
         for signal in ["HUP", "INT", "TERM"] {
             try? fileManager.removeItem(at: logFile)
-            let startupCommand = try generatedVMSSHInitialStartupCommand()
+            let startupCommand = try generatedVMSSHInitialStartupCommand(sshExecutablePath: fakeSSH.path)
 
             var environment = ProcessInfo.processInfo.environment
             environment["PATH"] = "\(root.path):\(environment["PATH"] ?? "/usr/bin:/bin")"
@@ -105,7 +105,7 @@ extension CLINotifyProcessIntegrationRegressionTests {
             try? fileManager.removeItem(at: logFile)
             try? fileManager.removeItem(at: childSignalLog)
 
-            let startupCommand = try generatedVMSSHInitialStartupCommand()
+            let startupCommand = try generatedVMSSHInitialStartupCommand(sshExecutablePath: fakeSSH.path)
             var environment = ProcessInfo.processInfo.environment
             environment["PATH"] = "\(root.path):\(environment["PATH"] ?? "/usr/bin:/bin")"
             environment["CMUX_BUNDLED_CLI_PATH"] = fakeCLI.path
@@ -171,6 +171,10 @@ extension CLINotifyProcessIntegrationRegressionTests {
         ])
         try writeShellFile(at: fakeSSH, lines: [
             "#!/bin/sh",
+            // Answer config resolution like OpenSSH so the CLI generates its
+            // managed bootstrap path; a failing `ssh -G` selects the unmanaged
+            // OpenSSH fallback instead (`fallsBackToOpenSSHInteractiveSession`).
+            "case \" $* \" in *\" -G \"*) printf 'hostname cmux-macmini\\n'; exit 0 ;; esac",
             "count=0",
             "if [ -r \"${CMUX_TEST_ATTEMPT_FILE}\" ]; then count=$(cat \"${CMUX_TEST_ATTEMPT_FILE}\"); fi",
             "count=$((count + 1))",
@@ -183,7 +187,7 @@ extension CLINotifyProcessIntegrationRegressionTests {
         try fileManager.setAttributes([.posixPermissions: 0o700], ofItemAtPath: fakeSSH.path)
         try fileManager.setAttributes([.posixPermissions: 0o700], ofItemAtPath: fakeSleep.path)
 
-        let startupCommand = try generatedSSHStartupCommand()
+        let startupCommand = try generatedSSHStartupCommand(sshExecutablePath: fakeSSH.path)
         var environment = ProcessInfo.processInfo.environment
         environment["PATH"] = "\(root.path):\(environment["PATH"] ?? "/usr/bin:/bin")"
         environment["CMUX_BUNDLED_CLI_PATH"] = fakeCLI.path
@@ -255,7 +259,7 @@ extension CLINotifyProcessIntegrationRegressionTests {
         try fileManager.setAttributes([.posixPermissions: 0o700], ofItemAtPath: fakeCLI.path)
         try fileManager.setAttributes([.posixPermissions: 0o700], ofItemAtPath: fakeSSH.path)
 
-        let startupCommand = try generatedSSHStartupCommand()
+        let startupCommand = try generatedSSHStartupCommand(sshExecutablePath: fakeSSH.path)
         var environment = ProcessInfo.processInfo.environment
         environment["PATH"] = "\(root.path):\(environment["PATH"] ?? "/usr/bin:/bin")"
         environment["CMUX_BUNDLED_CLI_PATH"] = fakeCLI.path
@@ -327,7 +331,7 @@ extension CLINotifyProcessIntegrationRegressionTests {
         try fileManager.setAttributes([.posixPermissions: 0o700], ofItemAtPath: fakeCLI.path)
         try fileManager.setAttributes([.posixPermissions: 0o700], ofItemAtPath: fakeSSH.path)
 
-        let startupCommand = try generatedSSHStartupCommand()
+        let startupCommand = try generatedSSHStartupCommand(sshExecutablePath: fakeSSH.path)
         var environment = ProcessInfo.processInfo.environment
         environment["PATH"] = "\(root.path):\(environment["PATH"] ?? "/usr/bin:/bin")"
         environment["CMUX_BUNDLED_CLI_PATH"] = fakeCLI.path
@@ -348,6 +352,11 @@ extension CLINotifyProcessIntegrationRegressionTests {
 
         XCTAssertFalse(result.timedOut, result.stderr)
         XCTAssertEqual(result.status, 143, result.stderr)
+        let cliCalls = (try? String(contentsOf: cliLog, encoding: .utf8)) ?? ""
+        XCTAssertTrue(
+            cliCalls.contains("rpc workspace.remote.terminal_session_launching"),
+            cliCalls
+        )
         XCTAssertFalse(
             waitForSSHSignalLifecycleLog(sshLog) {
                 $0.contains("ssh-started")
@@ -442,7 +451,7 @@ extension CLINotifyProcessIntegrationRegressionTests {
             )
         }
 
-        let startupCommand = try generatedSSHStartupCommand(sshOptions: [
+        let startupCommand = try generatedSSHStartupCommand(sshExecutablePath: fakeSSH.path, sshOptions: [
             "ControlMaster no",
             "ControlPath /tmp/cmux-ssh-%C",
             "RequestTTY no",
@@ -531,6 +540,7 @@ extension CLINotifyProcessIntegrationRegressionTests {
         }
 
         let startupCommand = try generatedSSHStartupCommand(
+            sshExecutablePath: fakeSSH.path,
             remoteCommandArguments: [
                 "touch",
                 "\"$CMUX_TEST_RAW_COMMAND_LOG\"",
@@ -621,6 +631,7 @@ extension CLINotifyProcessIntegrationRegressionTests {
         echo user-end >> "$CMUX_TEST_RAW_EVENT_LOG"
         """
         let startupCommand = try generatedSSHStartupCommand(
+            sshExecutablePath: fakeSSH.path,
             remoteCommandArguments: [
                 "/bin/sh",
                 "-c",
@@ -702,6 +713,7 @@ extension CLINotifyProcessIntegrationRegressionTests {
         }
 
         let startupCommand = try generatedSSHStartupCommand(
+            sshExecutablePath: fakeSSH.path,
             additionalArguments: ["--transport", "mosh"]
         )
         var environment = ProcessInfo.processInfo.environment
@@ -793,7 +805,7 @@ extension CLINotifyProcessIntegrationRegressionTests {
         try fileManager.setAttributes([.posixPermissions: 0o700], ofItemAtPath: fakeCLI.path)
         try fileManager.setAttributes([.posixPermissions: 0o700], ofItemAtPath: fakeSSH.path)
 
-        let startupCommand = try generatedSSHStartupCommand(sshOptions: [
+        let startupCommand = try generatedSSHStartupCommand(sshExecutablePath: fakeSSH.path, sshOptions: [
             "ControlMaster auto",
             "ControlPersist 600",
             "ControlPath \(staleControlPath.path)",
@@ -817,7 +829,9 @@ extension CLINotifyProcessIntegrationRegressionTests {
         )
 
         XCTAssertFalse(result.timedOut, result.stderr)
-        XCTAssertEqual(result.status, 0, result.stderr)
+        // This fixture has no app socket for the attach phase, so the startup
+        // wrapper must propagate that failure after removing the stale control socket.
+        XCTAssertEqual(result.status, 1, result.stderr)
         XCTAssertFalse(fileManager.fileExists(atPath: staleControlPath.path))
 
         let sshLog = (try? String(contentsOf: logFile, encoding: .utf8)) ?? ""
@@ -865,13 +879,76 @@ extension CLINotifyProcessIntegrationRegressionTests {
         try fileManager.setAttributes([.posixPermissions: 0o700], ofItemAtPath: fakeCLI.path)
         try fileManager.setAttributes([.posixPermissions: 0o700], ofItemAtPath: fakeSSH.path)
 
-        let startupCommand = try generatedSSHStartupCommand(sshOptions: sshOptions)
+        let startupCommand = try generatedSSHStartupCommand(sshExecutablePath: fakeSSH.path, sshOptions: sshOptions)
+
+        // The attach phase execs the real CLI against CMUX_SOCKET_PATH, so the
+        // run only succeeds when an app socket answers it: the bridge becomes
+        // ready, then closes after the remote PTY session has ended.
+        let workspaceId = "11111111-1111-1111-1111-111111111111"
+        let surfaceId = "22222222-2222-2222-2222-222222222222"
+        let sessionId = "ssh-\(workspaceId)-\(surfaceId)"
+        let socketPath = makeSocketPath("ssh-auth-success")
+        let listenerFD = try bindUnixSocket(at: socketPath)
+        let bridge = try bindLoopbackTCP()
+        let state = MockSocketServerState()
+        defer {
+            Darwin.close(listenerFD)
+            Darwin.close(bridge.fd)
+            unlink(socketPath)
+        }
+        let socketHandled = startMockServer(listenerFD: listenerFD, state: state) { line in
+            guard let payload = self.jsonObject(line),
+                  let id = payload["id"] as? String,
+                  let method = payload["method"] as? String else {
+                return self.malformedRequestResponse(raw: line)
+            }
+            switch method {
+            case "workspace.remote.pty_bridge":
+                return self.v2Response(
+                    id: id,
+                    ok: true,
+                    result: [
+                        "host": "127.0.0.1",
+                        "port": bridge.port,
+                        "token": "bridge-token",
+                        "session_id": sessionId,
+                        "attachment_id": surfaceId,
+                    ]
+                )
+            case "workspace.remote.pty_resize":
+                return self.v2Response(id: id, ok: true, result: ["resized": true])
+            case "workspace.remote.terminal_session_connected":
+                return self.v2Response(id: id, ok: true, result: ["connected": true])
+            case "workspace.remote.pty_sessions":
+                return self.v2Response(id: id, ok: true, result: ["sessions": []])
+            case "workspace.remote.pty_attach_end":
+                return self.v2Response(
+                    id: id,
+                    ok: true,
+                    result: [
+                        "workspace_id": workspaceId,
+                        "surface_id": surfaceId,
+                        "session_id": sessionId,
+                        "cleared_remote_pty_session": true,
+                    ]
+                )
+            default:
+                return self.v2Response(
+                    id: id,
+                    ok: false,
+                    error: ["code": "unexpected_method", "message": "Unexpected method \(method)"]
+                )
+            }
+        }
+        let bridgeHandled = startBridgeReadyThenCloseServer(listenerFD: bridge.fd)
+
         var environment = ProcessInfo.processInfo.environment
         environment["PATH"] = "\(root.path):\(environment["PATH"] ?? "/usr/bin:/bin")"
         environment["CMUX_BUNDLED_CLI_PATH"] = fakeCLI.path
-        environment["CMUX_SOCKET_PATH"] = "/tmp/cmux-debug-test.sock"
-        environment["CMUX_WORKSPACE_ID"] = "11111111-1111-1111-1111-111111111111"
-        environment["CMUX_SURFACE_ID"] = "22222222-2222-2222-2222-222222222222"
+        environment["CMUX_SOCKET_PATH"] = socketPath
+        environment["CMUX_CLI_SENTRY_DISABLED"] = "1"
+        environment["CMUX_WORKSPACE_ID"] = workspaceId
+        environment["CMUX_SURFACE_ID"] = surfaceId
         environment["CMUX_TEST_CONTROL_PATH"] = controlPath
         environment["CMUX_SSH_RECONNECT_DELAY_SECONDS"] = "0"
 
@@ -882,8 +959,11 @@ extension CLINotifyProcessIntegrationRegressionTests {
             timeout: 5
         )
 
+        wait(for: [socketHandled, bridgeHandled], timeout: 5)
         XCTAssertFalse(result.timedOut, result.stderr)
         XCTAssertEqual(result.status, 0, result.stderr)
+        let methods = state.commands.compactMap { self.jsonObject($0)?["method"] as? String }
+        XCTAssertTrue(methods.contains("workspace.remote.pty_bridge"), "\(methods)")
         XCTAssertFalse(
             fileManager.fileExists(atPath: inFlightPath),
             "Successful foreground authentication must remove its owned in-flight marker before releasing the lock"
@@ -917,7 +997,7 @@ extension CLINotifyProcessIntegrationRegressionTests {
         try fileManager.setAttributes([.posixPermissions: 0o700], ofItemAtPath: fakeCLI.path)
         try fileManager.setAttributes([.posixPermissions: 0o700], ofItemAtPath: fakeSSH.path)
 
-        let startupCommand = try generatedVMSSHInitialStartupCommand()
+        let startupCommand = try generatedVMSSHInitialStartupCommand(sshExecutablePath: fakeSSH.path)
         var environment = ProcessInfo.processInfo.environment
         environment["PATH"] = "\(root.path):\(environment["PATH"] ?? "/usr/bin:/bin")"
         environment["CMUX_BUNDLED_CLI_PATH"] = fakeCLI.path
@@ -973,7 +1053,7 @@ extension CLINotifyProcessIntegrationRegressionTests {
         try fileManager.setAttributes([.posixPermissions: 0o700], ofItemAtPath: fakeCLI.path)
         try fileManager.setAttributes([.posixPermissions: 0o700], ofItemAtPath: fakeSSH.path)
 
-        let startupCommand = try generatedVMSSHInitialStartupCommand()
+        let startupCommand = try generatedVMSSHInitialStartupCommand(sshExecutablePath: fakeSSH.path)
         var environment = ProcessInfo.processInfo.environment
         environment["PATH"] = "\(root.path):\(environment["PATH"] ?? "/usr/bin:/bin")"
         environment["CMUX_BUNDLED_CLI_PATH"] = fakeCLI.path
@@ -1023,7 +1103,7 @@ extension CLINotifyProcessIntegrationRegressionTests {
         try fileManager.setAttributes([.posixPermissions: 0o700], ofItemAtPath: fakeCLI.path)
         try fileManager.setAttributes([.posixPermissions: 0o700], ofItemAtPath: fakeSSH.path)
 
-        let startupCommand = try generatedVMSSHInitialStartupCommand()
+        let startupCommand = try generatedVMSSHInitialStartupCommand(sshExecutablePath: fakeSSH.path)
         var environment = ProcessInfo.processInfo.environment
         environment["PATH"] = "\(root.path):\(environment["PATH"] ?? "/usr/bin:/bin")"
         environment["CMUX_BUNDLED_CLI_PATH"] = fakeCLI.path
@@ -1080,7 +1160,7 @@ extension CLINotifyProcessIntegrationRegressionTests {
         try fileManager.setAttributes([.posixPermissions: 0o700], ofItemAtPath: fakeCLI.path)
         try fileManager.setAttributes([.posixPermissions: 0o700], ofItemAtPath: fakeSSH.path)
 
-        let startupCommand = try generatedVMSSHInitialStartupCommand()
+        let startupCommand = try generatedVMSSHInitialStartupCommand(sshExecutablePath: fakeSSH.path)
         var environment = ProcessInfo.processInfo.environment
         environment["PATH"] = "\(root.path):\(environment["PATH"] ?? "/usr/bin:/bin")"
         environment["CMUX_BUNDLED_CLI_PATH"] = fakeCLI.path
@@ -1106,7 +1186,7 @@ extension CLINotifyProcessIntegrationRegressionTests {
         let sessionEndCalls = recordedCalls
             .split(separator: "\n")
             .filter { $0.contains("ssh-session-end") }
-        XCTAssertEqual(sessionEndCalls.count, 1, recordedCalls)
+        XCTAssertEqual(sessionEndCalls.count, 0, recordedCalls)
     }
 
     func testSSHStartupPrintsFinalErrorBannerWhenStderrIsCaptured() throws {
@@ -1131,7 +1211,7 @@ extension CLINotifyProcessIntegrationRegressionTests {
         try fileManager.setAttributes([.posixPermissions: 0o700], ofItemAtPath: fakeCLI.path)
         try fileManager.setAttributes([.posixPermissions: 0o700], ofItemAtPath: fakeSSH.path)
 
-        let startupCommand = try generatedVMSSHInitialStartupCommand()
+        let startupCommand = try generatedVMSSHInitialStartupCommand(sshExecutablePath: fakeSSH.path)
         var environment = ProcessInfo.processInfo.environment
         environment["PATH"] = "\(root.path):\(environment["PATH"] ?? "/usr/bin:/bin")"
         environment["CMUX_BUNDLED_CLI_PATH"] = fakeCLI.path
@@ -1188,7 +1268,7 @@ extension CLINotifyProcessIntegrationRegressionTests {
         try fileManager.setAttributes([.posixPermissions: 0o700], ofItemAtPath: fakeCLI.path)
         try fileManager.setAttributes([.posixPermissions: 0o700], ofItemAtPath: fakeSSH.path)
 
-        let startupCommand = try generatedSSHStartupCommand()
+        let startupCommand = try generatedSSHStartupCommand(sshExecutablePath: fakeSSH.path)
         var environment = ProcessInfo.processInfo.environment
         environment["PATH"] = "\(root.path):\(environment["PATH"] ?? "/usr/bin:/bin")"
         environment["CMUX_BUNDLED_CLI_PATH"] = fakeCLI.path
@@ -1219,6 +1299,7 @@ extension CLINotifyProcessIntegrationRegressionTests {
     }
 
     private func generatedSSHStartupCommand(
+        sshExecutablePath: String,
         sshOptions: [String] = [
             "ControlMaster no",
             "ControlPath /tmp/cmux-ssh-%C",
@@ -1286,6 +1367,8 @@ extension CLINotifyProcessIntegrationRegressionTests {
         environment["CMUX_SOCKET_PATH"] = socketPath
         environment["CMUX_CLI_SENTRY_DISABLED"] = "1"
         environment["CMUX_CLAUDE_HOOK_SENTRY_DISABLED"] = "1"
+        environment["CMUX_CLI_TESTING"] = "1"
+        environment["CMUX_CLI_TEST_SSH_EXECUTABLE"] = sshExecutablePath
 
         var arguments = [
             "ssh",
@@ -1325,7 +1408,7 @@ extension CLINotifyProcessIntegrationRegressionTests {
         return try XCTUnwrap(configureParams["terminal_startup_command"] as? String)
     }
 
-    private func generatedVMSSHInitialStartupCommand() throws -> String {
+    private func generatedVMSSHInitialStartupCommand(sshExecutablePath: String) throws -> String {
         let cliPath = try bundledCLIPath()
         let socketPath = makeSocketPath("vm-ssh-startup")
         let listenerFD = try bindUnixSocket(at: socketPath)
@@ -1350,7 +1433,6 @@ extension CLINotifyProcessIntegrationRegressionTests {
             case "vm.attach_info":
                 let params = payload["params"] as? [String: Any] ?? [:]
                 XCTAssertEqual(params["id"] as? String, vmID)
-                XCTAssertEqual(params["require_daemon"] as? Bool, true)
                 return self.v2Response(
                     id: id,
                     ok: true,
@@ -1403,6 +1485,8 @@ extension CLINotifyProcessIntegrationRegressionTests {
         environment["CMUX_SOCKET_PATH"] = socketPath
         environment["CMUX_CLI_SENTRY_DISABLED"] = "1"
         environment["CMUX_CLAUDE_HOOK_SENTRY_DISABLED"] = "1"
+        environment["CMUX_CLI_TESTING"] = "1"
+        environment["CMUX_CLI_TEST_SSH_EXECUTABLE"] = sshExecutablePath
 
         let result = runProcess(
             executablePath: cliPath,

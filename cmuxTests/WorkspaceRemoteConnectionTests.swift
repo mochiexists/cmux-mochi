@@ -3639,11 +3639,15 @@ final class CLINotifyProcessIntegrationTests: XCTestCase {
     private final class MockSocketServerState: @unchecked Sendable {
         private let lock = NSLock()
         private let commandSemaphore = DispatchSemaphore(value: 0)
-        private(set) var commands: [String] = []
+        private var recordedCommands: [String] = []
+
+        var commands: [String] {
+            settledSnapshot()
+        }
 
         func append(_ command: String) {
             lock.lock()
-            commands.append(command)
+            recordedCommands.append(command)
             lock.unlock()
             commandSemaphore.signal()
         }
@@ -3651,14 +3655,22 @@ final class CLINotifyProcessIntegrationTests: XCTestCase {
         func snapshot() -> [String] {
             lock.lock()
             defer { lock.unlock() }
-            return commands
+            return recordedCommands
+        }
+
+        private func settledSnapshot() -> [String] {
+            while commandSemaphore.wait(timeout: .now()) == .success {}
+            while commandSemaphore.wait(timeout: .now() + 0.1) == .success {
+                while commandSemaphore.wait(timeout: .now()) == .success {}
+            }
+            return snapshot()
         }
 
         func waitForCommand(timeout: TimeInterval, matching predicate: (String) -> Bool) -> Bool {
             let deadline = Date().addingTimeInterval(timeout)
             while true {
                 lock.lock()
-                let matched = commands.contains(where: predicate)
+                let matched = recordedCommands.contains(where: predicate)
                 lock.unlock()
                 if matched {
                     return true
@@ -3672,6 +3684,19 @@ final class CLINotifyProcessIntegrationTests: XCTestCase {
                     return snapshot().contains(where: predicate)
                 }
             }
+        }
+    }
+
+    private final class MockSocketHandledGate: @unchecked Sendable {
+        private let lock = NSLock()
+        private var didHandle = false
+
+        func handleOnce(_ action: () -> Void) {
+            lock.lock()
+            defer { lock.unlock() }
+            guard !didHandle else { return }
+            didHandle = true
+            action()
         }
     }
 
@@ -3799,11 +3824,12 @@ final class CLINotifyProcessIntegrationTests: XCTestCase {
         }
 
         let serverHandled = startMockServer(listenerFD: listenerFD, state: state) { line in
-            return self.v2Response(
-                id: line,
-                ok: false,
-                error: ["code": "unexpected", "message": "Unexpected command \(line)"]
-            )
+            guard let data = line.data(using: .utf8),
+                  let payload = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let id = payload["id"] as? String else {
+                return "OK"
+            }
+            return self.v2Response(id: id, ok: true, result: [:])
         }
 
         var environment = ProcessInfo.processInfo.environment
@@ -4107,7 +4133,7 @@ final class CLINotifyProcessIntegrationTests: XCTestCase {
         XCTAssertEqual(result.stdout, "{}\n")
         XCTAssertTrue(
             state.commands.contains { command in
-                command.contains("notify_target \(workspaceId) \(surfaceId) Codex|Network error|Stream disconnected before completion.")
+                command.contains("notify_target_async \(workspaceId) \(surfaceId) Codex|Network error|Stream disconnected before completion.")
             },
             "Expected discovered transcript failure notification, saw \(state.commands)"
         )
@@ -4160,6 +4186,7 @@ final class CLINotifyProcessIntegrationTests: XCTestCase {
         environment["CMUX_SURFACE_ID"] = surfaceId
         environment["CMUX_AGENT_HOOK_STATE_DIR"] = root.path
         environment["CMUX_CLI_SENTRY_DISABLED"] = "1"
+        environment["CMUX_SUPPRESS_SUBAGENT_NOTIFICATIONS"] = "false"
         environment["CODEX_HOME"] = root.appendingPathComponent("codex-home", isDirectory: true).path
 
         let firstInput = """
@@ -4496,7 +4523,7 @@ final class CLINotifyProcessIntegrationTests: XCTestCase {
         XCTAssertEqual(result.stdout, "{}\n")
         XCTAssertTrue(
             state.commands.contains { command in
-                command.contains("notify_target \(workspaceId) \(surfaceId) Codex|Error|quota exceeded")
+                command.contains("notify_target_async \(workspaceId) \(surfaceId) Codex|Error|quota exceeded")
             },
             "Expected explicit error field notification, saw \(state.commands)"
         )
@@ -4648,7 +4675,7 @@ final class CLINotifyProcessIntegrationTests: XCTestCase {
         XCTAssertEqual(result.stdout, "{}\n")
         XCTAssertTrue(
             state.commands.contains { command in
-                command.contains("notify_target \(workspaceId) \(surfaceId) Codex|Error|Try again later.")
+                command.contains("notify_target_async \(workspaceId) \(surfaceId) Codex|Error|Try again later.")
             },
             "Expected payload error notification to beat healthy transcript, saw \(state.commands)"
         )
@@ -4722,7 +4749,7 @@ final class CLINotifyProcessIntegrationTests: XCTestCase {
         XCTAssertEqual(result.stdout, "{}\n")
         XCTAssertTrue(
             state.commands.contains { command in
-                command.contains("notify_target \(workspaceId) \(surfaceId) Codex|Error|Codex ended before sending a final response")
+                command.contains("notify_target_async \(workspaceId) \(surfaceId) Codex|Error|Codex ended before sending a final response")
             },
             "Expected no-final-response notification, saw \(state.commands)"
         )
@@ -5999,9 +6026,9 @@ final class CLINotifyProcessIntegrationTests: XCTestCase {
         socketPassword: String = CLIMockSocketAuthentication.password,
         handler: @escaping @Sendable (String) -> String
     ) {
+        _ = connectionLimit
         Thread.detachNewThread {
-            var accepted = 0
-            while accepted < connectionLimit {
+            while true {
                 var clientAddr = sockaddr_un()
                 var clientAddrLen = socklen_t(MemoryLayout<sockaddr_un>.size)
                 let clientFD = withUnsafeMutablePointer(to: &clientAddr) { ptr in
@@ -6013,8 +6040,6 @@ final class CLINotifyProcessIntegrationTests: XCTestCase {
                     if errno == EINTR { continue }
                     return
                 }
-                accepted += 1
-
                 Thread.detachNewThread {
                     defer { Darwin.close(clientFD) }
                     var pending = Data()
@@ -6038,11 +6063,49 @@ final class CLINotifyProcessIntegrationTests: XCTestCase {
                                 continue
                             }
                             state.append(line)
-                            guard self.writeAll(handler(line) + "\n", to: clientFD) else { return }
+                            let response = self.protocolAwareMockResponse(
+                                line: line,
+                                handlerResponse: handler(line)
+                            )
+                            guard self.writeAll(response + "\n", to: clientFD) else { return }
                         }
                     }
                 }
             }
+        }
+    }
+
+    private func protocolAwareMockResponse(line: String, handlerResponse: String) -> String {
+        guard let requestData = line.data(using: .utf8),
+              let request = try? JSONSerialization.jsonObject(with: requestData) as? [String: Any],
+              let id = request["id"] as? String,
+              let method = request["method"] as? String,
+              let responseData = handlerResponse.data(using: .utf8),
+              let response = try? JSONSerialization.jsonObject(with: responseData) as? [String: Any],
+              response["ok"] as? Bool == true,
+              let result = response["result"] as? [String: Any],
+              result.isEmpty else {
+            return handlerResponse
+        }
+
+        switch method {
+        case "surface.list":
+            return v2Response(
+                id: id,
+                ok: true,
+                result: [
+                    "surfaces": [[
+                        "id": "22222222-2222-2222-2222-222222222222",
+                        "ref": "surface:1",
+                        "index": 1,
+                        "focused": true,
+                    ]]
+                ]
+            )
+        case "system.top":
+            return v2Response(id: id, ok: true, result: ["windows": []])
+        default:
+            return handlerResponse
         }
     }
 
@@ -6053,45 +6116,56 @@ final class CLINotifyProcessIntegrationTests: XCTestCase {
         socketPassword: String = CLIMockSocketAuthentication.password,
         handler: @escaping @Sendable (String) -> String
     ) {
+        let handledGate = MockSocketHandledGate()
+
         Thread.detachNewThread {
-            var clientAddr = sockaddr_un()
-            var clientAddrLen = socklen_t(MemoryLayout<sockaddr_un>.size)
-            let clientFD = withUnsafeMutablePointer(to: &clientAddr) { ptr in
-                ptr.withMemoryRebound(to: sockaddr.self, capacity: 1) { sockaddrPtr in
-                    Darwin.accept(listenerFD, sockaddrPtr, &clientAddrLen)
-                }
-            }
-            guard clientFD >= 0 else {
-                onHandled()
-                return
-            }
-            defer {
-                Darwin.close(clientFD)
-                onHandled()
-            }
-
-            var pending = Data()
-            var buffer = [UInt8](repeating: 0, count: 4096)
-
             while true {
-                let count = Darwin.read(clientFD, &buffer, buffer.count)
-                if count < 0 {
-                    if errno == EINTR { continue }
+                var clientAddr = sockaddr_un()
+                var clientAddrLen = socklen_t(MemoryLayout<sockaddr_un>.size)
+                let clientFD = withUnsafeMutablePointer(to: &clientAddr) { ptr in
+                    ptr.withMemoryRebound(to: sockaddr.self, capacity: 1) { sockaddrPtr in
+                        Darwin.accept(listenerFD, sockaddrPtr, &clientAddrLen)
+                    }
+                }
+                guard clientFD >= 0 else {
+                    handledGate.handleOnce(onHandled)
                     return
                 }
-                if count == 0 { return }
-                pending.append(buffer, count: count)
 
-                while let newlineRange = pending.firstRange(of: Data([0x0A])) {
-                    let lineData = pending.subdata(in: 0..<newlineRange.lowerBound)
-                    pending.removeSubrange(0...newlineRange.lowerBound)
-                    guard let line = String(data: lineData, encoding: .utf8) else { continue }
-                    if let response = CLIMockSocketAuthentication.response(to: line, password: socketPassword) {
-                        guard self.writeAll(response, to: clientFD) else { return }
-                        continue
+                Thread.detachNewThread {
+                    defer {
+                        Darwin.close(clientFD)
+                        handledGate.handleOnce(onHandled)
                     }
-                    state.append(line)
-                    guard self.writeAll(handler(line) + "\n", to: clientFD) else { return }
+
+                    var pending = Data()
+                    var buffer = [UInt8](repeating: 0, count: 4096)
+
+                    while true {
+                        let count = Darwin.read(clientFD, &buffer, buffer.count)
+                        if count < 0 {
+                            if errno == EINTR { continue }
+                            return
+                        }
+                        if count == 0 { return }
+                        pending.append(buffer, count: count)
+
+                        while let newlineRange = pending.firstRange(of: Data([0x0A])) {
+                            let lineData = pending.subdata(in: 0..<newlineRange.lowerBound)
+                            pending.removeSubrange(0...newlineRange.lowerBound)
+                            guard let line = String(data: lineData, encoding: .utf8) else { continue }
+                            if let response = CLIMockSocketAuthentication.response(to: line, password: socketPassword) {
+                                guard self.writeAll(response, to: clientFD) else { return }
+                                continue
+                            }
+                            state.append(line)
+                            let response = self.protocolAwareMockResponse(
+                                line: line,
+                                handlerResponse: handler(line)
+                            )
+                            guard self.writeAll(response + "\n", to: clientFD) else { return }
+                        }
+                    }
                 }
             }
         }
@@ -6329,6 +6403,7 @@ final class CLINotifyProcessIntegrationTests: XCTestCase {
         let currentSurface = "22222222-2222-2222-2222-222222222222"
         let staleWorkspace = "AAAAAAAA-AAAA-AAAA-AAAA-AAAAAAAAAAAA"
         let staleSurface = "BBBBBBBB-BBBB-BBBB-BBBB-BBBBBBBBBBBB"
+        let ttyName = "/dev/ttys042"
 
         defer {
             Darwin.close(listenerFD)
@@ -6380,6 +6455,18 @@ final class CLINotifyProcessIntegrationTests: XCTestCase {
                     ok: true,
                     result: ["workspace_id": currentWorkspace]
                 )
+            case "debug.terminals":
+                return self.v2Response(
+                    id: id,
+                    ok: true,
+                    result: [
+                        "terminals": [[
+                            "tty": ttyName,
+                            "workspace_id": currentWorkspace,
+                            "surface_id": currentSurface,
+                        ]]
+                    ]
+                )
             case "surface.trigger_flash":
                 let workspaceId = params["workspace_id"] as? String
                 let surfaceId = params["surface_id"] as? String
@@ -6401,6 +6488,7 @@ final class CLINotifyProcessIntegrationTests: XCTestCase {
         environment["CMUX_SOCKET_PATH"] = socketPath
         environment["CMUX_WORKSPACE_ID"] = staleWorkspace
         environment["CMUX_SURFACE_ID"] = staleSurface
+        environment["CMUX_CLI_TTY_NAME"] = ttyName
         environment["CMUX_CLI_SENTRY_DISABLED"] = "1"
         environment["CMUX_CLAUDE_HOOK_SENTRY_DISABLED"] = "1"
 

@@ -108,11 +108,18 @@ final class KeyboardShortcutSettingsFileStoreMigrationTests: XCTestCase {
 
     func testLegacySettingsShortcutBindingsParseWithoutRuntimeConflictLookup() throws {
         let originalSettingsFileStore = KeyboardShortcutSettings.settingsFileStore
+        let originalPersistenceDefaults = KeyboardShortcutSettings.persistenceDefaults
+        let defaultsSuiteName = "KeyboardShortcutSettingsFileStoreMigrationTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: defaultsSuiteName))
+        defaults.removePersistentDomain(forName: defaultsSuiteName)
+        KeyboardShortcutSettings.persistenceDefaults = defaults
         KeyboardShortcutSettings.resetAll()
         defer {
             KeyboardShortcutSettings.shortcutLookupObserver = nil
             KeyboardShortcutSettings.settingsFileStore = originalSettingsFileStore
             KeyboardShortcutSettings.resetAll()
+            KeyboardShortcutSettings.persistenceDefaults = originalPersistenceDefaults
+            defaults.removePersistentDomain(forName: defaultsSuiteName)
         }
 
         let directoryURL = try makeTemporaryDirectory()
@@ -132,6 +139,8 @@ final class KeyboardShortcutSettingsFileStoreMigrationTests: XCTestCase {
         KeyboardShortcutSettings.settingsFileStore = KeyboardShortcutSettingsFileStore(
             primaryPath: liveSettingsFileURL.path,
             fallbackPath: nil,
+            additionalFallbackPaths: [],
+            defaults: defaults,
             notificationCenter: NotificationCenter(),
             startWatching: false
         )
@@ -179,6 +188,8 @@ final class KeyboardShortcutSettingsFileStoreMigrationTests: XCTestCase {
         let store = KeyboardShortcutSettingsFileStore(
             primaryPath: primaryURL.path,
             fallbackPath: legacySettingsURL.path,
+            additionalFallbackPaths: [],
+            defaults: defaults,
             notificationCenter: parsingNotificationCenter,
             startWatching: false
         )

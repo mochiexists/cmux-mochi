@@ -1,6 +1,7 @@
 import CMUXMobileCore
 import Darwin
 import Foundation
+import SystemConfiguration
 
 struct MobileHostRouteSnapshot: Sendable {
     let routes: [CmxAttachRoute]
@@ -317,7 +318,18 @@ final class MobileRouteResolver: @unchecked Sendable {
     private static func localNetworkRouteHosts() -> [String] {
         localNetworkRouteHosts(
             localIPv4Addresses: MobileHostNetworkPathMonitor.systemLocalIPv4Addresses(),
-            hostName: ProcessInfo.processInfo.hostName
+            hostNameSource: .system
+        )
+    }
+
+    /// Builds LAN locators from the name mDNSResponder publishes for this Mac.
+    static func localNetworkRouteHosts(
+        localIPv4Addresses: [String],
+        hostNameSource: MobileBonjourHostNameSource
+    ) -> [String] {
+        localNetworkRouteHosts(
+            localIPv4Addresses: localIPv4Addresses,
+            hostName: hostNameSource.bonjourHostName() ?? ""
         )
     }
 
@@ -595,5 +607,37 @@ extension Array where Element == CmxAttachRoute {
         compactMap { route in
             route.disclosed(for: disclosure, at: now)?.mobileHostJSONObject(at: now)
         }
+    }
+}
+
+/// Reads the name mDNSResponder publishes for this Mac from configd.
+///
+/// `ProcessInfo.hostName` is not used: it does a blocking reverse-DNS lookup
+/// (35 s on the main actor at listener start on a slow resolver) and can
+/// return a name that `.local` does not resolve. configd reads do not touch
+/// the network.
+///
+/// There is deliberately no fallback when LocalHostName is unset: mDNSResponder
+/// then registers `<model prefix>-<primary Ethernet address>`, and macOS masks
+/// link addresses (`02:00:00:00:00:00`) for unprivileged processes, so the
+/// label cannot be rebuilt here. No `.local` route is published in that case.
+struct MobileBonjourHostNameSource {
+    /// configd's LocalHostName. After a name clash mDNSResponder writes the
+    /// renamed label (for example `name-2`) back here through its helper.
+    var localHostName: () -> String?
+
+    static var system: MobileBonjourHostNameSource {
+        MobileBonjourHostNameSource(
+            localHostName: { SCDynamicStoreCopyLocalHostName(nil) as String? }
+        )
+    }
+
+    func bonjourHostName() -> String? {
+        guard let name = localHostName()?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+              !name.isEmpty else {
+            return nil
+        }
+        return name
     }
 }

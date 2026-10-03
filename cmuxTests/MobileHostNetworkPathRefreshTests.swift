@@ -152,6 +152,47 @@ import Testing
         ) == ["192.168.1.20", "timapple-m5.local"])
     }
 
+    /// The `.local` locator must be the name mDNSResponder actually publishes
+    /// (the Bonjour LocalHostName). `ProcessInfo.hostName` is a reverse-DNS
+    /// answer instead: it blocked the main actor for 35 s at listener start in
+    /// the Hive e2e run and returned `mac`, `tim-apple.local` or `Tim-Apple-M4`
+    /// for a Mac whose Bonjour name is `tim-apple`.
+    @Test func publishedLANRoutesUseTheBonjourLocalHostName() {
+        let source = MobileBonjourHostNameSource(localHostName: { "tim-apple" })
+        #expect(publishedLANHosts(hostNameSource: source) == ["192.168.1.20", "tim-apple.local"])
+    }
+
+    @Test func publishedLANRoutesNormaliseTheBonjourLocalHostName() {
+        let source = MobileBonjourHostNameSource(localHostName: { "  Tim-Apple-M4.local\n" })
+        #expect(publishedLANHosts(hostNameSource: source) == ["192.168.1.20", "tim-apple-m4.local"])
+    }
+
+    @Test func publishedLANRoutesOmitMDNSWithoutAnyBonjourName() {
+        let absent = MobileBonjourHostNameSource(localHostName: { nil })
+        #expect(publishedLANHosts(hostNameSource: absent) == ["192.168.1.20"])
+        let blank = MobileBonjourHostNameSource(localHostName: { " " })
+        #expect(publishedLANHosts(hostNameSource: blank) == ["192.168.1.20"])
+    }
+
+    private func publishedLANHosts(hostNameSource: MobileBonjourHostNameSource) -> [String] {
+        let snapshot = MobileRouteResolver().routes(
+            port: 61_234,
+            resolvedTailscaleHosts: [],
+            localNetworkHosts: {
+                MobileRouteResolver.localNetworkRouteHosts(
+                    localIPv4Addresses: ["192.168.1.20"],
+                    hostNameSource: hostNameSource
+                )
+            }
+        )
+        return snapshot.routes
+            .filter { $0.kind == .localNetwork }
+            .compactMap { route -> String? in
+                guard case let .hostPort(host, _) = route.endpoint else { return nil }
+                return host
+            }
+    }
+
     // MARK: - Republish policy
 
     @Test func firstObservationRepublishes() {

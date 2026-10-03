@@ -14,7 +14,8 @@ enum SSHPTYAttachStartupCommandBuilder {
         sessionID: String? = nil,
         foregroundAuth: ForegroundAuth? = nil,
         remoteCommand: String? = nil,
-        requireExisting: Bool = true
+        requireExisting: Bool = true,
+        sshExecutablePath: String = "/usr/bin/ssh"
     ) -> String {
         let backoffBuilder = SSHRetryBackoffScriptBuilder(context: .attach)
         let authRetryPolicy = SSHForegroundAuthenticationRetryPolicy()
@@ -34,7 +35,10 @@ enum SSHPTYAttachStartupCommandBuilder {
             ]
         }
         if let foregroundAuth {
-            lines += foregroundAuthLines(foregroundAuth)
+            lines += foregroundAuthLines(
+                foregroundAuth,
+                sshExecutablePath: sshExecutablePath
+            )
             lines.append(authRetryPolicy.processTreeTerminationShellFunction())
         }
         lines.append("cmux_ssh_attach_lifecycle_id=$(/usr/bin/uuidgen | /usr/bin/tr '[:upper:]' '[:lower:]') || exit 1")
@@ -81,7 +85,10 @@ enum SSHPTYAttachStartupCommandBuilder {
         )
     }
 
-    private static func foregroundAuthLines(_ auth: ForegroundAuth) -> [String] {
+    private static func foregroundAuthLines(
+        _ auth: ForegroundAuth,
+        sshExecutablePath: String
+    ) -> [String] {
         let readinessInsideResolvedLock =
             foregroundAuthenticationReadyShellLines(
                 auth,
@@ -92,6 +99,7 @@ enum SSHPTYAttachStartupCommandBuilder {
         let (sshCommand, reportsReadiness) =
             sshForegroundAuthCommand(
                 auth,
+                sshExecutablePath: sshExecutablePath,
                 successShellLines: readinessInsideResolvedLock
             )
         var lines = [
@@ -117,10 +125,11 @@ enum SSHPTYAttachStartupCommandBuilder {
 
     private static func sshForegroundAuthCommand(
         _ auth: ForegroundAuth,
+        sshExecutablePath: String,
         successShellLines: [String]
     ) -> (command: String, reportsReadiness: Bool) {
         let sharingOptions = SSHConnectionSharingOptions()
-        var arguments = ["/usr/bin/ssh"]
+        var arguments = [sshExecutablePath]
         let options = SSHAgentSocketResolver().removingOptions(
             named: "RemoteCommand",
             from: sharingOptions.mergingDefaults(into: auth.sshOptions)

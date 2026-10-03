@@ -989,12 +989,16 @@ final class AppDelegateIssue2907RoutingTests: XCTestCase {
 
         let workspace = try XCTUnwrap(manager.selectedWorkspace)
         let panelId = try XCTUnwrap(workspace.focusedPanelId)
+        let currentWorkingDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("cmux-current-binding-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: currentWorkingDirectory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: currentWorkingDirectory) }
         let currentSessionID = UUID().uuidString.lowercased()
         let currentLaunch = AgentLaunchCommandSnapshot(
             launcher: "codex",
             executablePath: "/opt/current/codex",
             arguments: ["/opt/current/codex", "--model", "gpt-current"],
-            workingDirectory: "/tmp/current",
+            workingDirectory: currentWorkingDirectory.path,
             environment: [
                 "CODEX_HOME": "/tmp/current-codex-home",
                 "OPENAI_API_KEY": "must-not-cross-socket",
@@ -1004,7 +1008,7 @@ final class AppDelegateIssue2907RoutingTests: XCTestCase {
             SurfaceResumeBindingSnapshot(
                 kind: "codex",
                 command: "codex resume \(currentSessionID)",
-                cwd: "/tmp/current",
+                cwd: currentWorkingDirectory.path,
                 checkpointId: currentSessionID,
                 source: "agent-hook",
                 launchCommand: currentLaunch,
@@ -1042,11 +1046,8 @@ final class AppDelegateIssue2907RoutingTests: XCTestCase {
         XCTAssertEqual(restoreRecord["kind"] as? String, "codex")
         XCTAssertEqual(restoreRecord["checkpoint_id"] as? String, currentSessionID)
         XCTAssertEqual(restoreRecord["source"] as? String, "agent-hook")
-        XCTAssertEqual(restoreRecord["working_directory"] as? String, "/tmp/current")
-        XCTAssertEqual(
-            restoreRecord["prepared_arguments_working_directory"] as? String,
-            "/tmp/current"
-        )
+        XCTAssertEqual(restoreRecord["working_directory"] as? String, currentWorkingDirectory.path)
+        XCTAssertTrue(restoreRecord["prepared_arguments_working_directory"] is NSNull)
         let launch = try XCTUnwrap(restoreRecord["launch_command"] as? [String: Any])
         XCTAssertEqual(launch["arguments"] as? [String], currentLaunch.arguments)
         let launchEnvironment = try XCTUnwrap(launch["environment"] as? [String: Any])
@@ -1066,7 +1067,9 @@ final class AppDelegateIssue2907RoutingTests: XCTestCase {
         )
         XCTAssertNil(resumeLaunchEnvironment["OPENAI_API_KEY"])
         let legacyCommand = try XCTUnwrap(restoreRecord["legacy_command"] as? String)
-        XCTAssertTrue(legacyCommand.contains("codex resume \(currentSessionID)"))
+        // The executable is the Codex wrapper-shim expression, so only the
+        // subcommand and session id are literal and adjacent.
+        XCTAssertTrue(legacyCommand.contains(" resume \(currentSessionID)"), legacyCommand)
 
         let ompSessionID = UUID().uuidString.lowercased()
         XCTAssertTrue(workspace.setSurfaceResumeBinding(

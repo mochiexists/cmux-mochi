@@ -54,6 +54,9 @@ public final class HiveWorkspaceCoordinator {
     @ObservationIgnored private let lifecycleIdlePollInterval: Duration
     @ObservationIgnored private var lifecycleTask: Task<Void, Never>?
     @ObservationIgnored private var lifecycleStartInProgress = false
+    @ObservationIgnored private var reconnectInProgress = false
+    @ObservationIgnored private var lifecycleReconnectDeferred = false
+    @ObservationIgnored private var deferredLifecycleReconnectTask: Task<Void, Never>?
     @ObservationIgnored private var isBrowserVisible = false
     @ObservationIgnored private var mountedWorkspaceCount = 0
 
@@ -84,6 +87,7 @@ public final class HiveWorkspaceCoordinator {
 
     deinit {
         lifecycleTask?.cancel()
+        deferredLifecycleReconnectTask?.cancel()
     }
 
     /// Starts app-lifetime reconnect and snapshot monitoring when a pairing exists.
@@ -98,7 +102,10 @@ public final class HiveWorkspaceCoordinator {
         }
         guard hasKnownPairing else { return }
 
-        _ = await reconnect()
+        _ = await reconnect(
+            attemptDeadlineNanoseconds: nil,
+            retriesAfterFailedInFlightAttempt: true
+        )
         startSnapshotPollingIfNeeded()
     }
 
@@ -106,6 +113,9 @@ public final class HiveWorkspaceCoordinator {
     public func stopConnectionLifecycle() {
         lifecycleTask?.cancel()
         lifecycleTask = nil
+        lifecycleReconnectDeferred = false
+        deferredLifecycleReconnectTask?.cancel()
+        deferredLifecycleReconnectTask = nil
     }
 
     /// Reports whether the Remote Macs browser is currently visible.
@@ -227,17 +237,39 @@ public final class HiveWorkspaceCoordinator {
         )
     }
 
-    private func reconnect(attemptDeadlineNanoseconds: UInt64?) async -> Bool {
+    /// - Parameter retriesAfterFailedInFlightAttempt: When another attempt is
+    ///   already in flight, run one unbounded attempt after it if it fails. The
+    ///   launch lifecycle sets this so a short status deadline that loses to a
+    ///   slow remote Mac does not leave Hive offline with nothing retrying.
+    private func reconnect(
+        attemptDeadlineNanoseconds: UInt64?,
+        retriesAfterFailedInFlightAttempt: Bool = false
+    ) async -> Bool {
         guard hasKnownPairing else {
             phase = .idle
             return false
         }
+        guard !reconnectInProgress else {
+            if retriesAfterFailedInFlightAttempt {
+                lifecycleReconnectDeferred = true
+            }
+            return shell.isHiveMacConnected
+        }
+        reconnectInProgress = true
+        defer {
+            reconnectInProgress = false
+            startDeferredLifecycleReconnectIfNeeded()
+        }
+
         phase = .connecting
         let connected = await shell.reconnectAllPairedMacs(
             stackUserID: nil,
             refreshBackupBeforeDial: false,
             attemptDeadlineNanoseconds: attemptDeadlineNanoseconds
         )
+        // A cancelled attempt (the lifecycle stopped, e.g. the last pairing
+        // was removed) must not overwrite the phase that the stop settled.
+        guard !Task.isCancelled else { return connected }
         await shell.loadPairedMacs()
         refreshWorkspaceSnapshot(forcePhaseReconciliation: true)
         return connected
@@ -287,6 +319,18 @@ public final class HiveWorkspaceCoordinator {
             }
         }
         return result
+    }
+
+    private func startDeferredLifecycleReconnectIfNeeded() {
+        guard lifecycleReconnectDeferred else { return }
+        lifecycleReconnectDeferred = false
+        guard !shell.isHiveMacConnected else { return }
+        // The handle outlives the attempt so `stopConnectionLifecycle()` can
+        // cancel a retry that is already dialling; a finished handle is inert.
+        deferredLifecycleReconnectTask = Task { @MainActor [weak self] in
+            guard let self, !Task.isCancelled else { return }
+            _ = await self.reconnect()
+        }
     }
 
     private func startSnapshotPollingIfNeeded() {

@@ -337,11 +337,9 @@ extension CLINotifyProcessIntegrationRegressionTests {
                 return self.malformedRequestResponse(raw: line)
             }
             let params = payload["params"] as? [String: Any] ?? [:]
-            if method != "workspace.remote.pty_attach_end" {
-                XCTAssertEqual(params["lifecycle_id"] as? String, lifecycleId)
-            }
             switch method {
             case "workspace.remote.pty_bridge":
+                XCTAssertEqual(params["lifecycle_id"] as? String, lifecycleId)
                 let count = bridgeCounter.next()
                 let bridge = count == 1 ? firstBridge : secondBridge
                 return self.v2Response(id: id, ok: true, result: [
@@ -350,8 +348,11 @@ extension CLINotifyProcessIntegrationRegressionTests {
                     "lifecycle_id": lifecycleId, "attachment_id": surfaceId,
                 ])
             case "workspace.remote.pty_resize":
+                XCTAssertEqual(params["attachment_id"] as? String, surfaceId)
+                XCTAssertEqual(params["attachment_token"] as? String, "attach-token")
                 return self.v2Response(id: id, ok: true, result: ["resized": true])
             case "workspace.remote.pty_sessions":
+                XCTAssertEqual(params["lifecycle_id"] as? String, lifecycleId)
                 return self.v2Response(id: id, ok: true, result: ["sessions": []])
             case "workspace.remote.pty_attach_end":
                 return self.v2Response(id: id, ok: true, result: ["ended": true])

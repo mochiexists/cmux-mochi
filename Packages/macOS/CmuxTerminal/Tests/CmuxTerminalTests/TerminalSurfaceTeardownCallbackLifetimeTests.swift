@@ -29,13 +29,11 @@ import Testing
 
     @Test func teardownSurfaceKeepsTeeLeaseUntilNativeFree() async {
         let recorder = TeardownOrderRecorder()
-        let surface = makeSurface()
-        surface.installRuntimeSurfaceForTesting(fakeRuntimeSurface())
-        surface.mobileByteTeeLease = RecordingTerminalByteTeeLease(recorder: recorder)
-        TerminalSurface.runtimeSurfaceFreeOverrideForTesting = { _ in
+        let surface = makeSurface { _ in
             recorder.record(.nativeFree)
         }
-        defer { TerminalSurface.runtimeSurfaceFreeOverrideForTesting = nil }
+        surface.installRuntimeSurfaceForTesting(fakeRuntimeSurface())
+        surface.mobileByteTeeLease = RecordingTerminalByteTeeLease(recorder: recorder)
 
         surface.teardownSurface()
 
@@ -54,17 +52,14 @@ import Testing
     @Test func agentHibernationSuspendKeepsTeeLeaseUntilNativeFree() async {
         let recorder = TeardownOrderRecorder()
         let registry = TerminalSurfaceRegistry()
-        let surface = makeSurface(registry: registry)
+        let surface = makeSurface(registry: registry) { _ in
+            recorder.record(.nativeFree)
+        }
         let runtimeSurface = UnsafeMutableRawPointer.allocate(byteCount: 8, alignment: 8)
         registry.registerRuntimeSurface(runtimeSurface, ownerId: surface.id)
         surface.installRuntimeSurfaceForTesting(runtimeSurface)
         defer { runtimeSurface.deallocate() }
         surface.mobileByteTeeLease = RecordingTerminalByteTeeLease(recorder: recorder)
-        TerminalSurface.runtimeSurfaceFreeOverrideForTesting = { _ in
-            recorder.record(.nativeFree)
-        }
-        defer { TerminalSurface.runtimeSurfaceFreeOverrideForTesting = nil }
-
         surface.suspendRuntimeSurfaceForAgentHibernation(reason: "test.hibernate")
 
         #expect(
@@ -79,20 +74,18 @@ import Testing
 
     @Test func agentHibernationResumeWaitsForNativeFreeCompletion() async {
         let registry = TerminalSurfaceRegistry()
-        let surface = makeSurface(registry: registry)
+        let freeStarted = AsyncStream<Void>.makeStream()
+        let allowFree = DispatchSemaphore(value: 0)
+        let surface = makeSurface(registry: registry) { _ in
+            freeStarted.continuation.yield()
+            allowFree.wait()
+        }
         let runtimeSurface = UnsafeMutableRawPointer.allocate(byteCount: 8, alignment: 8)
         registry.registerRuntimeSurface(runtimeSurface, ownerId: surface.id)
         surface.installRuntimeSurfaceForTesting(runtimeSurface)
         defer { runtimeSurface.deallocate() }
-        let freeStarted = AsyncStream<Void>.makeStream()
-        let allowFree = DispatchSemaphore(value: 0)
-        TerminalSurface.runtimeSurfaceFreeOverrideForTesting = { _ in
-            freeStarted.continuation.yield()
-            allowFree.wait()
-        }
         defer {
             allowFree.signal()
-            TerminalSurface.runtimeSurfaceFreeOverrideForTesting = nil
         }
 
         surface.suspendRuntimeSurfaceForAgentHibernation(reason: "test.hibernate")
@@ -122,8 +115,6 @@ import Testing
 
         let surface = makeSurface(runtimeTeardown: coordinator)
         surface.installRuntimeSurfaceForTesting(fakeRuntimeSurface())
-        TerminalSurface.runtimeSurfaceFreeOverrideForTesting = { _ in }
-        defer { TerminalSurface.runtimeSurfaceFreeOverrideForTesting = nil }
 
         #expect(
             surface.suspendRuntimeSurfaceForAgentHibernation(
@@ -137,13 +128,11 @@ import Testing
 
     @Test func deinitKeepsTeeLeaseUntilCoordinatorFree() async {
         let recorder = TeardownOrderRecorder()
-        var surface: TerminalSurface? = makeSurface()
-        surface?.installRuntimeSurfaceForTesting(fakeRuntimeSurface())
-        surface?.mobileByteTeeLease = RecordingTerminalByteTeeLease(recorder: recorder)
-        TerminalSurface.runtimeSurfaceFreeOverrideForTesting = { _ in
+        var surface: TerminalSurface? = makeSurface { _ in
             recorder.record(.nativeFree)
         }
-        defer { TerminalSurface.runtimeSurfaceFreeOverrideForTesting = nil }
+        surface?.installRuntimeSurfaceForTesting(fakeRuntimeSurface())
+        surface?.mobileByteTeeLease = RecordingTerminalByteTeeLease(recorder: recorder)
 
         surface = nil
 
@@ -163,7 +152,9 @@ import Testing
 
     @Test func teardownSurfaceKeepsManualIOContextUntilNativeFree() async {
         let recorder = TeardownOrderRecorder()
-        let surface = makeSurface()
+        let surface = makeSurface { _ in
+            recorder.record(.nativeFree)
+        }
         surface.installRuntimeSurfaceForTesting(fakeRuntimeSurface())
         surface.mobileByteTeeLease = RecordingTerminalByteTeeLease(recorder: recorder)
         weak var weakBox: TerminalManualIOWriteBox?
@@ -174,11 +165,6 @@ import Testing
             weakBox = box
             surface.manualIOContext = Unmanaged.passRetained(box)
         })()
-        TerminalSurface.runtimeSurfaceFreeOverrideForTesting = { _ in
-            recorder.record(.nativeFree)
-        }
-        defer { TerminalSurface.runtimeSurfaceFreeOverrideForTesting = nil }
-
         surface.teardownSurface()
 
         #expect(
@@ -221,7 +207,8 @@ import Testing
     private func makeSurface(
         registry: any TerminalSurfaceRegistering = FakeSurfaceRegistry(),
         runtimeTeardown: TerminalSurfaceRuntimeTeardownCoordinator =
-            TerminalSurfaceRuntimeTeardownCoordinator()
+            TerminalSurfaceRuntimeTeardownCoordinator(),
+        runtimeSurfaceDeallocator: @escaping @Sendable (ghostty_surface_t) -> Void = { _ in }
     ) -> TerminalSurface {
         let nativeView = FakeTerminalSurfaceNativeView(frame: NSRect(x: 0, y: 0, width: 800, height: 600))
         let paneHost = FakeTerminalSurfacePaneHost(surfaceView: nativeView)
@@ -238,6 +225,7 @@ import Testing
                 rendererRealization: FakeRendererRealizationScheduler(),
                 hibernationRecorder: FakeHibernationRecorder(),
                 runtimeTeardown: runtimeTeardown,
+                runtimeSurfaceDeallocator: runtimeSurfaceDeallocator,
                 restoreSpawnScheduler: TerminalSurfaceRestoreSpawnScheduler(interSpawnDelay: .zero),
                 runtimeFilesystem: TerminalSurfaceRuntimeFilesystem(
                     claudeCommandShimTemporaryDirectory: URL(fileURLWithPath: "/tmp/cmux-terminal-tests", isDirectory: true),

@@ -419,6 +419,8 @@ struct AgentHibernationRestoreMonitorTests {
         #expect(controller.armPostTeardownRestoreMonitor(
             snapshot: snapshot,
             processIDs: [101],
+            initialRetryDelaysNanoseconds: [0],
+            backstopDelaysSeconds: [],
             awaitProcessExit: {
                 for await _ in processExit.stream { return true }
                 return false

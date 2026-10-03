@@ -2194,7 +2194,7 @@ class TabManager: ObservableObject {
     }
 
     func closeWorkspace(_ workspace: Workspace, recordHistory: Bool = true) {
-        guard tabs.count > 1 else { return }
+        guard tabs.contains(where: { $0 === workspace }), tabs.count > 1 else { return }
         panelTitleUpdateCoalescer.flushNow()
         sentryBreadcrumb("workspace.close", data: ["tabCount": tabs.count - 1])
         // Closing a mirrored remote tmux workspace DETACHES from the remote session,
@@ -3392,7 +3392,7 @@ class TabManager: ObservableObject {
         notificationDismissal.dismissFocusedPanelNotificationIfActive(workspaceId: tabId, context: context)
     }
 
-    private func dismissPanelNotificationOnFocus(tabId: UUID, panelId: UUID, explicitFocusIntent: Bool) {
+    func dismissPanelNotificationOnFocus(tabId: UUID, panelId: UUID, explicitFocusIntent: Bool) {
         notificationDismissal.dismissPanelNotificationOnFocus(
             workspaceId: tabId,
             panelId: panelId,

@@ -13946,8 +13946,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         }
 
         // Primary UI shortcuts
-        if matchConfiguredShortcut(event: event, action: .toggleSidebar) {
-            _ = toggleSidebarInActiveMainWindow(preferredWindow: mainWindowForShortcutEvent(event))
+        if let sidebarCommand = SidebarToggleShortcutCommand.matching(
+            in: [.leftSidebar],
+            using: { matchConfiguredShortcut(event: event, action: $0) }
+        ) {
+            performSidebarToggleShortcutCommand(
+                sidebarCommand,
+                preferredWindow: mainWindowForShortcutEvent(event)
+            )
             return true
         }
 
@@ -14000,14 +14006,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
             return true
         }
 
-        if matchConfiguredShortcut(event: event, action: .toggleRightSidebar) {
-            // Escape AppKit's performKeyEquivalent animation context. Without
-            // deferring the toggle, NSAnimationContext implicitly animates the
-            // layout change.
-            let preferredWindow = mainWindowForShortcutEvent(event) ?? event.window ?? shortcutRoutingActiveWindow
-            DispatchQueue.main.async { [weak self, weak preferredWindow] in
-                _ = self?.toggleRightSidebarInActiveMainWindow(preferredWindow: preferredWindow)
-            }
+        if let sidebarCommand = SidebarToggleShortcutCommand.matching(
+            in: [.rightSidebar],
+            using: { matchConfiguredShortcut(event: event, action: $0) }
+        ) {
+            // The shared command defers the right-sidebar mutation to escape
+            // AppKit's performKeyEquivalent animation context.
+            performSidebarToggleShortcutCommand(
+                sidebarCommand,
+                preferredWindow: mainWindowForShortcutEvent(event)
+                    ?? event.window
+                    ?? shortcutRoutingActiveWindow
+            )
             return true
         }
 

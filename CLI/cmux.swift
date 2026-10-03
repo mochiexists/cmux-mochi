@@ -10618,7 +10618,7 @@ struct CMUXCLI {
             options.sshOptions,
             remoteRelayPort: options.remoteRelayPort
         )
-        var parts: [String] = ["/usr/bin/ssh"]
+        var parts: [String] = [sshExecutablePath()]
         if !hasSSHOptionKey(effectiveSSHOptions, key: "ConnectTimeout") {
             parts += ["-o", "ConnectTimeout=6"]
         }
@@ -11512,6 +11512,7 @@ struct CMUXCLI {
             message.contains("service unavailable") ||
             message.contains("temporarily unavailable") ||
             message.contains("vm_cloud_state_unavailable") ||
+            message.contains("vm_cloud_service_unavailable") ||
             message.contains("provider control plane") ||
             message.contains("cannot reach the cmux cloud vm service") ||
             message.contains("local cmux web server is offline") ||

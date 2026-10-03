@@ -64,7 +64,7 @@ extension KeyboardShortcutSettings {
         if settingsFileStore.isManagedByFile(action) {
             return settingsFileStore.override(for: action)
         }
-        guard let data = UserDefaults.standard.data(forKey: action.defaultsKey) else {
+        guard let data = persistenceDefaults.data(forKey: action.defaultsKey) else {
             return nil
         }
         return try? JSONDecoder().decode(StoredShortcut.self, from: data)
@@ -108,7 +108,7 @@ extension KeyboardShortcutSettings {
     /// existing binding when a newly introduced default reuses its keystroke.
     static func hasExplicitShortcutOverride(for action: Action) -> Bool {
         settingsFileStore.override(for: action) != nil
-            || UserDefaults.standard.object(forKey: action.defaultsKey) != nil
+            || persistenceDefaults.object(forKey: action.defaultsKey) != nil
     }
 
     /// The effective focus predicate gating `action`: the `shortcuts.when`

@@ -18,7 +18,6 @@ extension DockSplitStore {
     ) -> Bool {
         guard var transfer = detachedSurfaceTransfersByPanelId[panelId],
               transfer.isRemoteTerminal,
-              transfer.remoteCleanupConfiguration.map(authority.matches) ?? true,
               matchesTerminalLifecycle(
                   panelId: panelId,
                   terminalLifecycleID: terminalLifecycleID

@@ -1223,6 +1223,54 @@ final class AppDelegateShortcutRoutingTests: XCTestCase {
             StoredShortcut(key: "b", command: true, shift: false, option: true, control: false)
         )
 
+        guard let leftSidebarEvent = makeKeyDownEvent(
+            key: "b",
+            modifiers: [.command],
+            keyCode: 11,
+            windowNumber: 0
+        ), let rightSidebarEvent = makeKeyDownEvent(
+            key: "b",
+            modifiers: [.command, .option],
+            keyCode: 11,
+            windowNumber: 0
+        ) else {
+            XCTFail("Failed to construct sidebar shortcut events")
+            return
+        }
+
+        let leftCommand = SidebarToggleShortcutCommand.matching(using: {
+            appDelegate.matchConfiguredShortcut(event: leftSidebarEvent, action: $0)
+        })
+        let rightCommand = SidebarToggleShortcutCommand.matching(using: {
+            appDelegate.matchConfiguredShortcut(event: rightSidebarEvent, action: $0)
+        })
+        XCTAssertEqual(leftCommand, .leftSidebar)
+        XCTAssertEqual(rightCommand, .rightSidebar)
+
+        var leftSidebarIsVisible = true
+        var rightSidebarIsVisible = false
+        leftCommand?.perform(
+            toggleLeftSidebar: { leftSidebarIsVisible.toggle() },
+            toggleRightSidebar: { rightSidebarIsVisible.toggle() }
+        )
+        XCTAssertFalse(leftSidebarIsVisible, "Cmd+B should target the shared left-sidebar action")
+        XCTAssertFalse(rightSidebarIsVisible)
+
+        rightCommand?.perform(
+            toggleLeftSidebar: { leftSidebarIsVisible.toggle() },
+            toggleRightSidebar: { rightSidebarIsVisible.toggle() }
+        )
+        XCTAssertFalse(leftSidebarIsVisible)
+        XCTAssertTrue(rightSidebarIsVisible, "Cmd+Option+B should target the shared right-sidebar action")
+    }
+
+    /// End-to-end coverage through AppDelegate key handling with a registered window.
+    func testWelcomeWindowSidebarShortcutsToggleRegisteredWindowSidebars() {
+        guard let appDelegate = AppDelegate.shared else {
+            XCTFail("Expected AppDelegate.shared")
+            return
+        }
+
         let defaults = UserDefaults.standard
         let previousRightSidebarVisibility = defaults.object(forKey: "fileExplorer.isVisible")
         defer {
@@ -1236,6 +1284,9 @@ final class AppDelegateShortcutRoutingTests: XCTestCase {
             backing: .buffered,
             defer: false
         )
+        // A programmatic NSWindow defaults to releasing itself on close, which
+        // over-releases it under ARC when the test's reference is dropped.
+        window.isReleasedWhenClosed = false
         window.identifier = NSUserInterfaceItemIdentifier("cmux.main.\(windowId.uuidString)")
 
         let tabManager = TabManager()

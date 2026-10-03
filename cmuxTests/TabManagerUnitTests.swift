@@ -410,14 +410,20 @@ final class TabManagerChildExitCloseTests: XCTestCase {
         XCTAssertEqual(workspace.remoteConnectionState, .disconnected)
         XCTAssertEqual(workspace.activeRemoteTerminalSessionCount, 0)
         XCTAssertFalse(workspace.isRemoteTerminalSurface(remotePanelId))
-        XCTAssertNil(
+        XCTAssertEqual(
             workspace.sessionSnapshot(includeScrollback: false)
-                .panels.first { $0.id == remotePanelId }?.terminal?.remotePTYSessionID
+                .panels.first { $0.id == remotePanelId }?.terminal?.remotePTYSessionID,
+            Workspace.defaultSSHPTYSessionID(workspaceId: workspace.id, panelId: remotePanelId)
         )
 
         XCTAssertTrue(workspace.reconnectRemoteConnection(surfaceId: remotePanelId))
         let reattachedPanel = try XCTUnwrap(workspace.terminalPanel(for: remotePanelId))
-        XCTAssertEqual(reattachedPanel.surface.initialCommand, startupCommand)
+        let reattachCommand = try XCTUnwrap(reattachedPanel.surface.initialCommand)
+        XCTAssertTrue(reattachCommand.contains("--require-existing"), reattachCommand)
+        XCTAssertTrue(
+            reattachCommand.contains(Workspace.defaultSSHPTYSessionID(workspaceId: workspace.id, panelId: remotePanelId)),
+            reattachCommand
+        )
         XCTAssertTrue(workspace.isRemoteTerminalSurface(remotePanelId))
         XCTAssertEqual(workspace.activeRemoteTerminalSessionCount, 1)
     }
@@ -589,7 +595,7 @@ final class TabManagerChildExitCloseTests: XCTestCase {
         XCTAssertNotNil(workspace.panels[remotePanelId])
         XCTAssertEqual(workspace.panels.count, 1)
         XCTAssertEqual(workspace.focusedPanelId, remotePanelId)
-        XCTAssertFalse(workspace.shouldKeepPersistentRemoteSurfaceOpenAfterChildExit(remotePanelId))
+        XCTAssertTrue(workspace.shouldKeepPersistentRemoteSurfaceOpenAfterChildExit(remotePanelId))
         XCTAssertNil(
             workspace.sessionSnapshot(includeScrollback: false)
                 .panels.first { $0.id == remotePanelId }?.terminal?.remotePTYSessionID
@@ -642,9 +648,10 @@ final class TabManagerChildExitCloseTests: XCTestCase {
         XCTAssertEqual(workspace.activeRemoteTerminalSessionCount, 1)
         XCTAssertFalse(workspace.isRemoteTerminalSurface(remotePanelId))
         XCTAssertTrue(workspace.isRemoteTerminalSurface(siblingPanel.id))
-        XCTAssertNil(
+        XCTAssertEqual(
             workspace.sessionSnapshot(includeScrollback: false)
-                .panels.first { $0.id == remotePanelId }?.terminal?.remotePTYSessionID
+                .panels.first { $0.id == remotePanelId }?.terminal?.remotePTYSessionID,
+            Workspace.defaultSSHPTYSessionID(workspaceId: workspace.id, panelId: remotePanelId)
         )
         XCTAssertNotNil(
             workspace.sessionSnapshot(includeScrollback: false)
@@ -913,13 +920,10 @@ final class TabManagerWorkspaceOwnershipTests: XCTestCase {
                 GhosttyNotificationKey.title: "Processing Simple Addition Query - grok"
             ]
         )
+        manager.flushPendingPanelTitleUpdatesForWorkspaceSnapshot()
 
-        XCTAssertTrue(
-            waitForCondition(timeout: 1.0) {
-                workspace.panelTitles[focusedPanelId] == "Processing Simple Addition Query - grok" &&
-                    workspace.title == "Processing Simple Addition Query - grok"
-            }
-        )
+        XCTAssertEqual(workspace.panelTitles[focusedPanelId], "Processing Simple Addition Query - grok")
+        XCTAssertEqual(workspace.title, "Processing Simple Addition Query - grok")
         XCTAssertNil(workspace.customTitle)
         XCTAssertNotEqual(workspace.panelTitles[splitPanel.id], Optional(workspace.title))
     }
@@ -1510,7 +1514,7 @@ final class TabManagerCloseCurrentTabSpamTests: XCTestCase {
         XCTAssertEqual(manager.tabs.count, 5, "Expected only one workspace to close after the first accepted confirmation")
     }
 
-    func testCloseWorkspaceEnqueuesTerminalRuntimeTeardownOffMainThread() {
+    func testCloseWorkspaceEnqueuesTerminalRuntimeTeardownOffMainThread() async {
         let manager = TabManager()
         let workspace = manager.addWorkspace()
         manager.selectWorkspace(workspace)
@@ -1521,18 +1525,15 @@ final class TabManagerCloseCurrentTabSpamTests: XCTestCase {
             return
         }
 
-        let fakeSurface: ghostty_surface_t = UnsafeMutableRawPointer(bitPattern: 0x5282)!
-        terminalPanel.surface.installRuntimeSurfaceForTesting(fakeSurface)
-        terminalPanel.surface.setNeedsConfirmCloseOverrideForTesting(true)
-
         let nativeFreeStarted = expectation(description: "native free started")
-        TerminalSurface.runtimeSurfaceFreeOverrideForTesting = { _ in
-            XCTAssertFalse(Thread.isMainThread, "Native surface free must not run on the main thread")
-            nativeFreeStarted.fulfill()
-        }
-        defer {
-            TerminalSurface.runtimeSurfaceFreeOverrideForTesting = nil
-        }
+        terminalPanel.surface.installRuntimeTeardownProbeForTesting(
+            teardownCoordinator: TerminalSurfaceRuntimeTeardownCoordinator(),
+            onDeallocate: {
+                XCTAssertFalse(Thread.isMainThread, "Native surface free must not run on the main thread")
+                nativeFreeStarted.fulfill()
+            }
+        )
+        terminalPanel.surface.setNeedsConfirmCloseOverrideForTesting(true)
 
         manager.confirmCloseHandler = { _, _, _ in true }
 
@@ -1541,7 +1542,7 @@ final class TabManagerCloseCurrentTabSpamTests: XCTestCase {
         XCTAssertFalse(manager.tabs.contains(where: { $0.id == workspace.id }))
         XCTAssertNil(terminalPanel.surface.surface)
 
-        wait(for: [nativeFreeStarted], timeout: 3.0)
+        await fulfillment(of: [nativeFreeStarted], timeout: 3.0)
     }
 
     func testCloseCurrentTabSpamWithConfirmationDisabledClosesEveryRequestedWorkspace() {
@@ -1764,96 +1765,102 @@ final class TabManagerCloseCurrentPanelTests: XCTestCase {
     }
 
     func testCloseCurrentPanelClosesWorkspaceWhenItOwnsTheLastSurface() {
-        let manager = TabManager()
-        let firstWorkspace = manager.tabs[0]
-        let secondWorkspace = manager.addWorkspace()
-        manager.selectWorkspace(secondWorkspace)
+        withCloseWorkspaceOnLastSurfaceEnabled {
+            let manager = TabManager()
+            let firstWorkspace = manager.tabs[0]
+            let secondWorkspace = manager.addWorkspace()
+            manager.selectWorkspace(secondWorkspace)
 
-        guard let secondPanelId = secondWorkspace.focusedPanelId else {
-            XCTFail("Expected focused panel in selected workspace")
-            return
+            guard let secondPanelId = secondWorkspace.focusedPanelId else {
+                XCTFail("Expected focused panel in selected workspace")
+                return
+            }
+
+            XCTAssertEqual(manager.selectedTabId, secondWorkspace.id)
+            XCTAssertEqual(secondWorkspace.panels.count, 1)
+
+            manager.closeCurrentPanelWithConfirmation()
+            drainMainQueue()
+            drainMainQueue()
+
+            XCTAssertEqual(manager.tabs.map(\.id), [firstWorkspace.id])
+            XCTAssertEqual(manager.selectedTabId, firstWorkspace.id)
+            XCTAssertNil(secondWorkspace.panels[secondPanelId])
+            XCTAssertTrue(secondWorkspace.panels.isEmpty)
         }
-
-        XCTAssertEqual(manager.selectedTabId, secondWorkspace.id)
-        XCTAssertEqual(secondWorkspace.panels.count, 1)
-
-        manager.closeCurrentPanelWithConfirmation()
-        drainMainQueue()
-        drainMainQueue()
-
-        XCTAssertEqual(manager.tabs.map(\.id), [firstWorkspace.id])
-        XCTAssertEqual(manager.selectedTabId, firstWorkspace.id)
-        XCTAssertNil(secondWorkspace.panels[secondPanelId])
-        XCTAssertTrue(secondWorkspace.panels.isEmpty)
     }
 
     func testCloseCurrentPanelPromptsBeforeClosingPinnedWorkspaceLastSurface() {
-        let manager = TabManager()
-        _ = manager.tabs[0]
-        let pinnedWorkspace = manager.addWorkspace()
-        manager.setPinned(pinnedWorkspace, pinned: true)
-        manager.selectWorkspace(pinnedWorkspace)
+        withCloseWorkspaceOnLastSurfaceEnabled {
+            let manager = TabManager()
+            _ = manager.tabs[0]
+            let pinnedWorkspace = manager.addWorkspace()
+            manager.setPinned(pinnedWorkspace, pinned: true)
+            manager.selectWorkspace(pinnedWorkspace)
 
-        guard let pinnedPanelId = pinnedWorkspace.focusedPanelId else {
-            XCTFail("Expected focused panel in pinned workspace")
-            return
-        }
+            guard let pinnedPanelId = pinnedWorkspace.focusedPanelId else {
+                XCTFail("Expected focused panel in pinned workspace")
+                return
+            }
 
-        XCTAssertEqual(manager.selectedTabId, pinnedWorkspace.id)
-        XCTAssertEqual(pinnedWorkspace.panels.count, 1)
+            XCTAssertEqual(manager.selectedTabId, pinnedWorkspace.id)
+            XCTAssertEqual(pinnedWorkspace.panels.count, 1)
 
-        var prompts: [(title: String, message: String, acceptCmdD: Bool)] = []
-        manager.confirmCloseHandler = { title, message, acceptCmdD in
-            prompts.append((title, message, acceptCmdD))
-            return false
-        }
+            var prompts: [(title: String, message: String, acceptCmdD: Bool)] = []
+            manager.confirmCloseHandler = { title, message, acceptCmdD in
+                prompts.append((title, message, acceptCmdD))
+                return false
+            }
 
-        manager.closeCurrentPanelWithConfirmation()
-        drainMainQueue()
-        drainMainQueue()
+            manager.closeCurrentPanelWithConfirmation()
+            drainMainQueue()
+            drainMainQueue()
 
-        XCTAssertEqual(prompts.count, 1)
-        XCTAssertEqual(
-            prompts.first?.title,
-            String(localized: "dialog.closePinnedWorkspace.title", defaultValue: "Close pinned workspace?")
-        )
-        XCTAssertEqual(
-            prompts.first?.message,
-            String(
-                localized: "dialog.closePinnedWorkspace.message",
-                defaultValue: "This workspace is pinned. Closing it will close the workspace and all of its panels."
+            XCTAssertEqual(prompts.count, 1)
+            XCTAssertEqual(
+                prompts.first?.title,
+                String(localized: "dialog.closePinnedWorkspace.title", defaultValue: "Close pinned workspace?")
             )
-        )
-        XCTAssertEqual(prompts.first?.acceptCmdD, false)
-        XCTAssertEqual(manager.tabs.count, 2)
-        XCTAssertTrue(manager.tabs.contains(where: { $0.id == pinnedWorkspace.id }))
-        XCTAssertEqual(manager.selectedTabId, pinnedWorkspace.id)
-        XCTAssertNotNil(pinnedWorkspace.panels[pinnedPanelId])
-        XCTAssertEqual(pinnedWorkspace.panels.count, 1)
+            XCTAssertEqual(
+                prompts.first?.message,
+                String(
+                    localized: "dialog.closePinnedWorkspace.message",
+                    defaultValue: "This workspace is pinned. Closing it will close the workspace and all of its panels."
+                )
+            )
+            XCTAssertEqual(prompts.first?.acceptCmdD, false)
+            XCTAssertEqual(manager.tabs.count, 2)
+            XCTAssertTrue(manager.tabs.contains(where: { $0.id == pinnedWorkspace.id }))
+            XCTAssertEqual(manager.selectedTabId, pinnedWorkspace.id)
+            XCTAssertNotNil(pinnedWorkspace.panels[pinnedPanelId])
+            XCTAssertEqual(pinnedWorkspace.panels.count, 1)
+        }
     }
 
     func testCloseCurrentPanelClosesPinnedWorkspaceAfterConfirmation() {
-        let manager = TabManager()
-        let firstWorkspace = manager.tabs[0]
-        let pinnedWorkspace = manager.addWorkspace()
-        manager.setPinned(pinnedWorkspace, pinned: true)
-        manager.selectWorkspace(pinnedWorkspace)
+        withCloseWorkspaceOnLastSurfaceEnabled {
+            let manager = TabManager()
+            let firstWorkspace = manager.tabs[0]
+            let pinnedWorkspace = manager.addWorkspace()
+            manager.setPinned(pinnedWorkspace, pinned: true)
+            manager.selectWorkspace(pinnedWorkspace)
 
-        guard let pinnedPanelId = pinnedWorkspace.focusedPanelId else {
-            XCTFail("Expected focused panel in pinned workspace")
-            return
+            guard let pinnedPanelId = pinnedWorkspace.focusedPanelId else {
+                XCTFail("Expected focused panel in pinned workspace")
+                return
+            }
+
+            manager.confirmCloseHandler = { _, _, _ in true }
+
+            manager.closeCurrentPanelWithConfirmation()
+            drainMainQueue()
+            drainMainQueue()
+
+            XCTAssertEqual(manager.tabs.map(\.id), [firstWorkspace.id])
+            XCTAssertEqual(manager.selectedTabId, firstWorkspace.id)
+            XCTAssertNil(pinnedWorkspace.panels[pinnedPanelId])
+            XCTAssertTrue(pinnedWorkspace.panels.isEmpty)
         }
-
-        manager.confirmCloseHandler = { _, _, _ in true }
-
-        manager.closeCurrentPanelWithConfirmation()
-        drainMainQueue()
-        drainMainQueue()
-
-        XCTAssertEqual(manager.tabs.map(\.id), [firstWorkspace.id])
-        XCTAssertEqual(manager.selectedTabId, firstWorkspace.id)
-        XCTAssertNil(pinnedWorkspace.panels[pinnedPanelId])
-        XCTAssertTrue(pinnedWorkspace.panels.isEmpty)
     }
 
     func testCloseCurrentPanelKeepsWorkspaceOpenWhenKeepWorkspaceOpenPreferenceIsEnabled() {
@@ -2079,38 +2086,50 @@ final class TabManagerCloseCurrentPanelTests: XCTestCase {
         file: StaticString = #filePath,
         line: UInt = #line
     ) throws {
-        try withWarnBeforeClosingTabConfig(warnBeforeClosingTab) {
-            let manager = TabManager()
-            let firstWorkspace = manager.tabs[0]
-            let pinnedWorkspace = manager.addWorkspace()
-            manager.setPinned(pinnedWorkspace, pinned: true)
-            manager.selectWorkspace(pinnedWorkspace)
+        try withCloseWorkspaceOnLastSurfaceEnabled {
+            try withWarnBeforeClosingTabConfig(warnBeforeClosingTab) {
+                let manager = TabManager()
+                let firstWorkspace = manager.tabs[0]
+                let pinnedWorkspace = manager.addWorkspace()
+                manager.setPinned(pinnedWorkspace, pinned: true)
+                manager.selectWorkspace(pinnedWorkspace)
 
-            guard let pinnedPanelId = pinnedWorkspace.focusedPanelId else {
-                XCTFail("Expected focused panel in pinned workspace", file: file, line: line)
-                return
-            }
+                guard let pinnedPanelId = pinnedWorkspace.focusedPanelId else {
+                    XCTFail("Expected focused panel in pinned workspace", file: file, line: line)
+                    return
+                }
 
-            var promptCount = 0
-            manager.confirmCloseHandler = { _, _, _ in
-                promptCount += 1
-                return false
-            }
+                var promptCount = 0
+                manager.confirmCloseHandler = { _, _, _ in
+                    promptCount += 1
+                    return false
+                }
 
-            manager.closeCurrentPanelWithConfirmation()
-            drainMainQueue()
-            drainMainQueue()
-            drainMainQueue()
+                manager.closeCurrentPanelWithConfirmation()
+                drainMainQueue()
+                drainMainQueue()
+                drainMainQueue()
 
-            XCTAssertEqual(promptCount, expectedPromptCount, file: file, line: line)
-            if expectedWorkspaceClosed {
-                XCTAssertEqual(manager.tabs.map(\.id), [firstWorkspace.id], file: file, line: line)
-                XCTAssertNil(pinnedWorkspace.panels[pinnedPanelId], file: file, line: line)
-            } else {
-                XCTAssertTrue(manager.tabs.contains(where: { $0.id == pinnedWorkspace.id }), file: file, line: line)
-                XCTAssertNotNil(pinnedWorkspace.panels[pinnedPanelId], file: file, line: line)
+                XCTAssertEqual(promptCount, expectedPromptCount, file: file, line: line)
+                if expectedWorkspaceClosed {
+                    XCTAssertEqual(manager.tabs.map(\.id), [firstWorkspace.id], file: file, line: line)
+                    XCTAssertNil(pinnedWorkspace.panels[pinnedPanelId], file: file, line: line)
+                } else {
+                    XCTAssertTrue(manager.tabs.contains(where: { $0.id == pinnedWorkspace.id }), file: file, line: line)
+                    XCTAssertNotNil(pinnedWorkspace.panels[pinnedPanelId], file: file, line: line)
+                }
             }
         }
+    }
+
+    private func withCloseWorkspaceOnLastSurfaceEnabled<T>(_ run: () throws -> T) rethrows -> T {
+        let defaults = UserDefaults.standard
+        let originalValue = defaults.object(forKey: lastSurfaceCloseShortcutDefaultsKey)
+        defaults.set(true, forKey: lastSurfaceCloseShortcutDefaultsKey)
+        defer {
+            restore(originalValue, forKey: lastSurfaceCloseShortcutDefaultsKey, defaults: defaults)
+        }
+        return try run()
     }
 
     private func assertTabCloseButtonConfirmation(
@@ -3487,6 +3506,119 @@ final class TabManagerFocusedNotificationIndicatorTests: XCTestCase {
         )
         XCTAssertEqual(workspace.tmuxWorkspaceFlashPanelId, panelId)
         XCTAssertEqual(workspace.tmuxWorkspaceFlashReason, .notificationDismiss)
+    }
+
+    func testProgrammaticFocusPanelKeepsUnreadNotificationWhileAppInactive() throws {
+        try withSplitNotificationFixture(appIsFocused: false) { _, store, workspace, leftPanelId in
+            store.addNotification(
+                tabId: workspace.id,
+                surfaceId: leftPanelId,
+                title: "Unread",
+                subtitle: "",
+                body: "A background focus change must not consume this"
+            )
+            XCTAssertTrue(store.hasUnreadNotification(forTabId: workspace.id, surfaceId: leftPanelId))
+
+            workspace.focusPanel(leftPanelId)
+
+            XCTAssertEqual(workspace.focusedPanelId, leftPanelId)
+            XCTAssertTrue(store.hasUnreadNotification(forTabId: workspace.id, surfaceId: leftPanelId))
+            XCTAssertEqual(workspace.tmuxWorkspaceFlashToken, 0)
+        }
+    }
+
+    func testProgrammaticFocusPanelKeepsRestoredUnreadIndicator() throws {
+        try withSplitNotificationFixture(appIsFocused: true) { _, _, workspace, leftPanelId in
+            workspace.restorePanelUnreadIndicator(leftPanelId)
+            XCTAssertTrue(workspace.hasRestoredUnreadIndicator(panelId: leftPanelId))
+
+            workspace.focusPanel(leftPanelId)
+
+            XCTAssertEqual(workspace.focusedPanelId, leftPanelId)
+            XCTAssertTrue(
+                workspace.hasRestoredUnreadIndicator(panelId: leftPanelId),
+                "Restore and programmatic focus are generic active focus, which must not clear restored unread"
+            )
+        }
+    }
+
+    /// `focusPanel` dismisses synchronously and the deferred focus broadcast
+    /// dismisses again; the second pass must find nothing left and not flash.
+    func testFocusPanelThenFocusBroadcastFlashesDismissedNotificationOnce() throws {
+        // The flash token counts only on the tmux-overlay pane flash path.
+        let defaults = UserDefaults.standard
+        let originalExperimentEnabled = defaults.object(forKey: TmuxOverlayExperimentSettings.enabledKey)
+        let originalExperimentTarget = defaults.object(forKey: TmuxOverlayExperimentSettings.targetKey)
+        defaults.set(true, forKey: TmuxOverlayExperimentSettings.enabledKey)
+        defaults.set(TmuxOverlayExperimentTarget.bonsplitPane.rawValue, forKey: TmuxOverlayExperimentSettings.targetKey)
+        defer {
+            defaults.set(originalExperimentEnabled, forKey: TmuxOverlayExperimentSettings.enabledKey)
+            defaults.set(originalExperimentTarget, forKey: TmuxOverlayExperimentSettings.targetKey)
+        }
+
+        try withSplitNotificationFixture(appIsFocused: true) { _, store, workspace, leftPanelId in
+            store.addNotification(
+                tabId: workspace.id,
+                surfaceId: leftPanelId,
+                title: "Unread",
+                subtitle: "",
+                body: "Focus should flash this pane once"
+            )
+
+            workspace.focusPanel(leftPanelId)
+            XCTAssertEqual(workspace.tmuxWorkspaceFlashToken, 1)
+
+            // The deferred broadcast `focusPanel` scheduled, plus one carrying
+            // direct-interaction intent, the widest dismissal context.
+            NotificationCenter.default.post(
+                name: .ghosttyDidFocusSurface,
+                object: nil,
+                userInfo: [
+                    GhosttyNotificationKey.tabId: workspace.id,
+                    GhosttyNotificationKey.surfaceId: leftPanelId,
+                    GhosttyNotificationKey.explicitFocusIntent: true,
+                ]
+            )
+            RunLoop.main.run(until: Date().addingTimeInterval(0.2))
+
+            XCTAssertFalse(store.hasUnreadNotification(forTabId: workspace.id, surfaceId: leftPanelId))
+            XCTAssertEqual(workspace.tmuxWorkspaceFlashToken, 1)
+        }
+    }
+
+    /// Selected workspace split into two terminals with the right one focused;
+    /// `body` receives the left panel id.
+    private func withSplitNotificationFixture(
+        appIsFocused: Bool,
+        _ body: (TabManager, TerminalNotificationStore, Workspace, UUID) throws -> Void
+    ) throws {
+        let appDelegate = AppDelegate.shared ?? AppDelegate()
+        let manager = TabManager()
+        let store = TerminalNotificationStore.shared
+        let originalTabManager = appDelegate.tabManager
+        let originalNotificationStore = appDelegate.notificationStore
+        let originalAppFocusOverride = AppFocusState.overrideIsFocused
+
+        store.replaceNotificationsForTesting([])
+        store.configureNotificationDeliveryHandlerForTesting { _, _ in }
+        appDelegate.tabManager = manager
+        appDelegate.notificationStore = store
+        AppFocusState.overrideIsFocused = appIsFocused
+        defer {
+            store.replaceNotificationsForTesting([])
+            store.resetNotificationDeliveryHandlerForTesting()
+            appDelegate.tabManager = originalTabManager
+            appDelegate.notificationStore = originalNotificationStore
+            AppFocusState.overrideIsFocused = originalAppFocusOverride
+        }
+
+        let workspace = try XCTUnwrap(manager.selectedWorkspace)
+        let leftPanelId = try XCTUnwrap(workspace.focusedPanelId)
+        let rightPanel = try XCTUnwrap(
+            workspace.newTerminalSplit(from: leftPanelId, orientation: .horizontal)
+        )
+        XCTAssertEqual(workspace.focusedPanelId, rightPanel.id)
+        try body(manager, store, workspace, leftPanelId)
     }
 }
 

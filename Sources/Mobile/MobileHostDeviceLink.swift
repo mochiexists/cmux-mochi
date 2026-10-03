@@ -123,20 +123,34 @@ private final class MobileHostIdentityMaterialLoadState: @unchecked Sendable {
 final class MobileHostDeviceLink {
     static let shared: MobileHostDeviceLink = {
         #if DEBUG
-        if let path = ProcessInfo.processInfo.environment["CMUX_E2E_DEVICELINK_STATE_DIR"]?
-            .trimmingCharacters(in: .whitespacesAndNewlines),
-           !path.isEmpty,
-           let store = try? MobileHostDeviceLinkE2EStateStore(
-               directoryURL: URL(fileURLWithPath: path, isDirectory: true)
-           ) {
-            return MobileHostDeviceLink(
-                authorizedDeviceStore: store,
-                identityMaterialLoader: { try store.loadOrCreateIdentityMaterial() }
+        do {
+            return try makeShared(environment: ProcessInfo.processInfo.environment)
+        } catch {
+            fatalError(
+                "Failed to initialize CMUX_E2E_DEVICELINK_STATE_DIR; refusing keychain fallback: \(error)"
             )
         }
-        #endif
+        #else
         return MobileHostDeviceLink(scope: MobileHostDeviceLink.keychainScope)
+        #endif
     }()
+
+    #if DEBUG
+    static func makeShared(environment: [String: String]) throws -> MobileHostDeviceLink {
+        guard let path = environment["CMUX_E2E_DEVICELINK_STATE_DIR"]?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+              !path.isEmpty else {
+            return MobileHostDeviceLink(scope: MobileHostDeviceLink.keychainScope)
+        }
+        let store = try MobileHostDeviceLinkE2EStateStore(
+            directoryURL: URL(fileURLWithPath: path, isDirectory: true)
+        )
+        return MobileHostDeviceLink(
+            authorizedDeviceStore: store,
+            identityMaterialLoader: { try store.loadOrCreateIdentityMaterial() }
+        )
+    }
+    #endif
 
     /// Where this app instance's keychain items live. Bundle id plus instance
     /// tag, so Stable/Nightly/tagged-dev builds on one Mac never share a table.

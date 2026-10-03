@@ -41,6 +41,7 @@ final class CmuxSettingsFileStore {
     private let primaryPath: String
     private let fallbackPaths: [String]
     private let fileManager: FileManager
+    private let defaults: UserDefaults
     private let notificationCenter: NotificationCenter
     private let passwordStore: SocketControlPasswordStore
     private let onWatchedFileReload: @MainActor @Sendable (String) -> Void
@@ -67,6 +68,7 @@ final class CmuxSettingsFileStore {
         fallbackPath: String? = CmuxSettingsFileStore.defaultFallbackPath,
         additionalFallbackPaths: [String] = [CmuxSettingsFileStore.defaultApplicationSupportFallbackPath].compactMap { $0 },
         fileManager: FileManager = .default,
+        defaults: UserDefaults = .standard,
         notificationCenter: NotificationCenter = .default,
         passwordStore: SocketControlPasswordStore = SocketControlPasswordStore(),
         startWatching: Bool = true,
@@ -76,10 +78,11 @@ final class CmuxSettingsFileStore {
         self.fallbackPaths = ([fallbackPath].compactMap { $0 } + additionalFallbackPaths)
             .filter { $0 != primaryPath }
         self.fileManager = fileManager
+        self.defaults = defaults
         self.notificationCenter = notificationCenter
         self.passwordStore = passwordStore
         self.onWatchedFileReload = onWatchedFileReload
-        importedManagedDefaults = Self.loadImportedManagedDefaults()
+        importedManagedDefaults = Self.loadImportedManagedDefaults(defaults: defaults)
         bootstrapPrimaryTemplateIfNeeded()
         reload(applyLiveDefaultSideEffects: false)
         guard startWatching else { return }
@@ -97,7 +100,12 @@ final class CmuxSettingsFileStore {
             }
         }
 
-        defaultsCancellable = notificationCenter.publisher(for: UserDefaults.didChangeNotification).receive(on: DispatchQueue.main).sink { [weak self] _ in self?.reapplyManagedSettingsIfNeeded() }
+        defaultsCancellable = notificationCenter.publisher(
+            for: UserDefaults.didChangeNotification,
+            object: defaults
+        ).receive(on: DispatchQueue.main).sink { [weak self] _ in
+            self?.reapplyManagedSettingsIfNeeded()
+        }
         socketPasswordObserver = notificationCenter.addObserver(forName: SocketControlPasswordStore.didChangeNotification, object: nil, queue: .main) { [weak self] _ in
             self?.reapplyManagedSettingsIfNeeded()
         }
@@ -1263,7 +1271,6 @@ final class CmuxSettingsFileStore {
     }
 
     private func backupValueForUserDefaultsKey(_ defaultsKey: String, managedValue: ManagedSettingsValue) -> BackupValue {
-        let defaults = UserDefaults.standard
         switch managedValue {
         case .bool:
             guard defaults.object(forKey: defaultsKey) != nil else { return .absent }
@@ -1305,7 +1312,6 @@ final class CmuxSettingsFileStore {
         _ backup: BackupValue,
         for defaultsKey: String
     ) -> ManagedDefaultBatchSideEffects {
-        let defaults = UserDefaults.standard
         if defaultsKey == WorkspaceTabColorSettings.paletteKey {
             switch backup {
             case .absent:
@@ -1371,7 +1377,6 @@ final class CmuxSettingsFileStore {
         isDerivedFromLegacyWarnBeforeQuit: Bool = false,
         importedLegacyWarnBeforeQuitDefault: ManagedSettingsValue? = nil
     ) -> ManagedDefaultBatchSideEffects {
-        let defaults = UserDefaults.standard
         guard shouldApplyManagedUserDefaultsValue(
             value,
             for: defaultsKey,
@@ -1590,10 +1595,10 @@ final class CmuxSettingsFileStore {
                 }
 
                 if change.defaultsKey == AppCatalogSection().language.userDefaultsKey {
-                    let rawValue = UserDefaults.standard.string(forKey: change.defaultsKey) ?? ""
-                    LanguageSettingsStore(defaults: .standard).applyLanguageOverride(AppLanguage(rawValue: rawValue) ?? .system)
+                    let rawValue = self.defaults.string(forKey: change.defaultsKey) ?? ""
+                    LanguageSettingsStore(defaults: self.defaults).applyLanguageOverride(AppLanguage(rawValue: rawValue) ?? .system)
                 } else if change.defaultsKey == AppIconSettings.modeKey {
-                    AppIconSettings.applyIcon(AppIconSettings.resolvedMode())
+                    AppIconSettings.applyIcon(AppIconSettings.resolvedMode(defaults: self.defaults))
                 } else if change.defaultsKey == GlobalFontMagnification.percentKey {
                     notificationCenter.post(name: GlobalFontMagnification.didChangeNotification, object: nil)
                 }
@@ -1619,8 +1624,7 @@ final class CmuxSettingsFileStore {
         }
     }
 
-    private static func loadImportedManagedDefaults() -> [String: ManagedSettingsValue] {
-        let defaults = UserDefaults.standard
+    private static func loadImportedManagedDefaults(defaults: UserDefaults) -> [String: ManagedSettingsValue] {
         var imported: [String: ManagedSettingsValue]
         if let data = defaults.data(forKey: importedManagedDefaultsDefaultsKey),
            let decoded = try? JSONDecoder().decode([String: ManagedSettingsValue].self, from: data) {
@@ -1645,7 +1649,6 @@ final class CmuxSettingsFileStore {
     }
 
     private func saveImportedManagedDefaults(_ imported: [String: ManagedSettingsValue]) {
-        let defaults = UserDefaults.standard
         defaults.removeObject(forKey: SidebarMatchTerminalBackgroundSettings.legacyAppliedSettingsFileDefaultKey)
         guard !imported.isEmpty else {
             defaults.removeObject(forKey: Self.importedManagedDefaultsDefaultsKey)
@@ -1656,7 +1659,6 @@ final class CmuxSettingsFileStore {
     }
 
     private func loadBackups() -> [String: BackupValue] {
-        let defaults = UserDefaults.standard
         guard let data = defaults.data(forKey: Self.backupsDefaultsKey),
               let backups = try? JSONDecoder().decode([String: BackupValue].self, from: data) else {
             return [:]
@@ -1665,7 +1667,6 @@ final class CmuxSettingsFileStore {
     }
 
     private func saveBackups(_ backups: [String: BackupValue]) {
-        let defaults = UserDefaults.standard
         if backups.isEmpty {
             defaults.removeObject(forKey: Self.backupsDefaultsKey)
             return
