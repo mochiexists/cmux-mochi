@@ -1,4 +1,5 @@
 #if DEBUG
+import CmuxWorkspaces
 import Darwin
 import Foundation
 
@@ -37,6 +38,10 @@ import Foundation
 /// never run in production. It takes its environment and a file-reader seam via
 /// `init`, so tests drive every precedence branch without touching the real
 /// filesystem or `~/.secrets`.
+///
+/// Inside the unit-test host (``XCTestHostHygiene/policy`` is set) it resolves
+/// nothing: it reads no environment variable and no file, and its default
+/// secret-file paths point into the hygiene home, which holds no secrets.
 struct DebugDogfoodCredentialResolver {
     static let explicitCredentialsFileEnvironmentKey = "CMUX_AUTH_CREDENTIALS_FILE"
 
@@ -66,6 +71,9 @@ struct DebugDogfoodCredentialResolver {
     /// `O_NOFOLLOW`, then verifies regular-file type, ownership, and 0600-or-
     /// stricter permissions on the opened descriptor before reading.
     private let readSecureFile: (String) -> String?
+    /// Whether this process is the unit-test host, which never signs in with
+    /// dogfood credentials.
+    private let isTestHost: Bool
 
     /// Creates a resolver.
     ///
@@ -76,28 +84,41 @@ struct DebugDogfoodCredentialResolver {
     ///     `~/.secrets/cmux.env`, resolved from the environment's `HOME`.
     ///   - readFile: Reads a file's UTF-8 contents, or `nil` if unreadable.
     ///     Defaults to a `FileManager`-free `String(contentsOfFile:)` read.
+    ///   - hostHygienePolicy: The unit-test host policy. When set, ``resolve()``
+    ///     returns `nil` without reading anything.
     init(
         environment: [String: String],
         secretFilePaths: [String]? = nil,
         readFile: @escaping (String) -> String? = { path in
             try? String(contentsOfFile: path, encoding: .utf8)
         },
-        readSecureFile: @escaping (String) -> String? = Self.readSecureCredentialsFile
+        readSecureFile: @escaping (String) -> String? = Self.readSecureCredentialsFile,
+        hostHygienePolicy: XCTestHostHygienePolicy? = XCTestHostHygiene.policy
     ) {
         self.environment = environment
         self.explicitCredentialsFile = environment[Self.explicitCredentialsFileEnvironmentKey]?
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .nonEmpty
-        self.secretFilePaths = secretFilePaths ?? Self.defaultSecretFilePaths(environment: environment)
+        self.secretFilePaths = secretFilePaths ?? Self.defaultSecretFilePaths(
+            environment: environment,
+            hostHygienePolicy: hostHygienePolicy
+        )
         self.readFile = readFile
         self.readSecureFile = readSecureFile
+        self.isTestHost = hostHygienePolicy != nil
     }
 
-    /// The default ordered secret-file candidates, resolved against `HOME`.
+    /// The default ordered secret-file candidates, resolved against `HOME`, or
+    /// against the hygiene home inside the unit-test host.
     /// `cmuxterm-dev.env` (cmux-terminal-specific Stack creds) is preferred over
     /// the broader `cmux.env`.
-    private static func defaultSecretFilePaths(environment: [String: String]) -> [String] {
-        guard let home = environment["HOME"], !home.isEmpty else { return [] }
+    static func defaultSecretFilePaths(
+        environment: [String: String],
+        hostHygienePolicy: XCTestHostHygienePolicy?
+    ) -> [String] {
+        guard let home = hostHygienePolicy?.homeDirectory ?? environment["HOME"], !home.isEmpty else {
+            return []
+        }
         let base = home as NSString
         return [
             base.appendingPathComponent(".secrets/cmuxterm-dev.env"),
@@ -132,6 +153,7 @@ struct DebugDogfoodCredentialResolver {
     /// Resolve the highest-precedence credential pair, or `nil` when none is
     /// available. See the type doc for the full precedence order.
     func resolve() -> ResolvedCredentials? {
+        guard !isTestHost else { return nil }
         if let explicitCredentialsFile {
             guard let contents = readSecureFile(explicitCredentialsFile) else {
                 return nil

@@ -1,5 +1,6 @@
 import CMUXAuthCore
 import CmuxAuthRuntime
+import CmuxWorkspaces
 import AppKit
 import Foundation
 import StackAuth
@@ -263,25 +264,38 @@ struct MacAuthComposition {
     ///     dog-Mac precedence without touching real files.
     ///   - readFile: File reader seam for the resolver. Defaults to a real read;
     ///     injected by tests.
+    ///   - hostHygienePolicy: The unit-test host policy. When set, nothing is
+    ///     read and the auto-login keys are removed, so no auto-login starts.
     ///
     /// `nonisolated`: a pure transformation over its arguments that touches no
     /// main-actor state, so tests can call it from a nonisolated context.
     nonisolated static func environmentWithDogfoodAutoSignIn(
         _ environment: [String: String],
         secretFilePaths: [String]? = nil,
-        readFile: ((String) -> String?)? = nil
+        readFile: ((String) -> String?)? = nil,
+        hostHygienePolicy: XCTestHostHygienePolicy? = XCTestHostHygiene.policy
     ) -> [String: String] {
+        // The unit-test host never signs in to Stack Auth: no credential source
+        // is read and inherited auto-login credentials are dropped.
+        if hostHygienePolicy != nil {
+            var hermetic = environment
+            hermetic["CMUX_UITEST_STACK_EMAIL"] = nil
+            hermetic["CMUX_UITEST_STACK_PASSWORD"] = nil
+            return hermetic
+        }
         let resolver: DebugDogfoodCredentialResolver
         if let readFile {
             resolver = DebugDogfoodCredentialResolver(
                 environment: environment,
                 secretFilePaths: secretFilePaths,
-                readFile: readFile
+                readFile: readFile,
+                hostHygienePolicy: hostHygienePolicy
             )
         } else {
             resolver = DebugDogfoodCredentialResolver(
                 environment: environment,
-                secretFilePaths: secretFilePaths
+                secretFilePaths: secretFilePaths,
+                hostHygienePolicy: hostHygienePolicy
             )
         }
         guard let resolved = resolver.resolve() else {

@@ -1,3 +1,6 @@
+import CMUXAuthCore
+import CmuxAuthRuntime
+import CmuxWorkspaces
 import Darwin
 import Foundation
 import Testing
@@ -26,7 +29,8 @@ import Testing
         return DebugDogfoodCredentialResolver(
             environment: environment,
             secretFilePaths: files.map(\.path),
-            readFile: { table[$0] }
+            readFile: { table[$0] },
+            hostHygienePolicy: nil
         )
     }
 
@@ -124,7 +128,8 @@ import Testing
                 default:
                     return nil
                 }
-            }
+            },
+            hostHygienePolicy: nil
         )
         #expect(
             resolver.resolve()
@@ -148,7 +153,8 @@ import Testing
                 default:
                     return nil
                 }
-            }
+            },
+            hostHygienePolicy: nil
         )
         #expect(
             resolver.resolve()
@@ -200,7 +206,8 @@ import Testing
                 CMUX_UITEST_STACK_EMAIL=production@example.com
                 CMUX_UITEST_STACK_PASSWORD=production-password
                 """
-            }
+            },
+            hostHygienePolicy: nil
         )
 
         #expect(resolver.resolve() == .init(
@@ -216,7 +223,8 @@ import Testing
                 "CMUX_DOGFOOD_STACK_EMAIL": "ambient-dev@example.com",
                 "CMUX_DOGFOOD_STACK_PASSWORD": "ambient-dev-password",
             ],
-            readSecureFile: { _ in nil }
+            readSecureFile: { _ in nil },
+            hostHygienePolicy: nil
         )
 
         #expect(resolver.resolve() == nil)
@@ -239,18 +247,20 @@ import Testing
         """.write(to: credentials, atomically: false, encoding: .utf8)
         #expect(chmod(credentials.path, 0o600) == 0)
 
-        let protectedResolver = DebugDogfoodCredentialResolver(environment: [
-            "CMUX_AUTH_CREDENTIALS_FILE": credentials.path,
-        ])
+        let protectedResolver = DebugDogfoodCredentialResolver(
+            environment: ["CMUX_AUTH_CREDENTIALS_FILE": credentials.path],
+            hostHygienePolicy: nil
+        )
         #expect(protectedResolver.resolve() == .init(
             email: "production@example.com",
             password: "production-password"
         ))
 
         #expect(chmod(credentials.path, 0o640) == 0)
-        let groupReadableResolver = DebugDogfoodCredentialResolver(environment: [
-            "CMUX_AUTH_CREDENTIALS_FILE": credentials.path,
-        ])
+        let groupReadableResolver = DebugDogfoodCredentialResolver(
+            environment: ["CMUX_AUTH_CREDENTIALS_FILE": credentials.path],
+            hostHygienePolicy: nil
+        )
         #expect(groupReadableResolver.resolve() == nil)
 
         let symlink = directory.appendingPathComponent("credentials-link.env")
@@ -258,9 +268,10 @@ import Testing
             at: symlink,
             withDestinationURL: credentials
         )
-        let symlinkResolver = DebugDogfoodCredentialResolver(environment: [
-            "CMUX_AUTH_CREDENTIALS_FILE": symlink.path,
-        ])
+        let symlinkResolver = DebugDogfoodCredentialResolver(
+            environment: ["CMUX_AUTH_CREDENTIALS_FILE": symlink.path],
+            hostHygienePolicy: nil
+        )
         #expect(symlinkResolver.resolve() == nil)
     }
 }
@@ -309,7 +320,8 @@ import Testing
                 CMUX_DOGFOOD_STACK_EMAIL=lawrence@manaflow.ai
                 CMUX_DOGFOOD_STACK_PASSWORD=dog-pw
                 """
-            }
+            },
+            hostHygienePolicy: nil
         )
         #expect(merged["CMUX_UITEST_STACK_EMAIL"] == "lawrence@manaflow.ai")
         #expect(merged["CMUX_UITEST_STACK_PASSWORD"] == "dog-pw")
@@ -324,7 +336,8 @@ import Testing
                 "CMUX_UITEST_STACK_PASSWORD": "agent-pw",
             ],
             secretFilePaths: ["/secrets/cmuxterm-dev.env"],
-            readFile: { _ in nil }
+            readFile: { _ in nil },
+            hostHygienePolicy: nil
         )
         #expect(merged["CMUX_UITEST_STACK_EMAIL"] == "agent-dev@manaflow.ai")
         #expect(merged["CMUX_UITEST_STACK_PASSWORD"] == "agent-pw")
@@ -334,10 +347,139 @@ import Testing
         let merged = MacAuthComposition.environmentWithDogfoodAutoSignIn(
             ["HOME": "/Users/test"],
             secretFilePaths: ["/secrets/cmuxterm-dev.env"],
-            readFile: { _ in nil }
+            readFile: { _ in nil },
+            hostHygienePolicy: nil
         )
         #expect(merged["CMUX_UITEST_STACK_EMAIL"] == nil)
         #expect(merged["CMUX_UITEST_STACK_PASSWORD"] == nil)
+    }
+}
+
+/// The unit-test host must never read `~/.secrets` or sign in to Stack Auth
+/// with the dogfood account. A fake real home holds valid secret files; the
+/// real `~/.secrets` is never touched.
+@Suite struct DogfoodAutoSignInTestHostHygieneTests {
+    private static let fixtureContents = """
+    CMUX_DOGFOOD_STACK_EMAIL=fixture-dogfood@example.com
+    CMUX_DOGFOOD_STACK_PASSWORD=fixture-dogfood-password
+    """
+
+    /// A temporary fake home with both secret files, and a separate hygiene sandbox.
+    private func makeFakeHome() throws -> (home: URL, policy: XCTestHostHygienePolicy, root: URL) {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("cmux-dogfood-hygiene-\(UUID().uuidString)", isDirectory: true)
+        let home = root.appendingPathComponent("real-home", isDirectory: true)
+        let secrets = home.appendingPathComponent(".secrets", isDirectory: true)
+        try FileManager.default.createDirectory(at: secrets, withIntermediateDirectories: true)
+        for name in ["cmuxterm-dev.env", "cmux.env"] {
+            try Self.fixtureContents.write(
+                to: secrets.appendingPathComponent(name),
+                atomically: true,
+                encoding: .utf8
+            )
+        }
+        let policy = XCTestHostHygienePolicy(sandboxRoot: root.appendingPathComponent("sandbox").path)
+        return (home, policy, root)
+    }
+
+    private func startsAutoLogin(_ environment: [String: String]) -> Bool {
+        let credentials = CMUXAuthAutoLoginCredentials(
+            environment: environment,
+            clearAuth: false,
+            mockDataEnabled: false
+        )
+        return AuthLaunchOptions.shouldStartAutoLogin(
+            hasCredentials: credentials != nil,
+            hasStoredTokens: false
+        )
+    }
+
+    @Test func fixtureSecretsFileSignsInOutsideTheTestHost() throws {
+        let fixture = try makeFakeHome()
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+
+        let resolver = DebugDogfoodCredentialResolver(
+            environment: ["HOME": fixture.home.path],
+            hostHygienePolicy: nil
+        )
+        #expect(resolver.resolve() == .init(
+            email: "fixture-dogfood@example.com",
+            password: "fixture-dogfood-password"
+        ))
+        let merged = MacAuthComposition.environmentWithDogfoodAutoSignIn(
+            ["HOME": fixture.home.path],
+            hostHygienePolicy: nil
+        )
+        #expect(startsAutoLogin(merged))
+    }
+
+    @Test func resolverReadsNothingUnderThePolicy() throws {
+        let fixture = try makeFakeHome()
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let environment = [
+            "HOME": fixture.home.path,
+            "CMUX_DOGFOOD_STACK_EMAIL": "env-dogfood@example.com",
+            "CMUX_DOGFOOD_STACK_PASSWORD": "env-dogfood-password",
+            "CMUX_AUTH_CREDENTIALS_FILE": fixture.home.appendingPathComponent(".secrets/cmux.env").path,
+        ]
+
+        let defaultPaths = DebugDogfoodCredentialResolver.defaultSecretFilePaths(
+            environment: environment,
+            hostHygienePolicy: fixture.policy
+        )
+        #expect(!defaultPaths.isEmpty)
+        for path in defaultPaths {
+            #expect(path.hasPrefix(fixture.policy.homeDirectory + "/"))
+            #expect(!path.hasPrefix(fixture.home.path))
+        }
+
+        var readPaths: [String] = []
+        let recording = DebugDogfoodCredentialResolver(
+            environment: environment,
+            readFile: { path in
+                readPaths.append(path)
+                return Self.fixtureContents
+            },
+            readSecureFile: { path in
+                readPaths.append(path)
+                return Self.fixtureContents
+            },
+            hostHygienePolicy: fixture.policy
+        )
+        #expect(recording.resolve() == nil)
+        #expect(readPaths.isEmpty)
+        #expect(DebugDogfoodCredentialResolver(
+            environment: ["HOME": fixture.home.path],
+            hostHygienePolicy: fixture.policy
+        ).resolve() == nil)
+    }
+
+    @Test func noAutoLoginStartsUnderThePolicy() throws {
+        let fixture = try makeFakeHome()
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+
+        let merged = MacAuthComposition.environmentWithDogfoodAutoSignIn(
+            [
+                "HOME": fixture.home.path,
+                "CMUX_UITEST_STACK_EMAIL": "agent-dev@example.com",
+                "CMUX_UITEST_STACK_PASSWORD": "agent-pw",
+            ],
+            hostHygienePolicy: fixture.policy
+        )
+        #expect(merged["CMUX_UITEST_STACK_EMAIL"] == nil)
+        #expect(merged["CMUX_UITEST_STACK_PASSWORD"] == nil)
+        #expect(merged["HOME"] == fixture.home.path)
+        #expect(!startsAutoLogin(merged))
+    }
+
+    @Test func theRealTestHostDefaultsToThePolicy() throws {
+        let fixture = try makeFakeHome()
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        try #require(XCTestHostHygiene.policy != nil)
+
+        #expect(DebugDogfoodCredentialResolver(environment: ["HOME": fixture.home.path]).resolve() == nil)
+        let merged = MacAuthComposition.environmentWithDogfoodAutoSignIn(["HOME": fixture.home.path])
+        #expect(!startsAutoLogin(merged))
     }
 }
 #endif
