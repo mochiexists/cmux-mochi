@@ -100,4 +100,10 @@ import CmuxWorkspaces
     @Test func mobileHostDoesNotBringUpIrohOnItsOwn() {
         #expect(!MobileHostService.activatesIrohAutomatically)
     }
+
+    @MainActor @Test func everyAutomaticIrohActivationIsRefusedUnderXCTest() {
+        var activated = false
+        MobileHostService.activateIrohAutomaticallyIfAllowed { activated = true }
+        #expect(!activated)
+    }
 }
