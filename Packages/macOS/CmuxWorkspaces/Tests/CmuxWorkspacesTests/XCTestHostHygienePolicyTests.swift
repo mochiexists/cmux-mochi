@@ -58,12 +58,16 @@ import Testing
     }
 
     @Test func everySandboxedLocationIsCreatedInsideTheSandbox() {
-        let sandboxed = policy.environmentChanges.compactMap { key, value -> String? in
+        let environmentLocations = policy.environmentChanges.compactMap { key, value -> String? in
             guard let value, key != "PATH" else { return nil }
             return value
         }
-        for path in sandboxed {
-            #expect(policy.directoriesToCreate.contains(path), "\(path)")
+        let agentDataHome = policy.agentDataEnvironment(from: ["HOME": realHome])["HOME"]
+        let ownedLocations = Set(environmentLocations + [policy.homeDirectory] + [agentDataHome].compactMap { $0 })
+
+        #expect(Set(policy.directoriesToCreate) == ownedLocations)
+        for path in policy.directoriesToCreate {
+            #expect(path.hasPrefix(policy.sandboxRoot + "/"), "\(path)")
         }
     }
 

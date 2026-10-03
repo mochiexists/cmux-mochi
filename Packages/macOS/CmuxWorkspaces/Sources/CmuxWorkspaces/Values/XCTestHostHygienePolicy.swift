@@ -46,14 +46,11 @@ public struct XCTestHostHygienePolicy: Sendable, Equatable {
     /// The home folder in-process readers of other apps' and agents' data use.
     public var homeDirectory: String { sandboxRoot + "/home" }
 
-    /// Directories that must exist before the environment is applied.
+    /// Directories that must exist before the environment is applied: the agent-data home
+    /// and the private tmux socket directory.
     public var directoriesToCreate: [String] {
         [
             homeDirectory,
-            homeDirectory + "/.config",
-            homeDirectory + "/.local/share",
-            homeDirectory + "/.cache",
-            homeDirectory + "/.local/state",
             sandboxRoot + "/tmux",
         ]
     }
