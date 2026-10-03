@@ -9,12 +9,14 @@ struct AgentExecutableResolver {
     var includeStandardSearchDirectories: Bool
     var configuredExecutablePaths: [AgentSessionProviderID: String]
 
+    /// Under XCTest the defaults keep the test host from finding the developer's agents:
+    /// `HOME` is the hygiene home and the Homebrew and `/usr/local` folders are not searched.
     init(
-        environment: [String: String] = ProcessInfo.processInfo.environment,
+        environment: [String: String] = XCTestHostHygiene.agentEnvironment,
         fileManager: FileManager = .default,
         bundleResourceURL: URL? = Bundle.main.resourceURL,
         extraSearchDirectories: [String] = [],
-        includeStandardSearchDirectories: Bool = true,
+        includeStandardSearchDirectories: Bool = XCTestHostHygiene.policy == nil,
         configuredExecutablePaths: [AgentSessionProviderID: String] = [:]
     ) {
         self.environment = environment
