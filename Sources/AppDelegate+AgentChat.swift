@@ -415,7 +415,7 @@ extension AppDelegate {
                 isDirectory: true
             )
         }
-        return FileManager.default.homeDirectoryForCurrentUser
+        return XCTestHostHygiene.userHomeDirectoryURL
     }
 
     nonisolated private static func launchDetachedAgentChatStartCommand(

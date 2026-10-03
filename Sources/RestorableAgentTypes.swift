@@ -193,7 +193,7 @@ enum RestorableAgentKind: Codable, Hashable, Sendable {
     }
 
     func hookStoreFileURL(
-        homeDirectory: String = NSHomeDirectory(),
+        homeDirectory: String = XCTestHostHygiene.userHomeDirectoryPath,
         environment: [String: String] = ProcessInfo.processInfo.environment
     ) -> URL {
         let directory: URL

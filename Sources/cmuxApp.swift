@@ -5627,6 +5627,25 @@ enum XCTestHostHygiene {
         userHomeDirectoryURL.appendingPathComponent(relativePath).path
     }
 
+    /// ``userHomeDirectoryURL`` as a path, for readers that take a home folder string.
+    nonisolated static var userHomeDirectoryPath: String { userHomeDirectoryURL.path }
+
+    /// Expands a leading `~` against ``userHomeDirectoryURL``; `expandingTildeInPath` outside XCTest.
+    nonisolated static func expandingUserTilde(in path: String) -> String {
+        guard policy != nil else { return (path as NSString).expandingTildeInPath }
+        if path == "~" { return userHomeDirectoryPath }
+        if path.hasPrefix("~/") { return userHomePath(String(path.dropFirst(2))) }
+        return (path as NSString).expandingTildeInPath
+    }
+
+    /// The process environment for readers that resolve agent data from `HOME`; under XCTest
+    /// `HOME` is the sandbox.
+    nonisolated static var agentEnvironment: [String: String] {
+        let environment = ProcessInfo.processInfo.environment
+        guard let policy else { return environment }
+        return policy.agentDataEnvironment(from: environment)
+    }
+
     /// Whether a recursive file scan may start at `rootPath` in this process.
     nonisolated static func allowsRecursiveScan(rootPath: String) -> Bool {
         guard policy != nil else { return true }

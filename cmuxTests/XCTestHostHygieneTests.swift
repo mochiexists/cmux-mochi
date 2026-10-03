@@ -64,6 +64,39 @@ import CmuxWorkspaces
         #expect(!XCTestHostHygiene.userHomePath(".claude").hasPrefix(realHome + "/"))
     }
 
+    @Test func everyAgentIndexResolvesItsDefaultPathInsideTheSandbox() throws {
+        let policy = try #require(XCTestHostHygiene.policy)
+        let sandboxHome = policy.homeDirectory + "/"
+        let grokRoot = GrokSessionLocator.sessionRoot(
+            registration: CmuxVaultAgentRegistration.builtInGrok,
+            environment: [:]
+        )
+        let defaultPaths: [(index: String, path: String)] = [
+            ("opencode", OpenCodeDatabaseSnapshot.sourcePath),
+            ("hermes", SessionIndexStore.defaultHermesStateDBPath()),
+            ("rovodev", SessionIndexStore.defaultRovoDevSessionsRoot()),
+            ("grok", GrokSessionLocator.defaultSessionsRoot()),
+            ("grok registration", grokRoot.sessionsRoot),
+            ("pi", PiSessionLocator.defaultSessionsRoot()),
+            ("pi registration", XCTestHostHygiene.expandingUserTilde(
+                in: try #require(CmuxVaultAgentRegistration.builtInPi.sessionDirectory)
+            )),
+            ("campfire registration", XCTestHostHygiene.expandingUserTilde(
+                in: try #require(CmuxVaultAgentRegistration.builtInCampfire.sessionDirectory)
+            )),
+            ("agent chat hook sessions", AgentChatHookSessionStore().homeDirectory.path + "/"),
+            ("restorable hook store", RestorableAgentKind.claude.hookStoreFileURL(environment: [:]).path),
+            ("turn diff baselines", AppDelegate.agentTurnDiffBaselineStoreURL().path),
+            ("event log", CmuxEventBus.defaultEventLogURL().path),
+            ("codex skills", CmuxSkillsBundleInstaller.defaultDestinationDirectoryURL().path),
+            ("agent environment HOME", (XCTestHostHygiene.agentEnvironment["HOME"] ?? "") + "/"),
+        ]
+        for (index, path) in defaultPaths {
+            #expect(path.hasPrefix(sandboxHome), "\(index): \(path)")
+            #expect(!path.hasPrefix(realHome + "/"), "\(index): \(path)")
+        }
+    }
+
     @Test func mobileHostDoesNotBringUpIrohOnItsOwn() {
         #expect(!MobileHostService.activatesIrohAutomatically)
     }

@@ -1386,7 +1386,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         FeedCoordinator.shared.install(
             store: WorkstreamStore(
                 transport: NullWorkstreamTransport(),
-                persistence: WorkstreamPersistence(fileURL: WorkstreamPersistence.defaultFileURL()),
+                persistence: WorkstreamPersistence(
+                    fileURL: WorkstreamPersistence.defaultFileURL(
+                        homeDirectory: XCTestHostHygiene.userHomeDirectoryURL
+                    )
+                ),
                 titleProvider: Self.feedWorkstreamTitle(for:)
             )
         )

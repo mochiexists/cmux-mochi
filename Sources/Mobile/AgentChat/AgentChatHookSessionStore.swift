@@ -27,13 +27,13 @@ struct AgentChatHookSessionStore: Sendable {
         let updatedAt: Date?
     }
 
-    private let homeDirectory: URL
+    let homeDirectory: URL
 
     /// Creates a store reader.
     ///
     /// - Parameter homeDirectory: The home directory containing
     ///   `.cmuxterm/`; injectable for tests.
-    init(homeDirectory: URL = FileManager.default.homeDirectoryForCurrentUser) {
+    init(homeDirectory: URL = XCTestHostHygiene.userHomeDirectoryURL) {
         self.homeDirectory = homeDirectory
     }
 

@@ -2879,10 +2879,16 @@ final class Workspace: Identifiable, ObservableObject {
                 defaultProvider: HermesAgentCodexEnvironment.defaultProvider,
                 codexResponsesAPIMode: HermesAgentCodexEnvironment.codexResponsesAPIMode,
                 applyingDefaultCodexBaseURL: { environment in
-                    HermesAgentCodexEnvironment.applyingDefaultCodexBaseURL(to: environment)
+                    HermesAgentCodexEnvironment.applyingDefaultCodexBaseURL(
+                        to: environment,
+                        ambientEnvironment: XCTestHostHygiene.agentEnvironment
+                    )
                 },
                 resolvingDefaultCodexModel: { environment in
-                    HermesAgentCodexEnvironment.defaultCodexModel(environment: environment)
+                    HermesAgentCodexEnvironment.defaultCodexModel(
+                        environment: environment,
+                        ambientEnvironment: XCTestHostHygiene.agentEnvironment
+                    )
                 }
             )
         )

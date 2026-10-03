@@ -36,7 +36,7 @@ struct GrokSessionLocator {
         self.fileManager = fileManager
     }
 
-    static func defaultSessionsRoot(homeDirectory: String = NSHomeDirectory()) -> String {
+    static func defaultSessionsRoot(homeDirectory: String = XCTestHostHygiene.userHomeDirectoryPath) -> String {
         let standardizedHome = expandTilde(homeDirectory, homeDirectory: homeDirectory)
         return ((standardizedHome as NSString).appendingPathComponent(".grok") as NSString)
             .appendingPathComponent("sessions")
@@ -84,7 +84,7 @@ struct GrokSessionLocator {
     static func sessionRoot(
         registration: CmuxVaultAgentRegistration,
         environment: [String: String] = ProcessInfo.processInfo.environment,
-        homeDirectory: String = NSHomeDirectory()
+        homeDirectory: String = XCTestHostHygiene.userHomeDirectoryPath
     ) -> GrokSessionRoot {
         let rawRoot: String
         let configuredRoot = normalized(registration.sessionDirectory)
@@ -112,7 +112,7 @@ struct GrokSessionLocator {
         registration: CmuxVaultAgentRegistration,
         cwdFilter: String?,
         environment: [String: String] = ProcessInfo.processInfo.environment,
-        homeDirectory: String = NSHomeDirectory(),
+        homeDirectory: String = XCTestHostHygiene.userHomeDirectoryPath,
         observedGrokHomes: [String] = []
     ) -> [GrokSessionRoot] {
         let root = sessionRoot(
@@ -146,7 +146,7 @@ struct GrokSessionLocator {
     }
 
     static func observedGrokHomes(
-        homeDirectory: String = NSHomeDirectory(),
+        homeDirectory: String = XCTestHostHygiene.userHomeDirectoryPath,
         environment: [String: String] = ProcessInfo.processInfo.environment,
         fileManager: FileManager = .default
     ) -> [String] {
@@ -261,7 +261,7 @@ extension SessionIndexStore {
         limit: Int,
         agent: SessionAgent = .grok,
         environment: [String: String] = ProcessInfo.processInfo.environment,
-        homeDirectory: String = NSHomeDirectory(),
+        homeDirectory: String = XCTestHostHygiene.userHomeDirectoryPath,
         fileManager: FileManager = .default
     ) async -> [SessionEntry] {
         let observedGrokHomes = GrokSessionLocator.observedGrokHomes(
@@ -550,7 +550,7 @@ extension SessionIndexStore {
             return GrokSessionLocator.sessionRoots(registration: registration, cwdFilter: cwdFilter)
                 .map(\.sessionsRoot)
         }
-        guard let root = registration.sessionDirectory.map({ ($0 as NSString).expandingTildeInPath }) else {
+        guard let root = registration.sessionDirectory.map({ XCTestHostHygiene.expandingUserTilde(in: $0) }) else {
             return []
         }
         if case .piSessionFile = registration.sessionIdSource,

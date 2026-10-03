@@ -41,9 +41,12 @@ public actor WorkstreamPersistence {
     }
 
     /// Default JSONL path in the user's cmuxterm state directory.
-    public static func defaultFileURL() -> URL {
-        let home = FileManager.default.homeDirectoryForCurrentUser
-        return home
+    ///
+    /// - Parameter homeDirectory: The home folder that holds `.cmuxterm/`.
+    public static func defaultFileURL(
+        homeDirectory: URL = FileManager.default.homeDirectoryForCurrentUser
+    ) -> URL {
+        homeDirectory
             .appendingPathComponent(".cmuxterm", isDirectory: true)
             .appendingPathComponent("workstream.jsonl", isDirectory: false)
     }

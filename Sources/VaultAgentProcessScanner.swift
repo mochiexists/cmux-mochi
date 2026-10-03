@@ -798,7 +798,7 @@ private extension Array where Element == String {
 }
 
 enum PiSessionLocator {
-    static func defaultSessionsRoot(homeDirectory: String = NSHomeDirectory()) -> String {
+    static func defaultSessionsRoot(homeDirectory: String = XCTestHostHygiene.userHomeDirectoryPath) -> String {
         let standardizedHome = (homeDirectory as NSString).standardizingPath
         return (standardizedHome as NSString).appendingPathComponent(".pi/agent/sessions")
     }

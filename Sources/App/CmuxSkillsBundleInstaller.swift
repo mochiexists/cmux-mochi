@@ -263,7 +263,7 @@ struct CmuxSkillsBundleInstaller {
             return URL(fileURLWithPath: codexHome, isDirectory: true)
                 .appendingPathComponent("skills", isDirectory: true)
         }
-        return fileManager.homeDirectoryForCurrentUser
+        return XCTestHostHygiene.userHomeDirectoryURL
             .appendingPathComponent(".codex/skills", isDirectory: true)
     }
 

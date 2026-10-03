@@ -140,7 +140,7 @@ extension AppDelegate {
             return URL(fileURLWithPath: expandedOverride, isDirectory: true)
                 .appendingPathComponent("agent-turn-diff-baselines.json", isDirectory: false)
         }
-        return FileManager.default.homeDirectoryForCurrentUser
+        return XCTestHostHygiene.userHomeDirectoryURL
             .appendingPathComponent(".cmuxterm", isDirectory: true)
             .appendingPathComponent("agent-turn-diff-baselines.json", isDirectory: false)
     }

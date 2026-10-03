@@ -885,7 +885,7 @@ enum FeedJumpResolver {
     }
 
     static func lookup(agent: String, sessionId: String) -> Target? {
-        let home = FileManager.default.homeDirectoryForCurrentUser
+        let home = XCTestHostHygiene.userHomeDirectoryURL
         let file = home
             .appendingPathComponent(".cmuxterm", isDirectory: true)
             .appendingPathComponent("\(agent)-hook-sessions.json", isDirectory: false)

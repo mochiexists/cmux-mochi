@@ -39,6 +39,24 @@ import Testing
         #expect(environment["TMUX_TMPDIR"] == policy.sandboxRoot + "/tmux")
     }
 
+    @Test func agentDataReadersResolveHomeToTheSandboxWithoutAgentHomeOverrides() {
+        let environment = policy.agentDataEnvironment(from: [
+            "HOME": realHome,
+            "HERMES_HOME": realHome + "/.hermes",
+            "GROK_HOME": realHome + "/.grok",
+            "CODEX_HOME": realHome + "/.codex",
+            "CLAUDE_CONFIG_DIR": realHome + "/.claude",
+            "LANG": "en_GB.UTF-8",
+        ])
+
+        #expect(environment["HOME"] == policy.homeDirectory)
+        #expect(environment["HERMES_HOME"] == nil)
+        #expect(environment["GROK_HOME"] == nil)
+        #expect(environment["CODEX_HOME"] == nil)
+        #expect(environment["CLAUDE_CONFIG_DIR"] == nil)
+        #expect(environment["LANG"] == "en_GB.UTF-8")
+    }
+
     @Test func everySandboxedLocationIsCreatedInsideTheSandbox() {
         let sandboxed = policy.environmentChanges.compactMap { key, value -> String? in
             guard let value, key != "PATH" else { return nil }

@@ -1289,7 +1289,7 @@ struct RestorableAgentSessionIndex: Sendable {
     // the off-main, cached `SharedLiveAgentIndex.shared` instead. The only sanctioned
     // synchronous callers are cold-cache fallbacks guarded by a nil cache check.
     static func load(
-        homeDirectory: String = NSHomeDirectory(),
+        homeDirectory: String = XCTestHostHygiene.userHomeDirectoryPath,
         fileManager: FileManager = .default
     ) -> RestorableAgentSessionIndex {
         let registry = CmuxVaultAgentRegistry.load(homeDirectory: homeDirectory, fileManager: fileManager)
@@ -1302,7 +1302,7 @@ struct RestorableAgentSessionIndex: Sendable {
     }
 
     static func loadIncludingProcessDetectedSnapshots(
-        homeDirectory: String = NSHomeDirectory(),
+        homeDirectory: String = XCTestHostHygiene.userHomeDirectoryPath,
         fileManager: FileManager = .default
     ) async -> RestorableAgentSessionIndex {
         await Task.detached(priority: .utility) {
@@ -1314,7 +1314,7 @@ struct RestorableAgentSessionIndex: Sendable {
     }
 
     static func loadIncludingProcessDetectedSnapshotsSynchronously(
-        homeDirectory: String = NSHomeDirectory(),
+        homeDirectory: String = XCTestHostHygiene.userHomeDirectoryPath,
         fileManager: FileManager = .default
     ) -> RestorableAgentSessionIndex {
         let registry = CmuxVaultAgentRegistry.load(homeDirectory: homeDirectory, fileManager: fileManager)

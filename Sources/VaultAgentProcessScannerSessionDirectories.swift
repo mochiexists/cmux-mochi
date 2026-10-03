@@ -12,7 +12,7 @@ extension PiSessionLocator {
             ?? campfireAgentSessionsRoot(for: process, registration: registration)
             ?? registration.sessionDirectory
             ?? defaultSessionsRoot()
-        let expandedRoot = (sessionRoot as NSString).expandingTildeInPath
+        let expandedRoot = XCTestHostHygiene.expandingUserTilde(in: sessionRoot)
         if let cwd = process.environment["CMUX_AGENT_LAUNCH_CWD"] ?? process.environment["PWD"],
            let projectDirectory = projectDirectoryName(for: cwd) {
             return (expandedRoot as NSString).appendingPathComponent(projectDirectory)
@@ -48,7 +48,7 @@ extension PiSessionLocator {
         guard let configDir = nonEmptyEnvironmentValue("PI_CONFIG_DIR", in: process.environment) else {
             return nil
         }
-        let home = nonEmptyEnvironmentValue("HOME", in: process.environment) ?? NSHomeDirectory()
+        let home = nonEmptyEnvironmentValue("HOME", in: process.environment) ?? XCTestHostHygiene.userHomeDirectoryPath
         let expandedConfigDir = NSString(string: configDir).expandingTildeInPath
         let configRoot: String
         if (expandedConfigDir as NSString).isAbsolutePath {

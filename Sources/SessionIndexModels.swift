@@ -149,7 +149,7 @@ enum OpenCodeDatabaseSnapshot {
         }
     }
 
-    private static let sourcePath = ("~/.local/share/opencode/opencode.db" as NSString).expandingTildeInPath
+    static let sourcePath = XCTestHostHygiene.userHomePath(".local/share/opencode/opencode.db")
 
     static func make(prefix: String) throws -> Snapshot? {
         let fileManager = FileManager.default

@@ -19,6 +19,8 @@ public struct XCTestHostHygienePolicy: Sendable, Equatable {
         "TMUX_PANE",
         "CLAUDE_CONFIG_DIR",
         "CODEX_HOME",
+        "GROK_HOME",
+        "HERMES_HOME",
     ]
 
     /// The private directory that holds every hermetic location.
@@ -82,6 +84,23 @@ public struct XCTestHostHygienePolicy: Sendable, Equatable {
         for (key, value) in environmentChanges {
             result[key] = value
         }
+        return result
+    }
+
+    /// The environment in-process readers of agent data resolve their home folder from.
+    ///
+    /// The host keeps its real `HOME` for libghostty (see ``environmentChanges``), so readers
+    /// that default to `HOME` get this copy instead: `HOME` is ``homeDirectory`` and the agent
+    /// home overrides are removed.
+    ///
+    /// - Parameter environment: The process environment.
+    /// - Returns: The environment agent-data readers use under XCTest.
+    public func agentDataEnvironment(from environment: [String: String]) -> [String: String] {
+        var result = environment
+        for key in Self.removedEnvironmentKeys {
+            result[key] = nil
+        }
+        result["HOME"] = homeDirectory
         return result
     }
 

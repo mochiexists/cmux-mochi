@@ -2,13 +2,18 @@ import CMUXAgentLaunch
 import Foundation
 
 extension SessionIndexStore {
+    /// Rovo Dev's sessions folder; inside the sandbox under XCTest.
+    nonisolated static func defaultRovoDevSessionsRoot() -> String {
+        XCTestHostHygiene.userHomePath(".rovodev/sessions")
+    }
+
     nonisolated static func loadRovoDevEntries(
         needle: String,
         cwdFilter: String?,
         offset: Int,
         limit: Int,
         errorBag: ErrorBag,
-        sessionsRoot: String = RovoDevIndex.defaultSessionsRoot()
+        sessionsRoot: String = defaultRovoDevSessionsRoot()
     ) -> [SessionEntry] {
         let result = RovoDevIndex.loadSessions(
             needle: needle,
