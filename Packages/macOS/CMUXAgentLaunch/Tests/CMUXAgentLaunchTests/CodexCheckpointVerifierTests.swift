@@ -46,6 +46,57 @@ import Testing
         #expect(result == .rejected)
     }
 
+    /// Codex keeps state_5.sqlite in WAL mode and deletes the -wal file when its
+    /// last connection closes. A plain read-only open then fails with
+    /// SQLITE_CANTOPEN on every lookup (2026-11-06: ~16k failed lookups a minute).
+    @Test func walModeDatabaseWithoutWalFileIsStillReadable() throws {
+        let fixture = try makeFixture(source: "cli", originator: "codex-tui", journalMode: "WAL")
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        // Apple's SQLite keeps a persistent -wal after close; Codex's bundled
+        // SQLite deletes it. Every write is checkpointed by the close above.
+        let walPath = fixture.codexHome.appendingPathComponent("state_5.sqlite-wal").path
+        try? FileManager.default.removeItem(atPath: walPath)
+        #expect(!FileManager.default.fileExists(atPath: walPath))
+
+        let result = CodexCheckpointVerifier(backoff: CodexStateDatabaseBackoff()).verify(
+            sessionID: fixture.sessionID,
+            codexHome: fixture.codexHome.path,
+            transcriptPath: fixture.rollout.path
+        )
+
+        #expect(result == .interactive(CodexCheckpointEvidence(
+            workingDirectory: fixture.repo.path,
+            rolloutPath: fixture.rollout.standardizedFileURL.path
+        )))
+    }
+
+    @Test func unreadableDatabaseIsSkippedDuringBackoffWindow() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("cmux-codex-unreadable-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let database = root.appendingPathComponent("state_5.sqlite")
+        try Data("not a sqlite database".utf8).write(to: database)
+
+        var now = Date(timeIntervalSince1970: 1_000_000)
+        let backoff = CodexStateDatabaseBackoff(now: { now })
+        let verifier = CodexCheckpointVerifier(backoff: backoff)
+        let path = database.standardizedFileURL.path
+
+        #expect(verifier.verify(sessionID: "abc", codexHome: root.path, transcriptPath: nil) == .rejected)
+        #expect(backoff.shouldSkip(path: path))
+
+        now += CodexStateDatabaseBackoff.initialInterval + 1
+        #expect(!backoff.shouldSkip(path: path))
+        _ = verifier.verify(sessionID: "abc", codexHome: root.path, transcriptPath: nil)
+        now += CodexStateDatabaseBackoff.initialInterval + 1
+        // The second failure doubles the window.
+        #expect(backoff.shouldSkip(path: path))
+
+        now += CodexStateDatabaseBackoff.maximumInterval
+        #expect(!backoff.shouldSkip(path: path))
+    }
+
     @Test func unindexedLegacyInstallPreservesFallback() throws {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("cmux-codex-unindexed-\(UUID().uuidString)", isDirectory: true)
@@ -72,7 +123,11 @@ import Testing
         let sessionID: String
     }
 
-    private func makeFixture(source: String, originator: String) throws -> Fixture {
+    private func makeFixture(
+        source: String,
+        originator: String,
+        journalMode: String? = nil
+    ) throws -> Fixture {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("cmux-codex-checkpoint-\(UUID().uuidString)", isDirectory: true)
         let codexHome = root.appendingPathComponent(".codex", isDirectory: true)
@@ -97,7 +152,7 @@ import Testing
             .write(to: rollout, atomically: true, encoding: .utf8)
 
         let database = codexHome.appendingPathComponent("state_5.sqlite")
-        try createDatabase(at: database)
+        try createDatabase(at: database, journalMode: journalMode)
         try insertThread(
             at: database,
             sessionID: sessionID,
@@ -113,13 +168,18 @@ import Testing
         )
     }
 
-    private func createDatabase(at url: URL) throws {
+    private func createDatabase(at url: URL, journalMode: String?) throws {
         var database: OpaquePointer?
         guard sqlite3_open(url.path, &database) == SQLITE_OK, let database else {
             sqlite3_close(database)
             throw NSError(domain: "CodexCheckpointFixture", code: 1)
         }
         defer { sqlite3_close(database) }
+        if let journalMode {
+            guard sqlite3_exec(database, "PRAGMA journal_mode=\(journalMode)", nil, nil, nil) == SQLITE_OK else {
+                throw NSError(domain: "CodexCheckpointFixture", code: 6)
+            }
+        }
         let schema = "CREATE TABLE threads (id TEXT PRIMARY KEY, rollout_path TEXT NOT NULL, source TEXT, thread_source TEXT)"
         guard sqlite3_exec(database, schema, nil, nil, nil) == SQLITE_OK else {
             throw NSError(domain: "CodexCheckpointFixture", code: 2)

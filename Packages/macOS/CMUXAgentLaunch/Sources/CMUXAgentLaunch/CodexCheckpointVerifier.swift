@@ -31,9 +31,14 @@ public struct CodexCheckpointVerifier {
     private static let maximumDatabaseCount = 8
 
     private let fileManager: FileManager
+    private let backoff: CodexStateDatabaseBackoff
 
-    public init(fileManager: FileManager = .default) {
+    public init(
+        fileManager: FileManager = .default,
+        backoff: CodexStateDatabaseBackoff = .shared
+    ) {
         self.fileManager = fileManager
+        self.backoff = backoff
     }
 
     public func codexHome(
@@ -126,14 +131,25 @@ public struct CodexCheckpointVerifier {
     }
 
     private func indexedRecord(sessionID: String, databaseURL: URL) -> IndexedLookup {
-        var database: OpaquePointer?
-        guard sqlite3_open_v2(
-            databaseURL.path,
-            &database,
-            SQLITE_OPEN_READONLY | SQLITE_OPEN_NOMUTEX,
-            nil
-        ) == SQLITE_OK, let database else {
-            sqlite3_close(database)
+        let path = databaseURL.standardizedFileURL.path
+        // Session autosave re-verifies every Codex hook record every few seconds.
+        // A database that just failed is not retried until its backoff expires,
+        // so a broken index costs one failed open per window, not one per record.
+        if backoff.shouldSkip(path: path) {
+            return .unreadable
+        }
+        let lookup = queryIndexedRecord(sessionID: sessionID, databasePath: path)
+        switch lookup {
+        case .unreadable:
+            backoff.recordFailure(path: path)
+        case .record, .missing:
+            backoff.recordSuccess(path: path)
+        }
+        return lookup
+    }
+
+    private func queryIndexedRecord(sessionID: String, databasePath: String) -> IndexedLookup {
+        guard let database = openReadOnly(databasePath: databasePath) else {
             return .unreadable
         }
         defer { sqlite3_close(database) }
@@ -145,10 +161,15 @@ public struct CodexCheckpointVerifier {
         ]
         for query in queries {
             var statement: OpaquePointer?
-            guard sqlite3_prepare_v2(database, query, -1, &statement, nil) == SQLITE_OK,
-                  let statement else {
+            let prepareResult = sqlite3_prepare_v2(database, query, -1, &statement, nil)
+            guard prepareResult == SQLITE_OK, let statement else {
                 sqlite3_finalize(statement)
-                continue
+                // Only a schema mismatch (an older Codex without these columns)
+                // is worth the next fallback query. I/O and open failures repeat.
+                if prepareResult == SQLITE_ERROR {
+                    continue
+                }
+                return .unreadable
             }
             defer { sqlite3_finalize(statement) }
             let transient = unsafeBitCast(
@@ -168,10 +189,37 @@ public struct CodexCheckpointVerifier {
             case SQLITE_DONE:
                 return .missing
             default:
-                continue
+                return .unreadable
             }
         }
         return .unreadable
+    }
+
+    /// Opens Codex's state database without ever writing to it.
+    ///
+    /// Codex runs the database in WAL mode and removes the `-wal` file when its
+    /// last connection closes. A plain `SQLITE_OPEN_READONLY` connection cannot
+    /// create that file, so every statement then fails with SQLITE_CANTOPEN.
+    /// With no `-wal` present every committed page is in the main file, so an
+    /// `immutable=1` open reads it directly, takes no locks and never touches
+    /// Codex's `-shm`.
+    private func openReadOnly(databasePath: String) -> OpaquePointer? {
+        let walIsPresent = fileManager.fileExists(atPath: databasePath + "-wal")
+        var components = URLComponents()
+        components.scheme = "file"
+        components.path = databasePath
+        components.queryItems = walIsPresent
+            ? [URLQueryItem(name: "mode", value: "ro")]
+            : [URLQueryItem(name: "mode", value: "ro"), URLQueryItem(name: "immutable", value: "1")]
+        guard let uri = components.string else { return nil }
+
+        var database: OpaquePointer?
+        let flags = SQLITE_OPEN_READONLY | SQLITE_OPEN_NOMUTEX | SQLITE_OPEN_URI
+        guard sqlite3_open_v2(uri, &database, flags, nil) == SQLITE_OK, let database else {
+            sqlite3_close(database)
+            return nil
+        }
+        return database
     }
 
     private func verificationFromRollout(
