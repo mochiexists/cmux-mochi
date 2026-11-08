@@ -39,8 +39,27 @@ struct TerminalWorkingDirectoryLaunchPlanTests {
         )
 
         #expect(plan.workingDirectory == Self.home)
-        #expect(plan.initialInput == "cd '/Users/someone/Documents/it'\\''s a project'\nclaude --resume\n")
+        #expect(plan.initialInput == "cd '/Users/someone/Documents/it'\\''s a project' && claude --resume\n")
         #expect(plan.deferredWorkingDirectory == Self.project)
+    }
+
+    @Test
+    func stalledDirectoryWithoutPlannedInputTypesOnlyTheCd() {
+        let probe = BlockingDirectoryProbe()
+        defer { probe.answer() }
+
+        let plan = TerminalWorkingDirectoryLaunchPlan.resolve(
+            requestedWorkingDirectory: "/Users/someone/Documents/app",
+            initialInput: nil,
+            inputReachesShell: true,
+            gate: TerminalWorkingDirectoryAccessGate(
+                deadline: .milliseconds(20),
+                homeDirectory: Self.home,
+                probe: probe.open
+            )
+        )
+
+        #expect(plan.initialInput == "cd '/Users/someone/Documents/app'\n")
     }
 
     @Test

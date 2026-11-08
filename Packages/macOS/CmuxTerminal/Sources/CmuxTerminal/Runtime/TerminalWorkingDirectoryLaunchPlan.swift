@@ -50,10 +50,18 @@ public struct TerminalWorkingDirectoryLaunchPlan: Sendable, Equatable {
                 deferredWorkingDirectory: requested
             )
         }
-        let changeDirectory = "cd \(TerminalSurface.shellSingleQuoted(requested))\n"
+        let changeDirectory = "cd \(TerminalSurface.shellSingleQuoted(requested))"
+        // Chain planned input (an agent resume, say) on the cd so it never runs
+        // in the home folder when the cd fails.
+        let plannedInput: String
+        if let initialInput, !initialInput.isEmpty {
+            plannedInput = "\(changeDirectory) && \(initialInput)"
+        } else {
+            plannedInput = "\(changeDirectory)\n"
+        }
         return Self(
             workingDirectory: gate.homeDirectory,
-            initialInput: changeDirectory + (initialInput ?? ""),
+            initialInput: plannedInput,
             deferredWorkingDirectory: requested
         )
     }
