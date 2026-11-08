@@ -117978,6 +117978,40 @@
         }
       }
     },
+    "mainThreadFileAccessStall.notification.body": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A privacy prompt may be open. Answer it and cmux will continue."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "プライバシーの確認ダイアログが開いている可能性があります。応答すると cmux は続行します。"
+          }
+        }
+      }
+    },
+    "mainThreadFileAccessStall.notification.title": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "cmux is waiting on macOS file access"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "cmux は macOS のファイルアクセスを待っています"
+          }
+        }
+      }
+    },
     "markdown.copyConfirm.html": {
       "extractionState": "manual",
       "localizations": {
@@ -239133,6 +239167,40 @@
           "stringUnit": {
             "state": "translated",
             "value": "クリア (Control-L)"
+          }
+        }
+      }
+    },
+    "terminal.workingDirectoryAccessDeferred.body": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "macOS has not answered for %@. This tab started in your home folder and will change to it once access is granted; a privacy prompt may be open."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "macOS が %@ への応答をまだ返していません。このタブはホームフォルダで開き、アクセスが許可されるとそのフォルダに移動します。プライバシーの確認ダイアログが開いている可能性があります。"
+          }
+        }
+      }
+    },
+    "terminal.workingDirectoryAccessDeferred.title": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Waiting for file access"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ファイルアクセスを待っています"
           }
         }
       }

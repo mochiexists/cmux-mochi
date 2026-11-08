@@ -17,8 +17,9 @@ cmux's own hang capture, is in
    `TerminalWorkingDirectoryAccessGate` (CmuxTerminal) opens the working directory
    on a background queue and waits at most 750 ms.
    - On a timeout the surface starts in `$HOME`. A shell surface gets
-     `cd '<dir>'` typed ahead of any other startup input, so the shell waits for
-     macOS in its own process.
+     `cd '<dir>'` typed first, so the shell waits for macOS in its own process.
+     Any planned startup input, such as an agent resume, is chained as
+     `cd '<dir>' && <input>`, so it never runs in `$HOME`.
    - While the stuck open is still pending, later tabs fall back at once. One stall
      costs one 750 ms wait and parks one probe thread.
    - The surface posts `terminalSurfaceWorkingDirectoryAccessDeferred`.
