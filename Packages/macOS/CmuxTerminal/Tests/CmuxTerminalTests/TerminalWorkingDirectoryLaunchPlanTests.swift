@@ -39,7 +39,7 @@ struct TerminalWorkingDirectoryLaunchPlanTests {
         )
 
         #expect(plan.workingDirectory == Self.home)
-        #expect(plan.initialInput == "cd '/Users/someone/Documents/it'\\''s a project' && claude --resume\n")
+        #expect(plan.initialInput == "cd -- '/Users/someone/Documents/it'\\''s a project' && claude --resume\n")
         #expect(plan.deferredWorkingDirectory == Self.project)
     }
 
@@ -59,7 +59,7 @@ struct TerminalWorkingDirectoryLaunchPlanTests {
             )
         )
 
-        #expect(plan.initialInput == "cd '/Users/someone/Documents/app'\n")
+        #expect(plan.initialInput == "cd -- '/Users/someone/Documents/app'\n")
     }
 
     @Test

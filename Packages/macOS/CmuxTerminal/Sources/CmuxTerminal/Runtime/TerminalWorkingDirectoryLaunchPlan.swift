@@ -3,9 +3,14 @@
 ///
 /// When the directory's open stalls, the surface starts in the home folder
 /// instead, so `ghostty_surface_new` never opens a protected path on the main
-/// thread. If the surface runs an interactive shell, `cd '<dir>'` is typed
+/// thread. If the surface runs an interactive shell, `cd -- '<dir>'` is typed
 /// ahead of any other startup input; the shell then waits for macOS in its own
 /// process and lands in the right folder once access is answered.
+///
+/// The path is typed into a live shell, so it is treated as hostile input:
+/// it is single-quoted, and a path the quoting cannot make inert is never
+/// typed at all (see ``typeablePath(_:)``). Such a surface stays in home with
+/// no startup input, and the deferral notice still tells the user.
 public struct TerminalWorkingDirectoryLaunchPlan: Sendable, Equatable {
     /// The directory passed to Ghostty.
     public let workingDirectory: String?
@@ -50,7 +55,15 @@ public struct TerminalWorkingDirectoryLaunchPlan: Sendable, Equatable {
                 deferredWorkingDirectory: requested
             )
         }
-        let changeDirectory = "cd \(TerminalSurface.shellSingleQuoted(requested))"
+        guard let typeable = typeablePath(requested) else {
+            // Planned input (an agent resume) must not run in the wrong folder.
+            return Self(
+                workingDirectory: gate.homeDirectory,
+                initialInput: nil,
+                deferredWorkingDirectory: requested
+            )
+        }
+        let changeDirectory = "cd -- \(TerminalSurface.shellSingleQuoted(typeable))"
         // Chain planned input (an agent resume, say) on the cd so it never runs
         // in the home folder when the cd fails.
         let plannedInput: String
@@ -64,5 +77,30 @@ public struct TerminalWorkingDirectoryLaunchPlan: Sendable, Equatable {
             initialInput: plannedInput,
             deferredWorkingDirectory: requested
         )
+    }
+
+    /// Returns `path` when it is safe to type inside POSIX single quotes into
+    /// an interactive shell, or `nil` when it must not be typed.
+    ///
+    /// Refused:
+    /// - any control character (C0, DEL, C1): the terminal line discipline acts
+    ///   on them before the shell parses quotes (`^C`, `^U`, newline ends the
+    ///   line);
+    /// - a backslash: fish treats `\'` inside single quotes as an escaped quote,
+    ///   which would end the `'\''` escape early;
+    /// - a relative path, so the argument can never start with a dash.
+    ///
+    /// Everything else, including `'`, `$(…)` and backticks, is inert once
+    /// ``TerminalSurface/shellSingleQuoted(_:)`` has quoted it.
+    static func typeablePath(_ path: String) -> String? {
+        guard path.hasPrefix("/") else { return nil }
+        for scalar in path.unicodeScalars {
+            let value = scalar.value
+            let isControl = value < 0x20 || (0x7F...0x9F).contains(value)
+            if isControl || scalar == "\\" {
+                return nil
+            }
+        }
+        return path
     }
 }
