@@ -17,7 +17,11 @@ extension TerminalSurface {
         for view: any TerminalSurfaceNativeViewing,
         scaleFactors: (x: CGFloat, y: CGFloat, layer: CGFloat),
         claudeShim: ClaudeCommandShim?
-    ) -> (createdSurface: ghostty_surface_t?, runtimeInitialInput: String?) {
+    ) -> (
+        createdSurface: ghostty_surface_t?,
+        runtimeInitialInput: String?,
+        deferredWorkingDirectory: String?
+    ) {
         let baseConfig = runtimeCreationConfigTemplate()
         var surfaceConfig = ghostty_surface_config_new()
         let magnificationPercent = globalFontMagnificationPercent()
@@ -271,18 +275,46 @@ extension TerminalSurface {
             }
             return baseConfig.initialInput
         }()
+        // ghostty_surface_new opens and stats the working directory on this
+        // (main) thread; a stalled privacy check there hangs the app. Check it
+        // off-main with a deadline first and start in home when it stalls.
+        let launchPlan = TerminalWorkingDirectoryLaunchPlan.resolve(
+            requestedWorkingDirectory: resolvedWorkingDirectory,
+            initialInput: resolvedInitialInput,
+            inputReachesShell: Self.startupInputReachesShell(
+                initialCommand: initialCommand,
+                surfaceCommand: baseConfig.command,
+                hasUserGhosttyCommand: engine.hasUserGhosttyCommand
+            ),
+            gate: workingDirectoryAccess
+        )
         let createdSurface = withOptionalCString(resolvedCommand) { cCommand in
             surfaceConfig.command = cCommand
-            return withOptionalCString(resolvedWorkingDirectory) { cWorkingDir in
+            return withOptionalCString(launchPlan.workingDirectory) { cWorkingDir in
                 surfaceConfig.working_directory = cWorkingDir
-                return withOptionalCString(resolvedInitialInput) { cInitialInput in
+                return withOptionalCString(launchPlan.initialInput) { cInitialInput in
                     surfaceConfig.initial_input = cInitialInput
                     return makeGhosttySurface(app: app, config: &surfaceConfig, envVars: &envVars)
                 }
             }
         }
 
-        return (createdSurface, runtimeInitialInput)
+        return (createdSurface, runtimeInitialInput, launchPlan.deferredWorkingDirectory)
+    }
+
+    /// Whether startup input lands in an interactive shell rather than an
+    /// explicit command (a per-surface command or the user's Ghostty
+    /// `command`), mirroring ``TerminalLaunchCommandPolicy`` precedence.
+    static func startupInputReachesShell(
+        initialCommand: String?,
+        surfaceCommand: String?,
+        hasUserGhosttyCommand: Bool
+    ) -> Bool {
+        let hasExplicitCommand = [initialCommand, surfaceCommand].contains { command in
+            guard let command else { return false }
+            return !command.isEmpty
+        }
+        return !hasExplicitCommand && !hasUserGhosttyCommand
     }
 
     private func withOptionalCString<T>(_ value: String?, _ body: (UnsafePointer<CChar>?) -> T) -> T {

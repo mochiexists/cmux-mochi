@@ -1124,6 +1124,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
     let commandPaletteWindowStore = CommandPaletteWindowStore()
     private static let sessionAutosaveTypingQuietPeriod: TimeInterval = 0.65
     private let mainThreadHangWatchdog: MainThreadHangWatchdog
+    private lazy var workingDirectoryAccessDeferralNotice = WorkingDirectoryAccessDeferralNotice(
+        notificationStore: TerminalNotificationStore.shared
+    )
 
     var updateViewModel: UpdateStateModel {
         updateController.model
@@ -1207,17 +1210,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         let appBuild = Bundle.main.object(
             forInfoDictionaryKey: "CFBundleVersion"
         ) as? String ?? "unknown"
+        // init runs on the main thread: this reader watches it from the
+        // watchdog queue, which is how a hang names the call it is stuck in.
+        let mainThreadSymbolReader = ThreadProgramCounterSymbolReader.currentThread()
+        let fileAccessStallNotifier = MainThreadFileAccessStallNotifier()
         mainThreadHangWatchdog = MainThreadHangWatchdog(
             uptime: { ProcessInfo.processInfo.systemUptime },
             date: { .now },
             capture: { capturedAt, stallDuration in
+                let mainThreadSymbol = mainThreadSymbolReader.currentSymbol()
+                var hangMetadata = ["mainThreadSymbol=\(mainThreadSymbol ?? "unknown")"]
+                if let blockedCall = mainThreadSymbol.flatMap(BlockedFileAccessCall.init(symbol:)) {
+                    hangMetadata.append("tags=\(blockedCall.mainThreadTag)")
+                    fileAccessStallNotifier.notify(blockedIn: blockedCall)
+                }
                 guard let captureStore,
                       let paths = captureStore.prepareCapture(
                           capturedAt: capturedAt,
                           processIdentifier: processIdentifier,
                           stallDuration: stallDuration,
                           appVersion: appVersion,
-                          appBuild: appBuild
+                          appBuild: appBuild,
+                          additionalMetadata: hangMetadata
                       ) else {
                     return
                 }
@@ -1235,6 +1249,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         )
         super.init(); Self.shared = self
         mainThreadHangWatchdog.start()
+        workingDirectoryAccessDeferralNotice.start()
         AgentChatThemeSync.start()
         // Inverts the surface registry's legacy AppDelegate.shared reach-up:
         // the registry asks this delegate (via MainWindowRouteRetiring) to

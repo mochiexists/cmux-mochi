@@ -25,7 +25,8 @@ final class MainThreadHangCaptureStore: @unchecked Sendable {
         processIdentifier: Int32,
         stallDuration: TimeInterval,
         appVersion: String,
-        appBuild: String
+        appBuild: String,
+        additionalMetadata: [String] = []
     ) -> (sampleURL: URL, metadataURL: URL)? {
         guard maximumCaptureCount > 0 else { return nil }
         do {
@@ -56,8 +57,7 @@ final class MainThreadHangCaptureStore: @unchecked Sendable {
             "appVersion=\(appVersion)",
             "appBuild=\(appBuild)",
             "samplePath=\(sampleURL.path)",
-            "",
-        ]
+        ] + additionalMetadata + [""]
         guard let data = lines.joined(separator: "\n").data(using: .utf8) else {
             return nil
         }

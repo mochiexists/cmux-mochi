@@ -409,6 +409,7 @@ class GhosttyApp {
         runtimeTeardown: GhosttyApp.terminalSurfaceRuntimeTeardown,
         restoreSpawnScheduler: GhosttyApp.terminalSurfaceRestoreSpawnScheduler,
         runtimeFilesystem: .live(),
+        workingDirectoryAccess: TerminalWorkingDirectoryAccessGate(),
         sessionPortBase: GhosttyApp.terminalSessionPortBase,
         sessionPortRangeSize: GhosttyApp.terminalSessionPortRangeSize,
         scrollbackReplayEnvironmentKey:

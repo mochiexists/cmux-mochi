@@ -1303,6 +1303,7 @@ C0DE71B10000000000000001 /* AppDelegate+AgentChatNotifications.swift in Sources 
 		D1F0A00200000000000000B1 /* MacPresenceMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1F0A00200000000000000B2 /* MacPresenceMonitor.swift */; };
 		A78C41010000000000000001 /* MacSentryStartupPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = A78C41010000000000000002 /* MacSentryStartupPolicy.swift */; };
 		5E2701030000000000000001 /* MacSentryStartupPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E2701030000000000000002 /* MacSentryStartupPolicyTests.swift */; };
+		87590000000000000000000D /* MainThreadFileAccessStallNotifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = 87590000000000000000000E /* MainThreadFileAccessStallNotifier.swift */; };
 		875900000000000000000009 /* MainThreadHangCaptureStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 87590000000000000000000A /* MainThreadHangCaptureStore.swift */; };
 		87590000000000000000000B /* MainThreadHangSampleRunner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 87590000000000000000000C /* MainThreadHangSampleRunner.swift */; };
 		875900000000000000000003 /* MainThreadHangWatchdog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 875900000000000000000004 /* MainThreadHangWatchdog.swift */; };
@@ -2495,6 +2496,7 @@ C0DE71B10000000000000001 /* AppDelegate+AgentChatNotifications.swift in Sources 
 		905200000000000000000003 /* WKWebView+BrowserUserAgentPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 905200000000000000000004 /* WKWebView+BrowserUserAgentPolicy.swift */; };
 		805600000000000000000003 /* WKWebView+BrowserViewport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 805600000000000000000004 /* WKWebView+BrowserViewport.swift */; };
 		D7632B13A1B2C3D4E5F60718 /* WKWebView+CmuxPrintOperation.swift in Sources */ = {isa = PBXBuildFile; fileRef = D7632B14A1B2C3D4E5F60718 /* WKWebView+CmuxPrintOperation.swift */; };
+		87590000000000000000000F /* WorkingDirectoryAccessDeferralNotice.swift in Sources */ = {isa = PBXBuildFile; fileRef = 875900000000000000000010 /* WorkingDirectoryAccessDeferralNotice.swift */; };
 		C0DE43000000000000000007 /* Workspace+AgentChat.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE43000000000000000008 /* Workspace+AgentChat.swift */; };
 		A6AC73020000000000000001 /* Workspace+AgentLifecycle.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6AC73020000000000000002 /* Workspace+AgentLifecycle.swift */; };
 		A7C0F2010000000000000002 /* Workspace+Artifacts.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7C0F2010000000000000001 /* Workspace+Artifacts.swift */; };
@@ -3955,6 +3957,7 @@ C0DE71B10000000000000002 /* AppDelegate+AgentChatNotifications.swift */ = {isa =
 		D1F0A00200000000000000B2 /* MacPresenceMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacPresenceMonitor.swift; sourceTree = "<group>"; };
 		A78C41010000000000000002 /* MacSentryStartupPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = App/MacSentryStartupPolicy.swift; sourceTree = "<group>"; };
 		5E2701030000000000000002 /* MacSentryStartupPolicyTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MacSentryStartupPolicyTests.swift; sourceTree = "<group>"; };
+		87590000000000000000000E /* MainThreadFileAccessStallNotifier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainThreadFileAccessStallNotifier.swift; sourceTree = "<group>"; };
 		87590000000000000000000A /* MainThreadHangCaptureStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainThreadHangCaptureStore.swift; sourceTree = "<group>"; };
 		87590000000000000000000C /* MainThreadHangSampleRunner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainThreadHangSampleRunner.swift; sourceTree = "<group>"; };
 		875900000000000000000004 /* MainThreadHangWatchdog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainThreadHangWatchdog.swift; sourceTree = "<group>"; };
@@ -5132,6 +5135,7 @@ C0DE71B10000000000000002 /* AppDelegate+AgentChatNotifications.swift */ = {isa =
 		905200000000000000000004 /* WKWebView+BrowserUserAgentPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Panels/WKWebView+BrowserUserAgentPolicy.swift"; sourceTree = "<group>"; };
 		805600000000000000000004 /* WKWebView+BrowserViewport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Panels/WKWebView+BrowserViewport.swift"; sourceTree = "<group>"; };
 		D7632B14A1B2C3D4E5F60718 /* WKWebView+CmuxPrintOperation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Panels/WKWebView+CmuxPrintOperation.swift"; sourceTree = "<group>"; };
+		875900000000000000000010 /* WorkingDirectoryAccessDeferralNotice.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkingDirectoryAccessDeferralNotice.swift; sourceTree = "<group>"; };
 		C0DE43000000000000000008 /* Workspace+AgentChat.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Workspace+AgentChat.swift"; sourceTree = "<group>"; };
 		A6AC73020000000000000002 /* Workspace+AgentLifecycle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Workspace+AgentLifecycle.swift"; sourceTree = "<group>"; };
 		A7C0F2010000000000000001 /* Workspace+Artifacts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Workspace+Artifacts.swift"; sourceTree = "<group>"; };
@@ -7009,6 +7013,8 @@ C0DE71B10000000000000002 /* AppDelegate+AgentChatNotifications.swift */ = {isa =
 				87590000000000000000000C /* MainThreadHangSampleRunner.swift */,
 				875900000000000000000004 /* MainThreadHangWatchdog.swift */,
 				875900000000000000000008 /* MainThreadHangWatchdogState.swift */,
+				875900000000000000000010 /* WorkingDirectoryAccessDeferralNotice.swift */,
+				87590000000000000000000E /* MainThreadFileAccessStallNotifier.swift */,
 				883700000000000000000004 /* SurfaceResumeApprovalLookup.swift */,
 				875900000000000000000006 /* SurfaceResumeApprovalSigningSecretCache.swift */,
 				883700000000000000000002 /* SurfaceResumeApprovalSigningSecretResolution.swift */,
@@ -9350,6 +9356,7 @@ C0DE71B10000000000000002 /* AppDelegate+AgentChatNotifications.swift */ = {isa =
 				D1F0A00500000000000000E1 /* MacPresenceDecisionCache.swift in Sources */,
 				D1F0A00200000000000000B1 /* MacPresenceMonitor.swift in Sources */,
 				A78C41010000000000000001 /* MacSentryStartupPolicy.swift in Sources */,
+				87590000000000000000000D /* MainThreadFileAccessStallNotifier.swift in Sources */,
 				875900000000000000000009 /* MainThreadHangCaptureStore.swift in Sources */,
 				87590000000000000000000B /* MainThreadHangSampleRunner.swift in Sources */,
 				875900000000000000000003 /* MainThreadHangWatchdog.swift in Sources */,
@@ -10195,6 +10202,7 @@ C0DE71B10000000000000002 /* AppDelegate+AgentChatNotifications.swift */ = {isa =
 				905200000000000000000003 /* WKWebView+BrowserUserAgentPolicy.swift in Sources */,
 				805600000000000000000003 /* WKWebView+BrowserViewport.swift in Sources */,
 				D7632B13A1B2C3D4E5F60718 /* WKWebView+CmuxPrintOperation.swift in Sources */,
+				87590000000000000000000F /* WorkingDirectoryAccessDeferralNotice.swift in Sources */,
 				C0DE43000000000000000007 /* Workspace+AgentChat.swift in Sources */,
 				A6AC73020000000000000001 /* Workspace+AgentLifecycle.swift in Sources */,
 				A7C0F2010000000000000002 /* Workspace+Artifacts.swift in Sources */,

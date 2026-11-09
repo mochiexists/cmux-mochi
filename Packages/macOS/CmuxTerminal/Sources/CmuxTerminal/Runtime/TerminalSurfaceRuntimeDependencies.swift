@@ -43,6 +43,10 @@ public struct TerminalSurfaceRuntimeDependencies {
     /// Filesystem probes and writers used by runtime creation.
     public let runtimeFilesystem: TerminalSurfaceRuntimeFilesystem
 
+    /// The shared deadline check that keeps a stalled working-directory open
+    /// out of `ghostty_surface_new`.
+    public let workingDirectoryAccess: TerminalWorkingDirectoryAccessGate
+
     /// The first port of the per-session `CMUX_PORT` allocation
     /// (snapshotted once per app session by the composition root).
     public let sessionPortBase: Int
@@ -60,9 +64,12 @@ public struct TerminalSurfaceRuntimeDependencies {
 
     /// Creates the dependency bundle.
     ///
-    /// - Parameter runtimeSurfaceDeallocator: Releases one native surface.
-    ///   The teardown coordinator retains this closure until it executes the
-    ///   corresponding asynchronous teardown request.
+    /// - Parameters:
+    ///   - runtimeSurfaceDeallocator: Releases one native surface.
+    ///     The teardown coordinator retains this closure until it executes the
+    ///     corresponding asynchronous teardown request.
+    ///   - workingDirectoryAccess: The working-directory gate. Pass one shared
+    ///     instance for every surface; its stall memory is per instance.
     public init(
         registry: any TerminalSurfaceRegistering,
         engine: any TerminalEngineHosting,
@@ -77,6 +84,7 @@ public struct TerminalSurfaceRuntimeDependencies {
         },
         restoreSpawnScheduler: any TerminalSurfaceRuntimeSpawnScheduling,
         runtimeFilesystem: TerminalSurfaceRuntimeFilesystem,
+        workingDirectoryAccess: TerminalWorkingDirectoryAccessGate = TerminalWorkingDirectoryAccessGate(),
         sessionPortBase: Int,
         sessionPortRangeSize: Int,
         scrollbackReplayEnvironmentKey: String,
@@ -93,6 +101,7 @@ public struct TerminalSurfaceRuntimeDependencies {
         self.runtimeSurfaceDeallocator = runtimeSurfaceDeallocator
         self.restoreSpawnScheduler = restoreSpawnScheduler
         self.runtimeFilesystem = runtimeFilesystem
+        self.workingDirectoryAccess = workingDirectoryAccess
         self.sessionPortBase = sessionPortBase
         self.sessionPortRangeSize = sessionPortRangeSize
         self.scrollbackReplayEnvironmentKey = scrollbackReplayEnvironmentKey

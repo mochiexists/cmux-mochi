@@ -95,6 +95,7 @@ public final class TerminalSurface: Identifiable, ObservableObject {
 #endif
     let restoreSpawnScheduler: any TerminalSurfaceRuntimeSpawnScheduling
     let runtimeFilesystem: TerminalSurfaceRuntimeFilesystem
+    let workingDirectoryAccess: TerminalWorkingDirectoryAccessGate
     /// Port ordinal base/range for CMUX_PORT assignment, snapshotted by the app composition root.
     let sessionPortBase: Int
     let sessionPortRangeSize: Int
@@ -545,6 +546,7 @@ public final class TerminalSurface: Identifiable, ObservableObject {
         self.runtimeSurfaceDeallocator = dependencies.runtimeSurfaceDeallocator
         self.restoreSpawnScheduler = dependencies.restoreSpawnScheduler
         self.runtimeFilesystem = dependencies.runtimeFilesystem
+        self.workingDirectoryAccess = dependencies.workingDirectoryAccess
         self.requiresRestoreSpawnPacing = runtimeSpawnPolicy == .pacedSessionRestore
         self.sessionPortBase = dependencies.sessionPortBase
         self.sessionPortRangeSize = dependencies.sessionPortRangeSize

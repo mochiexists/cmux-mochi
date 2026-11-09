@@ -760,6 +760,18 @@ extension TerminalSurface {
         ghostty_surface_refresh(createdSurface)
         rendererRuntimeSurfaceDidCreate()
 
+        if let deferredWorkingDirectory = runtimeSurfaceCreation.deferredWorkingDirectory {
+            NotificationCenter.default.post(
+                name: .terminalSurfaceWorkingDirectoryAccessDeferred,
+                object: self,
+                userInfo: [
+                    "surfaceId": id,
+                    "workspaceId": tabId,
+                    "workingDirectory": deferredWorkingDirectory
+                ]
+            )
+        }
+
         NotificationCenter.default.post(
             name: .terminalSurfaceDidBecomeReady,
             object: self,
