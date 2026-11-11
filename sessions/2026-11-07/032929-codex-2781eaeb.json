@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "agent": "codex",
+  "session_id": "01a1b5c5-2beb-7e41-9c9e-721e36578c42",
+  "project": "/Users/timapple/Documents/mcc/fujira/theelements/cmux-mochi/cmux-mochi-clean",
+  "first_observed_at": "2026-11-07T11:29:29.246551+00:00",
+  "started_at": "2026-11-07T11:29:29.246551+00:00",
+  "closed_at": "2026-11-07T11:31:50.064337+00:00",
+  "status": "closed",
+  "active_work_seconds": null,
+  "duration_basis": "observed wall-clock span; not active work",
+  "closeouts": [],
+  "machine": "timapple-m5",
+  "machines": [
+    "timapple-m5"
+  ],
+  "last_seen_at": "2026-11-07T11:31:50.064337+00:00",
+  "last_event": "SessionEnd",
+  "last_machine": "timapple-m5",
+  "outputs": {
+    "2026-11-07": {
+      "scratch": "/Users/timapple/Documents/mcc/fujira/theelements/cmux-mochi/cmux-mochi-clean/scratch/2026-11-07/032929-codex-2781eaeb",
+      "artifacts": "/Users/timapple/Documents/mcc/fujira/theelements/cmux-mochi/cmux-mochi-clean/artifacts/2026-11-07/032929-codex-2781eaeb"
+    }
+  },
+  "legacy_outputs": [],
+  "observed_span_seconds": 140.817786
+}

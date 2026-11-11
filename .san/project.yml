@@ -1,0 +1,12 @@
+schemaVersion: 1
+id: cmux-mochi-clean
+name: cmux-mochi-clean
+kind: appleApplication
+summary: the cmux Mochi macOS app (fork of cmux), main checkout; kind confirmed 2026-09-29.
+capabilities: []
+platforms: []
+repository:
+  canonicalRemotes:
+    - git@github-mochiexists:mochiexists/cmux-mochi.git
+integrations:
+  copy: []
